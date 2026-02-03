@@ -29,6 +29,9 @@ function setup() {
       mapSize: "small" as MapSizeId,
       captainDeck: [],
       draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: TestGame });
@@ -50,6 +53,9 @@ function setupAtEdge() {
       mapSize: "small" as MapSizeId,
       captainDeck: [],
       draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: EdgeGame });
@@ -125,6 +131,9 @@ describe("moveShip port logic", () => {
         mapSize: "small" as MapSizeId,
         captainDeck: [],
         draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
       }),
     };
     const client = Client<CaribbeanState>({ game: IslandGame });
@@ -194,6 +203,9 @@ function setupTwoPlayer() {
       mapSize: "small" as MapSizeId,
       captainDeck: [],
       draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });

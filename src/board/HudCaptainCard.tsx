@@ -1,17 +1,11 @@
-import type { Captain, Nation } from "../game/types";
+import type { Captain } from "../game/types";
+import { NationFlag } from "./NationFlag";
 
 interface HudCaptainCardProps {
   captain?: Captain;
   playerIndex: string;
   playerColor: string;
 }
-
-const NATION_COLORS: Record<Nation, string> = {
-  England: "#dc2626",
-  France: "#2563eb",
-  Spain: "#ca8a04",
-  Netherlands: "#ea580c",
-};
 
 export function HudCaptainCard({
   captain,
@@ -38,10 +32,7 @@ export function HudCaptainCard({
           </div>
 
           <div className="flex items-center gap-1.5 mb-2.5">
-            <span
-              className="inline-block w-2 h-2 rounded-full ring-1 ring-white/10"
-              style={{ backgroundColor: NATION_COLORS[captain.nation] }}
-            />
+            <NationFlag nation={captain.nation} size="sm" />
             <span className="text-amber-300/70 text-[11px] font-medium">
               {captain.nation}
             </span>

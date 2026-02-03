@@ -59,9 +59,9 @@ describe("getMapPreset", () => {
   });
 
   it("returns preset with expected radii", () => {
-    expect(getMapPreset("small").radius).toBe(5);
-    expect(getMapPreset("medium").radius).toBe(8);
-    expect(getMapPreset("large").radius).toBe(12);
+    expect(getMapPreset("small").radius).toBe(12);
+    expect(getMapPreset("medium").radius).toBe(18);
+    expect(getMapPreset("large").radius).toBe(25);
   });
 });
 

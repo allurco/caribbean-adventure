@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { SHIP_SPECS, UPGRADES, REPAIR_COST_PER_POINT } from "./constants";
-import { SHIP_CLASSES } from "./types";
+import { SHIP_SPECS, UPGRADES, REPAIR_COST_PER_POINT, SHIP_COSTS } from "./constants";
+import { SHIP_CLASSES, STARTER_SHIP_CLASSES } from "./types";
 
 describe("SHIP_SPECS", () => {
   it("has an entry for every ship class", () => {
@@ -27,6 +27,26 @@ describe("SHIP_SPECS", () => {
     expect(f.crew).toEqual({ current: 3, max: 3 });
     expect(f.hull).toEqual({ current: 4, max: 4 });
     expect(f.cargo).toBe(4);
+  });
+
+  it("Frigate stats match spec", () => {
+    const fr = SHIP_SPECS.Frigate;
+    expect(fr.maneuverability).toBe(3);
+    expect(fr.scouting).toBe(3);
+    expect(fr.cannons).toBe(4);
+    expect(fr.crew).toEqual({ current: 4, max: 4 });
+    expect(fr.hull).toEqual({ current: 5, max: 5 });
+    expect(fr.cargo).toBe(3);
+  });
+
+  it("Galleon stats match spec", () => {
+    const g = SHIP_SPECS.Galleon;
+    expect(g.maneuverability).toBe(1);
+    expect(g.scouting).toBe(2);
+    expect(g.cannons).toBe(3);
+    expect(g.crew).toEqual({ current: 5, max: 5 });
+    expect(g.hull).toEqual({ current: 7, max: 7 });
+    expect(g.cargo).toBe(6);
   });
 
   it("every spec has current === max for crew and hull", () => {
@@ -89,5 +109,41 @@ describe("UPGRADES", () => {
 describe("REPAIR_COST_PER_POINT", () => {
   it("equals 5", () => {
     expect(REPAIR_COST_PER_POINT).toBe(5);
+  });
+});
+
+describe("SHIP_COSTS", () => {
+  it("has an entry for every ship class", () => {
+    for (const cls of SHIP_CLASSES) {
+      expect(SHIP_COSTS[cls]).toBeDefined();
+    }
+  });
+
+  it("Sloop costs 20", () => {
+    expect(SHIP_COSTS.Sloop).toBe(20);
+  });
+
+  it("Flute costs 30", () => {
+    expect(SHIP_COSTS.Flute).toBe(30);
+  });
+
+  it("Frigate costs 40", () => {
+    expect(SHIP_COSTS.Frigate).toBe(40);
+  });
+
+  it("Galleon costs 60", () => {
+    expect(SHIP_COSTS.Galleon).toBe(60);
+  });
+});
+
+describe("STARTER_SHIP_CLASSES", () => {
+  it("is a subset of SHIP_CLASSES", () => {
+    for (const cls of STARTER_SHIP_CLASSES) {
+      expect((SHIP_CLASSES as readonly string[]).includes(cls)).toBe(true);
+    }
+  });
+
+  it("contains only Sloop and Flute", () => {
+    expect(STARTER_SHIP_CLASSES).toEqual(["Sloop", "Flute"]);
   });
 });

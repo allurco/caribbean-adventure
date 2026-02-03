@@ -1,20 +1,14 @@
 import { useState } from "react";
 import type { Captain, CaribbeanState, ShipClass } from "../game/types";
-import { SHIP_CLASSES } from "../game/types";
+import { STARTER_SHIP_CLASSES } from "../game/types";
 import { SHIP_SPECS } from "../game/constants";
+import { NationFlag } from "./NationFlag";
 
 interface DraftScreenProps {
   G: CaribbeanState;
   currentPlayer: string;
   onPickCaptain: (index: number, shipClass: ShipClass) => void;
 }
-
-const NATION_COLORS: Record<string, string> = {
-  England: "#dc2626",
-  France: "#2563eb",
-  Spain: "#ca8a04",
-  Netherlands: "#ea580c",
-};
 
 function CaptainCard({
   captain,
@@ -28,22 +22,13 @@ function CaptainCard({
       onClick={onSelect}
       className="group w-72 rounded-xl overflow-hidden text-left cursor-pointer transition-all duration-200 border border-amber-700/30 hover:border-amber-500/60 bg-gradient-to-b from-stone-900/95 to-amber-950/90 hover:from-stone-900 hover:to-amber-950 shadow-lg hover:shadow-amber-900/30 hover:scale-[1.03] backdrop-blur-sm"
     >
-      {/* Nation ribbon */}
-      <div
-        className="h-1.5 w-full"
-        style={{ backgroundColor: NATION_COLORS[captain.nation] ?? "#666" }}
-      />
-
       <div className="p-5">
         <h3 className="font-heading text-lg font-bold text-amber-100 mb-2 leading-tight">
           {captain.name}
         </h3>
 
         <div className="flex items-center gap-2 mb-4">
-          <span
-            className="inline-block w-2.5 h-2.5 rounded-full ring-1 ring-white/10"
-            style={{ backgroundColor: NATION_COLORS[captain.nation] ?? "#666" }}
-          />
+          <NationFlag nation={captain.nation} size="lg" />
           <span className="text-amber-300/70 text-xs font-medium tracking-wide">
             {captain.nation}
           </span>
@@ -202,7 +187,7 @@ export function DraftScreen({
 
           {/* Ship cards */}
           <div className="flex gap-6 justify-center">
-            {SHIP_CLASSES.map((cls) => (
+            {STARTER_SHIP_CLASSES.map((cls) => (
               <ShipClassCard
                 key={cls}
                 shipClass={cls}

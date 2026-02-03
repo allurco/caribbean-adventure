@@ -1,8 +1,11 @@
+import { WIN_SCORE } from "../game/types";
+
 interface HudTurnBarProps {
   mapLabel: string;
   movesRemaining: number;
   maxMoves: number;
   gold: number;
+  glory: number;
   onEndTurn: () => void;
 }
 
@@ -11,6 +14,7 @@ export function HudTurnBar({
   movesRemaining,
   maxMoves,
   gold,
+  glory,
   onEndTurn,
 }: HudTurnBarProps) {
   return (
@@ -21,8 +25,22 @@ export function HudTurnBar({
           {mapLabel}
         </div>
 
-        {/* Center: Gold + Moves */}
+        {/* Center: Glory + Gold + Moves */}
         <div className="flex items-center gap-6">
+          {/* Glory Counter - Prominent */}
+          <div className="flex items-center gap-2 px-3 py-1 bg-amber-900/40 rounded-lg border border-amber-700/30">
+            <span className="text-amber-400 text-[10px] uppercase tracking-widest font-heading">
+              Glory
+            </span>
+            <span className="text-amber-200 text-lg font-bold tabular-nums">
+              {glory}
+            </span>
+            <span className="text-amber-500/60 text-sm">/ {WIN_SCORE}</span>
+          </div>
+
+          {/* Divider */}
+          <div className="w-px h-4 bg-amber-700/30" />
+
           {/* Gold */}
           <div className="flex items-center gap-1.5">
             <span className="text-yellow-500 text-sm">&#9672;</span>

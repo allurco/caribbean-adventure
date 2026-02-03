@@ -9,9 +9,9 @@ export interface MapPreset {
 }
 
 export const MAP_PRESETS: readonly MapPreset[] = [
-  { id: "small", label: "Small", radius: 5 },
-  { id: "medium", label: "Medium", radius: 8 },
-  { id: "large", label: "Large", radius: 12 },
+  { id: "small", label: "Small", radius: 12 },
+  { id: "medium", label: "Medium", radius: 18 },
+  { id: "large", label: "Large", radius: 25 },
 ] as const;
 
 export const DEFAULT_MAP_SIZE: MapSizeId = "small";

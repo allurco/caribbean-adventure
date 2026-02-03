@@ -6,6 +6,7 @@ import {
   InstancedBufferAttribute,
   InstancedMesh,
   Object3D,
+  CylinderGeometry,
 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import type { Hex } from "../game/hex";
@@ -16,9 +17,13 @@ import type { Terrain } from "../game/terrain";
 const TILE_SIZE = 1;
 const HEX_DEPTH = 0.15;
 const HIGHLIGHT_DEPTH = 0.02;
+const PORT_MARKER_RADIUS = 0.35;
+const PORT_MARKER_HEIGHT = 0.3;
 
 const COLOR_HOVERED = "#facc15";
+const COLOR_ATTACK_TARGET = "#ef4444";
 const OPACITY_HOVERED = 0.7;
+const OPACITY_ATTACK = 0.5;
 
 function createHexShape(size: number): Shape {
   const shape = new Shape();
@@ -43,15 +48,56 @@ const highlightGeometry = new ExtrudeGeometry(createHexShape(TILE_SIZE), {
   bevelEnabled: false,
 });
 
+// Cylinder geometry for port markers - easier to hover
+const portMarkerGeometry = new CylinderGeometry(
+  PORT_MARKER_RADIUS,
+  PORT_MARKER_RADIUS,
+  PORT_MARKER_HEIGHT,
+  8
+);
+
 const tempObject = new Object3D();
 const tempColor = new Color();
+
+// Port marker component with its own hover handling
+function PortMarker({
+  cell,
+  onHover,
+}: {
+  cell: MapCell;
+  onHover: (cell: MapCell | null) => void;
+}) {
+  const [x, , z] = hexToWorld(cell.hex);
+
+  return (
+    <mesh
+      position={[x, PORT_MARKER_HEIGHT / 2 + 0.01, z]}
+      geometry={portMarkerGeometry}
+      onPointerEnter={(e) => {
+        e.stopPropagation();
+        onHover(cell);
+      }}
+      onPointerLeave={() => {
+        onHover(null);
+      }}
+    >
+      <meshStandardMaterial
+        color="#ffffff"
+        emissive="#fbbf24"
+        emissiveIntensity={0.6}
+      />
+    </mesh>
+  );
+}
 
 interface HexGridProps {
   cells: MapCell[];
   terrainColors: Record<Terrain, string>;
   portColor: string;
   validTargets: Hex[];
+  attackTargets?: Hex[];
   onHexClick: (hex: Hex) => void;
+  onPortHover?: (cell: MapCell | null) => void;
   interactive: boolean;
 }
 
@@ -60,11 +106,16 @@ export function HexGrid({
   terrainColors,
   portColor,
   validTargets,
+  attackTargets = [],
   onHexClick,
+  onPortHover,
   interactive,
 }: HexGridProps) {
   const terrainRef = useRef<InstancedMesh>(null!);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+
+  // Get all port cells for rendering markers
+  const portCells = useMemo(() => cells.filter((c) => c.hasPort), [cells]);
 
   const targetIndices = useMemo(() => {
     const set = new Set<number>();
@@ -75,10 +126,37 @@ export function HexGrid({
     return set;
   }, [cells, validTargets]);
 
+  const attackTargetIndices = useMemo(() => {
+    const set = new Set<number>();
+    attackTargets.forEach((t) => {
+      const idx = cells.findIndex((c) => hexEquals(c.hex, t));
+      if (idx !== -1) set.add(idx);
+    });
+    return set;
+  }, [cells, attackTargets]);
+
+  const allInteractiveIndices = useMemo(() => {
+    const set = new Set<number>();
+    targetIndices.forEach((i) => set.add(i));
+    attackTargetIndices.forEach((i) => set.add(i));
+    return set;
+  }, [targetIndices, attackTargetIndices]);
+
   const hoveredCell = useMemo(() => {
-    if (hoveredId === null || !targetIndices.has(hoveredId)) return null;
+    if (hoveredId === null || !allInteractiveIndices.has(hoveredId)) return null;
     return cells[hoveredId];
-  }, [hoveredId, targetIndices, cells]);
+  }, [hoveredId, allInteractiveIndices, cells]);
+
+  const isHoveredAttackTarget = useMemo(() => {
+    return hoveredId !== null && attackTargetIndices.has(hoveredId);
+  }, [hoveredId, attackTargetIndices]);
+
+  const attackTargetPositions = useMemo(() => {
+    return attackTargets.map((t) => {
+      const [x, y, z] = hexToWorld(t);
+      return [x, y + 0.01, z] as [number, number, number];
+    });
+  }, [attackTargets]);
 
   useEffect(() => {
     const mesh = terrainRef.current;
@@ -109,18 +187,19 @@ export function HexGrid({
 
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      // Handle interactive hex hovering (for movement/attack)
       if (!interactive) return;
       const id = e.instanceId;
-      if (id !== undefined && targetIndices.has(id)) {
+      if (id !== undefined && allInteractiveIndices.has(id)) {
         e.stopPropagation();
         setHoveredId(id);
-        document.body.style.cursor = "pointer";
+        document.body.style.cursor = attackTargetIndices.has(id) ? "crosshair" : "pointer";
       } else {
         setHoveredId(null);
         document.body.style.cursor = "auto";
       }
     },
-    [interactive, targetIndices]
+    [interactive, allInteractiveIndices, attackTargetIndices]
   );
 
   const handlePointerOut = useCallback(() => {
@@ -132,12 +211,12 @@ export function HexGrid({
     (e: ThreeEvent<MouseEvent>) => {
       if (!interactive) return;
       const id = e.instanceId;
-      if (id !== undefined && targetIndices.has(id)) {
+      if (id !== undefined && allInteractiveIndices.has(id)) {
         e.stopPropagation();
         onHexClick(cells[id].hex);
       }
     },
-    [interactive, targetIndices, onHexClick, cells]
+    [interactive, allInteractiveIndices, onHexClick, cells]
   );
 
   const hoveredPos = useMemo(() => {
@@ -158,6 +237,24 @@ export function HexGrid({
         <meshStandardMaterial vertexColors />
       </instancedMesh>
 
+      {/* Attack target highlights (red) */}
+      {attackTargetPositions.map((pos, i) => (
+        <mesh
+          key={`attack-${i}`}
+          geometry={highlightGeometry}
+          position={pos}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <meshStandardMaterial
+            transparent
+            opacity={OPACITY_ATTACK}
+            depthWrite={false}
+            color={COLOR_ATTACK_TARGET}
+          />
+        </mesh>
+      ))}
+
+      {/* Hover highlight */}
       {hoveredPos && (
         <mesh
           geometry={highlightGeometry}
@@ -168,10 +265,20 @@ export function HexGrid({
             transparent
             opacity={OPACITY_HOVERED}
             depthWrite={false}
-            color={COLOR_HOVERED}
+            color={isHoveredAttackTarget ? COLOR_ATTACK_TARGET : COLOR_HOVERED}
           />
         </mesh>
       )}
+
+      {/* Port markers with hover detection */}
+      {onPortHover &&
+        portCells.map((cell) => (
+          <PortMarker
+            key={`port-${cell.hex.q}-${cell.hex.r}`}
+            cell={cell}
+            onHover={onPortHover}
+          />
+        ))}
     </>
   );
 }

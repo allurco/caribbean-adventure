@@ -5,9 +5,10 @@ import type {
   PortMarket,
   ShipClass,
   DamageCategory,
+  Nation,
 } from "./types";
-import { GOOD_TYPES } from "./types";
-import { SHIP_SPECS, UPGRADES, REPAIR_COST_PER_POINT } from "./constants";
+import { GOOD_TYPES, NATIONS } from "./types";
+import { SHIP_SPECS, UPGRADES, REPAIR_COST_PER_POINT, SHIP_COSTS } from "./constants";
 
 export const PRICE_RANGES: Record<
   GoodType,
@@ -24,6 +25,13 @@ export const DEFAULT_MAX_CARGO = 3;
 
 export function emptyCargo(): Record<GoodType, number> {
   return { Wood: 0, Sugar: 0, Rum: 0, Spice: 0 };
+}
+
+export function emptyBounties(): Record<Nation, number> {
+  return NATIONS.reduce((acc, nation) => {
+    acc[nation] = 0;
+    return acc;
+  }, {} as Record<Nation, number>);
 }
 
 export function totalCargo(cargo: Record<GoodType, number>): number {
@@ -68,6 +76,10 @@ export function createShipState(
     stats,
     upgrades: [],
     damage: { hull: 0, crew: 0, masts: 0 },
+    bounties: emptyBounties(),
+    score: 0,
+    stashedGold: 0,
+    scoutedShips: [],
   };
 }
 
@@ -78,12 +90,9 @@ export function canBuyUpgrade(ship: ShipState, upgradeId: string): boolean {
   return ship.gold >= upgrade.cost;
 }
 
-export function applyUpgrade(ship: ShipState, upgradeId: string): void {
+export function applyUpgradeEffect(ship: ShipState, upgradeId: string): void {
   const upgrade = UPGRADES[upgradeId];
-  ship.gold -= upgrade.cost;
-  ship.upgrades.push(upgradeId);
-
-  if (!ship.stats) return;
+  if (!upgrade || !ship.stats) return;
 
   const eff = upgrade.effect;
   if (eff.maneuverability) ship.stats.maneuverability += eff.maneuverability;
@@ -100,6 +109,13 @@ export function applyUpgrade(ship: ShipState, upgradeId: string): void {
     ship.stats.crew.max += eff.crewMax;
     ship.stats.crew.current += eff.crewMax;
   }
+}
+
+export function applyUpgrade(ship: ShipState, upgradeId: string): void {
+  const upgrade = UPGRADES[upgradeId];
+  ship.gold -= upgrade.cost;
+  ship.upgrades.push(upgradeId);
+  applyUpgradeEffect(ship, upgradeId);
 }
 
 export function canRepair(ship: ShipState, category: DamageCategory): boolean {
@@ -119,6 +135,39 @@ export function applyRepair(
 
   if (ship.stats && (category === "hull" || category === "crew")) {
     ship.stats[category].current += actual;
+  }
+}
+
+export function getShipBuyCost(
+  currentClass: ShipClass | undefined,
+  newClass: ShipClass,
+): number {
+  const price = SHIP_COSTS[newClass];
+  const tradeIn = currentClass
+    ? Math.floor(SHIP_COSTS[currentClass] * 0.5)
+    : 0;
+  return price - tradeIn;
+}
+
+export function canBuyShip(ship: ShipState, newClass: ShipClass): boolean {
+  if (ship.shipClass === newClass) return false;
+  const newCargo = SHIP_SPECS[newClass].cargo;
+  if (totalCargo(ship.cargo) > newCargo) return false;
+  const cost = getShipBuyCost(ship.shipClass, newClass);
+  if (cost > 0 && ship.gold < cost) return false;
+  return true;
+}
+
+export function applyBuyShip(ship: ShipState, newClass: ShipClass): void {
+  const cost = getShipBuyCost(ship.shipClass, newClass);
+  ship.gold -= cost;
+  ship.shipClass = newClass;
+  ship.stats = structuredClone(SHIP_SPECS[newClass]);
+  ship.maxCargo = ship.stats.cargo;
+  ship.damage = { hull: 0, crew: 0, masts: 0 };
+  // Re-apply upgrade effects to fresh stats
+  for (const uid of ship.upgrades) {
+    applyUpgradeEffect(ship, uid);
   }
 }
 

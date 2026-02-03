@@ -17,6 +17,29 @@ export const SHIP_SPECS: Record<ShipClass, ShipStats> = {
     hull: { current: 4, max: 4 },
     cargo: 4,
   },
+  Frigate: {
+    maneuverability: 3,
+    scouting: 3,
+    cannons: 4,
+    crew: { current: 4, max: 4 },
+    hull: { current: 5, max: 5 },
+    cargo: 3,
+  },
+  Galleon: {
+    maneuverability: 1,
+    scouting: 2,
+    cannons: 3,
+    crew: { current: 5, max: 5 },
+    hull: { current: 7, max: 7 },
+    cargo: 6,
+  },
+};
+
+export const SHIP_COSTS: Record<ShipClass, number> = {
+  Sloop: 20,
+  Flute: 30,
+  Frigate: 40,
+  Galleon: 60,
 };
 
 export const REPAIR_COST_PER_POINT = 5;

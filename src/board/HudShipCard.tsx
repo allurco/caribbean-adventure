@@ -2,6 +2,8 @@ import type { ShipState, GoodType } from "../game/types";
 import { GOOD_TYPES } from "../game/types";
 import { UPGRADES } from "../game/constants";
 import { totalCargo } from "../game/economy";
+import { getWantedNations } from "../game/reputation";
+import { NationFlag } from "./NationFlag";
 
 interface HudShipCardProps {
   ship: ShipState;
@@ -49,11 +51,13 @@ const CARGO_COLORS: Record<GoodType, string> = {
   Spice: "#dc2626",
 };
 
+
 export function HudShipCard({ ship }: HudShipCardProps) {
   const stats = ship.stats;
   const cargoUsed = totalCargo(ship.cargo);
   const hasDamage =
     ship.damage.hull > 0 || ship.damage.crew > 0 || ship.damage.masts > 0;
+  const wantedNations = getWantedNations(ship.bounties);
 
   return (
     <div className="flex flex-col h-full">
@@ -101,6 +105,29 @@ export function HudShipCard({ ship }: HudShipCardProps) {
               {ship.damage.masts > 0 && (
                 <span className="text-red-300/70 text-[10px]">Masts -{ship.damage.masts}</span>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Wanted indicator */}
+        {wantedNations.length > 0 && (
+          <div className="flex items-center gap-2 bg-red-950/40 border border-red-800/40 rounded px-2 py-1">
+            <span className="text-red-500 text-[10px] font-bold uppercase tracking-wide">
+              Wanted
+            </span>
+            <div className="flex gap-1.5">
+              {wantedNations.map((nation) => (
+                <div
+                  key={nation}
+                  className="flex items-center gap-1"
+                  title={`${nation}: ${ship.bounties[nation]} bounty`}
+                >
+                  <NationFlag nation={nation} size="sm" />
+                  <span className="text-red-300/80 text-[10px] font-semibold">
+                    {ship.bounties[nation]}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         )}

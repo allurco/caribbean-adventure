@@ -72,6 +72,9 @@ function setupMainPhase(p0Class: ShipClass = "Sloop", p1Class: ShipClass = "Flut
         "0": [CAPTAIN_A],
         "1": [CAPTAIN_B],
       },
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: DraftGame, numPlayers: 2 });
@@ -110,6 +113,9 @@ function setupAtPortNoDraft() {
       mapSize: "small" as MapSizeId,
       captainDeck: [],
       draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: TestGame });
@@ -240,6 +246,9 @@ describe("repair move", () => {
         mapSize: "small" as MapSizeId,
         captainDeck: [],
         draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame });
@@ -319,6 +328,9 @@ describe("repair move", () => {
         mapSize: "small" as MapSizeId,
         captainDeck: [],
         draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame });

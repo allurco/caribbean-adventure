@@ -254,6 +254,9 @@ function setupDraft() {
         "0": [CAPTAIN_A, CAPTAIN_B],
         "1": [CAPTAIN_C, CAPTAIN_D],
       },
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: DraftGame, numPlayers: 2 });

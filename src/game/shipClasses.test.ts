@@ -33,6 +33,20 @@ describe("SHIP_SPECS data", () => {
     expect(SHIP_SPECS.Flute.hull.max).toBe(4);
   });
 
+  it("Frigate is a balanced warship", () => {
+    expect(SHIP_SPECS.Frigate.maneuverability).toBe(3);
+    expect(SHIP_SPECS.Frigate.cargo).toBe(3);
+    expect(SHIP_SPECS.Frigate.cannons).toBe(4);
+    expect(SHIP_SPECS.Frigate.hull.max).toBe(5);
+  });
+
+  it("Galleon is slow but tough with big cargo", () => {
+    expect(SHIP_SPECS.Galleon.maneuverability).toBe(1);
+    expect(SHIP_SPECS.Galleon.cargo).toBe(6);
+    expect(SHIP_SPECS.Galleon.cannons).toBe(3);
+    expect(SHIP_SPECS.Galleon.hull.max).toBe(7);
+  });
+
   it("every ship class has positive stats", () => {
     for (const cls of SHIP_CLASSES) {
       const stats = SHIP_SPECS[cls];
@@ -173,6 +187,9 @@ function setupDraft() {
         "0": [CAPTAIN_A, CAPTAIN_B],
         "1": [CAPTAIN_C, CAPTAIN_D],
       },
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: DraftGame, numPlayers: 2 });
@@ -213,6 +230,22 @@ describe("pickCaptain with ship class", () => {
   it("rejects an invalid ship class", () => {
     const client = setupDraft();
     client.moves.pickCaptain(0, "Battleship");
+    const { G } = client.getState()!;
+    expect(G.ships["0"].captain).toBeUndefined();
+    expect(G.ships["0"].shipClass).toBeUndefined();
+  });
+
+  it("rejects Frigate during draft (not a starter class)", () => {
+    const client = setupDraft();
+    client.moves.pickCaptain(0, "Frigate");
+    const { G } = client.getState()!;
+    expect(G.ships["0"].captain).toBeUndefined();
+    expect(G.ships["0"].shipClass).toBeUndefined();
+  });
+
+  it("rejects Galleon during draft (not a starter class)", () => {
+    const client = setupDraft();
+    client.moves.pickCaptain(0, "Galleon");
     const { G } = client.getState()!;
     expect(G.ships["0"].captain).toBeUndefined();
     expect(G.ships["0"].shipClass).toBeUndefined();

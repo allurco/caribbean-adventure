@@ -11,8 +11,12 @@ import {
   generatePortMarket,
   canBuyUpgrade,
   applyUpgrade,
+  applyUpgradeEffect,
   canRepair,
   applyRepair,
+  getShipBuyCost,
+  canBuyShip,
+  applyBuyShip,
   PRICE_RANGES,
   STARTING_GOLD,
   DEFAULT_MAX_CARGO,
@@ -337,6 +341,210 @@ describe("generatePortMarket", () => {
 });
 
 // ---------------------------------------------------------------------------
+// getShipBuyCost
+// ---------------------------------------------------------------------------
+
+describe("getShipBuyCost", () => {
+  it("Sloop→Frigate costs 40 - 10 = 30", () => {
+    expect(getShipBuyCost("Sloop", "Frigate")).toBe(30);
+  });
+
+  it("Galleon→Sloop costs 20 - 30 = -10 (player gains gold)", () => {
+    expect(getShipBuyCost("Galleon", "Sloop")).toBe(-10);
+  });
+
+  it("no current class means full price", () => {
+    expect(getShipBuyCost(undefined, "Frigate")).toBe(40);
+  });
+
+  it("Flute→Galleon costs 60 - 15 = 45", () => {
+    expect(getShipBuyCost("Flute", "Galleon")).toBe(45);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// canBuyShip
+// ---------------------------------------------------------------------------
+
+describe("canBuyShip", () => {
+  it("returns true when affordable and cargo fits", () => {
+    const ship = makeShip({
+      gold: 100,
+      shipClass: "Sloop",
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      maxCargo: 2,
+    });
+    expect(canBuyShip(ship, "Frigate")).toBe(true);
+  });
+
+  it("returns false for same class", () => {
+    const ship = makeShip({
+      gold: 100,
+      shipClass: "Sloop",
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      maxCargo: 2,
+    });
+    expect(canBuyShip(ship, "Sloop")).toBe(false);
+  });
+
+  it("returns false when cargo won't fit", () => {
+    const ship = makeShip({
+      gold: 100,
+      shipClass: "Flute",
+      stats: structuredClone(SHIP_SPECS.Flute),
+      maxCargo: 4,
+      cargo: { Wood: 2, Sugar: 1, Rum: 0, Spice: 0 }, // 3 total, Sloop only holds 2
+    });
+    expect(canBuyShip(ship, "Sloop")).toBe(false);
+  });
+
+  it("returns false when insufficient gold", () => {
+    const ship = makeShip({
+      gold: 5,
+      shipClass: "Sloop",
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      maxCargo: 2,
+    });
+    expect(canBuyShip(ship, "Galleon")).toBe(false);
+  });
+
+  it("returns true when downgrading gives gold (cost negative)", () => {
+    const ship = makeShip({
+      gold: 0,
+      shipClass: "Galleon",
+      stats: structuredClone(SHIP_SPECS.Galleon),
+      maxCargo: 6,
+    });
+    expect(canBuyShip(ship, "Sloop")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyBuyShip
+// ---------------------------------------------------------------------------
+
+describe("applyBuyShip", () => {
+  it("changes class and deducts net cost", () => {
+    const ship = makeShip({
+      gold: 100,
+      shipClass: "Sloop",
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      maxCargo: 2,
+    });
+    applyBuyShip(ship, "Frigate");
+    expect(ship.shipClass).toBe("Frigate");
+    expect(ship.gold).toBe(100 - 30); // 40 - floor(20*0.5) = 30
+  });
+
+  it("sets fresh stats from new class", () => {
+    const ship = makeShip({
+      gold: 100,
+      shipClass: "Sloop",
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      maxCargo: 2,
+    });
+    applyBuyShip(ship, "Frigate");
+    expect(ship.stats!.maneuverability).toBe(SHIP_SPECS.Frigate.maneuverability);
+    expect(ship.stats!.cannons).toBe(SHIP_SPECS.Frigate.cannons);
+    expect(ship.stats!.hull).toEqual(SHIP_SPECS.Frigate.hull);
+    expect(ship.stats!.crew).toEqual(SHIP_SPECS.Frigate.crew);
+    expect(ship.stats!.cargo).toBe(SHIP_SPECS.Frigate.cargo);
+  });
+
+  it("resets damage on purchase", () => {
+    const ship = makeShip({
+      gold: 100,
+      shipClass: "Sloop",
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      maxCargo: 2,
+      damage: { hull: 1, crew: 1, masts: 1 },
+    });
+    applyBuyShip(ship, "Frigate");
+    expect(ship.damage).toEqual({ hull: 0, crew: 0, masts: 0 });
+  });
+
+  it("syncs maxCargo with new class", () => {
+    const ship = makeShip({
+      gold: 100,
+      shipClass: "Sloop",
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      maxCargo: 2,
+    });
+    applyBuyShip(ship, "Galleon");
+    expect(ship.maxCargo).toBe(SHIP_SPECS.Galleon.cargo);
+  });
+
+  it("re-applies upgrade effects to fresh stats", () => {
+    const ship = makeShip({
+      gold: 100,
+      shipClass: "Sloop",
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      maxCargo: 2,
+      upgrades: ["long_guns", "hull_reinforcement"],
+    });
+    applyBuyShip(ship, "Frigate");
+    // Frigate base scouting = 3, long_guns adds 1
+    expect(ship.stats!.scouting).toBe(SHIP_SPECS.Frigate.scouting + 1);
+    // Frigate base hull.max = 5, hull_reinforcement adds 1
+    expect(ship.stats!.hull.max).toBe(SHIP_SPECS.Frigate.hull.max + 1);
+    // Upgrades list should be preserved
+    expect(ship.upgrades).toEqual(["long_guns", "hull_reinforcement"]);
+  });
+
+  it("allows downgrade with net gold gain", () => {
+    const ship = makeShip({
+      gold: 10,
+      shipClass: "Galleon",
+      stats: structuredClone(SHIP_SPECS.Galleon),
+      maxCargo: 6,
+    });
+    applyBuyShip(ship, "Sloop");
+    // Cost: 20 - floor(60*0.5) = 20 - 30 = -10 → gold increases by 10
+    expect(ship.gold).toBe(10 - (-10));
+    expect(ship.shipClass).toBe("Sloop");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyUpgradeEffect
+// ---------------------------------------------------------------------------
+
+describe("applyUpgradeEffect", () => {
+  it("applies scouting bonus without changing gold", () => {
+    const ship = makeShip({
+      gold: 100,
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      shipClass: "Sloop",
+    });
+    applyUpgradeEffect(ship, "long_guns");
+    expect(ship.stats!.scouting).toBe(SHIP_SPECS.Sloop.scouting + 1);
+    expect(ship.gold).toBe(100); // gold unchanged
+  });
+
+  it("applies hull max bonus", () => {
+    const ship = makeShip({
+      gold: 100,
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      shipClass: "Sloop",
+    });
+    applyUpgradeEffect(ship, "hull_reinforcement");
+    expect(ship.stats!.hull.max).toBe(SHIP_SPECS.Sloop.hull.max + 1);
+  });
+
+  it("does nothing for no-effect upgrades", () => {
+    const ship = makeShip({
+      gold: 100,
+      stats: structuredClone(SHIP_SPECS.Sloop),
+      shipClass: "Sloop",
+    });
+    const statsBefore = structuredClone(ship.stats!);
+    applyUpgradeEffect(ship, "chain_shot");
+    expect(ship.stats!.maneuverability).toBe(statsBefore.maneuverability);
+    expect(ship.stats!.scouting).toBe(statsBefore.scouting);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Trade move integration tests (boardgame.io Client)
 // ---------------------------------------------------------------------------
 
@@ -372,6 +580,9 @@ function setupAtPort() {
       mapSize: "small" as MapSizeId,
       captainDeck: [],
       draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: TradeGame });
@@ -402,6 +613,9 @@ function setupNoPort() {
       mapSize: "small" as MapSizeId,
       captainDeck: [],
       draftHands: {},
+      floatingLoot: [],
+      npcs: {},
+      npcIdCounter: 0,
     }),
   };
   const client = Client<CaribbeanState>({ game: NoPortGame });
