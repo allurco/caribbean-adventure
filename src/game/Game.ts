@@ -1,6 +1,6 @@
 import type { Game } from "boardgame.io";
 import { INVALID_MOVE } from "boardgame.io/core";
-import { hex, hexDistance, hexEquals } from "./hex";
+import { hex, hexDistance, hexEquals, neighbors } from "./hex";
 import { generateMap } from "./mapGenerator";
 import { getMapPreset } from "./mapConfig";
 import type { MapSizeId } from "./mapConfig";
@@ -291,12 +291,28 @@ export const Caribbean: Game<CaribbeanState> = {
             .map(([, s]) => s.position);
           const port = findHomePort(chosen.nation, G.cells, occupiedHexes);
           if (port && port.dockingHex) {
-            // Ship spawns at the docking water hex, not the port island
-            ship.position = port.dockingHex;
-            // homePortHex is the actual port (for display/scoring)
-            ship.homePortHex = port.hex;
-            // homeDockingHex is where the ship docks to access home port
-            ship.homeDockingHex = port.dockingHex;
+            // Validate that dockingHex is actually a water hex
+            const dockingCell = G.cells.find((c) => hexEquals(c.hex, port.dockingHex!));
+            if (dockingCell && dockingCell.terrain === "water") {
+              // Ship spawns at the docking water hex, not the port island
+              ship.position = port.dockingHex;
+              // homePortHex is the actual port (for display/scoring)
+              ship.homePortHex = port.hex;
+              // homeDockingHex is where the ship docks to access home port
+              ship.homeDockingHex = port.dockingHex;
+            } else {
+              // Fallback: find any water hex adjacent to the port
+              const portNeighbors = neighbors(port.hex);
+              const waterNeighbor = portNeighbors.find((n) => {
+                const cell = G.cells.find((c) => hexEquals(c.hex, n));
+                return cell && cell.terrain === "water" && !occupiedHexes.some((o) => hexEquals(o, n));
+              });
+              if (waterNeighbor) {
+                ship.position = waterNeighbor;
+                ship.homePortHex = port.hex;
+                ship.homeDockingHex = waterNeighbor;
+              }
+            }
           }
 
           // Clear the player's draft hand

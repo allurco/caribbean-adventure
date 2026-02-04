@@ -5,11 +5,13 @@ import { ShaderMaterial, PlaneGeometry, Vector3, MathUtils, Mesh } from "three";
 const vertexShader = `
   varying vec3 eye;
   varying vec3 pos;
+  varying vec2 vUv;
 
   void main () {
     vec4 mvp = modelViewMatrix * vec4(position, 1.0);
     pos = position;
     eye = vec3(mvp) * normalMatrix;
+    vUv = uv;
     gl_Position = projectionMatrix * mvp;
   }
 `;
@@ -38,6 +40,7 @@ const fragmentShader = `
 
   varying vec3 eye;
   varying vec3 pos;
+  varying vec2 vUv;
 
   float hash(vec2 p) {
     float h = dot(p, vec2(127.1, 311.7));
@@ -175,7 +178,7 @@ const fragmentShader = `
     vec3 seaColor = getSeaColor(p, n, light, dir, dist);
     seaColor /= sqrt(sqrt(length(dist)));
 
-    gl_FragColor = vec4(seaColor, 0.85);
+    gl_FragColor = vec4(seaColor, 0.98);
   }
 `;
 
@@ -184,7 +187,6 @@ interface OceanProps {
 }
 
 export function Ocean({ size = 1024 }: OceanProps) {
-  // Calculate sun position like the example
   const sun = useMemo(() => {
     const s = new Vector3();
     const phi = MathUtils.degToRad(85);
@@ -213,15 +215,19 @@ export function Ocean({ size = 1024 }: OceanProps) {
 
   const meshRef = useRef<Mesh>(null);
 
-  // Update time uniform every frame for animation
-  // Wrap time to prevent floating-point precision degradation
   useFrame(() => {
     if (meshRef.current) {
       const mat = meshRef.current.material as ShaderMaterial;
-      // Wrap at 10000 seconds to avoid precision issues
       mat.uniforms.iTime.value = (performance.now() * 0.001) % 10000;
     }
   });
 
-  return <mesh ref={meshRef} geometry={geometry} material={material} position={[0, -0.1, 0]} />;
+  return (
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      material={material}
+      position={[0, 0, 0]}
+    />
+  );
 }

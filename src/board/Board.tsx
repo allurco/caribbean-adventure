@@ -8,7 +8,6 @@ import { ToneMappingMode } from "postprocessing";
 import type { BoardProps } from "boardgame.io/react";
 import type { CaribbeanState } from "../game/Game";
 import { getMaxMoves } from "../game/Game";
-import type { Terrain } from "../game/terrain";
 import type { Hex } from "../game/hex";
 import type { ShipState, ShipClass, NPCShip, MapCell } from "../game/types";
 import { hexToWorld, hexEquals } from "../game/hex";
@@ -18,6 +17,9 @@ import { getValidScoutTargets } from "../game/scouting";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
 import { HexGrid } from "./HexGrid";
 import { Ocean } from "./visuals/Ocean";
+import { UnifiedTerrain } from "./visuals/UnifiedTerrain";
+import { generateHeightmapTexture, computeMapRadius } from "./visuals/TerrainHeightmap";
+import { TerrainDecorations } from "./visuals/TerrainDecorations";
 import { Ship, SinkingShip } from "./Ship";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
@@ -40,14 +42,6 @@ interface SinkingShipData {
   color: string;
   shipClass?: ShipClass;
 }
-
-const TERRAIN_COLORS: Record<Terrain, string> = {
-  water: "#1a3a5c",
-  island: "#2a7a3a",
-  reef: "#20b2aa",
-};
-
-const PORT_COLOR = "#c0a060";
 
 const PLAYER_COLORS: Record<string, string> = {
   "0": "#3b82f6", // blue
@@ -73,6 +67,7 @@ function Scene({
   hoveredPort,
   scoutedPlayerIds,
   focusPosition,
+  heightmapData,
   onMoveShip,
   onHexClick,
   onSinkingComplete,
@@ -95,6 +90,7 @@ function Scene({
   hoveredPort: MapCell | null;
   scoutedPlayerIds: string[];
   focusPosition: [number, number, number] | null;
+  heightmapData: ReturnType<typeof generateHeightmapTexture>;
   onMoveShip: (q: number, r: number) => void;
   onHexClick: (hex: Hex) => void;
   onSinkingComplete: (id: string) => void;
@@ -188,13 +184,20 @@ function Scene({
         intensity={0.3}
       />
 
-      {/* Seascape water shader */}
+      {/* Unified terrain shader */}
+      <UnifiedTerrain
+        heightmap={heightmapData.texture}
+        bounds={heightmapData.bounds}
+      />
+
+      {/* Simple deep blue ocean */}
       <Ocean size={gridSize} />
+
+      {/* Terrain decorations: trees, rocks, forts, piers */}
+      <TerrainDecorations cells={G.cells} />
 
       <HexGrid
         cells={G.cells}
-        terrainColors={TERRAIN_COLORS}
-        portColor={PORT_COLOR}
         validTargets={attackMode || spyglassMode ? [] : (movesRemaining > 0 ? targets : [])}
         attackTargets={attackMode ? attackTargetHexes : (spyglassMode ? spyglassTargetHexes : [])}
         onHexClick={(h) => {
@@ -469,6 +472,18 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
 
   const hasSpyglassTargets = spyglassTargets.players.length > 0 || spyglassTargets.npcs.length > 0;
 
+  // Skip terrain generation during draft phase - only generate after draft completes
+  const heightmapData = useMemo(() => {
+    // Don't generate during draft phase to avoid slow initial load
+    if (ctx.phase === "draft") return null;
+
+    const mapRadius = computeMapRadius(G.cells);
+    // Use a deterministic seed based on map size for consistent terrain
+    const seed = G.mapSize === "small" ? 12345 : G.mapSize === "medium" ? 54321 : 98765;
+    // Use 512 resolution for better performance (vs 1024)
+    return generateHeightmapTexture(G.cells, mapRadius, 512, seed);
+  }, [G.cells, G.mapSize, ctx.phase]);
+
   if (ctx.phase === "draft") {
     return (
       <DraftScreen
@@ -558,6 +573,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
           hoveredPort={hoveredPort}
           scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
           focusPosition={cameraFocusPosition}
+          heightmapData={heightmapData}
           onMoveShip={(q, r) => props.moves.moveShip(q, r)}
           onHexClick={spyglassMode ? handleHexClickForSpyglass : handleHexClickForAttack}
           onSinkingComplete={handleSinkingComplete}

@@ -365,3 +365,109 @@ describe("island structure", () => {
     }
   });
 });
+
+describe("guaranteed big islands", () => {
+  const BIG_ISLAND_MIN_SIZE = 7;
+
+  /** Helper to find connected island groups using flood fill */
+  function findIslands(map: ReturnType<typeof generateMap>): Hex[][] {
+    const islandHexes = map.filter((c) => c.terrain === "island").map((c) => c.hex);
+    const hexKey = (h: Hex) => `${h.q},${h.r}`;
+    const islandSet = new Set(islandHexes.map(hexKey));
+    const visited = new Set<string>();
+    const islands: Hex[][] = [];
+
+    for (const hex of islandHexes) {
+      const key = hexKey(hex);
+      if (visited.has(key)) continue;
+
+      const island: Hex[] = [];
+      const queue: Hex[] = [hex];
+      visited.add(key);
+
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        island.push(current);
+
+        for (const neighbor of neighbors(current)) {
+          const nKey = hexKey(neighbor);
+          if (islandSet.has(nKey) && !visited.has(nKey)) {
+            visited.add(nKey);
+            queue.push(neighbor);
+          }
+        }
+      }
+
+      islands.push(island);
+    }
+
+    return islands;
+  }
+
+  function countBigIslands(map: ReturnType<typeof generateMap>): number {
+    const islands = findIslands(map);
+    return islands.filter((i) => i.length >= BIG_ISLAND_MIN_SIZE).length;
+  }
+
+  it("small map (radius 12) has at least 1 big island (7+ hexes)", () => {
+    // Test multiple seeds to ensure it's consistent
+    for (const seed of [42, 123, 456, 789, 999]) {
+      const map = generateMap(12, seed);
+      const bigIslandCount = countBigIslands(map);
+      expect(bigIslandCount).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("medium map (radius 18) has at least 2 big islands (7+ hexes)", () => {
+    for (const seed of [42, 123, 456, 789, 999]) {
+      const map = generateMap(18, seed);
+      const bigIslandCount = countBigIslands(map);
+      expect(bigIslandCount).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("large map (radius 25) has at least 3 big islands (7+ hexes)", () => {
+    for (const seed of [42, 123, 456, 789, 999]) {
+      const map = generateMap(25, seed);
+      const bigIslandCount = countBigIslands(map);
+      expect(bigIslandCount).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("big islands can support mountain terrain (center should be higher elevation)", () => {
+    const map = generateMap(12, 42);
+    const islands = findIslands(map);
+    const bigIslands = islands.filter((i) => i.length >= BIG_ISLAND_MIN_SIZE);
+
+    expect(bigIslands.length).toBeGreaterThan(0);
+
+    // For each big island, check that center hexes have higher elevation than edges
+    const hexKey = (h: Hex) => `${h.q},${h.r}`;
+    for (const island of bigIslands) {
+      const islandHexSet = new Set(island.map(hexKey));
+
+      // Find center hex (one with most neighbors in the island)
+      let centerHex: Hex | null = null;
+      let maxNeighborCount = 0;
+
+      for (const hex of island) {
+        const neighborCount = neighbors(hex).filter((n) =>
+          islandHexSet.has(hexKey(n))
+        ).length;
+        if (neighborCount > maxNeighborCount) {
+          maxNeighborCount = neighborCount;
+          centerHex = hex;
+        }
+      }
+
+      // Center should have elevation >= 2 (jungle or mountain)
+      if (centerHex) {
+        const centerCell = map.find(
+          (c) => c.hex.q === centerHex!.q && c.hex.r === centerHex!.r
+        );
+        expect(centerCell).toBeDefined();
+        expect(centerCell!.elevation).toBeGreaterThanOrEqual(2);
+      }
+    }
+  });
+});
