@@ -1,6 +1,6 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { ShaderMaterial, PlaneGeometry, Vector3, MathUtils } from "three";
+import { ShaderMaterial, PlaneGeometry, Vector3, MathUtils, Mesh } from "three";
 
 const vertexShader = `
   varying vec3 eye;
@@ -199,11 +199,8 @@ export function Ocean({ size = 1024 }: OceanProps) {
     return geo;
   }, [size]);
 
-  const materialRef = useRef<ShaderMaterial | null>(null);
-
-  // Create material once and store in ref for animation updates
-  if (!materialRef.current) {
-    materialRef.current = new ShaderMaterial({
+  const material = useMemo(() => {
+    return new ShaderMaterial({
       vertexShader,
       fragmentShader,
       uniforms: {
@@ -212,14 +209,19 @@ export function Ocean({ size = 1024 }: OceanProps) {
       },
       transparent: true,
     });
-  }
+  }, [sun]);
+
+  const meshRef = useRef<Mesh>(null);
 
   // Update time uniform every frame for animation
+  // Wrap time to prevent floating-point precision degradation
   useFrame(() => {
-    if (materialRef.current) {
-      materialRef.current.uniforms.iTime.value = performance.now() * 0.001;
+    if (meshRef.current) {
+      const mat = meshRef.current.material as ShaderMaterial;
+      // Wrap at 10000 seconds to avoid precision issues
+      mat.uniforms.iTime.value = (performance.now() * 0.001) % 10000;
     }
   });
 
-  return <mesh geometry={geometry} material={materialRef.current} position={[0, -0.1, 0]} />;
+  return <mesh ref={meshRef} geometry={geometry} material={material} position={[0, -0.1, 0]} />;
 }

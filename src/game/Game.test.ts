@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
-import { Caribbean, MOVES_PER_TURN } from "./Game";
+import { Caribbean, MOVES_PER_TURN, getMaxMoves } from "./Game";
 import type { CaribbeanState } from "./Game";
 import type { Game } from "boardgame.io";
 import { hex } from "./hex";
@@ -8,6 +8,7 @@ import { generateMap } from "./mapGenerator";
 import type { MapCell } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
 import { createShipState } from "./economy";
+import { SHIP_SPECS } from "./constants";
 
 /** Creates a game with an all-water map so navigation tests aren't blocked by random islands.
  *  Skips draft phase by overriding phases to empty. */
@@ -283,5 +284,57 @@ describe("ship collision", () => {
     client.moves.moveShip(0, 0);
     const { G } = client.getState()!;
     expect(G.ships["1"].position).toEqual(hex(0, 0));
+  });
+});
+
+describe("getMaxMoves", () => {
+  it("returns ship stats maneuverability when available", () => {
+    const ship = createShipState(hex(0, 0), "Sloop");
+    expect(getMaxMoves(ship)).toBe(SHIP_SPECS.Sloop.maneuverability); // 4
+  });
+
+  it("returns MOVES_PER_TURN when no stats or class", () => {
+    const ship = createShipState(hex(0, 0));
+    expect(getMaxMoves(ship)).toBe(MOVES_PER_TURN);
+  });
+
+  it("reduces movement by mast damage", () => {
+    const ship = createShipState(hex(0, 0), "Sloop");
+    // Sloop has 4 maneuverability
+    expect(getMaxMoves(ship)).toBe(4);
+
+    // 1 mast damage = -1 movement
+    ship.damage.masts = 1;
+    expect(getMaxMoves(ship)).toBe(3);
+
+    // 2 mast damage = -2 movement
+    ship.damage.masts = 2;
+    expect(getMaxMoves(ship)).toBe(2);
+  });
+
+  it("minimum movement is 1 even with severe mast damage", () => {
+    const ship = createShipState(hex(0, 0), "Sloop");
+    // Sloop has 4 maneuverability, massive mast damage
+    ship.damage.masts = 10;
+    expect(getMaxMoves(ship)).toBe(1);
+  });
+
+  it("Frigate with mast damage has reduced movement", () => {
+    const ship = createShipState(hex(0, 0), "Frigate");
+    // Frigate has 3 maneuverability
+    expect(getMaxMoves(ship)).toBe(3);
+
+    ship.damage.masts = 2;
+    expect(getMaxMoves(ship)).toBe(1);
+  });
+
+  it("Galleon with mast damage still has minimum 1 movement", () => {
+    const ship = createShipState(hex(0, 0), "Galleon");
+    // Galleon has 1 maneuverability
+    expect(getMaxMoves(ship)).toBe(1);
+
+    // Even with mast damage, minimum is 1
+    ship.damage.masts = 5;
+    expect(getMaxMoves(ship)).toBe(1);
   });
 });

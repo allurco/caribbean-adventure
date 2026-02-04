@@ -17,6 +17,8 @@ import {
   getShipBuyCost,
   canBuyShip,
   applyBuyShip,
+  canJuryRig,
+  applyJuryRig,
   PRICE_RANGES,
   STARTING_GOLD,
   DEFAULT_MAX_CARGO,
@@ -45,7 +47,7 @@ function makeShip(overrides: Partial<ShipState> = {}): ShipState {
   };
 }
 
-function makeMarket(): PortMarket {
+function makeMarket(inDemandGood: "Wood" | "Sugar" | "Rum" | "Spice" | null = null): PortMarket {
   return {
     prices: {
       Wood: { buy: 8, sell: 6 },
@@ -53,6 +55,7 @@ function makeMarket(): PortMarket {
       Rum: { buy: 30, sell: 23 },
       Spice: { buy: 45, sell: 35 },
     },
+    inDemandGood,
   };
 }
 
@@ -559,6 +562,7 @@ const TEST_MARKET: PortMarket = {
     Rum: { buy: 30, sell: 23 },
     Spice: { buy: 45, sell: 35 },
   },
+  inDemandGood: null,
 };
 
 /** Set up a small map where player 0 starts at a port's docking hex. */
@@ -743,5 +747,192 @@ describe("trade move", () => {
       expect(G.ships["0"].position).toEqual(hex(0, 1));
       expect(ctx.currentPlayer).toBe("1"); // turn auto-ended
     });
+  });
+
+  describe("in-demand goods Glory bonus", () => {
+    function setupWithInDemand(inDemandGood: "Sugar" | "Wood") {
+      const dockingHex = hex(1, 0);
+      const portCell: MapCell = {
+        hex: hex(0, 0),
+        terrain: "island",
+        hasPort: true,
+        market: makeMarket(inDemandGood),
+        nation: "England",
+        portName: "Test Port",
+        dockingHex: dockingHex, // Ship must be at this hex to access port
+      };
+      const dockingCell: MapCell = {
+        hex: dockingHex,
+        terrain: "water",
+        hasPort: false,
+      };
+      const waterCell: MapCell = {
+        hex: hex(0, 1),
+        terrain: "water",
+        hasPort: false,
+      };
+
+      const testGame: Game<CaribbeanState> = {
+        ...Caribbean,
+        phases: {}, // Bypass phase system for testing
+        setup: () => ({
+          cells: [portCell, dockingCell, waterCell],
+          ships: {
+            "0": {
+              ...makeShip({ position: dockingHex }),
+              cargo: { Wood: 0, Sugar: 5, Rum: 0, Spice: 0 },
+              gold: 100,
+              score: 0,
+            },
+            "1": makeShip({ position: hex(2, 0) }),
+          },
+          captainDeck: [],
+          draftHands: {},
+          mapSize: "small" as MapSizeId,
+          npcs: {},
+          floatingLoot: [],
+          npcIdCounter: 0,
+        }),
+      };
+
+      const client = Client({ game: testGame, numPlayers: 2 });
+      client.start();
+      return client;
+    }
+
+    it("selling 2 of in-demand good gives NO Glory", () => {
+      const client = setupWithInDemand("Sugar");
+      const beforeState = client.getState()!;
+      expect(beforeState.G.ships["0"].score).toBe(0);
+
+      client.moves.trade("Sugar", 2, "SELL");
+
+      const afterState = client.getState()!;
+      expect(afterState.G.ships["0"].score).toBe(0); // No Glory for 2 units
+      expect(afterState.G.ships["0"].cargo.Sugar).toBe(3); // 5 - 2 = 3
+    });
+
+    it("selling 3 of in-demand good gives +1 Glory", () => {
+      const client = setupWithInDemand("Sugar");
+      const beforeState = client.getState()!;
+      expect(beforeState.G.ships["0"].score).toBe(0);
+
+      client.moves.trade("Sugar", 3, "SELL");
+
+      const afterState = client.getState()!;
+      expect(afterState.G.ships["0"].score).toBe(1); // +1 Glory for 3 units
+      expect(afterState.G.ships["0"].cargo.Sugar).toBe(2); // 5 - 3 = 2
+    });
+
+    it("selling 3 of NON-in-demand good gives NO Glory", () => {
+      // Setup with Wood in demand, but we'll sell Sugar
+      const dockingHex = hex(1, 0);
+      const portCell: MapCell = {
+        hex: hex(0, 0),
+        terrain: "island",
+        hasPort: true,
+        market: makeMarket("Wood"), // Wood is in demand, not Sugar
+        nation: "England",
+        portName: "Test Port",
+        dockingHex: dockingHex,
+      };
+      const dockingCell: MapCell = {
+        hex: dockingHex,
+        terrain: "water",
+        hasPort: false,
+      };
+
+      const testGame: Game<CaribbeanState> = {
+        ...Caribbean,
+        phases: {}, // Bypass phase system for testing
+        setup: () => ({
+          cells: [portCell, dockingCell],
+          ships: {
+            "0": {
+              ...makeShip({ position: dockingHex }),
+              cargo: { Wood: 0, Sugar: 5, Rum: 0, Spice: 0 },
+              gold: 100,
+              score: 0,
+            },
+            "1": makeShip({ position: hex(2, 0) }),
+          },
+          captainDeck: [],
+          draftHands: {},
+          mapSize: "small" as MapSizeId,
+          npcs: {},
+          floatingLoot: [],
+          npcIdCounter: 0,
+        }),
+      };
+
+      const client = Client({ game: testGame, numPlayers: 2 });
+      client.start();
+
+      client.moves.trade("Sugar", 3, "SELL");
+
+      const afterState = client.getState()!;
+      expect(afterState.G.ships["0"].score).toBe(0); // No Glory since Sugar isn't in demand
+      expect(afterState.G.ships["0"].cargo.Sugar).toBe(2); // 5 - 3 = 2
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Jury Rig (at-sea mast repair)
+// ---------------------------------------------------------------------------
+
+describe("canJuryRig", () => {
+  it("returns true when ship has mast damage", () => {
+    const ship = makeShip({ damage: { hull: 0, crew: 0, masts: 1 } });
+    expect(canJuryRig(ship)).toBe(true);
+  });
+
+  it("returns true when ship has multiple mast damage", () => {
+    const ship = makeShip({ damage: { hull: 0, crew: 0, masts: 3 } });
+    expect(canJuryRig(ship)).toBe(true);
+  });
+
+  it("returns false when ship has no mast damage", () => {
+    const ship = makeShip({ damage: { hull: 0, crew: 0, masts: 0 } });
+    expect(canJuryRig(ship)).toBe(false);
+  });
+
+  it("returns false when ship has only hull/crew damage", () => {
+    const ship = makeShip({ damage: { hull: 2, crew: 1, masts: 0 } });
+    expect(canJuryRig(ship)).toBe(false);
+  });
+});
+
+describe("applyJuryRig", () => {
+  it("reduces mast damage by 1", () => {
+    const ship = makeShip({ damage: { hull: 0, crew: 0, masts: 3 } });
+    applyJuryRig(ship);
+    expect(ship.damage.masts).toBe(2);
+  });
+
+  it("reduces mast damage from 1 to 0", () => {
+    const ship = makeShip({ damage: { hull: 0, crew: 0, masts: 1 } });
+    applyJuryRig(ship);
+    expect(ship.damage.masts).toBe(0);
+  });
+
+  it("does not change other damage types", () => {
+    const ship = makeShip({ damage: { hull: 2, crew: 1, masts: 2 } });
+    applyJuryRig(ship);
+    expect(ship.damage.hull).toBe(2);
+    expect(ship.damage.crew).toBe(1);
+    expect(ship.damage.masts).toBe(1);
+  });
+
+  it("does nothing when mast damage is 0", () => {
+    const ship = makeShip({ damage: { hull: 2, crew: 1, masts: 0 } });
+    applyJuryRig(ship);
+    expect(ship.damage.masts).toBe(0);
+  });
+
+  it("is free (does not cost gold)", () => {
+    const ship = makeShip({ gold: 10, damage: { hull: 0, crew: 0, masts: 2 } });
+    applyJuryRig(ship);
+    expect(ship.gold).toBe(10);
   });
 });

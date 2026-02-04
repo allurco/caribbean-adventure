@@ -1,7 +1,7 @@
 import { hexGrid, hexDistance, neighbors, hexEquals, hexToWorld } from "./hex";
 import type { Hex } from "./hex";
 import type { Terrain } from "./terrain";
-import type { MapCell, PortNation, Decoration } from "./types";
+import type { MapCell, PortNation, Decoration, Elevation, Biome } from "./types";
 import { NATIONS } from "./types";
 import { generatePortMarket } from "./economy";
 
@@ -145,13 +145,15 @@ function calculatePierDirection(
   return Math.atan2(dx, dz);
 }
 
-/** Generate decorations for a land hex */
+/** Generate decorations for a land hex based on biome */
 function generateDecorations(
   terrain: Terrain,
   hasPort: boolean,
   rng: () => number,
   dockingHex?: Hex | null,
-  portHex?: Hex
+  portHex?: Hex,
+  elevation?: Elevation,
+  biome?: Biome
 ): Decoration[] {
   if (terrain !== "island") return [];
 
@@ -177,22 +179,145 @@ function generateDecorations(
     return decorations;
   }
 
-  // Non-port islands get 1-3 random trees/rocks
-  const count = 1 + Math.floor(rng() * 3);
-  for (let i = 0; i < count; i++) {
-    decorations.push({
-      type: rng() > 0.3 ? "tree" : "rock",
-      position: [
-        (rng() - 0.5) * 1.2,
-        0,
-        (rng() - 0.5) * 1.2,
-      ],
-      rotation: rng() * Math.PI * 2,
-      scale: 0.7 + rng() * 0.6,
-    });
+  // Generate decorations based on biome
+  // Spread values kept tight to avoid decorations at hex edges where elevation changes
+  if (biome === "ROCK" || elevation === 3) {
+    // Mountain: only rocks, 1-2
+    const count = 1 + Math.floor(rng() * 2);
+    for (let i = 0; i < count; i++) {
+      decorations.push({
+        type: "rock",
+        position: [
+          (rng() - 0.5) * 0.5, // Tighter spread for elevated hexes
+          0,
+          (rng() - 0.5) * 0.5,
+        ],
+        rotation: rng() * Math.PI * 2,
+        scale: 0.8 + rng() * 0.8, // Bigger rocks on mountains
+      });
+    }
+  } else if (biome === "GRASS" || elevation === 2) {
+    // Jungle: many trees, few rocks
+    const count = 2 + Math.floor(rng() * 3);
+    for (let i = 0; i < count; i++) {
+      decorations.push({
+        type: rng() > 0.15 ? "tree" : "rock", // 85% trees
+        position: [
+          (rng() - 0.5) * 0.7, // Tighter spread for elevated hexes
+          0,
+          (rng() - 0.5) * 0.7,
+        ],
+        rotation: rng() * Math.PI * 2,
+        scale: 0.8 + rng() * 0.6,
+      });
+    }
+  } else if (biome === "SAND" || elevation === 1) {
+    // Beach: few decorations, sparse trees and rocks
+    const count = Math.floor(rng() * 2); // 0-1 decorations
+    for (let i = 0; i < count; i++) {
+      decorations.push({
+        type: rng() > 0.5 ? "tree" : "rock", // 50/50
+        position: [
+          (rng() - 0.5) * 0.6, // Tighter spread
+          0,
+          (rng() - 0.5) * 0.6,
+        ],
+        rotation: rng() * Math.PI * 2,
+        scale: 0.6 + rng() * 0.4, // Smaller
+      });
+    }
+  } else {
+    // Default fallback (shouldn't happen for islands)
+    const count = 1 + Math.floor(rng() * 3);
+    for (let i = 0; i < count; i++) {
+      decorations.push({
+        type: rng() > 0.3 ? "tree" : "rock",
+        position: [
+          (rng() - 0.5) * 1.2,
+          0,
+          (rng() - 0.5) * 1.2,
+        ],
+        rotation: rng() * Math.PI * 2,
+        scale: 0.7 + rng() * 0.6,
+      });
+    }
   }
 
   return decorations;
+}
+
+/**
+ * Find the center hex of an island (centroid approximation).
+ * For small islands, use the hex closest to the geometric center.
+ */
+function findIslandCenter(island: Hex[]): Hex {
+  if (island.length === 1) return island[0];
+
+  // Calculate geometric center (average of q, r coordinates)
+  let sumQ = 0;
+  let sumR = 0;
+  for (const h of island) {
+    sumQ += h.q;
+    sumR += h.r;
+  }
+  const centerQ = sumQ / island.length;
+  const centerR = sumR / island.length;
+
+  // Find the hex closest to this center
+  let closest = island[0];
+  let minDist = Infinity;
+  for (const h of island) {
+    const dist = Math.abs(h.q - centerQ) + Math.abs(h.r - centerR);
+    if (dist < minDist) {
+      minDist = dist;
+      closest = h;
+    }
+  }
+  return closest;
+}
+
+/**
+ * Calculate elevation for a hex based on its distance from the island center.
+ * - Distance 0 (center): Mountain (3)
+ * - Distance 1: Jungle (2)
+ * - Distance 2+: Beach (1)
+ * - Water: elevation 0
+ */
+function calculateElevation(
+  hex: Hex,
+  islandCenter: Hex | null,
+  isIsland: boolean,
+  islandSize: number
+): Elevation {
+  if (!isIsland || !islandCenter) return 0; // Water
+
+  const dist = hexDistance(hex, islandCenter);
+
+  // For very small islands (1-2 hexes), don't create mountains
+  if (islandSize <= 2) return 1; // All beach
+
+  // For small islands (3-4 hexes), center is jungle, rest is beach
+  if (islandSize <= 4) {
+    if (dist === 0) return 2; // Jungle center
+    return 1; // Beach
+  }
+
+  // For larger islands, create full volcano shape
+  if (dist === 0) return 3; // Mountain peak
+  if (dist === 1) return 2; // Jungle slopes
+  return 1; // Beach edges
+}
+
+/**
+ * Get the biome for a hex based on its elevation.
+ */
+function getBiome(elevation: Elevation): Biome | undefined {
+  switch (elevation) {
+    case 1: return "SAND";
+    case 2: return "GRASS";
+    case 3: return "ROCK";
+    default: return undefined; // Water has no biome
+  }
 }
 
 /** Grow an island from a seed hex to target size using BFS on neighbors */
@@ -314,13 +439,22 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
   // Build set of all grid hex keys for boundary check
   const gridHexKeys = new Set<string>(grid.map(hexKey));
 
+  // Calculate island centers for elevation assignment
+  const islandCenters = new Map<number, Hex>();
+  for (let i = 0; i < islands.length; i++) {
+    islandCenters.set(i, findIslandCenter(islands[i]));
+  }
+
   const maxPorts = getMaxPorts(radius);
-  for (const island of islands) {
+  for (let islandIdx = 0; islandIdx < islands.length; islandIdx++) {
+    const island = islands[islandIdx];
     // Stop if we've reached the maximum number of ports
     if (portKeys.length >= maxPorts) break;
 
     if (island.length >= MIN_PORT_ISLAND_SIZE) {
-      // Filter to hexes that have at least one on-grid water neighbor
+      const islandCenter = islandCenters.get(islandIdx)!;
+
+      // Filter to hexes that have at least one on-grid water neighbor (coastal)
       const coastalHexes = island.filter((h) =>
         neighbors(h).some((n) => {
           const nKey = hexKey(n);
@@ -329,8 +463,20 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
         })
       );
 
-      // Pick a random coastal hex for the port (fallback to any hex if none found)
-      const candidates = coastalHexes.length > 0 ? coastalHexes : island;
+      // Ports must be on beach hexes (elevation 1), which are coastal hexes
+      // that are NOT at the center (distance > 1 from center for large islands)
+      const beachHexes = coastalHexes.filter((h) => {
+        const elevation = calculateElevation(h, islandCenter, true, island.length);
+        return elevation === 1; // Beach only
+      });
+
+      // Pick a random beach hex for the port (fallback to coastal, then any hex)
+      const candidates =
+        beachHexes.length > 0
+          ? beachHexes
+          : coastalHexes.length > 0
+          ? coastalHexes
+          : island;
       const portHex = candidates[Math.floor(rng() * candidates.length)];
       const key = hexKey(portHex);
       portHexes.add(key);
@@ -435,12 +581,30 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
   // Build the final map cells
   return grid.map((h) => {
     const key = hexKey(h);
-    const isIsland = hexToIsland.has(key);
+    const islandIdx = hexToIsland.get(key);
+    const isIsland = islandIdx !== undefined;
     const isReef = reefHexes.has(key);
     const terrain: Terrain = isIsland ? "island" : isReef ? "reef" : "water";
     const hasPort = portHexes.has(key);
 
-    const cell: MapCell = { hex: h, terrain, hasPort };
+    // Calculate elevation based on distance from island center
+    const islandCenter = islandIdx !== undefined ? islandCenters.get(islandIdx) : null;
+    const islandSize = islandIdx !== undefined ? islands[islandIdx].length : 0;
+
+    // Ports are always forced to beach elevation (1) for ship access
+    let elevation: Elevation;
+    if (hasPort) {
+      elevation = 1; // Ports must be at beach level
+    } else {
+      elevation = calculateElevation(h, islandCenter ?? null, isIsland, islandSize);
+    }
+
+    const biome = getBiome(elevation);
+
+    const cell: MapCell = { hex: h, terrain, hasPort, elevation };
+    if (biome) {
+      cell.biome = biome;
+    }
     if (hasPort) {
       cell.market = generatePortMarket(rng);
       cell.nation = portNations.get(key);
@@ -449,14 +613,16 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
       cell.dockingHex = portDockingHexes.get(key);
     }
 
-    // Generate decorations for island hexes
+    // Generate decorations for island hexes (based on elevation/biome)
     const dockingHex = hasPort ? portDockingHexes.get(key) : undefined;
     const decorations = generateDecorations(
       terrain,
       hasPort,
       rng,
       dockingHex,
-      hasPort ? h : undefined
+      hasPort ? h : undefined,
+      elevation,
+      biome
     );
     if (decorations.length > 0) {
       cell.decorations = decorations;

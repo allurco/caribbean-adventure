@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import type { PortMarket, GoodType, PortNation } from "../game/types";
-import { GOOD_TYPES } from "../game/types";
 
 interface DockingAnimationProps {
   portName: string;
@@ -24,13 +23,13 @@ const GOOD_ICONS: Record<GoodType, string> = {
   Spice: "🌶️",
 };
 
-function getGoodsInDemand(market: PortMarket): { good: GoodType; buyPrice: number }[] {
-  return GOOD_TYPES.map((good) => ({
-    good,
-    buyPrice: market.prices[good].buy,
-  }))
-    .sort((a, b) => b.buyPrice - a.buyPrice)
-    .slice(0, 2); // Top 2 most wanted goods
+// Get the in-demand good for this port
+function getInDemandGood(market: PortMarket): { good: GoodType; sellPrice: number } | null {
+  if (!market.inDemandGood) return null;
+  return {
+    good: market.inDemandGood,
+    sellPrice: market.prices[market.inDemandGood].sell,
+  };
 }
 
 export function DockingAnimation({
@@ -57,7 +56,7 @@ export function DockingAnimation({
   }, [onComplete]);
 
   const nationColor = nation ? NATION_COLORS[nation] : "#666";
-  const goodsInDemand = market ? getGoodsInDemand(market) : [];
+  const inDemandGood = market ? getInDemandGood(market) : null;
 
   return (
     <div className="fixed inset-0 z-50 pointer-events-none flex items-center justify-center overflow-hidden">
@@ -104,7 +103,7 @@ export function DockingAnimation({
           )}
         </div>
 
-        {/* Goods in demand - appears after zoom */}
+        {/* Governor's Request - appears after zoom */}
         <div
           className={`mt-12 transition-all duration-700 ${
             phase === "zoom"
@@ -112,24 +111,20 @@ export function DockingAnimation({
               : "opacity-100 translate-y-0"
           }`}
         >
-          {goodsInDemand.length > 0 && (
+          {inDemandGood && (
             <>
               <p className="text-amber-200/60 text-lg text-center mb-4 font-heading uppercase tracking-widest">
-                Goods in High Demand
+                {nation === "Pirate" ? "Pirate's Desire" : "Governor's Request"}
               </p>
-              <div className="flex gap-8 justify-center">
-                {goodsInDemand.map(({ good, buyPrice }) => (
-                  <div
-                    key={good}
-                    className="flex flex-col items-center bg-stone-900/80 px-6 py-4 rounded-xl border border-amber-700/30"
-                  >
-                    <span className="text-4xl mb-2">{GOOD_ICONS[good]}</span>
-                    <span className="text-amber-100 font-heading text-lg">{good}</span>
-                    <span className="text-emerald-400 font-bold text-sm mt-1">
-                      Buy: {buyPrice}g
-                    </span>
-                  </div>
-                ))}
+              <div className="flex flex-col items-center bg-stone-900/80 px-8 py-5 rounded-xl border border-amber-700/30">
+                <span className="text-5xl mb-2">{GOOD_ICONS[inDemandGood.good]}</span>
+                <span className="text-amber-100 font-heading text-xl">{inDemandGood.good}</span>
+                <span className="text-emerald-400 font-bold text-sm mt-1">
+                  Sells for: {inDemandGood.sellPrice}g
+                </span>
+                <span className="text-yellow-400/80 text-xs mt-2 font-heading tracking-wide">
+                  Sell 3+ for +1 Glory!
+                </span>
               </div>
             </>
           )}

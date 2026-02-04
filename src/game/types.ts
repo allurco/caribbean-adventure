@@ -5,6 +5,15 @@ import type { MapSizeId } from "./mapConfig";
 export const WIN_SCORE = 10;
 export const GOLD_PER_GLORY = 10;
 
+// Elevation levels for terrain height
+// 0 = Water, 1 = Beach, 2 = Jungle, 3 = Mountain
+export const ELEVATIONS = [0, 1, 2, 3] as const;
+export type Elevation = (typeof ELEVATIONS)[number];
+
+// Biome types for land hexes
+export const BIOMES = ["SAND", "GRASS", "ROCK"] as const;
+export type Biome = (typeof BIOMES)[number];
+
 export const GOOD_TYPES = ["Wood", "Sugar", "Rum", "Spice"] as const;
 export type GoodType = (typeof GOOD_TYPES)[number];
 
@@ -65,6 +74,7 @@ export { SHIP_SPECS } from "./constants";
 
 export interface PortMarket {
   prices: Record<GoodType, { buy: number; sell: number }>;
+  inDemandGood: GoodType | null; // The good with highest demand - sell 3+ for Glory
 }
 
 export interface ShipState {
@@ -179,6 +189,8 @@ export interface MapCell {
   hasShipyard?: boolean;
   decorations?: Decoration[];
   dockingHex?: Hex; // Water hex where ships dock to access this port
+  elevation: Elevation; // 0=Water, 1=Beach, 2=Jungle, 3=Mountain
+  biome?: Biome; // Only for land hexes: SAND, GRASS, or ROCK
 }
 
 export interface CaribbeanState {

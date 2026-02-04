@@ -27,6 +27,7 @@ import {
   isDerelict,
   createLootFromShip,
   createLootFromNPC,
+  getEffectiveCannons,
 } from "./combat";
 import { SHIP_SPECS } from "./constants";
 import {
@@ -39,6 +40,8 @@ import {
   applyRepair,
   canBuyShip,
   applyBuyShip,
+  canJuryRig,
+  applyJuryRig,
 } from "./economy";
 import { createCaptainDeck, dealHands, findHomePort } from "./captains";
 import { moveAllNPCs, spawnMerchant, createFlotillaShip, getPortCells } from "./npcManager";
@@ -64,10 +67,15 @@ export const MOVES_PER_TURN = 3;
 export function getMaxMoves(ship: {
   stats?: ShipStats;
   shipClass?: ShipClass;
+  damage?: { masts: number };
 }): number {
-  if (ship.stats) return ship.stats.maneuverability;
-  if (ship.shipClass) return SHIP_SPECS[ship.shipClass].maneuverability;
-  return MOVES_PER_TURN;
+  let base = MOVES_PER_TURN;
+  if (ship.stats) base = ship.stats.maneuverability;
+  else if (ship.shipClass) base = SHIP_SPECS[ship.shipClass].maneuverability;
+
+  // Mast damage reduces movement (1 damage = -1 move)
+  const mastDamage = ship.damage?.masts ?? 0;
+  return Math.max(1, base - mastDamage);
 }
 
 /**
@@ -202,6 +210,10 @@ export const Caribbean: Game<CaribbeanState> = {
         if (!canSell(ship, good, amount)) return INVALID_MOVE;
         ship.gold += port.market.prices[good].sell * amount;
         ship.cargo[good] -= amount;
+        // Award Glory for selling 3+ of in-demand good
+        if (port.market.inDemandGood === good && amount >= 3) {
+          ship.score += 1;
+        }
       }
     },
 
@@ -380,6 +392,10 @@ export const Caribbean: Game<CaribbeanState> = {
             if (!canSell(ship, good, amount)) return INVALID_MOVE;
             ship.gold += port.market.prices[good].sell * amount;
             ship.cargo[good] -= amount;
+            // Award Glory for selling 3+ of in-demand good
+            if (port.market.inDemandGood === good && amount >= 3) {
+              ship.score += 1;
+            }
           }
         },
 
@@ -461,6 +477,12 @@ export const Caribbean: Game<CaribbeanState> = {
 
           // Simply clear the mission (no penalty for now)
           ship.activeMission = undefined;
+        },
+
+        juryRig: ({ G, ctx }) => {
+          const ship = G.ships[ctx.currentPlayer];
+          if (!canJuryRig(ship)) return INVALID_MOVE;
+          applyJuryRig(ship);
         },
 
         attackShip: ({ G, ctx, events }, targetId: string) => {
@@ -567,8 +589,9 @@ export const Caribbean: Game<CaribbeanState> = {
           if (isNPC && G.combat.seamanshipWinner === G.combat.defenderId) {
             const npc = G.npcs[G.combat.defenderId];
             const npcHull = npc.stats.hull.current;
-            const npcCannons = npc.stats.cannons;
-            const enemyCannons = attacker.stats?.cannons ?? 0;
+            // Use effective cannons (limited by current crew)
+            const npcCannons = getEffectiveCannons(npc);
+            const enemyCannons = getEffectiveCannons(attacker);
 
             // NPC decides to flee if hull < 2 OR outgunned
             if (shouldNPCFlee(npcHull, npcCannons, enemyCannons)) {
@@ -714,7 +737,8 @@ export const Caribbean: Game<CaribbeanState> = {
               ? G.npcs[pursuerId]
               : G.ships[pursuerId];
 
-            const pursuerCannons = pursuerShip.stats?.cannons ?? 0;
+            // Use effective cannons (limited by current crew)
+            const pursuerCannons = getEffectiveCannons(pursuerShip);
             const pursuerRolls: number[] = [];
             for (let i = 0; i < pursuerCannons; i++) {
               pursuerRolls.push(random.D6());
@@ -732,8 +756,8 @@ export const Caribbean: Game<CaribbeanState> = {
           } else {
             // Normal combat - both sides fire
 
-            // Attacker fires
-            const attackerCannons = attacker.stats?.cannons ?? 0;
+            // Attacker fires - use effective cannons (limited by current crew)
+            const attackerCannons = getEffectiveCannons(attacker);
             const attackerRolls: number[] = [];
             for (let i = 0; i < attackerCannons; i++) {
               attackerRolls.push(random.D6());
@@ -742,7 +766,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
             // Defender fires back if in range
             if (canReturnFire(defender, G.combat.distance)) {
-              const defenderCannons = defender.stats?.cannons ?? 0;
+              // Use effective cannons (limited by current crew)
+              const defenderCannons = getEffectiveCannons(defender);
               const defenderRolls: number[] = [];
               for (let i = 0; i < defenderCannons; i++) {
                 defenderRolls.push(random.D6());

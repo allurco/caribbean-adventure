@@ -1,9 +1,110 @@
 import { hexDistance } from "./hex";
-import type { ShipState, FloatingLoot, DamageState, NPCShip } from "./types";
+import type { Hex } from "./hex";
+import type { ShipState, FloatingLoot, DamageState, NPCShip, MapCell } from "./types";
 
 export const BASE_ATTACK_RANGE = 1;
 export const LONG_GUNS_BONUS_RANGE = 1;
 export const CANNON_HIT_MIN = 5;
+export const MOUNTAIN_ELEVATION = 3; // Elevation that blocks LOS
+
+/**
+ * Linear interpolation between two numbers.
+ */
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/**
+ * Round cube coordinates to nearest hex.
+ */
+function cubeRound(q: number, r: number, s: number): Hex {
+  let rq = Math.round(q);
+  let rr = Math.round(r);
+  let rs = Math.round(s);
+
+  const qDiff = Math.abs(rq - q);
+  const rDiff = Math.abs(rr - r);
+  const sDiff = Math.abs(rs - s);
+
+  if (qDiff > rDiff && qDiff > sDiff) {
+    rq = -rr - rs;
+  } else if (rDiff > sDiff) {
+    rr = -rq - rs;
+  } else {
+    rs = -rq - rr;
+  }
+
+  return { q: rq, r: rr, s: rs };
+}
+
+/**
+ * Get all hexes along the line from a to b (inclusive of endpoints).
+ * Uses cube coordinate interpolation for accurate hex line drawing.
+ */
+export function getHexLine(a: Hex, b: Hex): Hex[] {
+  const N = hexDistance(a, b);
+  if (N === 0) return [a];
+
+  const results: Hex[] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    // Interpolate in cube coordinates
+    const q = lerp(a.q, b.q, t);
+    const r = lerp(a.r, b.r, t);
+    const s = lerp(a.s, b.s, t);
+    results.push(cubeRound(q, r, s));
+  }
+  return results;
+}
+
+/**
+ * Check if there's a clear line of sight between two hexes.
+ * Mountains (elevation 3) block line of sight.
+ * @returns true if line of sight is clear, false if blocked by a mountain
+ */
+export function checkLineOfSight(a: Hex, b: Hex, cells: MapCell[]): boolean {
+  const line = getHexLine(a, b);
+
+  // Create a map for quick cell lookup
+  const cellMap = new Map<string, MapCell>();
+  for (const cell of cells) {
+    cellMap.set(`${cell.hex.q},${cell.hex.r}`, cell);
+  }
+
+  // Check each hex in the line (excluding start and end points)
+  for (let i = 1; i < line.length - 1; i++) {
+    const h = line[i];
+    const cell = cellMap.get(`${h.q},${h.r}`);
+    if (cell && cell.elevation === MOUNTAIN_ELEVATION) {
+      return false; // Mountain blocks LOS
+    }
+  }
+
+  return true; // No obstructions
+}
+
+/**
+ * Check if combat is possible considering line of sight.
+ * Mountains block cannons and long-range attacks.
+ */
+export function hasLineOfSight(
+  attacker: { position: Hex },
+  defender: { position: Hex },
+  cells: MapCell[]
+): boolean {
+  return checkLineOfSight(attacker.position, defender.position, cells);
+}
+
+/**
+ * Get effective cannons for a ship, limited by current crew.
+ * Each cannon requires 1 crew to operate, so effective cannons = min(cannons, current crew).
+ */
+export function getEffectiveCannons(ship: ShipState | NPCShip): number {
+  if (!ship.stats) return 0;
+  const baseCannons = ship.stats.cannons;
+  const currentCrew = ship.stats.crew.current;
+  return Math.min(baseCannons, currentCrew);
+}
 
 let lootIdCounter = 0;
 
@@ -19,12 +120,20 @@ export function getShipAttackRange(ship: ShipState | NPCShip): number {
 export function canAttack(
   attacker: ShipState,
   defender: ShipState,
-  distance: number
+  distance: number,
+  cells?: MapCell[]
 ): boolean {
   if (distance <= 0) return false;
   if (defender.isDerelict) return false;
   if (!attacker.stats || attacker.stats.crew.current <= 0) return false;
-  return distance <= getShipAttackRange(attacker);
+  if (distance > getShipAttackRange(attacker)) return false;
+
+  // Check line of sight if cells are provided
+  if (cells && !hasLineOfSight(attacker, defender, cells)) {
+    return false;
+  }
+
+  return true;
 }
 
 export function canReturnFire(defender: ShipState | NPCShip, distance: number): boolean {
@@ -109,7 +218,8 @@ export function createLootFromShip(ship: ShipState): FloatingLoot {
 export function getValidAttackTargets(
   attacker: ShipState,
   ships: Record<string, ShipState>,
-  attackerId: string
+  attackerId: string,
+  cells?: MapCell[]
 ): string[] {
   if (!attacker.stats || attacker.stats.crew.current <= 0) {
     return [];
@@ -124,6 +234,10 @@ export function getValidAttackTargets(
 
     const distance = hexDistance(attacker.position, ship.position);
     if (distance > 0 && distance <= range) {
+      // Check line of sight if cells are provided
+      if (cells && !hasLineOfSight(attacker, ship, cells)) {
+        continue;
+      }
       targets.push(id);
     }
   }
@@ -134,17 +248,26 @@ export function getValidAttackTargets(
 export function canAttackNPC(
   attacker: ShipState,
   npc: NPCShip,
-  distance: number
+  distance: number,
+  cells?: MapCell[]
 ): boolean {
   if (distance <= 0) return false;
   if (npc.isDerelict) return false;
   if (!attacker.stats || attacker.stats.crew.current <= 0) return false;
-  return distance <= getShipAttackRange(attacker);
+  if (distance > getShipAttackRange(attacker)) return false;
+
+  // Check line of sight if cells are provided
+  if (cells && !hasLineOfSight(attacker, npc, cells)) {
+    return false;
+  }
+
+  return true;
 }
 
 export function getValidNPCAttackTargets(
   attacker: ShipState,
-  npcs: Record<string, NPCShip>
+  npcs: Record<string, NPCShip>,
+  cells?: MapCell[]
 ): string[] {
   if (!attacker.stats || attacker.stats.crew.current <= 0) {
     return [];
@@ -158,6 +281,10 @@ export function getValidNPCAttackTargets(
 
     const distance = hexDistance(attacker.position, npc.position);
     if (distance > 0 && distance <= range) {
+      // Check line of sight if cells are provided
+      if (cells && !hasLineOfSight(attacker, npc, cells)) {
+        continue;
+      }
       targets.push(id);
     }
   }

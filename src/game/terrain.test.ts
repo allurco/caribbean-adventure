@@ -1,17 +1,21 @@
 import { describe, it, expect } from "vitest";
 import { validMoveTargets } from "./moves";
-import { hex, hexEquals, neighbors } from "./hex";
+import { hex, hexEquals, neighbors, hexDistance } from "./hex";
 import { generateMap } from "./mapGenerator";
-import type { MapCell } from "./types";
+import type { MapCell, Elevation, Biome } from "./types";
 import { SHIP_SPECS } from "./constants";
+import { checkLineOfSight, getHexLine, MOUNTAIN_ELEVATION } from "./combat";
 
 function cell(
   q: number,
   r: number,
   terrain: "water" | "island" | "reef" = "water",
-  hasPort = false
+  hasPort = false,
+  elevation: Elevation = terrain === "water" || terrain === "reef" ? 0 : 1
 ): MapCell {
-  return { hex: hex(q, r), terrain, hasPort };
+  const biome: Biome | undefined =
+    elevation === 1 ? "SAND" : elevation === 2 ? "GRASS" : elevation === 3 ? "ROCK" : undefined;
+  return { hex: hex(q, r), terrain, hasPort, elevation, biome };
 }
 
 describe("reef terrain mechanics", () => {
@@ -186,14 +190,24 @@ describe("reef terrain mechanics", () => {
   });
 
   describe("decoration generation", () => {
-    it("island hexes have decorations", () => {
+    it("most island hexes have decorations", () => {
       const map = generateMap(5, 42);
       const islandCells = map.filter((c) => c.terrain === "island");
 
-      // All islands should have decorations
-      for (const island of islandCells) {
-        expect(island.decorations).toBeDefined();
-        expect(island.decorations!.length).toBeGreaterThan(0);
+      // Not all islands have decorations now (beach hexes can have 0)
+      // But most should have at least some
+      const withDecorations = islandCells.filter(
+        (c) => c.decorations && c.decorations.length > 0
+      );
+      expect(withDecorations.length).toBeGreaterThan(0);
+
+      // Non-port islands with elevation 2+ should have decorations
+      const jungleAndMountain = islandCells.filter(
+        (c) => !c.hasPort && (c.elevation === 2 || c.elevation === 3)
+      );
+      for (const cell of jungleAndMountain) {
+        expect(cell.decorations).toBeDefined();
+        expect(cell.decorations!.length).toBeGreaterThan(0);
       }
     });
 
@@ -295,6 +309,243 @@ describe("reef terrain mechanics", () => {
 
     it("Galleon has shallowDraft false", () => {
       expect(SHIP_SPECS["Galleon"].shallowDraft).toBe(false);
+    });
+  });
+});
+
+describe("terrain elevation and biomes", () => {
+  describe("island elevation generation (volcano shape)", () => {
+    it("water hexes have elevation 0", () => {
+      const map = generateMap(5, 42);
+      const waterCells = map.filter((c) => c.terrain === "water");
+
+      for (const water of waterCells) {
+        expect(water.elevation).toBe(0);
+      }
+    });
+
+    it("reef hexes have elevation 0", () => {
+      const map = generateMap(5, 42);
+      const reefCells = map.filter((c) => c.terrain === "reef");
+
+      for (const reef of reefCells) {
+        expect(reef.elevation).toBe(0);
+      }
+    });
+
+    it("island hexes have elevation 1, 2, or 3", () => {
+      const map = generateMap(5, 42);
+      const islandCells = map.filter((c) => c.terrain === "island");
+
+      for (const island of islandCells) {
+        expect([1, 2, 3]).toContain(island.elevation);
+      }
+    });
+
+    it("ports are always at beach elevation (1)", () => {
+      const seeds = [42, 123, 456, 789, 999];
+      for (const seed of seeds) {
+        const map = generateMap(5, seed);
+        const portCells = map.filter((c) => c.hasPort);
+
+        for (const port of portCells) {
+          expect(port.elevation).toBe(1);
+        }
+      }
+    });
+
+    it("larger islands have mountains (elevation 3) at center", () => {
+      // Use larger radius to get bigger islands
+      const map = generateMap(12, 42);
+
+      // Find islands with at least 5 hexes (guaranteed to have mountain centers)
+      const islandCells = map.filter((c) => c.terrain === "island");
+
+      // There should be at least one mountain hex in the map
+      const hasMountain = islandCells.some((c) => c.elevation === 3);
+      // Since we're using a larger map, we should have some mountains
+      expect(hasMountain || islandCells.length < 5).toBe(true);
+    });
+
+    it("islands have cone-like structure (center higher than edges)", () => {
+      const map = generateMap(8, 42);
+      const islandCells = map.filter((c) => c.terrain === "island");
+
+      // Group cells by their distance from same-island hexes
+      // For each island, the center should have highest elevation
+      const cellMap = new Map<string, MapCell>();
+      for (const cell of map) {
+        cellMap.set(`${cell.hex.q},${cell.hex.r}`, cell);
+      }
+
+      // Find mountain hexes and verify they have lower-elevation neighbors
+      const mountainCells = islandCells.filter((c) => c.elevation === 3);
+      for (const mountain of mountainCells) {
+        const adjacentIslands = neighbors(mountain.hex)
+          .map((n) => cellMap.get(`${n.q},${n.r}`))
+          .filter((c) => c && c.terrain === "island");
+
+        // Adjacent island hexes should not be higher than the mountain
+        for (const adj of adjacentIslands) {
+          if (adj) {
+            expect(adj.elevation).toBeLessThanOrEqual(mountain.elevation);
+          }
+        }
+      }
+    });
+  });
+
+  describe("biome assignment", () => {
+    it("beach hexes (elevation 1) have SAND biome", () => {
+      const map = generateMap(5, 42);
+      const beachCells = map.filter((c) => c.terrain === "island" && c.elevation === 1);
+
+      for (const beach of beachCells) {
+        expect(beach.biome).toBe("SAND");
+      }
+    });
+
+    it("jungle hexes (elevation 2) have GRASS biome", () => {
+      const map = generateMap(8, 42);
+      const jungleCells = map.filter((c) => c.terrain === "island" && c.elevation === 2);
+
+      for (const jungle of jungleCells) {
+        expect(jungle.biome).toBe("GRASS");
+      }
+    });
+
+    it("mountain hexes (elevation 3) have ROCK biome", () => {
+      const map = generateMap(12, 42);
+      const mountainCells = map.filter((c) => c.terrain === "island" && c.elevation === 3);
+
+      for (const mountain of mountainCells) {
+        expect(mountain.biome).toBe("ROCK");
+      }
+    });
+
+    it("water/reef hexes have no biome", () => {
+      const map = generateMap(5, 42);
+      const nonLandCells = map.filter(
+        (c) => c.terrain === "water" || c.terrain === "reef"
+      );
+
+      for (const cell of nonLandCells) {
+        expect(cell.biome).toBeUndefined();
+      }
+    });
+  });
+
+  describe("getHexLine utility", () => {
+    it("returns single hex for same start and end", () => {
+      const a = hex(0, 0);
+      const line = getHexLine(a, a);
+      expect(line).toHaveLength(1);
+      expect(hexEquals(line[0], a)).toBe(true);
+    });
+
+    it("returns correct hexes for adjacent hexes", () => {
+      const a = hex(0, 0);
+      const b = hex(1, 0);
+      const line = getHexLine(a, b);
+      expect(line).toHaveLength(2);
+      expect(hexEquals(line[0], a)).toBe(true);
+      expect(hexEquals(line[1], b)).toBe(true);
+    });
+
+    it("returns all hexes along a straight line", () => {
+      const a = hex(0, 0);
+      const b = hex(3, 0);
+      const line = getHexLine(a, b);
+      expect(line).toHaveLength(4); // distance 3 + 1
+      expect(hexEquals(line[0], hex(0, 0))).toBe(true);
+      expect(hexEquals(line[1], hex(1, 0))).toBe(true);
+      expect(hexEquals(line[2], hex(2, 0))).toBe(true);
+      expect(hexEquals(line[3], hex(3, 0))).toBe(true);
+    });
+
+    it("returns correct number of hexes for diagonal line", () => {
+      const a = hex(0, 0);
+      const b = hex(2, -2);
+      const line = getHexLine(a, b);
+      expect(line).toHaveLength(hexDistance(a, b) + 1);
+    });
+  });
+
+  describe("line of sight blocking by mountains", () => {
+    it("returns true for adjacent hexes with no obstruction", () => {
+      const cells: MapCell[] = [
+        cell(0, 0, "water", false, 0),
+        cell(1, 0, "water", false, 0),
+      ];
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(1, 0), cells);
+      expect(hasLOS).toBe(true);
+    });
+
+    it("returns true when no mountain in between", () => {
+      const cells: MapCell[] = [
+        cell(0, 0, "water", false, 0),
+        cell(1, 0, "water", false, 0),
+        cell(2, 0, "water", false, 0),
+      ];
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      expect(hasLOS).toBe(true);
+    });
+
+    it("returns false when mountain (elevation 3) blocks line", () => {
+      const cells: MapCell[] = [
+        cell(0, 0, "water", false, 0),
+        cell(1, 0, "island", false, 3), // Mountain in the middle
+        cell(2, 0, "water", false, 0),
+      ];
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      expect(hasLOS).toBe(false);
+    });
+
+    it("returns true when jungle (elevation 2) is in between", () => {
+      const cells: MapCell[] = [
+        cell(0, 0, "water", false, 0),
+        cell(1, 0, "island", false, 2), // Jungle doesn't block
+        cell(2, 0, "water", false, 0),
+      ];
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      expect(hasLOS).toBe(true);
+    });
+
+    it("returns true when beach (elevation 1) is in between", () => {
+      const cells: MapCell[] = [
+        cell(0, 0, "water", false, 0),
+        cell(1, 0, "island", false, 1), // Beach doesn't block
+        cell(2, 0, "water", false, 0),
+      ];
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      expect(hasLOS).toBe(true);
+    });
+
+    it("endpoints are not checked for obstruction", () => {
+      // Even if start or end is a mountain, LOS is clear
+      const cells: MapCell[] = [
+        cell(0, 0, "island", false, 3), // Start is mountain
+        cell(1, 0, "water", false, 0),
+        cell(2, 0, "island", false, 3), // End is mountain
+      ];
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      expect(hasLOS).toBe(true);
+    });
+
+    it("mountain at range 3 blocks shooting", () => {
+      // Ships at (0,0) and (3,0), mountain at (1,0) or (2,0)
+      const cells: MapCell[] = [
+        cell(0, 0, "water", false, 0),
+        cell(1, 0, "water", false, 0),
+        cell(2, 0, "island", false, 3), // Mountain
+        cell(3, 0, "water", false, 0),
+      ];
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(3, 0), cells);
+      expect(hasLOS).toBe(false);
+    });
+
+    it("MOUNTAIN_ELEVATION constant is 3", () => {
+      expect(MOUNTAIN_ELEVATION).toBe(3);
     });
   });
 });

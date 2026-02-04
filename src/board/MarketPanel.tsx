@@ -11,6 +11,17 @@ interface MarketPanelProps {
 export function MarketPanel({ ship, market, onTrade }: MarketPanelProps) {
   return (
     <div>
+      {/* In-Demand notice */}
+      {market.inDemandGood && (
+        <div className="mb-2 px-2 py-1.5 bg-yellow-900/30 rounded border border-yellow-700/30 text-center">
+          <span className="text-yellow-400 text-[10px] font-heading uppercase tracking-wide">
+            High Demand: {market.inDemandGood}
+          </span>
+          <span className="text-yellow-400/60 text-[9px] ml-1">
+            (Sell 3+ for Glory!)
+          </span>
+        </div>
+      )}
       <table className="w-full">
         <thead>
           <tr className="text-amber-500/50 text-[10px] uppercase tracking-wider">
@@ -22,36 +33,48 @@ export function MarketPanel({ ship, market, onTrade }: MarketPanelProps) {
           </tr>
         </thead>
         <tbody>
-          {GOOD_TYPES.map((good) => (
-            <tr key={good} className="border-t border-amber-800/15">
-              <td className="py-1.5 text-amber-100 text-xs font-medium">{good}</td>
-              <td className="text-right py-1.5 text-amber-200/70 text-xs tabular-nums">
-                {market.prices[good].buy}g
-              </td>
-              <td className="text-right py-1.5 text-amber-200/70 text-xs tabular-nums">
-                {market.prices[good].sell}g
-              </td>
-              <td className="text-right py-1.5 text-amber-100 text-xs font-semibold tabular-nums">
-                {ship.cargo[good]}
-              </td>
-              <td className="py-1.5 pl-2 flex gap-1 justify-end">
-                <button
-                  disabled={!canBuy(ship, good, 1, market)}
-                  onClick={() => onTrade(good, 1, "BUY")}
-                  className="px-2 py-0.5 bg-emerald-800/60 hover:bg-emerald-700/70 disabled:bg-white/5 disabled:text-white/20 border border-emerald-700/30 disabled:border-transparent rounded text-[11px] font-medium cursor-pointer disabled:cursor-not-allowed transition-colors text-emerald-200"
-                >
-                  Buy
-                </button>
-                <button
-                  disabled={!canSell(ship, good, 1)}
-                  onClick={() => onTrade(good, 1, "SELL")}
-                  className="px-2 py-0.5 bg-red-900/50 hover:bg-red-800/60 disabled:bg-white/5 disabled:text-white/20 border border-red-700/30 disabled:border-transparent rounded text-[11px] font-medium cursor-pointer disabled:cursor-not-allowed transition-colors text-red-200"
-                >
-                  Sell
-                </button>
-              </td>
-            </tr>
-          ))}
+          {GOOD_TYPES.map((good) => {
+            const isInDemand = market.inDemandGood === good;
+            return (
+              <tr key={good} className={`border-t border-amber-800/15 ${isInDemand ? "bg-yellow-900/20" : ""}`}>
+                <td className="py-1.5 text-xs font-medium">
+                  <span className={isInDemand ? "text-yellow-300" : "text-amber-100"}>
+                    {good}
+                  </span>
+                  {isInDemand && (
+                    <span className="ml-1 text-yellow-500 text-[10px]" title="Sell 3+ for +1 Glory!">
+                      ★
+                    </span>
+                  )}
+                </td>
+                <td className="text-right py-1.5 text-amber-200/70 text-xs tabular-nums">
+                  {market.prices[good].buy}g
+                </td>
+                <td className={`text-right py-1.5 text-xs tabular-nums ${isInDemand ? "text-yellow-300 font-semibold" : "text-amber-200/70"}`}>
+                  {market.prices[good].sell}g
+                </td>
+                <td className="text-right py-1.5 text-amber-100 text-xs font-semibold tabular-nums">
+                  {ship.cargo[good]}
+                </td>
+                <td className="py-1.5 pl-2 flex gap-1 justify-end">
+                  <button
+                    disabled={!canBuy(ship, good, 1, market)}
+                    onClick={() => onTrade(good, 1, "BUY")}
+                    className="px-2 py-0.5 bg-emerald-800/60 hover:bg-emerald-700/70 disabled:bg-white/5 disabled:text-white/20 border border-emerald-700/30 disabled:border-transparent rounded text-[11px] font-medium cursor-pointer disabled:cursor-not-allowed transition-colors text-emerald-200"
+                  >
+                    Buy
+                  </button>
+                  <button
+                    disabled={!canSell(ship, good, 1)}
+                    onClick={() => onTrade(good, 1, "SELL")}
+                    className={`px-2 py-0.5 ${isInDemand ? "bg-yellow-800/60 hover:bg-yellow-700/70 border-yellow-600/30 text-yellow-200" : "bg-red-900/50 hover:bg-red-800/60 border-red-700/30 text-red-200"} disabled:bg-white/5 disabled:text-white/20 disabled:border-transparent rounded text-[11px] font-medium cursor-pointer disabled:cursor-not-allowed transition-colors border`}
+                  >
+                    Sell
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

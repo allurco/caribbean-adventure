@@ -123,6 +123,18 @@ export function canRepair(ship: ShipState, category: DamageCategory): boolean {
   return ship.gold >= REPAIR_COST_PER_POINT;
 }
 
+// Jury-rigging costs nothing but only repairs 1 mast damage at a time
+// and can be done at sea (doesn't require a port)
+export function canJuryRig(ship: ShipState): boolean {
+  return ship.damage.masts > 0;
+}
+
+export function applyJuryRig(ship: ShipState): void {
+  if (ship.damage.masts > 0) {
+    ship.damage.masts -= 1;
+  }
+}
+
 export function applyRepair(
   ship: ShipState,
   category: DamageCategory,
@@ -179,5 +191,20 @@ export function generatePortMarket(rng: () => number): PortMarket {
       range.minBuy + Math.floor(rng() * (range.maxBuy - range.minBuy + 1));
     prices[good] = { buy, sell: buy - range.spread };
   }
-  return { prices };
+
+  // Determine in-demand good: the one with highest sell price relative to its range
+  let inDemandGood: GoodType | null = null;
+  let highestRelativePrice = -Infinity;
+
+  for (const good of GOOD_TYPES) {
+    const range = PRICE_RANGES[good];
+    const midSell = (range.minBuy + range.maxBuy) / 2 - range.spread;
+    const relativePriceDiff = prices[good].sell - midSell;
+    if (relativePriceDiff > highestRelativePrice) {
+      highestRelativePrice = relativePriceDiff;
+      inDemandGood = good;
+    }
+  }
+
+  return { prices, inDemandGood };
 }

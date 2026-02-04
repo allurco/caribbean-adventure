@@ -18,6 +18,7 @@
     "boardgame.io": "^0.50.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "simplex-noise": "^4.0.3",
     "three": "^0.182.0",
     "three-stdlib": "^2.36.1"
   },

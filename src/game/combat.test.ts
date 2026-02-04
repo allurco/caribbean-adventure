@@ -19,6 +19,7 @@ import {
   getValidAttackTargets,
   resolveFleeAttempt,
   shouldNPCFlee,
+  getEffectiveCannons,
 } from "./combat";
 
 function createShipWithStats(
@@ -450,5 +451,42 @@ describe("shouldNPCFlee", () => {
     const npcHull = 2;
     const enemyCannons = 3;
     expect(shouldNPCFlee(npcHull, npcCannons, enemyCannons)).toBe(false);
+  });
+});
+
+describe("getEffectiveCannons", () => {
+  it("returns full cannons when crew >= cannons", () => {
+    const ship = createShipWithStats({ q: 0, r: 0 });
+    // Sloop has 2 cannons and 2 crew
+    expect(getEffectiveCannons(ship)).toBe(2);
+  });
+
+  it("returns current crew when crew < cannons", () => {
+    const ship = createShipWithStats({ q: 0, r: 0 });
+    // Sloop has 2 cannons but reduce crew to 1
+    ship.stats!.crew.current = 1;
+    expect(getEffectiveCannons(ship)).toBe(1);
+  });
+
+  it("returns 0 when crew is 0", () => {
+    const ship = createShipWithStats({ q: 0, r: 0 });
+    ship.stats!.crew.current = 0;
+    expect(getEffectiveCannons(ship)).toBe(0);
+  });
+
+  it("returns 0 when ship has no stats", () => {
+    const ship = createShipWithStats({ q: 0, r: 0 });
+    ship.stats = undefined;
+    expect(getEffectiveCannons(ship)).toBe(0);
+  });
+
+  it("limits Frigate cannons (4) to current crew when reduced", () => {
+    // Frigate has 4 cannons and 4 crew
+    const ship = createShipState(hex(0, 0), "Frigate");
+    expect(getEffectiveCannons(ship)).toBe(4);
+
+    // Reduce crew to 2 - now only 2 effective cannons
+    ship.stats!.crew.current = 2;
+    expect(getEffectiveCannons(ship)).toBe(2);
   });
 });
