@@ -207,7 +207,10 @@ export function spawnMerchant(
   G: CaribbeanState,
   rng: () => number
 ): string | null {
-  const ports = getPortCells(G.cells);
+  // Only spawn from non-Pirate ports (Pirate havens don't have merchants)
+  const ports = getPortCells(G.cells).filter(
+    (p) => p.nation && p.nation !== "Pirate"
+  );
 
   if (ports.length < 2) {
     return null;
@@ -230,12 +233,12 @@ export function spawnMerchant(
   G.npcIdCounter++;
   const id = `npc-${G.npcIdCounter}`;
 
-  // Create the NPC
+  // Create the NPC - nation is guaranteed to be a valid Nation (not Pirate)
   const npc = createNPCShip(
     id,
     spawnPort.hex,
     destPort.hex,
-    spawnPort.nation!,
+    spawnPort.nation as Nation,
     shipClass,
     rng
   );

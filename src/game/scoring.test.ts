@@ -18,21 +18,21 @@ import { createShipState } from "./economy";
 
 describe("scoring utility functions", () => {
   describe("isAtHomePort", () => {
-    it("returns true when ship is at home port", () => {
+    it("returns true when ship is at home port docking hex", () => {
       const ship = createShipState(hex(1, 2));
-      ship.homePortHex = hex(1, 2);
+      ship.homeDockingHex = hex(1, 2);
       expect(isAtHomePort(ship)).toBe(true);
     });
 
-    it("returns false when ship is not at home port", () => {
+    it("returns false when ship is not at home port docking hex", () => {
       const ship = createShipState(hex(1, 2));
-      ship.homePortHex = hex(3, 4);
+      ship.homeDockingHex = hex(3, 4);
       expect(isAtHomePort(ship)).toBe(false);
     });
 
     it("returns false when ship has no home port", () => {
       const ship = createShipState(hex(1, 2));
-      ship.homePortHex = undefined;
+      ship.homeDockingHex = undefined;
       expect(isAtHomePort(ship)).toBe(false);
     });
   });
@@ -40,28 +40,28 @@ describe("scoring utility functions", () => {
   describe("canStashGold", () => {
     it("returns true when at home port with enough gold", () => {
       const ship = createShipState(hex(1, 2));
-      ship.homePortHex = hex(1, 2);
+      ship.homeDockingHex = hex(1, 2);
       ship.gold = 50;
       expect(canStashGold(ship, 20)).toBe(true);
     });
 
     it("returns false when not at home port", () => {
       const ship = createShipState(hex(1, 2));
-      ship.homePortHex = hex(3, 4);
+      ship.homeDockingHex = hex(3, 4);
       ship.gold = 50;
       expect(canStashGold(ship, 20)).toBe(false);
     });
 
     it("returns false when amount exceeds gold", () => {
       const ship = createShipState(hex(1, 2));
-      ship.homePortHex = hex(1, 2);
+      ship.homeDockingHex = hex(1, 2);
       ship.gold = 10;
       expect(canStashGold(ship, 20)).toBe(false);
     });
 
     it("returns false when amount is zero or negative", () => {
       const ship = createShipState(hex(1, 2));
-      ship.homePortHex = hex(1, 2);
+      ship.homeDockingHex = hex(1, 2);
       ship.gold = 50;
       expect(canStashGold(ship, 0)).toBe(false);
       expect(canStashGold(ship, -10)).toBe(false);
@@ -142,6 +142,7 @@ describe("scoring utility functions", () => {
           crew: { current: 10, max: 10 },
           hull: { current: 6, max: 6 },
           cargo: 4,
+          shallowDraft: false,
         },
         damage: { hull: 0, crew: 0, masts: 0 },
         nation: "England",
@@ -170,6 +171,7 @@ describe("scoring utility functions", () => {
           crew: { current: 5, max: 5 },
           hull: { current: 4, max: 4 },
           cargo: 6,
+          shallowDraft: true,
         },
         damage: { hull: 0, crew: 0, masts: 0 },
         nation: "Spain",
@@ -213,6 +215,7 @@ describe("scoring utility functions", () => {
           crew: { current: 10, max: 10 },
           hull: { current: 6, max: 6 },
           cargo: 4,
+          shallowDraft: false,
         },
         damage: { hull: 0, crew: 0, masts: 0 },
         nation: "England",
@@ -247,6 +250,7 @@ describe("scoring utility functions", () => {
           crew: { current: 5, max: 5 },
           hull: { current: 4, max: 4 },
           cargo: 6,
+          shallowDraft: true,
         },
         damage: { hull: 0, crew: 0, masts: 0 },
         nation: "Spain",
@@ -352,16 +356,17 @@ describe("stashGold move", () => {
     let state = client.getState()!;
     let G = state.G as CaribbeanState;
 
-    // Move ship away from home port
+    // Move ship away from home docking hex
     const ship = G.ships["0"];
-    const homePort = ship.homePortHex!;
+    const homeDocking = ship.homeDockingHex!;
 
-    // Find an adjacent water hex to move to
+    // Find an adjacent water hex to move to (that's NOT the home docking hex)
     const adjacentCells = G.cells.filter((c) => {
-      const dq = Math.abs(c.hex.q - homePort.q);
-      const dr = Math.abs(c.hex.r - homePort.r);
-      const ds = Math.abs(c.hex.s - homePort.s);
+      const dq = Math.abs(c.hex.q - homeDocking.q);
+      const dr = Math.abs(c.hex.r - homeDocking.r);
+      const ds = Math.abs(c.hex.s - homeDocking.s);
       const dist = Math.max(dq, dr, ds);
+      // Must be adjacent, water, and NOT the docking hex itself
       return dist === 1 && c.terrain === "water";
     });
 
@@ -406,7 +411,7 @@ describe("victory condition", () => {
   it("stashing enough gold to reach WIN_SCORE triggers victory", () => {
     // Test that the scoring math works correctly for victory
     const ship = createShipState(hex(0, 0));
-    ship.homePortHex = hex(0, 0);
+    ship.homeDockingHex = hex(0, 0);
     ship.score = WIN_SCORE - 2; // 2 away from winning
     ship.gold = 100;
 

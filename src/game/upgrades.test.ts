@@ -39,6 +39,7 @@ function makeCells(): MapCell[] {
       hasPort: true,
       nation: "England",
       market: TEST_MARKET,
+      dockingHex: hex(1, 0),
     },
     { hex: hex(1, 0), terrain: "water", hasPort: false },
     { hex: hex(2, 0), terrain: "water", hasPort: false },
@@ -51,6 +52,7 @@ function makeCells(): MapCell[] {
       hasPort: true,
       nation: "Spain",
       market: TEST_MARKET,
+      dockingHex: hex(0, 2),
     },
     { hex: hex(0, 2), terrain: "water", hasPort: false },
     { hex: hex(1, 2), terrain: "water", hasPort: false },
@@ -62,9 +64,10 @@ function setupMainPhase(p0Class: ShipClass = "Sloop", p1Class: ShipClass = "Flut
     ...Caribbean,
     setup: () => ({
       cells: makeCells(),
+      // Ships start at placeholder positions; pickCaptain will place them at docking hexes
       ships: {
-        "0": createShipState(hex(0, 0)),
-        "1": createShipState(hex(0, 0)),
+        "0": createShipState(hex(1, 0)),
+        "1": createShipState(hex(0, 2)),
       },
       mapSize: "small" as MapSizeId,
       captainDeck: [],
@@ -90,10 +93,11 @@ function setupMainPhase(p0Class: ShipClass = "Sloop", p1Class: ShipClass = "Flut
 
 /** Setup at port without draft phase — for quick tests */
 function setupAtPortNoDraft() {
-  const ship0 = createShipState(hex(0, 0), "Sloop");
+  // Ship at docking hex (1, 0) to access port at (0, 0)
+  const ship0 = createShipState(hex(1, 0), "Sloop");
   ship0.stats = structuredClone(SHIP_SPECS.Sloop);
   const cells: MapCell[] = [
-    { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET },
+    { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
     { hex: hex(1, 0), terrain: "water", hasPort: false },
     { hex: hex(0, 1), terrain: "water", hasPort: false },
     { hex: hex(-1, 1), terrain: "water", hasPort: false },
@@ -138,8 +142,8 @@ describe("buyUpgrade move", () => {
 
   it("rejects when not at port", () => {
     const client = setupAtPortNoDraft();
-    // Move to water first
-    client.moves.moveShip(1, 0);
+    // Move away from docking hex (1,0) to another water hex (0,1)
+    client.moves.moveShip(0, 1);
     client.moves.buyUpgrade("chain_shot");
     const { G } = client.getState()!;
     expect(G.ships["0"].upgrades).not.toContain("chain_shot");
@@ -221,12 +225,13 @@ describe("buyUpgrade move", () => {
 
 describe("repair move", () => {
   function setupDamaged() {
-    const ship0 = createShipState(hex(0, 0), "Sloop");
+    // Ship at docking hex (1, 0) to access port at (0, 0)
+    const ship0 = createShipState(hex(1, 0), "Sloop");
     ship0.stats = structuredClone(SHIP_SPECS.Sloop);
     ship0.stats.hull.current = 1;
     ship0.damage = { hull: 1, crew: 0, masts: 0 };
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET },
+      { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
       { hex: hex(1, 0), terrain: "water", hasPort: false },
       { hex: hex(0, 1), terrain: "water", hasPort: false },
       { hex: hex(-1, 1), terrain: "water", hasPort: false },
@@ -268,7 +273,7 @@ describe("repair move", () => {
 
   it("rejects when not at port", () => {
     const client = setupDamaged();
-    client.moves.moveShip(1, 0); // move to water
+    client.moves.moveShip(0, 1); // move away from docking hex to another water
     client.moves.repair("hull", 1);
     const { G } = client.getState()!;
     expect(G.ships["0"].damage.hull).toBe(1); // still damaged
@@ -301,14 +306,14 @@ describe("repair move", () => {
   });
 
   it("counts toward moves per turn", () => {
-    // Set up a ship with multi-point damage
-    const ship0 = createShipState(hex(0, 0), "Sloop");
+    // Set up a ship with multi-point damage at docking hex (1, 0)
+    const ship0 = createShipState(hex(1, 0), "Sloop");
     ship0.stats = structuredClone(SHIP_SPECS.Sloop);
     ship0.stats.hull.current = 0;
     ship0.stats.crew.current = 0;
     ship0.damage = { hull: 2, crew: 2, masts: 2 };
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET },
+      { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
       { hex: hex(1, 0), terrain: "water", hasPort: false },
       { hex: hex(0, 1), terrain: "water", hasPort: false },
       { hex: hex(-1, 1), terrain: "water", hasPort: false },

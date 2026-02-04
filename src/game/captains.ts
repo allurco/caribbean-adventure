@@ -112,12 +112,13 @@ export function findHomePort(
   cells: MapCell[],
   occupiedHexes: Hex[],
 ): MapCell | undefined {
-  const isOccupied = (h: Hex) => occupiedHexes.some((o) => hexEquals(o, h));
-  // Prefer a port of the matching nation
+  const isOccupied = (h: Hex | undefined) =>
+    h ? occupiedHexes.some((o) => hexEquals(o, h)) : true;
+  // Prefer a port of the matching nation (check docking hex for occupation)
   const match = cells.find(
-    (c) => c.hasPort && c.nation === nation && !isOccupied(c.hex),
+    (c) => c.hasPort && c.nation === nation && c.dockingHex && !isOccupied(c.dockingHex),
   );
   if (match) return match;
-  // Fall back to any unoccupied port
-  return cells.find((c) => c.hasPort && !isOccupied(c.hex));
+  // Fall back to any unoccupied port with a docking hex
+  return cells.find((c) => c.hasPort && c.dockingHex && !isOccupied(c.dockingHex));
 }

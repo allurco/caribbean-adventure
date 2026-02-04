@@ -17,7 +17,7 @@ describe("generateMap", () => {
   it("every cell has a valid terrain type", () => {
     const map = generateMap(RADIUS);
     for (const cell of map) {
-      expect(["water", "island"]).toContain(cell.terrain);
+      expect(["water", "island", "reef"]).toContain(cell.terrain);
     }
   });
 
@@ -100,6 +100,14 @@ describe("generateMap", () => {
   it("seeded generation produces at least one port", () => {
     const map = generateMap(RADIUS, 42);
     expect(map.some((c) => c.hasPort)).toBe(true);
+  });
+
+  it("never generates more than 15 ports on large maps", () => {
+    // Test on large map (radius 25) which would have many islands
+    const map = generateMap(25, 42);
+    const portCount = map.filter((c) => c.hasPort).length;
+    expect(portCount).toBeLessThanOrEqual(15);
+    expect(portCount).toBeGreaterThan(0);
   });
 });
 

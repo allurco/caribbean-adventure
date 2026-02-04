@@ -47,9 +47,9 @@ export function Ship({
       if (!mesh) return;
       ref.current = mesh;
       if (!initialized.current) {
-        mesh.position.set(position[0], position[1] + 0.5, position[2]);
+        mesh.position.set(position[0], position[1] + 0.12, position[2]);
         prevTarget.current = position;
-        to.set(position[0], position[1] + 0.5, position[2]);
+        to.set(position[0], position[1] + 0.12, position[2]);
         initialized.current = true;
       }
     },
@@ -68,7 +68,7 @@ export function Ship({
       prev[2] !== position[2]
     ) {
       from.copy(ref.current.position);
-      to.set(position[0], position[1] + 0.5, position[2]);
+      to.set(position[0], position[1] + 0.12, position[2]);
       prevTarget.current = position;
       if (from.distanceTo(to) > 0.001) {
         progressRef.current = 0;
@@ -95,6 +95,8 @@ export function Ship({
   return (
     <mesh
       ref={meshRef}
+      castShadow
+      receiveShadow
       onPointerEnter={(e) => {
         e.stopPropagation();
         onPointerEnter?.();
@@ -127,7 +129,7 @@ export function SinkingShip({
 }) {
   const ref = useRef<Mesh>(null!);
   const progressRef = useRef(0);
-  const startY = position[1] + 0.5;
+  const startY = position[1] + 0.12;
   const [opacity, setOpacity] = useState(1);
   const completedRef = useRef(false);
 
@@ -160,6 +162,7 @@ export function SinkingShip({
     <mesh
       ref={ref}
       position={[position[0], startY, position[2]]}
+      castShadow
     >
       <boxGeometry args={shipClass ? SHIP_GEOMETRY[shipClass] : DEFAULT_GEOMETRY} />
       <meshStandardMaterial

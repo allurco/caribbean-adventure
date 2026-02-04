@@ -26,7 +26,8 @@ function setupAtShipyard(overrides?: {
   damage?: { hull: number; crew: number; masts: number };
 }) {
   const shipClass = overrides?.shipClass ?? "Sloop";
-  const ship = createShipState(hex(0, 0), shipClass);
+  // Ship docks at (1, 0) water hex to access port at (0, 0)
+  const ship = createShipState(hex(1, 0), shipClass);
   if (overrides?.gold !== undefined) ship.gold = overrides.gold;
   if (overrides?.cargo) {
     ship.cargo = overrides.cargo as Record<"Wood" | "Sugar" | "Rum" | "Spice", number>;
@@ -42,6 +43,7 @@ function setupAtShipyard(overrides?: {
       hasShipyard: true,
       market: TEST_MARKET,
       nation: "England",
+      dockingHex: hex(1, 0),
     },
     { hex: hex(1, 0), terrain: "water", hasPort: false },
     {
@@ -51,6 +53,7 @@ function setupAtShipyard(overrides?: {
       hasShipyard: false,
       market: TEST_MARKET,
       nation: "France",
+      dockingHex: hex(-1, 1),
     },
     { hex: hex(-1, 1), terrain: "water", hasPort: false },
     { hex: hex(-1, 0), terrain: "water", hasPort: false },
@@ -113,7 +116,7 @@ describe("buyShip move", () => {
   });
 
   it("rejects at regular port (no shipyard)", () => {
-    // Player at hex(0,1) which has port but no shipyard
+    // Player at hex(0,0) docking hex which accesses port at (0,1) but no shipyard
     const cells: MapCell[] = [
       {
         hex: hex(0, 1),
@@ -122,6 +125,7 @@ describe("buyShip move", () => {
         hasShipyard: false,
         market: TEST_MARKET,
         nation: "France",
+        dockingHex: hex(0, 0),
       },
       { hex: hex(0, 0), terrain: "water", hasPort: false },
       { hex: hex(1, 0), terrain: "water", hasPort: false },
@@ -130,7 +134,8 @@ describe("buyShip move", () => {
       { hex: hex(0, 2), terrain: "water", hasPort: false },
       { hex: hex(-1, 2), terrain: "water", hasPort: false },
     ];
-    const ship = createShipState(hex(0, 1), "Sloop");
+    // Ship at docking hex (0, 0)
+    const ship = createShipState(hex(0, 0), "Sloop");
     ship.gold = 100;
     const NoShipyardGame: Game<CaribbeanState> = {
       ...Caribbean,
@@ -139,7 +144,7 @@ describe("buyShip move", () => {
         cells,
         ships: {
           "0": ship,
-          "1": createShipState(hex(0, 0), "Flute"),
+          "1": createShipState(hex(1, 0), "Flute"),
         },
         mapSize: "small" as MapSizeId,
         captainDeck: [],

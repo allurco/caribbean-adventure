@@ -4,6 +4,7 @@ import { isBannedAtPort } from "../game/reputation";
 import { MarketPanel } from "./MarketPanel";
 import { ShipwrightPanel } from "./ShipwrightPanel";
 import { ShipyardPanel } from "./ShipyardPanel";
+import { TavernPanel } from "./TavernPanel";
 import { NationFlag } from "./NationFlag";
 
 interface PortPanelProps {
@@ -16,9 +17,11 @@ interface PortPanelProps {
   onBuyUpgrade: (upgradeId: string) => void;
   onRepair: (category: DamageCategory, points: number) => void;
   onBuyShip?: (newClass: ShipClass) => void;
+  onListenForRumors?: () => void;
+  onAbandonMission?: () => void;
 }
 
-type Tab = "market" | "shipwright" | "shipyard";
+type Tab = "market" | "shipwright" | "shipyard" | "tavern";
 
 function TabButton({
   label,
@@ -53,6 +56,8 @@ export function PortPanel({
   onBuyUpgrade,
   onRepair,
   onBuyShip,
+  onListenForRumors,
+  onAbandonMission,
 }: PortPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>("market");
   const isBanned = isBannedAtPort(ship, portNation);
@@ -110,6 +115,7 @@ export function PortPanel({
             {hasShipyard && (
               <TabButton label="Shipyard" active={activeTab === "shipyard"} onClick={() => setActiveTab("shipyard")} />
             )}
+            <TabButton label="Tavern" active={activeTab === "tavern"} onClick={() => setActiveTab("tavern")} />
           </div>
 
           {activeTab === "market" ? (
@@ -122,6 +128,12 @@ export function PortPanel({
             />
           ) : activeTab === "shipyard" && onBuyShip ? (
             <ShipyardPanel ship={ship} onBuyShip={onBuyShip} />
+          ) : activeTab === "tavern" && onListenForRumors && onAbandonMission ? (
+            <TavernPanel
+              ship={ship}
+              onListenForRumors={onListenForRumors}
+              onAbandonMission={onAbandonMission}
+            />
           ) : null}
         </>
       )}

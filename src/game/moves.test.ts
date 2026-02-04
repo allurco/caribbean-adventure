@@ -57,11 +57,12 @@ describe("validMoveTargets", () => {
     expect(targets).toHaveLength(2);
   });
 
-  it("island neighbors with hasPort are valid targets", () => {
+  it("island neighbors with hasPort are NOT valid targets (ships dock at water)", () => {
+    // With the new docking mechanic, ships stay on water and access ports
+    // from the docking hex - they cannot move onto island tiles
     const cells: MapCell[] = [cell(0, 0), cell(1, 0, "island", true)];
     const targets = validMoveTargets(hex(0, 0), cells);
-    expect(targets).toHaveLength(1);
-    expect(targets.some((h) => hexEquals(h, hex(1, 0)))).toBe(true);
+    expect(targets).toHaveLength(0);
   });
 
   it("island neighbors without hasPort are excluded", () => {
@@ -70,18 +71,20 @@ describe("validMoveTargets", () => {
     expect(targets).toHaveLength(0);
   });
 
-  it("mixed scenario: only water and port-island are returned", () => {
+  it("mixed scenario: only water is returned, islands are blocked", () => {
+    // With the new docking mechanic, only water hexes are valid move targets
+    // (plus reefs for shallow-draft ships, but not tested here)
     const cells: MapCell[] = [
       cell(0, 0),
       cell(1, 0),                      // water — valid
-      cell(0, 1, "island", true),       // port island — valid
+      cell(0, 1, "island", true),       // port island — blocked (ships dock from water)
       cell(-1, 1, "island"),            // plain island — blocked
       cell(-1, 0),                      // water — valid
     ];
     const targets = validMoveTargets(hex(0, 0), cells);
-    expect(targets).toHaveLength(3);
+    expect(targets).toHaveLength(2);
     expect(targets.some((h) => hexEquals(h, hex(1, 0)))).toBe(true);
-    expect(targets.some((h) => hexEquals(h, hex(0, 1)))).toBe(true);
+    expect(targets.some((h) => hexEquals(h, hex(0, 1)))).toBe(false); // port island blocked
     expect(targets.some((h) => hexEquals(h, hex(-1, 0)))).toBe(true);
     expect(targets.some((h) => hexEquals(h, hex(-1, 1)))).toBe(false);
   });

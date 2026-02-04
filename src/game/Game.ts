@@ -45,6 +45,17 @@ import { moveAllNPCs, spawnMerchant, createFlotillaShip, getPortCells } from "./
 import { getBountyForAction, addBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
+import { findAccessiblePort } from "./moves";
+import {
+  generateMission,
+  canAffordTavern,
+  getTavernCost,
+  checkDeliveryMission,
+  checkEscortMission,
+  checkAssassinationMission,
+  failEscortMission,
+  completeMission,
+} from "./missions";
 
 export type { CaribbeanState } from "./types";
 
@@ -159,7 +170,13 @@ export const Caribbean: Game<CaribbeanState> = {
       if (hexDistance(ship.position, target) !== 1) return INVALID_MOVE;
       const cell = G.cells.find((c) => hexEquals(c.hex, target));
       if (!cell) return INVALID_MOVE;
-      if (cell.terrain === "island" && !cell.hasPort) return INVALID_MOVE;
+      // Ships cannot enter island hexes (must dock at water)
+      if (cell.terrain === "island") return INVALID_MOVE;
+      // Reef check: only shallow-draft ships can enter reefs
+      if (cell.terrain === "reef") {
+        const canEnterReef = ship.stats?.shallowDraft ?? true;
+        if (!canEnterReef) return INVALID_MOVE;
+      }
       const occupied = Object.entries(G.ships).some(
         ([id, s]) =>
           id !== ctx.currentPlayer && hexEquals(s.position, target),
@@ -175,31 +192,31 @@ export const Caribbean: Game<CaribbeanState> = {
       action: "BUY" | "SELL",
     ) => {
       const ship = G.ships[ctx.currentPlayer];
-      const cell = G.cells.find((c) => hexEquals(c.hex, ship.position));
-      if (!cell?.market) return INVALID_MOVE;
+      const port = findAccessiblePort(ship.position, G.cells);
+      if (!port?.market) return INVALID_MOVE;
       if (action === "BUY") {
-        if (!canBuy(ship, good, amount, cell.market)) return INVALID_MOVE;
-        ship.gold -= cell.market.prices[good].buy * amount;
+        if (!canBuy(ship, good, amount, port.market)) return INVALID_MOVE;
+        ship.gold -= port.market.prices[good].buy * amount;
         ship.cargo[good] += amount;
       } else {
         if (!canSell(ship, good, amount)) return INVALID_MOVE;
-        ship.gold += cell.market.prices[good].sell * amount;
+        ship.gold += port.market.prices[good].sell * amount;
         ship.cargo[good] -= amount;
       }
     },
 
     buyUpgrade: ({ G, ctx }, upgradeId: string) => {
       const ship = G.ships[ctx.currentPlayer];
-      const cell = G.cells.find((c) => hexEquals(c.hex, ship.position));
-      if (!cell?.hasPort || !cell.market) return INVALID_MOVE;
+      const port = findAccessiblePort(ship.position, G.cells);
+      if (!port?.hasPort || !port.market) return INVALID_MOVE;
       if (!canBuyUpgrade(ship, upgradeId)) return INVALID_MOVE;
       applyUpgrade(ship, upgradeId);
     },
 
     repair: ({ G, ctx }, category: DamageCategory, points: number) => {
       const ship = G.ships[ctx.currentPlayer];
-      const cell = G.cells.find((c) => hexEquals(c.hex, ship.position));
-      if (!cell?.hasPort || !cell.market) return INVALID_MOVE;
+      const port = findAccessiblePort(ship.position, G.cells);
+      if (!port?.hasPort || !port.market) return INVALID_MOVE;
       if (points <= 0) return INVALID_MOVE;
       if (!canRepair(ship, category)) return INVALID_MOVE;
       applyRepair(ship, category, points);
@@ -207,8 +224,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
     buyShip: ({ G, ctx }, newClass: ShipClass) => {
       const ship = G.ships[ctx.currentPlayer];
-      const cell = G.cells.find((c) => hexEquals(c.hex, ship.position));
-      if (!cell?.hasPort || !cell.hasShipyard) return INVALID_MOVE;
+      const port = findAccessiblePort(ship.position, G.cells);
+      if (!port?.hasPort || !port.hasShipyard) return INVALID_MOVE;
       if (
         !(SHIP_CLASSES as readonly string[]).includes(newClass)
       )
@@ -261,9 +278,13 @@ export const Caribbean: Game<CaribbeanState> = {
             .filter(([id, s]) => id !== playerId && s.captain !== undefined)
             .map(([, s]) => s.position);
           const port = findHomePort(chosen.nation, G.cells, occupiedHexes);
-          if (port) {
-            ship.position = port.hex;
+          if (port && port.dockingHex) {
+            // Ship spawns at the docking water hex, not the port island
+            ship.position = port.dockingHex;
+            // homePortHex is the actual port (for display/scoring)
             ship.homePortHex = port.hex;
+            // homeDockingHex is where the ship docks to access home port
+            ship.homeDockingHex = port.dockingHex;
           }
 
           // Clear the player's draft hand
@@ -306,13 +327,40 @@ export const Caribbean: Game<CaribbeanState> = {
           if (hexDistance(ship.position, target) !== 1) return INVALID_MOVE;
           const cell = G.cells.find((c) => hexEquals(c.hex, target));
           if (!cell) return INVALID_MOVE;
-          if (cell.terrain === "island" && !cell.hasPort) return INVALID_MOVE;
+          // Ships cannot enter island hexes (must dock at water)
+          if (cell.terrain === "island") return INVALID_MOVE;
+          // Reef check: only shallow-draft ships can enter reefs
+          if (cell.terrain === "reef") {
+            const canEnterReef = ship.stats?.shallowDraft ?? true;
+            if (!canEnterReef) return INVALID_MOVE;
+          }
           const occupied = Object.entries(G.ships).some(
             ([id, s]) =>
               id !== ctx.currentPlayer && hexEquals(s.position, target),
           );
           if (occupied) return INVALID_MOVE;
           ship.position = target;
+
+          // Check for mission completion at new position
+          if (ship.activeMission) {
+            const port = findAccessiblePort(ship.position, G.cells);
+            if (port?.portName) {
+              // Check delivery mission
+              if (checkDeliveryMission(ship.activeMission, port.portName)) {
+                ship.gold += ship.activeMission.reward.gold;
+                ship.score += ship.activeMission.reward.glory;
+                completeMission(ship.activeMission);
+                ship.activeMission = undefined;
+              }
+              // Check escort mission
+              else if (checkEscortMission(ship.activeMission, port.portName)) {
+                ship.gold += ship.activeMission.reward.gold;
+                ship.score += ship.activeMission.reward.glory;
+                completeMission(ship.activeMission);
+                ship.activeMission = undefined;
+              }
+            }
+          }
         },
 
         trade: (
@@ -322,31 +370,31 @@ export const Caribbean: Game<CaribbeanState> = {
           action: "BUY" | "SELL",
         ) => {
           const ship = G.ships[ctx.currentPlayer];
-          const cell = G.cells.find((c) => hexEquals(c.hex, ship.position));
-          if (!cell?.market) return INVALID_MOVE;
+          const port = findAccessiblePort(ship.position, G.cells);
+          if (!port?.market) return INVALID_MOVE;
           if (action === "BUY") {
-            if (!canBuy(ship, good, amount, cell.market)) return INVALID_MOVE;
-            ship.gold -= cell.market.prices[good].buy * amount;
+            if (!canBuy(ship, good, amount, port.market)) return INVALID_MOVE;
+            ship.gold -= port.market.prices[good].buy * amount;
             ship.cargo[good] += amount;
           } else {
             if (!canSell(ship, good, amount)) return INVALID_MOVE;
-            ship.gold += cell.market.prices[good].sell * amount;
+            ship.gold += port.market.prices[good].sell * amount;
             ship.cargo[good] -= amount;
           }
         },
 
         buyUpgrade: ({ G, ctx }, upgradeId: string) => {
           const ship = G.ships[ctx.currentPlayer];
-          const cell = G.cells.find((c) => hexEquals(c.hex, ship.position));
-          if (!cell?.hasPort || !cell.market) return INVALID_MOVE;
+          const port = findAccessiblePort(ship.position, G.cells);
+          if (!port?.hasPort || !port.market) return INVALID_MOVE;
           if (!canBuyUpgrade(ship, upgradeId)) return INVALID_MOVE;
           applyUpgrade(ship, upgradeId);
         },
 
         repair: ({ G, ctx }, category: DamageCategory, points: number) => {
           const ship = G.ships[ctx.currentPlayer];
-          const cell = G.cells.find((c) => hexEquals(c.hex, ship.position));
-          if (!cell?.hasPort || !cell.market) return INVALID_MOVE;
+          const port = findAccessiblePort(ship.position, G.cells);
+          if (!port?.hasPort || !port.market) return INVALID_MOVE;
           if (points <= 0) return INVALID_MOVE;
           if (!canRepair(ship, category)) return INVALID_MOVE;
           applyRepair(ship, category, points);
@@ -354,8 +402,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
         buyShip: ({ G, ctx }, newClass: ShipClass) => {
           const ship = G.ships[ctx.currentPlayer];
-          const cell = G.cells.find((c) => hexEquals(c.hex, ship.position));
-          if (!cell?.hasPort || !cell.hasShipyard) return INVALID_MOVE;
+          const port = findAccessiblePort(ship.position, G.cells);
+          if (!port?.hasPort || !port.hasShipyard) return INVALID_MOVE;
           if (
             !(SHIP_CLASSES as readonly string[]).includes(newClass)
           )
@@ -388,6 +436,31 @@ export const Caribbean: Game<CaribbeanState> = {
               ship.scoutedShips.push(targetId);
             }
           }
+        },
+
+        listenForRumors: ({ G, ctx, random }) => {
+          const ship = G.ships[ctx.currentPlayer];
+          const port = findAccessiblePort(ship.position, G.cells);
+          if (!port?.hasPort || !port.portName) return INVALID_MOVE;
+          if (!canAffordTavern(ship.gold)) return INVALID_MOVE;
+          if (ship.activeMission) return INVALID_MOVE; // Already have a mission
+
+          // Pay tavern cost
+          ship.gold -= getTavernCost();
+
+          // Generate and assign a mission
+          const mission = generateMission(port.portName, G, random.Number);
+          if (mission) {
+            ship.activeMission = mission;
+          }
+        },
+
+        abandonMission: ({ G, ctx }) => {
+          const ship = G.ships[ctx.currentPlayer];
+          if (!ship.activeMission) return INVALID_MOVE;
+
+          // Simply clear the mission (no penalty for now)
+          ship.activeMission = undefined;
         },
 
         attackShip: ({ G, ctx, events }, targetId: string) => {
@@ -704,6 +777,11 @@ export const Caribbean: Game<CaribbeanState> = {
             const defenderUpgrades = isNPC ? [] : (defender as typeof attacker).upgrades;
             const damage = calculateDamage(G.combat.defenderHits, defenderUpgrades);
             applyDamage(attacker, damage);
+
+            // Fail escort mission if attacker took damage
+            if (attacker.activeMission) {
+              failEscortMission(attacker.activeMission);
+            }
           }
 
           // Check for sunk/derelict
@@ -726,6 +804,15 @@ export const Caribbean: Game<CaribbeanState> = {
 
               // Award combat glory for sinking worthy targets (flotillas)
               awardCombatGlory(attacker, npc);
+
+              // Check assassination mission completion
+              if (attacker.activeMission &&
+                  checkAssassinationMission(attacker.activeMission, G.combat.defenderId, npc)) {
+                attacker.gold += attacker.activeMission.reward.gold;
+                attacker.score += attacker.activeMission.reward.glory;
+                completeMission(attacker.activeMission);
+                attacker.activeMission = undefined;
+              }
 
               const loot = createLootFromNPC(npc);
               G.floatingLoot.push(loot);

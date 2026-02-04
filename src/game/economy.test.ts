@@ -37,6 +37,10 @@ function makeShip(overrides: Partial<ShipState> = {}): ShipState {
     maxCargo: DEFAULT_MAX_CARGO,
     upgrades: [],
     damage: { hull: 0, crew: 0, masts: 0 },
+    bounties: { England: 0, France: 0, Spain: 0, Netherlands: 0 },
+    score: 0,
+    stashedGold: 0,
+    scoutedShips: [],
     ...overrides,
   };
 }
@@ -557,10 +561,11 @@ const TEST_MARKET: PortMarket = {
   },
 };
 
-/** Set up a small map where player 0 starts at a port. */
+/** Set up a small map where player 0 starts at a port's docking hex. */
 function setupAtPort() {
+  // Port is at (0,0) island, ships dock at (1,0) water
   const cells: MapCell[] = [
-    { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET },
+    { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
     { hex: hex(1, 0), terrain: "water", hasPort: false },
     { hex: hex(0, 1), terrain: "water", hasPort: false },
     { hex: hex(-1, 1), terrain: "water", hasPort: false },
@@ -574,8 +579,8 @@ function setupAtPort() {
     setup: () => ({
       cells,
       ships: {
-        "0": createShipState(hex(0, 0)),
-        "1": createShipState(hex(1, -1)),
+        "0": createShipState(hex(1, 0)), // At docking hex
+        "1": createShipState(hex(0, -1)),
       },
       mapSize: "small" as MapSizeId,
       captainDeck: [],
@@ -732,10 +737,10 @@ describe("trade move", () => {
       client.moves.trade("Wood", 1, "BUY");
       // Sell it back (move 2)
       client.moves.trade("Wood", 1, "SELL");
-      // Move ship to adjacent water hex (move 3)
-      client.moves.moveShip(1, 0);
+      // Move ship to adjacent water hex (move 3) - ship is at (1,0), move to (0,1)
+      client.moves.moveShip(0, 1);
       const { G, ctx } = client.getState()!;
-      expect(G.ships["0"].position).toEqual(hex(1, 0));
+      expect(G.ships["0"].position).toEqual(hex(0, 1));
       expect(ctx.currentPlayer).toBe("1"); // turn auto-ended
     });
   });

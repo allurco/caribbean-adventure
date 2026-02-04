@@ -34,6 +34,7 @@ export interface ShipStats {
   crew: { current: number; max: number };
   hull: { current: number; max: number };
   cargo: number;
+  shallowDraft: boolean;
 }
 
 export interface DamageState {
@@ -72,7 +73,8 @@ export interface ShipState {
   gold: number;
   maxCargo: number;
   captain?: Captain;
-  homePortHex?: Hex;
+  homePortHex?: Hex; // The port hex (island) - for display/scoring
+  homeDockingHex?: Hex; // The docking hex (water) - where ship sits when "at home"
   shipClass?: ShipClass;
   stats?: ShipStats;
   upgrades: string[];
@@ -82,6 +84,7 @@ export interface ShipState {
   score: number;
   stashedGold: number;
   scoutedShips: string[]; // IDs of ships this player has scouted
+  activeMission?: Mission; // Current active mission from tavern
 }
 
 export type CombatAction = "fire" | "board" | "flee";
@@ -114,6 +117,30 @@ export interface FloatingLoot {
 export type AIBehavior = "MERCHANT_ROUTE" | "HUNTER";
 export type NPCRole = "MERCHANT" | "FLOTILLA";
 
+// Mission system types
+export const MISSION_TYPES = ["DELIVERY", "ASSASSINATION", "ESCORT"] as const;
+export type MissionType = (typeof MISSION_TYPES)[number];
+
+export type MissionStatus = "ACTIVE" | "COMPLETED" | "FAILED";
+
+export interface MissionReward {
+  gold: number;
+  glory: number;
+}
+
+export interface Mission {
+  id: string;
+  title: string;
+  description: string;
+  type: MissionType;
+  targetPortName?: string; // For DELIVERY and ESCORT missions
+  targetNpcId?: string; // For ASSASSINATION missions
+  reward: MissionReward;
+  status: MissionStatus;
+  // For ESCORT missions: track if player took damage
+  noDamageTaken?: boolean;
+}
+
 export interface NPCShip {
   id: string;
   position: Hex;
@@ -133,6 +160,15 @@ export interface NPCShip {
   huntingTargetId: string | null;
 }
 
+export type DecorationType = "tree" | "rock" | "fort" | "pier";
+
+export interface Decoration {
+  type: DecorationType;
+  position: [number, number, number];
+  rotation: number;
+  scale?: number;
+}
+
 export interface MapCell {
   hex: Hex;
   terrain: Terrain;
@@ -141,6 +177,8 @@ export interface MapCell {
   nation?: PortNation;
   portName?: string;
   hasShipyard?: boolean;
+  decorations?: Decoration[];
+  dockingHex?: Hex; // Water hex where ships dock to access this port
 }
 
 export interface CaribbeanState {

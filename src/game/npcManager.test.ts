@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { hex, hexEquals, hexDistance } from "./hex";
+import type { Hex } from "./hex";
 import { generateMap } from "./mapGenerator";
-import type { MapCell, CaribbeanState, NPCShip } from "./types";
+import type { MapCell, CaribbeanState, NPCShip, Nation } from "./types";
 import type { MapSizeId } from "./mapConfig";
 import {
   spawnMerchant,
@@ -105,7 +106,7 @@ describe("findPath", () => {
     const playerShips = {
       "0": { position: hex(1, 0) },
     };
-    const path = findPath(hex(0, 0), hex(2, 0), cells, playerShips as Record<string, { position: typeof hex }>, {});
+    const path = findPath(hex(0, 0), hex(2, 0), cells, playerShips as Record<string, { position: Hex }>, {});
     // Should not go through player position
     expect(path.some((h) => hexEquals(h, hex(1, 0)))).toBe(false);
   });
@@ -131,7 +132,7 @@ describe("createNPCShip", () => {
       "npc-1",
       spawnPort.hex,
       destPort.hex,
-      spawnPort.nation!,
+      spawnPort.nation as Nation,
       "Flute",
       Math.random
     );
@@ -156,7 +157,7 @@ describe("createNPCShip", () => {
       "npc-1",
       spawnPort.hex,
       destPort.hex,
-      spawnPort.nation!,
+      spawnPort.nation as Nation,
       "Galleon",
       Math.random
     );
@@ -389,9 +390,12 @@ describe("integration: full merchant lifecycle", () => {
     const cells = generateMap(3, 42); // seeded for reproducibility
     const G = createTestState(cells);
 
-    const ports = getPortCells(cells);
-    if (ports.length < 2) {
-      // Skip test if not enough ports generated
+    // Need at least 2 non-Pirate ports for merchant spawning
+    const nonPiratePorts = getPortCells(cells).filter(
+      (p) => p.nation && p.nation !== "Pirate"
+    );
+    if (nonPiratePorts.length < 2) {
+      // Skip test if not enough non-Pirate ports generated
       return;
     }
 

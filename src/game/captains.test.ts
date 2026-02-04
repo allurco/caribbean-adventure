@@ -106,30 +106,44 @@ describe("dealHands", () => {
 });
 
 describe("findHomePort", () => {
+  // Ships now dock at water hexes to access ports
+  const dockingHexEngland: MapCell = {
+    hex: hex(0, 0),
+    terrain: "water",
+    hasPort: false,
+  };
   const portEngland: MapCell = {
     hex: hex(1, 0),
     terrain: "island",
     hasPort: true,
     nation: "England",
+    dockingHex: hex(0, 0),
+  };
+  const dockingHexFrance: MapCell = {
+    hex: hex(1, 1),
+    terrain: "water",
+    hasPort: false,
   };
   const portFrance: MapCell = {
     hex: hex(2, 0),
     terrain: "island",
     hasPort: true,
     nation: "France",
+    dockingHex: hex(1, 1),
+  };
+  const dockingHexEngland2: MapCell = {
+    hex: hex(2, 1),
+    terrain: "water",
+    hasPort: false,
   };
   const portEngland2: MapCell = {
     hex: hex(3, 0),
     terrain: "island",
     hasPort: true,
     nation: "England",
+    dockingHex: hex(2, 1),
   };
-  const waterCell: MapCell = {
-    hex: hex(0, 0),
-    terrain: "water",
-    hasPort: false,
-  };
-  const cells = [waterCell, portEngland, portFrance, portEngland2];
+  const cells = [dockingHexEngland, portEngland, dockingHexFrance, portFrance, dockingHexEngland2, portEngland2];
 
   it("returns a port matching the given nation", () => {
     const result = findHomePort("England", cells, []);
@@ -137,9 +151,11 @@ describe("findHomePort", () => {
     expect(result!.nation).toBe("England");
   });
 
-  it("skips ports occupied by other ships", () => {
-    const result = findHomePort("England", cells, [hex(1, 0)]);
+  it("skips ports with occupied docking hexes", () => {
+    // Occupy the first England port's docking hex (0,0)
+    const result = findHomePort("England", cells, [hex(0, 0)]);
     expect(result).toBeDefined();
+    // Should return the second England port
     expect(hexEquals(result!.hex, hex(3, 0))).toBe(true);
   });
 
@@ -149,11 +165,12 @@ describe("findHomePort", () => {
     expect(result!.hasPort).toBe(true);
   });
 
-  it("returns undefined if all ports are occupied", () => {
+  it("returns undefined if all ports' docking hexes are occupied", () => {
+    // Occupy all docking hexes
     const result = findHomePort("England", cells, [
-      hex(1, 0),
-      hex(2, 0),
-      hex(3, 0),
+      hex(0, 0),   // England docking hex
+      hex(1, 1),   // France docking hex
+      hex(2, 1),   // England 2 docking hex
     ]);
     expect(result).toBeUndefined();
   });
@@ -165,12 +182,13 @@ describe("findHomePort", () => {
 
 function makeDraftCells(): MapCell[] {
   return [
-    { hex: hex(0, 0), terrain: "water", hasPort: false },
+    { hex: hex(0, 0), terrain: "water", hasPort: false }, // England docking hex
     {
       hex: hex(1, 0),
       terrain: "island",
       hasPort: true,
       nation: "England",
+      dockingHex: hex(0, 0),
       market: {
         prices: {
           Wood: { buy: 8, sell: 6 },
@@ -180,11 +198,13 @@ function makeDraftCells(): MapCell[] {
         },
       },
     },
+    { hex: hex(2, 1), terrain: "water", hasPort: false }, // France docking hex
     {
       hex: hex(2, 0),
       terrain: "island",
       hasPort: true,
       nation: "France",
+      dockingHex: hex(2, 1),
       market: {
         prices: {
           Wood: { buy: 7, sell: 5 },
@@ -194,11 +214,13 @@ function makeDraftCells(): MapCell[] {
         },
       },
     },
+    { hex: hex(3, 1), terrain: "water", hasPort: false }, // Spain docking hex
     {
       hex: hex(3, 0),
       terrain: "island",
       hasPort: true,
       nation: "Spain",
+      dockingHex: hex(3, 1),
       market: {
         prices: {
           Wood: { buy: 9, sell: 7 },
@@ -278,12 +300,13 @@ describe("pickCaptain move", () => {
     expect(G.ships["0"].captain).toEqual(CAPTAIN_A);
   });
 
-  it("spawns the ship at a port matching the captain's nation", () => {
+  it("spawns the ship at the docking hex of a port matching the captain's nation", () => {
     const client = setupDraft();
     client.moves.pickCaptain(0, "Sloop"); // England captain
     const { G } = client.getState()!;
-    // England port is at hex(1, 0)
-    expect(hexEquals(G.ships["0"].position, hex(1, 0))).toBe(true);
+    // England port is at hex(1, 0), docking hex is (0, 0)
+    expect(hexEquals(G.ships["0"].position, hex(0, 0))).toBe(true);
+    // homePortHex refers to the port itself, not the docking hex
     expect(hexEquals(G.ships["0"].homePortHex!, hex(1, 0))).toBe(true);
   });
 
@@ -336,24 +359,22 @@ describe("draft → main phase transition", () => {
 
   it("players can use moveShip in main phase after draft", () => {
     const client = setupDraft();
-    client.moves.pickCaptain(0, "Sloop"); // P0 → England port hex(1,0)
-    client.moves.pickCaptain(0, "Flute"); // P1 → Spain port hex(3,0)
+    client.moves.pickCaptain(0, "Sloop"); // P0 → England port, docking at (0,0)
+    client.moves.pickCaptain(0, "Flute"); // P1 → Spain port, docking at (3,1)
     // Now in main phase. P0's turn.
     expect(client.getState()!.ctx.phase).toBe("main");
-    // P0 at hex(1,0), move to hex(0,1) if adjacent... actually let's check adjacency
-    // hex(1,0) neighbors: (2,0),(2,-1),(1,-1),(0,0),(0,1),(1,1) — but not all are on the map
-    // hex(0,0) is water and adjacent to hex(1,0)
-    client.moves.moveShip(0, 0);
+    // P0 at docking hex(0,0), move to adjacent water hex(0,1)
+    client.moves.moveShip(0, 1);
     const { G } = client.getState()!;
-    expect(hexEquals(G.ships["0"].position, hex(0, 0))).toBe(true);
+    expect(hexEquals(G.ships["0"].position, hex(0, 1))).toBe(true);
   });
 
-  it("spawns ships at different ports when nations differ", () => {
+  it("spawns ships at different ports' docking hexes when nations differ", () => {
     const client = setupDraft();
-    client.moves.pickCaptain(0, "Sloop"); // P0 → England → hex(1,0)
-    client.moves.pickCaptain(0, "Flute"); // P1 → Spain → hex(3,0)
+    client.moves.pickCaptain(0, "Sloop"); // P0 → England → docking at (0,0)
+    client.moves.pickCaptain(0, "Flute"); // P1 → Spain → docking at (3,1)
     const { G } = client.getState()!;
-    expect(hexEquals(G.ships["0"].position, hex(1, 0))).toBe(true);
-    expect(hexEquals(G.ships["1"].position, hex(3, 0))).toBe(true);
+    expect(hexEquals(G.ships["0"].position, hex(0, 0))).toBe(true);
+    expect(hexEquals(G.ships["1"].position, hex(3, 1))).toBe(true);
   });
 });

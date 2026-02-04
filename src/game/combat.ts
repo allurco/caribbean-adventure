@@ -76,7 +76,7 @@ export function calculateDamage(
   return damage;
 }
 
-export function applyDamage(ship: ShipState, damage: DamageState): void {
+export function applyDamage(ship: ShipState | NPCShip, damage: DamageState): void {
   ship.damage.hull += damage.hull;
   ship.damage.crew += damage.crew;
   ship.damage.masts += damage.masts;

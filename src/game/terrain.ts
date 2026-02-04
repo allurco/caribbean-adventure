@@ -1,3 +1,3 @@
-export const TERRAINS = ["water", "island"] as const;
+export const TERRAINS = ["water", "island", "reef"] as const;
 
 export type Terrain = (typeof TERRAINS)[number];

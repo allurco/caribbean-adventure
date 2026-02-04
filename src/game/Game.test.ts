@@ -149,12 +149,15 @@ describe("moveShip port logic", () => {
     expect(G.ships["0"].position.r).toBe(0);
   });
 
-  it("allows a move to an island with a port", () => {
+  it("rejects a move to an island with a port (ships dock from water)", () => {
+    // With the new docking mechanic, ships stay on water and access ports
+    // via their docking hex - they can never move onto island tiles
     const client = setupWithIslands();
     client.moves.moveShip(0, 1);
     const { G } = client.getState()!;
+    // Ship stays at original position
     expect(G.ships["0"].position.q).toBe(0);
-    expect(G.ships["0"].position.r).toBe(1);
+    expect(G.ships["0"].position.r).toBe(0);
   });
 });
 

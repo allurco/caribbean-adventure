@@ -3,11 +3,11 @@ import { WIN_SCORE, GOLD_PER_GLORY } from "./types";
 import { hexEquals } from "./hex";
 
 /**
- * Check if a ship is at its home port
+ * Check if a ship is at its home port (at the docking hex)
  */
 export function isAtHomePort(ship: ShipState): boolean {
-  if (!ship.homePortHex) return false;
-  return hexEquals(ship.position, ship.homePortHex);
+  if (!ship.homeDockingHex) return false;
+  return hexEquals(ship.position, ship.homeDockingHex);
 }
 
 /**

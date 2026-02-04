@@ -25,6 +25,9 @@ export interface CameraConfig {
   offset: number;
   minDistance: number;
   maxDistance: number;
+  // Orthographic camera settings
+  frustumSize: number;
+  isoDistance: number;
 }
 
 /**
@@ -41,5 +44,10 @@ export function computeCameraConfig(radius: number): CameraConfig {
   const minDistance = worldDiameter * 0.4;
   const maxDistance = worldDiameter * 1.8;
 
-  return { height, offset, minDistance, maxDistance };
+  // Orthographic frustum size (half-height of view)
+  const frustumSize = worldDiameter * 0.6;
+  // Distance for isometric camera position
+  const isoDistance = worldDiameter * 0.8;
+
+  return { height, offset, minDistance, maxDistance, frustumSize, isoDistance };
 }

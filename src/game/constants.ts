@@ -8,6 +8,7 @@ export const SHIP_SPECS: Record<ShipClass, ShipStats> = {
     crew: { current: 2, max: 2 },
     hull: { current: 2, max: 2 },
     cargo: 2,
+    shallowDraft: true,
   },
   Flute: {
     maneuverability: 2,
@@ -16,6 +17,7 @@ export const SHIP_SPECS: Record<ShipClass, ShipStats> = {
     crew: { current: 3, max: 3 },
     hull: { current: 4, max: 4 },
     cargo: 4,
+    shallowDraft: true,
   },
   Frigate: {
     maneuverability: 3,
@@ -24,6 +26,7 @@ export const SHIP_SPECS: Record<ShipClass, ShipStats> = {
     crew: { current: 4, max: 4 },
     hull: { current: 5, max: 5 },
     cargo: 3,
+    shallowDraft: false,
   },
   Galleon: {
     maneuverability: 1,
@@ -32,6 +35,7 @@ export const SHIP_SPECS: Record<ShipClass, ShipStats> = {
     crew: { current: 5, max: 5 },
     hull: { current: 7, max: 7 },
     cargo: 6,
+    shallowDraft: false,
   },
 };
 

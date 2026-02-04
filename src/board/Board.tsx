@@ -1,6 +1,10 @@
 import { useMemo, useState, useEffect, useRef } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
+import { Vector3, PCFSoftShadowMap } from "three";
+import type { MapControls as MapControlsType } from "three-stdlib";
+import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
+import { ToneMappingMode } from "postprocessing";
 import type { BoardProps } from "boardgame.io/react";
 import type { CaribbeanState } from "../game/Game";
 import { getMaxMoves } from "../game/Game";
@@ -8,12 +12,12 @@ import type { Terrain } from "../game/terrain";
 import type { Hex } from "../game/hex";
 import type { ShipState, ShipClass, NPCShip, MapCell } from "../game/types";
 import { hexToWorld, hexEquals } from "../game/hex";
-import { validMoveTargets } from "../game/moves";
+import { validMoveTargets, findAccessiblePort } from "../game/moves";
 import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
 import { getValidScoutTargets } from "../game/scouting";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
-import type { CameraConfig } from "../game/mapConfig";
 import { HexGrid } from "./HexGrid";
+import { Ocean } from "./visuals/Ocean";
 import { Ship, SinkingShip } from "./Ship";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
@@ -25,6 +29,10 @@ import { HudShipCard } from "./HudShipCard";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
 import { GameOverScreen } from "./GameOverScreen";
+import { DockingAnimation } from "./DockingAnimation";
+import { TurnChangeAnimation } from "./TurnChangeAnimation";
+import { MissionCompleteToast } from "./MissionCompleteToast";
+import type { Mission } from "../game/types";
 
 interface SinkingShipData {
   id: string;
@@ -36,6 +44,7 @@ interface SinkingShipData {
 const TERRAIN_COLORS: Record<Terrain, string> = {
   water: "#1a3a5c",
   island: "#2a7a3a",
+  reef: "#20b2aa",
 };
 
 const PORT_COLOR = "#c0a060";
@@ -52,6 +61,7 @@ function Scene({
   G,
   currentPlayer,
   cam,
+  gridSize,
   movesRemaining,
   attackMode,
   spyglassMode,
@@ -62,6 +72,7 @@ function Scene({
   hoveredShipId,
   hoveredPort,
   scoutedPlayerIds,
+  focusPosition,
   onMoveShip,
   onHexClick,
   onSinkingComplete,
@@ -71,7 +82,8 @@ function Scene({
 }: {
   G: CaribbeanState;
   currentPlayer: string;
-  cam: CameraConfig;
+  cam: { isoDistance: number };
+  gridSize: number;
   movesRemaining: number;
   attackMode: boolean;
   spyglassMode: boolean;
@@ -82,6 +94,7 @@ function Scene({
   hoveredShipId: string | null;
   hoveredPort: MapCell | null;
   scoutedPlayerIds: string[];
+  focusPosition: [number, number, number] | null;
   onMoveShip: (q: number, r: number) => void;
   onHexClick: (hex: Hex) => void;
   onSinkingComplete: (id: string) => void;
@@ -90,6 +103,41 @@ function Scene({
   onPortHover: (cell: MapCell | null) => void;
 }) {
   const currentShipState = G.ships[currentPlayer];
+  const controlsRef = useRef<MapControlsType>(null);
+  const { camera } = useThree();
+  const targetPosition = useRef(new Vector3());
+  const isAnimating = useRef(false);
+
+  // Animate camera to focus position when it changes
+  useEffect(() => {
+    if (focusPosition && controlsRef.current) {
+      targetPosition.current.set(focusPosition[0], 0, focusPosition[2]);
+      isAnimating.current = true;
+    }
+  }, [focusPosition]);
+
+  // Smooth camera animation
+  useFrame(() => {
+    if (isAnimating.current && controlsRef.current) {
+      const controls = controlsRef.current;
+      const target = controls.target;
+
+      // Lerp towards target
+      target.lerp(targetPosition.current, 0.08);
+
+      // Also move camera position to follow
+      const offset = new Vector3().subVectors(camera.position, target);
+      const newCamPos = targetPosition.current.clone().add(offset);
+      camera.position.lerp(newCamPos, 0.08);
+
+      // Stop animating when close enough
+      if (target.distanceTo(targetPosition.current) < 0.1) {
+        isAnimating.current = false;
+      }
+
+      controls.update();
+    }
+  });
 
   // Collect all blocking positions: other players + NPCs
   const otherShipPositions = useMemo(
@@ -101,17 +149,47 @@ function Scene({
     ],
     [G.ships, currentPlayer, npcs]
   );
-  const targets = useMemo(
-    () => currentShipState
-      ? validMoveTargets(currentShipState.position, G.cells, otherShipPositions)
-      : [],
-    [currentShipState, G.cells, otherShipPositions]
-  );
+  const targets = useMemo(() => {
+    if (!currentShipState) return [];
+    const shallowDraft = currentShipState.stats?.shallowDraft ?? true;
+    return validMoveTargets(
+      currentShipState.position,
+      G.cells,
+      otherShipPositions,
+      shallowDraft
+    );
+  }, [currentShipState, G.cells, otherShipPositions]);
 
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[5, 10, 5]} intensity={1} />
+      {/* Dark blue background */}
+      <color attach="background" args={["#0a1929"]} />
+
+      <ambientLight intensity={0.35} />
+
+      {/* Main sun light with shadows - angled for isometric view */}
+      <directionalLight
+        position={[50, 60, 20]}
+        intensity={2.2}
+        castShadow
+        shadow-mapSize={[8192, 8192]}
+        shadow-camera-far={150}
+        shadow-camera-left={-25}
+        shadow-camera-right={25}
+        shadow-camera-top={25}
+        shadow-camera-bottom={-25}
+        shadow-bias={-0.0001}
+        shadow-normalBias={0.02}
+      />
+
+      {/* Fill light for softer shadows */}
+      <directionalLight
+        position={[-40, 30, 40]}
+        intensity={0.3}
+      />
+
+      {/* Seascape water shader */}
+      <Ocean size={gridSize} />
 
       <HexGrid
         cells={G.cells}
@@ -202,11 +280,23 @@ function Scene({
       )}
 
       <MapControls
+        ref={controlsRef}
         makeDefault
         enableRotate={false}
-        minDistance={cam.minDistance}
-        maxDistance={cam.maxDistance}
+        minDistance={cam.isoDistance * 0.15}
+        maxDistance={28}
       />
+
+      {/* Post-processing effects */}
+      <EffectComposer>
+        <Bloom
+          intensity={0.3}
+          luminanceThreshold={0.8}
+          luminanceSmoothing={0.9}
+        />
+        <Vignette darkness={0.4} offset={0.3} />
+        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+      </EffectComposer>
     </>
   );
 }
@@ -219,9 +309,22 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   const [hoveredShipId, setHoveredShipId] = useState<string | null>(null);
   const [hoveredPort, setHoveredPort] = useState<MapCell | null>(null);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
+  const [dockingPort, setDockingPort] = useState<MapCell | null>(null);
+  const [showTurnChange, setShowTurnChange] = useState(false);
+  const [completedMission, setCompletedMission] = useState<Mission | null>(null);
+  const [cameraFocusPosition, setCameraFocusPosition] = useState<[number, number, number] | null>(null);
 
   const currentPlayer = ctx.currentPlayer;
   const currentShipState = G.ships[currentPlayer];
+
+  // Track previous player to detect turn changes
+  const prevPlayerRef = useRef<string | null>(null);
+
+  // Track previous mission to detect completion (includes player ID to avoid false triggers on turn change)
+  const prevMissionRef = useRef<{ mission: Mission | undefined; playerId: string } | null>(null);
+
+  // Track previous port to detect new docking
+  const prevPortRef = useRef<string | null>(null);
 
   // Detect ships that were removed (sunk)
   // Use a ref to track previous ship IDs without causing re-renders
@@ -261,6 +364,73 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
     prevShipIdsRef.current = currentIdSet;
     prevShipSnapshotsRef.current = G.ships;
   }, [G.ships]);
+
+  // Detect when current player docks at a new port
+  useEffect(() => {
+    if (!currentShipState || ctx.phase === "draft") return;
+
+    const accessiblePort = findAccessiblePort(currentShipState.position, G.cells);
+    const currentPortId = accessiblePort?.portName ?? null;
+    const prevPortId = prevPortRef.current;
+
+    // If we just arrived at a new port (different from previous)
+    if (currentPortId && currentPortId !== prevPortId && accessiblePort) {
+      // Defer to avoid synchronous setState in effect
+      const timer = setTimeout(() => setDockingPort(accessiblePort), 0);
+      prevPortRef.current = currentPortId;
+      return () => clearTimeout(timer);
+    }
+
+    prevPortRef.current = currentPortId;
+  }, [currentShipState?.position, G.cells, ctx.phase, currentShipState]);
+
+  // Detect turn changes
+  useEffect(() => {
+    if (ctx.phase === "draft") return;
+
+    const prevPlayer = prevPlayerRef.current;
+
+    // If player changed and we have a previous player (not first load)
+    if (currentPlayer !== prevPlayer && prevPlayer !== null) {
+      const timer = setTimeout(() => {
+        setShowTurnChange(true);
+        // Focus camera on new player's ship
+        if (currentShipState) {
+          const worldPos = hexToWorld(currentShipState.position);
+          setCameraFocusPosition(worldPos);
+        }
+      }, 0);
+      prevPlayerRef.current = currentPlayer;
+      return () => clearTimeout(timer);
+    }
+
+    prevPlayerRef.current = currentPlayer;
+  }, [currentPlayer, ctx.phase, currentShipState]);
+
+  // Detect mission completion
+  useEffect(() => {
+    const prev = prevMissionRef.current;
+    const currentMission = currentShipState?.activeMission;
+
+    // Only detect completion if we're still the same player
+    // This prevents false triggers when turn changes to a different player
+    if (
+      prev &&
+      prev.playerId === currentPlayer &&
+      prev.mission &&
+      prev.mission.status === "ACTIVE" &&
+      !currentMission
+    ) {
+      const completedMissionData = prev.mission;
+      const timer = setTimeout(() => {
+        setCompletedMission({ ...completedMissionData, status: "COMPLETED" });
+      }, 0);
+      prevMissionRef.current = { mission: currentMission, playerId: currentPlayer };
+      return () => clearTimeout(timer);
+    }
+
+    prevMissionRef.current = { mission: currentMission, playerId: currentPlayer };
+  }, [currentShipState?.activeMission, currentPlayer]);
 
   const handleSinkingComplete = (id: string) => {
     setSinkingShips((prev) => prev.filter((s) => s.id !== id));
@@ -315,9 +485,6 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   const cam = computeCameraConfig(preset.radius);
   const maxMoves = currentShipState ? getMaxMoves(currentShipState) : 0;
   const movesRemaining = maxMoves - (ctx.numMoves ?? 0);
-  const currentCell = currentShipState
-    ? G.cells.find((c) => hexEquals(c.hex, currentShipState.position))
-    : undefined;
 
   const inCombat = ctx.phase === "combat" && G.combat;
 
@@ -364,17 +531,22 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   };
 
   return (
-    <div className="relative w-screen h-screen font-body">
+    <div className="relative w-screen h-screen font-body bg-[#0a1929]">
       <Canvas
+        shadows={{ type: PCFSoftShadowMap }}
         camera={{
-          position: [0, cam.height, cam.offset],
-          fov: 50,
+          position: [cam.isoDistance * 0.4, cam.isoDistance * 0.6, cam.isoDistance * 0.4],
+          fov: 45,
+          near: 0.1,
+          far: 1000,
         }}
+        style={{ background: '#0a1929' }}
       >
         <Scene
           G={G}
           currentPlayer={currentPlayer}
           cam={cam}
+          gridSize={cam.isoDistance * 2}
           movesRemaining={movesRemaining}
           attackMode={attackMode}
           spyglassMode={spyglassMode}
@@ -385,6 +557,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
           hoveredShipId={hoveredShipId}
           hoveredPort={hoveredPort}
           scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
+          focusPosition={cameraFocusPosition}
           onMoveShip={(q, r) => props.moves.moveShip(q, r)}
           onHexClick={spyglassMode ? handleHexClickForSpyglass : handleHexClickForAttack}
           onSinkingComplete={handleSinkingComplete}
@@ -495,28 +668,38 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
         </div>
       )}
 
-      {/* Right: Port panel - only in main phase */}
-      {!inCombat && currentCell?.hasPort && currentCell.market && currentShipState && (
-        <PortPanel
-          ship={currentShipState}
-          market={currentCell.market}
-          portNation={currentCell.nation}
-          portName={currentCell.portName}
-          hasShipyard={currentCell.hasShipyard}
-          onTrade={(good, amount, action) =>
-            props.moves.trade(good, amount, action)
-          }
-          onBuyUpgrade={(upgradeId) =>
-            props.moves.buyUpgrade(upgradeId)
-          }
-          onRepair={(category, points) =>
-            props.moves.repair(category, points)
-          }
-          onBuyShip={(newClass) =>
-            props.moves.buyShip(newClass)
-          }
-        />
-      )}
+      {/* Right: Port panel - only in main phase when docked at a port */}
+      {!inCombat && currentShipState && (() => {
+        const accessiblePort = findAccessiblePort(currentShipState.position, G.cells);
+        if (!accessiblePort?.market) return null;
+        return (
+          <PortPanel
+            ship={currentShipState}
+            market={accessiblePort.market}
+            portNation={accessiblePort.nation}
+            portName={accessiblePort.portName}
+            hasShipyard={accessiblePort.hasShipyard}
+            onTrade={(good, amount, action) =>
+              props.moves.trade(good, amount, action)
+            }
+            onBuyUpgrade={(upgradeId) =>
+              props.moves.buyUpgrade(upgradeId)
+            }
+            onRepair={(category, points) =>
+              props.moves.repair(category, points)
+            }
+            onBuyShip={(newClass) =>
+              props.moves.buyShip(newClass)
+            }
+            onListenForRumors={() =>
+              props.moves.listenForRumors()
+            }
+            onAbandonMission={() =>
+              props.moves.abandonMission()
+            }
+          />
+        );
+      })()}
 
       {/* Ship Details Panel */}
       {showDetailsPanel && currentShipState && (
@@ -524,6 +707,35 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
           ship={currentShipState}
           onClose={() => setShowDetailsPanel(false)}
           onStashGold={(amount) => props.moves.stashGold(amount)}
+        />
+      )}
+
+      {/* Mission Complete Toast */}
+      {completedMission && (
+        <MissionCompleteToast
+          title={completedMission.title}
+          reward={completedMission.reward}
+          onComplete={() => setCompletedMission(null)}
+        />
+      )}
+
+      {/* Turn Change Animation */}
+      {showTurnChange && currentShipState && (
+        <TurnChangeAnimation
+          playerIndex={currentPlayer}
+          playerColor={PLAYER_COLORS[currentPlayer] ?? "#888888"}
+          captain={currentShipState.captain}
+          onComplete={() => setShowTurnChange(false)}
+        />
+      )}
+
+      {/* Docking Animation */}
+      {dockingPort && dockingPort.portName && (
+        <DockingAnimation
+          portName={dockingPort.portName}
+          nation={dockingPort.nation}
+          market={dockingPort.market}
+          onComplete={() => setDockingPort(null)}
         />
       )}
 

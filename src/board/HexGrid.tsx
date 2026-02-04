@@ -7,11 +7,16 @@ import {
   InstancedMesh,
   Object3D,
   CylinderGeometry,
+  BufferGeometry,
+  Float32BufferAttribute,
+  LineBasicMaterial,
+  LineLoop,
 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
+import { Text } from "@react-three/drei";
 import type { Hex } from "../game/hex";
 import { hexToWorld, hexEquals } from "../game/hex";
-import type { MapCell } from "../game/mapGenerator";
+import type { MapCell, Decoration } from "../game/types";
 import type { Terrain } from "../game/terrain";
 
 const TILE_SIZE = 1;
@@ -19,6 +24,8 @@ const HEX_DEPTH = 0.15;
 const HIGHLIGHT_DEPTH = 0.02;
 const PORT_MARKER_RADIUS = 0.35;
 const PORT_MARKER_HEIGHT = 0.3;
+const WATER_HEX_OUTLINE_COLOR = "#ffffff";
+const WATER_HEX_OUTLINE_OPACITY = 0.15;
 
 const COLOR_HOVERED = "#facc15";
 const COLOR_ATTACK_TARGET = "#ef4444";
@@ -37,6 +44,25 @@ function createHexShape(size: number): Shape {
   shape.closePath();
   return shape;
 }
+
+// Create hex outline geometry for water hexes
+function createHexOutlineGeometry(size: number): BufferGeometry {
+  const vertices: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 3) * i;
+    vertices.push(size * Math.cos(angle), size * Math.sin(angle), 0);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+  return geometry;
+}
+
+const hexOutlineGeometry = createHexOutlineGeometry(TILE_SIZE * 0.95);
+const hexOutlineMaterial = new LineBasicMaterial({
+  color: WATER_HEX_OUTLINE_COLOR,
+  transparent: true,
+  opacity: WATER_HEX_OUTLINE_OPACITY,
+});
 
 const tileGeometry = new ExtrudeGeometry(createHexShape(TILE_SIZE), {
   depth: HEX_DEPTH,
@@ -59,6 +85,93 @@ const portMarkerGeometry = new CylinderGeometry(
 const tempObject = new Object3D();
 const tempColor = new Color();
 
+// Decoration mesh component for trees, rocks, and forts
+function DecorationMesh({ decoration }: { decoration: Decoration }) {
+  const [x, y, z] = decoration.position;
+
+  if (decoration.type === "tree") {
+    return (
+      <group position={[x, y, z]} rotation={[0, decoration.rotation, 0]}>
+        {/* Trunk */}
+        <mesh position={[0, 0.15, 0]} castShadow>
+          <cylinderGeometry args={[0.03, 0.05, 0.3, 6]} />
+          <meshStandardMaterial color="#8B4513" />
+        </mesh>
+        {/* Foliage */}
+        <mesh position={[0, 0.4, 0]} castShadow>
+          <coneGeometry args={[0.15, 0.4, 6]} />
+          <meshStandardMaterial color="#228B22" />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (decoration.type === "rock") {
+    return (
+      <mesh
+        position={[x, y + 0.05, z]}
+        rotation={[0, decoration.rotation, 0]}
+        scale={decoration.scale ?? 1}
+        castShadow
+      >
+        <dodecahedronGeometry args={[0.08]} />
+        <meshStandardMaterial color="#696969" />
+      </mesh>
+    );
+  }
+
+  if (decoration.type === "fort") {
+    return (
+      <mesh position={[x, y + 0.1, z]} rotation={[0, decoration.rotation, 0]} castShadow>
+        <boxGeometry args={[0.2, 0.2, 0.2]} />
+        <meshStandardMaterial color="#8B8682" />
+      </mesh>
+    );
+  }
+
+  if (decoration.type === "pier") {
+    // Pier extends from port hex into adjacent water hex (~1.7 units between hex centers)
+    const pierLength = 1.6;
+    const pierWidth = 0.3;
+    return (
+      <group position={[x, y, z]} rotation={[0, decoration.rotation, 0]}>
+        {/* Main pier deck - extends towards water */}
+        <mesh position={[0, 0.02, pierLength / 2]} castShadow>
+          <boxGeometry args={[pierWidth, 0.05, pierLength]} />
+          <meshStandardMaterial color="#8B4513" />
+        </mesh>
+        {/* Support posts along the pier */}
+        <mesh position={[-0.1, -0.08, 0.2]} castShadow>
+          <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
+          <meshStandardMaterial color="#654321" />
+        </mesh>
+        <mesh position={[0.1, -0.08, 0.2]} castShadow>
+          <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
+          <meshStandardMaterial color="#654321" />
+        </mesh>
+        <mesh position={[-0.1, -0.08, 0.8]}>
+          <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
+          <meshStandardMaterial color="#654321" />
+        </mesh>
+        <mesh position={[0.1, -0.08, 0.8]}>
+          <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
+          <meshStandardMaterial color="#654321" />
+        </mesh>
+        <mesh position={[-0.1, -0.08, 1.4]}>
+          <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
+          <meshStandardMaterial color="#654321" />
+        </mesh>
+        <mesh position={[0.1, -0.08, 1.4]}>
+          <cylinderGeometry args={[0.03, 0.03, 0.2, 6]} />
+          <meshStandardMaterial color="#654321" />
+        </mesh>
+      </group>
+    );
+  }
+
+  return null;
+}
+
 // Port marker component with its own hover handling
 function PortMarker({
   cell,
@@ -73,6 +186,7 @@ function PortMarker({
     <mesh
       position={[x, PORT_MARKER_HEIGHT / 2 + 0.01, z]}
       geometry={portMarkerGeometry}
+      castShadow
       onPointerEnter={(e) => {
         e.stopPropagation();
         onHover(cell);
@@ -87,6 +201,29 @@ function PortMarker({
         emissiveIntensity={0.6}
       />
     </mesh>
+  );
+}
+
+// Floating port name label
+function PortLabel({ cell }: { cell: MapCell }) {
+  const [x, , z] = hexToWorld(cell.hex);
+
+  if (!cell.portName) return null;
+
+  return (
+    <Text
+      position={[x, 0.6, z]}
+      rotation={[0, Math.PI / 4, 0]}
+      fontSize={0.4}
+      color="#fef3c7"
+      anchorX="center"
+      anchorY="bottom"
+      outlineWidth={0.02}
+      outlineColor="#1c1917"
+      raycast={() => null}
+    >
+      {cell.portName}
+    </Text>
   );
 }
 
@@ -111,45 +248,95 @@ export function HexGrid({
   onPortHover,
   interactive,
 }: HexGridProps) {
-  const terrainRef = useRef<InstancedMesh>(null!);
+  const landRef = useRef<InstancedMesh>(null!);
+  const waterRef = useRef<InstancedMesh>(null!);
   const [hoveredId, setHoveredId] = useState<number | null>(null);
+  const [hoveredMeshType, setHoveredMeshType] = useState<"land" | "water" | null>(null);
+
+  // Separate cells into water and land
+  const { waterCells, landCells, waterIndexMap, landIndexMap } = useMemo(() => {
+    const water: MapCell[] = [];
+    const land: MapCell[] = [];
+    const waterMap = new Map<number, number>(); // original index -> water index
+    const landMap = new Map<number, number>(); // original index -> land index
+
+    cells.forEach((cell, i) => {
+      if (cell.terrain === "water" || cell.terrain === "reef") {
+        waterMap.set(i, water.length);
+        water.push(cell);
+      } else {
+        landMap.set(i, land.length);
+        land.push(cell);
+      }
+    });
+
+    return { waterCells: water, landCells: land, waterIndexMap: waterMap, landIndexMap: landMap };
+  }, [cells]);
 
   // Get all port cells for rendering markers
   const portCells = useMemo(() => cells.filter((c) => c.hasPort), [cells]);
 
-  const targetIndices = useMemo(() => {
-    const set = new Set<number>();
+  // Build target indices for both meshes
+  const { targetWaterIndices, targetLandIndices, attackWaterIndices, attackLandIndices } = useMemo(() => {
+    const targetWater = new Set<number>();
+    const targetLand = new Set<number>();
+    const attackWater = new Set<number>();
+    const attackLand = new Set<number>();
+
     validTargets.forEach((t) => {
       const idx = cells.findIndex((c) => hexEquals(c.hex, t));
-      if (idx !== -1) set.add(idx);
+      if (idx !== -1) {
+        if (waterIndexMap.has(idx)) targetWater.add(waterIndexMap.get(idx)!);
+        if (landIndexMap.has(idx)) targetLand.add(landIndexMap.get(idx)!);
+      }
     });
-    return set;
-  }, [cells, validTargets]);
 
-  const attackTargetIndices = useMemo(() => {
-    const set = new Set<number>();
     attackTargets.forEach((t) => {
       const idx = cells.findIndex((c) => hexEquals(c.hex, t));
-      if (idx !== -1) set.add(idx);
+      if (idx !== -1) {
+        if (waterIndexMap.has(idx)) attackWater.add(waterIndexMap.get(idx)!);
+        if (landIndexMap.has(idx)) attackLand.add(landIndexMap.get(idx)!);
+      }
     });
-    return set;
-  }, [cells, attackTargets]);
 
-  const allInteractiveIndices = useMemo(() => {
+    return {
+      targetWaterIndices: targetWater,
+      targetLandIndices: targetLand,
+      attackWaterIndices: attackWater,
+      attackLandIndices: attackLand,
+    };
+  }, [cells, validTargets, attackTargets, waterIndexMap, landIndexMap]);
+
+  const allWaterInteractive = useMemo(() => {
     const set = new Set<number>();
-    targetIndices.forEach((i) => set.add(i));
-    attackTargetIndices.forEach((i) => set.add(i));
+    targetWaterIndices.forEach((i) => set.add(i));
+    attackWaterIndices.forEach((i) => set.add(i));
     return set;
-  }, [targetIndices, attackTargetIndices]);
+  }, [targetWaterIndices, attackWaterIndices]);
+
+  const allLandInteractive = useMemo(() => {
+    const set = new Set<number>();
+    targetLandIndices.forEach((i) => set.add(i));
+    attackLandIndices.forEach((i) => set.add(i));
+    return set;
+  }, [targetLandIndices, attackLandIndices]);
 
   const hoveredCell = useMemo(() => {
-    if (hoveredId === null || !allInteractiveIndices.has(hoveredId)) return null;
-    return cells[hoveredId];
-  }, [hoveredId, allInteractiveIndices, cells]);
+    if (hoveredId === null || hoveredMeshType === null) return null;
+    if (hoveredMeshType === "water") {
+      if (!allWaterInteractive.has(hoveredId)) return null;
+      return waterCells[hoveredId];
+    } else {
+      if (!allLandInteractive.has(hoveredId)) return null;
+      return landCells[hoveredId];
+    }
+  }, [hoveredId, hoveredMeshType, allWaterInteractive, allLandInteractive, waterCells, landCells]);
 
   const isHoveredAttackTarget = useMemo(() => {
-    return hoveredId !== null && attackTargetIndices.has(hoveredId);
-  }, [hoveredId, attackTargetIndices]);
+    if (hoveredId === null || hoveredMeshType === null) return false;
+    if (hoveredMeshType === "water") return attackWaterIndices.has(hoveredId);
+    return attackLandIndices.has(hoveredId);
+  }, [hoveredId, hoveredMeshType, attackWaterIndices, attackLandIndices]);
 
   const attackTargetPositions = useMemo(() => {
     return attackTargets.map((t) => {
@@ -158,13 +345,14 @@ export function HexGrid({
     });
   }, [attackTargets]);
 
+  // Set up land mesh (solid colored hexes)
   useEffect(() => {
-    const mesh = terrainRef.current;
-    if (!mesh) return;
+    const mesh = landRef.current;
+    if (!mesh || landCells.length === 0) return;
 
-    const colors = new Float32Array(cells.length * 3);
+    const colors = new Float32Array(landCells.length * 3);
 
-    cells.forEach((cell, i) => {
+    landCells.forEach((cell, i) => {
       const [x, y, z] = hexToWorld(cell.hex);
       tempObject.position.set(x, y - HEX_DEPTH, z);
       tempObject.rotation.set(-Math.PI / 2, 0, 0);
@@ -178,45 +366,90 @@ export function HexGrid({
       colors[i * 3 + 2] = tempColor.b;
     });
 
-    mesh.geometry.setAttribute(
-      "color",
-      new InstancedBufferAttribute(colors, 3)
-    );
+    mesh.geometry.setAttribute("color", new InstancedBufferAttribute(colors, 3));
     mesh.instanceMatrix.needsUpdate = true;
-  }, [cells, terrainColors, portColor]);
+  }, [landCells, terrainColors, portColor]);
 
-  const handlePointerMove = useCallback(
+  // Set up water mesh (invisible for raycasting)
+  useEffect(() => {
+    const mesh = waterRef.current;
+    if (!mesh || waterCells.length === 0) return;
+
+    waterCells.forEach((cell, i) => {
+      const [x, y, z] = hexToWorld(cell.hex);
+      tempObject.position.set(x, y - HEX_DEPTH, z);
+      tempObject.rotation.set(-Math.PI / 2, 0, 0);
+      tempObject.updateMatrix();
+      mesh.setMatrixAt(i, tempObject.matrix);
+    });
+
+    mesh.instanceMatrix.needsUpdate = true;
+  }, [waterCells]);
+
+  const handleLandPointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      // Handle interactive hex hovering (for movement/attack)
       if (!interactive) return;
       const id = e.instanceId;
-      if (id !== undefined && allInteractiveIndices.has(id)) {
+      if (id !== undefined && allLandInteractive.has(id)) {
         e.stopPropagation();
         setHoveredId(id);
-        document.body.style.cursor = attackTargetIndices.has(id) ? "crosshair" : "pointer";
+        setHoveredMeshType("land");
+        document.body.style.cursor = attackLandIndices.has(id) ? "crosshair" : "pointer";
       } else {
         setHoveredId(null);
+        setHoveredMeshType(null);
         document.body.style.cursor = "auto";
       }
     },
-    [interactive, allInteractiveIndices, attackTargetIndices]
+    [interactive, allLandInteractive, attackLandIndices]
+  );
+
+  const handleWaterPointerMove = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      if (!interactive) return;
+      const id = e.instanceId;
+      if (id !== undefined && allWaterInteractive.has(id)) {
+        e.stopPropagation();
+        setHoveredId(id);
+        setHoveredMeshType("water");
+        document.body.style.cursor = attackWaterIndices.has(id) ? "crosshair" : "pointer";
+      } else {
+        setHoveredId(null);
+        setHoveredMeshType(null);
+        document.body.style.cursor = "auto";
+      }
+    },
+    [interactive, allWaterInteractive, attackWaterIndices]
   );
 
   const handlePointerOut = useCallback(() => {
     setHoveredId(null);
+    setHoveredMeshType(null);
     document.body.style.cursor = "auto";
   }, []);
 
-  const handleClick = useCallback(
+  const handleLandClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
       if (!interactive) return;
       const id = e.instanceId;
-      if (id !== undefined && allInteractiveIndices.has(id)) {
+      if (id !== undefined && allLandInteractive.has(id)) {
         e.stopPropagation();
-        onHexClick(cells[id].hex);
+        onHexClick(landCells[id].hex);
       }
     },
-    [interactive, allInteractiveIndices, onHexClick, cells]
+    [interactive, allLandInteractive, onHexClick, landCells]
+  );
+
+  const handleWaterClick = useCallback(
+    (e: ThreeEvent<MouseEvent>) => {
+      if (!interactive) return;
+      const id = e.instanceId;
+      if (id !== undefined && allWaterInteractive.has(id)) {
+        e.stopPropagation();
+        onHexClick(waterCells[id].hex);
+      }
+    },
+    [interactive, allWaterInteractive, onHexClick, waterCells]
   );
 
   const hoveredPos = useMemo(() => {
@@ -227,15 +460,49 @@ export function HexGrid({
 
   return (
     <>
-      <instancedMesh
-        ref={terrainRef}
-        args={[tileGeometry, undefined, cells.length]}
-        onPointerMove={handlePointerMove}
-        onPointerOut={handlePointerOut}
-        onClick={handleClick}
-      >
-        <meshStandardMaterial vertexColors />
-      </instancedMesh>
+      {/* Land hexes - visible solid meshes */}
+      {landCells.length > 0 && (
+        <instancedMesh
+          ref={landRef}
+          args={[tileGeometry, undefined, landCells.length]}
+          onPointerMove={handleLandPointerMove}
+          onPointerOut={handlePointerOut}
+          onClick={handleLandClick}
+          frustumCulled={false}
+          castShadow
+          receiveShadow
+        >
+          <meshStandardMaterial vertexColors />
+        </instancedMesh>
+      )}
+
+      {/* Water hexes - invisible for raycasting only */}
+      {waterCells.length > 0 && (
+        <instancedMesh
+          ref={waterRef}
+          args={[tileGeometry, undefined, waterCells.length]}
+          onPointerMove={handleWaterPointerMove}
+          onPointerOut={handlePointerOut}
+          onClick={handleWaterClick}
+          frustumCulled={false}
+          visible={false}
+        >
+          <meshBasicMaterial transparent opacity={0} />
+        </instancedMesh>
+      )}
+
+      {/* Water hex wireframe outlines */}
+      {waterCells.map((cell) => {
+        const [x, y, z] = hexToWorld(cell.hex);
+        return (
+          <primitive
+            key={`outline-${cell.hex.q}-${cell.hex.r}`}
+            object={new LineLoop(hexOutlineGeometry, hexOutlineMaterial)}
+            position={[x, y + 0.01, z]}
+            rotation={[-Math.PI / 2, 0, 0]}
+          />
+        );
+      })}
 
       {/* Attack target highlights (red) */}
       {attackTargetPositions.map((pos, i) => (
@@ -279,6 +546,25 @@ export function HexGrid({
             onHover={onPortHover}
           />
         ))}
+
+      {/* Decorations on island hexes */}
+      {cells
+        .filter((cell) => cell.decorations && cell.decorations.length > 0)
+        .map((cell) => {
+          const [x, , z] = hexToWorld(cell.hex);
+          return (
+            <group key={`deco-${cell.hex.q}-${cell.hex.r}`} position={[x, 0, z]}>
+              {cell.decorations!.map((deco, i) => (
+                <DecorationMesh key={i} decoration={deco} />
+              ))}
+            </group>
+          );
+        })}
+
+      {/* Floating port name labels */}
+      {portCells.map((cell) => (
+        <PortLabel key={`label-${cell.hex.q}-${cell.hex.r}`} cell={cell} />
+      ))}
     </>
   );
 }
