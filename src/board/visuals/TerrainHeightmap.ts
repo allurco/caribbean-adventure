@@ -396,6 +396,19 @@ export function generateHeightmapTexture(
   const INNER_EDGE = HEX_RADIUS * 0.85;  // Full terrain inside this
   const OUTER_EDGE = HEX_RADIUS * 1.05;  // Terrain ends here (tight to hex edge)
 
+  // FBM noise function for fractal coastlines
+  const fbm = (x: number, z: number, octaves: number = 4): number => {
+    let value = 0;
+    let amplitude = 0.5;
+    let frequency = 1;
+    for (let i = 0; i < octaves; i++) {
+      value += amplitude * noise2D(x * frequency, z * frequency);
+      amplitude *= 0.5;
+      frequency *= 2;
+    }
+    return value;
+  };
+
   for (let y = 0; y < resolution; y++) {
     for (let x = 0; x < resolution; x++) {
       const worldX = lerp(bounds.minX, bounds.maxX, x / (resolution - 1));
@@ -407,8 +420,12 @@ export function generateHeightmapTexture(
         worldX, worldZ, lookup, noise2D
       );
 
-      // Skip pixels too far from any land
-      if (nearestDist > OUTER_EDGE || !nearestCell) {
+      // Add fractal noise to distance for irregular coastlines
+      const edgeNoise = fbm(worldX * 2, worldZ * 2, 4) * 0.15;
+      const noisyDist = nearestDist + edgeNoise;
+
+      // Skip pixels too far from any land (with noise margin)
+      if (noisyDist > OUTER_EDGE * 1.2 || !nearestCell) {
         data[idx + 0] = -0.18;
         data[idx + 1] = 0;
         data[idx + 2] = 1;
@@ -416,9 +433,8 @@ export function generateHeightmapTexture(
         continue;
       }
 
-      // STEP 2: Calculate smooth landMask for gradual edge fade
-      // Tight transition from INNER_EDGE to OUTER_EDGE
-      const landMask = 1.0 - smoothstep(INNER_EDGE, OUTER_EDGE, nearestDist);
+      // STEP 2: Calculate landMask with fractal edge
+      const landMask = 1.0 - smoothstep(INNER_EDGE, OUTER_EDGE, noisyDist);
 
       // STEP 3: Terrain slopes from -0.18 (underwater) up to full height
       // At edge (landMask=0): -0.18, at center (landMask=1): full height
@@ -428,12 +444,12 @@ export function generateHeightmapTexture(
       // STEP 4: BIOME MAPPING based on inland depth
       const depthInHexes = inlandDepth / HEX_SPACING;
       let biome: number;
-      if (depthInHexes < 1.5 || finalHeight < 0.15) {
-        biome = 0.35;  // Beach/sand
-      } else if (depthInHexes < 2.5) {
-        biome = 0.55 + (depthInHexes - 1.5) * 0.15;  // Jungle
+      if (depthInHexes < 0.4 || finalHeight < 0.02) {
+        biome = 0.35;  // Beach/sand - very thin strip at water edge
+      } else if (depthInHexes < 1.0) {
+        biome = 0.55 + (depthInHexes - 0.4) * 0.25;  // Jungle starts very close to shore
       } else {
-        biome = 0.7 + Math.min((depthInHexes - 2.5) * 0.1, 0.25);  // Dense jungle/mountain
+        biome = 0.7 + Math.min((depthInHexes - 1.0) * 0.2, 0.25);  // Dense jungle/mountain
       }
 
       // coastDist: 0 at water edge, 1 at island center

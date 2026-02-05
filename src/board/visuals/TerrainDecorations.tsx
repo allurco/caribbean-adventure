@@ -191,6 +191,7 @@ export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
           args={[palmTreeGeometries.trunk, palmTrunkMaterial, decorationsByType.trees.length]}
           castShadow
           receiveShadow
+          frustumCulled={false}
         />
       )}
 
@@ -201,6 +202,7 @@ export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
           args={[palmTreeGeometries.fronds, palmFrondsMaterial, decorationsByType.trees.length]}
           castShadow
           receiveShadow
+          frustumCulled={false}
         />
       )}
 
@@ -211,6 +213,7 @@ export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
           args={[rockGeometry, rockMaterial, decorationsByType.rocks.length]}
           castShadow
           receiveShadow
+          frustumCulled={false}
         />
       )}
 
@@ -221,6 +224,7 @@ export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
           args={[pierGeometry, pierMaterial, decorationsByType.piers.length]}
           castShadow
           receiveShadow
+          frustumCulled={false}
         />
       )}
     </>

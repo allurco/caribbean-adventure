@@ -80,7 +80,7 @@ const fragmentShader = `
   varying vec2 vUv;
 
   // Biome colors - vibrant Caribbean palette
-  const vec3 SAND = vec3(0.93, 0.87, 0.70);
+  const vec3 SAND = vec3(0.82, 0.72, 0.55);  // Warm tan beach sand
   const vec3 GRASS = vec3(0.22, 0.55, 0.28);
   const vec3 ROCK = vec3(0.50, 0.47, 0.42);
 
@@ -193,10 +193,14 @@ const fragmentShader = `
     // Height-based shading (subtle)
     color *= 0.92 + vHeight * 0.15;
 
-    // Coastal wetness (darken near water edge)
-    if (vCoastDist < 0.4) {
-      float wetness = smoothstep(0.4, 0.0, vCoastDist);
-      color *= 1.0 - wetness * 0.2;
+    // Wet sand effect - darker, saturated sand right at the water line
+    float wetSand = 1.0 - smoothstep(0.0, 0.08, vCoastDist);
+    color = mix(color, color * 0.75, wetSand);  // Darken significantly at water edge
+
+    // Gradual coastal moisture (broader area)
+    if (vCoastDist < 0.3) {
+      float dampness = smoothstep(0.3, 0.08, vCoastDist);
+      color *= 1.0 - dampness * 0.1;  // Subtle additional darkening
     }
 
     // DEBUG MODE

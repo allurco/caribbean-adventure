@@ -42,18 +42,26 @@ const fragmentShader = `
   varying vec3 pos;
   varying vec2 vUv;
 
+  // Wrap coordinates to prevent floating-point precision loss at large values
+  vec2 wrapCoord(vec2 p) {
+    return mod(p, 289.0);
+  }
+
   float hash(vec2 p) {
+    p = wrapCoord(p);
     float h = dot(p, vec2(127.1, 311.7));
-    return fract(sin(h) * 83758.5453123);
+    return fract(sin(h) * 43758.5453123);
   }
 
   float noise(in vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
+    // Wrap integer coordinates to prevent precision issues
+    vec2 iw = wrapCoord(i);
     return -1.0 + 2.0 * mix(
-      mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
-      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+      mix(hash(iw + vec2(0.0, 0.0)), hash(iw + vec2(1.0, 0.0)), u.x),
+      mix(hash(iw + vec2(0.0, 1.0)), hash(iw + vec2(1.0, 1.0)), u.x),
       u.y
     );
   }
