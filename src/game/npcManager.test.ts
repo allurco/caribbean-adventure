@@ -32,18 +32,18 @@ function createTestState(cells: MapCell[]): CaribbeanState {
 function createSimpleMapWithPorts(): MapCell[] {
   // Create a simple map with two ports for testing
   return [
-    { hex: hex(0, 0), terrain: "water", hasPort: false },
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
-    { hex: hex(2, 0), terrain: "island", hasPort: true, nation: "Spain" },
-    { hex: hex(0, 1), terrain: "water", hasPort: false },
-    { hex: hex(1, 1), terrain: "water", hasPort: false },
-    { hex: hex(0, 2), terrain: "water", hasPort: false },
-    { hex: hex(-1, 2), terrain: "island", hasPort: true, nation: "England" },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, -1), terrain: "water", hasPort: false },
-    { hex: hex(1, -1), terrain: "water", hasPort: false },
-    { hex: hex(2, -1), terrain: "water", hasPort: false },
+    { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(2, 0), terrain: "island", elevation: 2, hasPort: true, nation: "Spain" },
+    { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, 2), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 2), terrain: "island", elevation: 2, hasPort: true, nation: "England" },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(2, -1), terrain: "water", elevation: 0, hasPort: false },
   ];
 }
 
@@ -57,8 +57,8 @@ describe("getPortCells", () => {
 
   it("returns empty array when no ports", () => {
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "water", hasPort: false },
-      { hex: hex(1, 0), terrain: "island", hasPort: false },
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 0), terrain: "island", elevation: 2, hasPort: false },
     ];
     const ports = getPortCells(cells);
     expect(ports).toHaveLength(0);
@@ -76,13 +76,13 @@ describe("findPath", () => {
 
   it("finds path around obstacles", () => {
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "water", hasPort: false },
-      { hex: hex(1, 0), terrain: "island", hasPort: false }, // blocked
-      { hex: hex(2, 0), terrain: "water", hasPort: false },
-      { hex: hex(0, 1), terrain: "water", hasPort: false },
-      { hex: hex(1, 1), terrain: "water", hasPort: false },
-      { hex: hex(0, -1), terrain: "water", hasPort: false },
-      { hex: hex(1, -1), terrain: "water", hasPort: false },
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 0), terrain: "island", elevation: 2, hasPort: false }, // blocked
+      { hex: hex(2, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
     ];
     const path = findPath(hex(0, 0), hex(2, 0), cells, {}, {});
     // Should go around the island
@@ -113,8 +113,8 @@ describe("findPath", () => {
 
   it("returns empty array when no path exists", () => {
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "water", hasPort: false },
-      { hex: hex(2, 0), terrain: "water", hasPort: false },
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(2, 0), terrain: "water", elevation: 0, hasPort: false },
       // No connection between them
     ];
     const path = findPath(hex(0, 0), hex(2, 0), cells, {}, {});
@@ -194,8 +194,8 @@ describe("spawnMerchant", () => {
 
   it("returns null when less than 2 ports exist", () => {
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "water", hasPort: false },
-      { hex: hex(1, 0), terrain: "island", hasPort: true, nation: "Spain" },
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 0), terrain: "island", elevation: 2, hasPort: true, nation: "Spain" },
     ];
     const G = createTestState(cells);
 
@@ -268,7 +268,7 @@ describe("moveNPC", () => {
 
   it("returns false if no valid path", () => {
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "water", hasPort: false },
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
       // Destination doesn't exist on map
     ];
     const G = createTestState(cells);

@@ -15,7 +15,7 @@ import { SHIP_SPECS } from "./constants";
 function setup() {
   const cells: MapCell[] = generateMap(3, 0).map((c) => ({
     ...c,
-    terrain: "water" as const,
+    terrain: "water" as const, elevation: 0,
     hasPort: false,
   }));
   const TestGame: Game<CaribbeanState> = {
@@ -112,13 +112,13 @@ describe("moveShip move", () => {
 describe("moveShip port logic", () => {
   function setupWithIslands() {
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "water", hasPort: false },
-      { hex: hex(1, 0), terrain: "island", hasPort: false },  // plain island
-      { hex: hex(0, 1), terrain: "island", hasPort: true },   // port island
-      { hex: hex(-1, 1), terrain: "water", hasPort: false },
-      { hex: hex(-1, 0), terrain: "water", hasPort: false },
-      { hex: hex(0, -1), terrain: "water", hasPort: false },
-      { hex: hex(1, -1), terrain: "water", hasPort: false },
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 0), terrain: "island", elevation: 2, hasPort: false },  // plain island
+      { hex: hex(0, 1), terrain: "island", elevation: 2, hasPort: true },   // port island
+      { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
     ];
     const IslandGame: Game<CaribbeanState> = {
       ...Caribbean,
@@ -192,7 +192,7 @@ describe("move limit per turn", () => {
 function setupTwoPlayer() {
   const cells: MapCell[] = generateMap(3, 0).map((c) => ({
     ...c,
-    terrain: "water" as const,
+    terrain: "water" as const, elevation: 0,
     hasPort: false,
   }));
   const TestGame: Game<CaribbeanState> = {

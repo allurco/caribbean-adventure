@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import { useFrame } from "@react-three/fiber";
 import {
   ShaderMaterial,
@@ -227,6 +227,7 @@ interface UnifiedTerrainProps {
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   segments?: number;
   debugMode?: number; // 0 = normal, 1 = biome, 2 = height, 3 = coastDist
+  adjustable?: boolean; // Enable height adjustment via arrow keys
 }
 
 export function UnifiedTerrain({
@@ -234,8 +235,10 @@ export function UnifiedTerrain({
   bounds,
   segments = 512,
   debugMode = 0,
+  adjustable = false,
 }: UnifiedTerrainProps) {
   const meshRef = useRef<Mesh>(null);
+  const yOffsetRef = useRef(0);
 
   const geometry = useMemo(() => {
     const width = bounds.maxX - bounds.minX;
@@ -261,11 +264,31 @@ export function UnifiedTerrain({
     });
   }, [heightmap, bounds, debugMode]);
 
-  // Update time uniform for any animated effects
+  // Keyboard controls for Y position adjustment
+  useEffect(() => {
+    if (!adjustable) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowUp' || e.key === 'w') {
+        yOffsetRef.current += 0.02;
+        console.log(`🏔️ Terrain Y position: ${yOffsetRef.current.toFixed(3)}`);
+      } else if (e.key === 'ArrowDown' || e.key === 's') {
+        yOffsetRef.current -= 0.02;
+        console.log(`🏔️ Terrain Y position: ${yOffsetRef.current.toFixed(3)}`);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    console.log('🏔️ Terrain Y adjustable: Use Arrow Up/Down or W/S keys');
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [adjustable]);
+
+  // Update uniforms and position every frame
   useFrame(() => {
     if (meshRef.current) {
       const mat = meshRef.current.material as ShaderMaterial;
       mat.uniforms.iTime.value = (performance.now() * 0.001) % 10000;
+      meshRef.current.position.y = yOffsetRef.current;
     }
   });
 

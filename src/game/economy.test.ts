@@ -569,13 +569,13 @@ const TEST_MARKET: PortMarket = {
 function setupAtPort() {
   // Port is at (0,0) island, ships dock at (1,0) water
   const cells: MapCell[] = [
-    { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, -1), terrain: "water", hasPort: false },
-    { hex: hex(1, -1), terrain: "water", hasPort: false },
+    { hex: hex(0, 0), terrain: "island", elevation: 2, hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
   ];
   const TradeGame: Game<CaribbeanState> = {
     ...Caribbean,
@@ -602,13 +602,13 @@ function setupAtPort() {
 /** Set up a small all-water map (no ports). */
 function setupNoPort() {
   const cells: MapCell[] = [
-    { hex: hex(0, 0), terrain: "water", hasPort: false },
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, -1), terrain: "water", hasPort: false },
-    { hex: hex(1, -1), terrain: "water", hasPort: false },
+    { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
   ];
   const NoPortGame: Game<CaribbeanState> = {
     ...Caribbean,
@@ -754,7 +754,7 @@ describe("trade move", () => {
       const dockingHex = hex(1, 0);
       const portCell: MapCell = {
         hex: hex(0, 0),
-        terrain: "island",
+        terrain: "island", elevation: 2,
         hasPort: true,
         market: makeMarket(inDemandGood),
         nation: "England",
@@ -763,12 +763,12 @@ describe("trade move", () => {
       };
       const dockingCell: MapCell = {
         hex: dockingHex,
-        terrain: "water",
+        terrain: "water", elevation: 0,
         hasPort: false,
       };
       const waterCell: MapCell = {
         hex: hex(0, 1),
-        terrain: "water",
+        terrain: "water", elevation: 0,
         hasPort: false,
       };
 
@@ -829,7 +829,7 @@ describe("trade move", () => {
       const dockingHex = hex(1, 0);
       const portCell: MapCell = {
         hex: hex(0, 0),
-        terrain: "island",
+        terrain: "island", elevation: 2,
         hasPort: true,
         market: makeMarket("Wood"), // Wood is in demand, not Sugar
         nation: "England",
@@ -838,7 +838,7 @@ describe("trade move", () => {
       };
       const dockingCell: MapCell = {
         hex: dockingHex,
-        terrain: "water",
+        terrain: "water", elevation: 0,
         hasPort: false,
       };
 

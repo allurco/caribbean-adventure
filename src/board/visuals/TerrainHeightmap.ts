@@ -1,20 +1,11 @@
 import { DataTexture, RGBAFormat, FloatType, LinearFilter, ClampToEdgeWrapping } from "three";
 import { createNoise2D } from "simplex-noise";
-import type { MapCell, Elevation } from "../../game/types";
+import type { MapCell } from "../../game/types";
 import { hexToWorld } from "../../game/hex";
 
 // Hex geometry constants
 const HEX_RADIUS = 1.0;
 const SQRT3 = Math.sqrt(3);
-
-// Elevation heights - MUST exceed HexGrid hex tops to fully cover them
-// HexGrid positions hexes at ELEVATION_TOP_HEIGHTS + 0.1, so we need extra margin
-const ELEVATION_HEIGHT_BOOST: Record<Elevation, number> = {
-  0: 0,      // Water - no boost
-  1: 0.20,   // Beach - hex top is at ~0.13, need extra margin
-  2: 0.45,   // Jungle - hex top is at ~0.30, need extra margin
-  3: 0.70,   // Mountain - hex top is at ~0.55, need extra margin
-};
 
 export interface HeightmapResult {
   texture: DataTexture;
@@ -29,124 +20,6 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
-}
-
-/**
- * Apply Gaussian blur to heightmap data for smoother terrain edges.
- * Only blurs R (height) and G (biome) channels where terrain exists.
- */
-function applyGaussianBlur(
-  data: Float32Array,
-  resolution: number,
-  radius: number
-): Float32Array {
-  const result = new Float32Array(data.length);
-
-  // Generate Gaussian kernel
-  const kernelSize = radius * 2 + 1;
-  const kernel: number[] = [];
-  const sigma = radius / 2;
-  let kernelSum = 0;
-
-  for (let i = 0; i < kernelSize; i++) {
-    const x = i - radius;
-    const weight = Math.exp(-(x * x) / (2 * sigma * sigma));
-    kernel.push(weight);
-    kernelSum += weight;
-  }
-  // Normalize kernel
-  for (let i = 0; i < kernelSize; i++) {
-    kernel[i] /= kernelSum;
-  }
-
-  // Temporary buffer for horizontal pass
-  const temp = new Float32Array(data.length);
-
-  // Horizontal pass
-  for (let y = 0; y < resolution; y++) {
-    for (let x = 0; x < resolution; x++) {
-      const idx = (y * resolution + x) * 4;
-
-      // Only blur terrain pixels (landMask > 0)
-      if (data[idx + 3] < 0.5) {
-        temp[idx + 0] = data[idx + 0];
-        temp[idx + 1] = data[idx + 1];
-        temp[idx + 2] = data[idx + 2];
-        temp[idx + 3] = data[idx + 3];
-        continue;
-      }
-
-      let sumHeight = 0, sumBiome = 0, sumCoast = 0, weightSum = 0;
-
-      for (let k = 0; k < kernelSize; k++) {
-        const sx = Math.max(0, Math.min(resolution - 1, x + k - radius));
-        const sIdx = (y * resolution + sx) * 4;
-
-        // Only include terrain pixels in blur
-        if (data[sIdx + 3] > 0.5) {
-          const w = kernel[k];
-          sumHeight += data[sIdx + 0] * w;
-          sumBiome += data[sIdx + 1] * w;
-          sumCoast += data[sIdx + 2] * w;
-          weightSum += w;
-        }
-      }
-
-      if (weightSum > 0) {
-        temp[idx + 0] = sumHeight / weightSum;
-        temp[idx + 1] = sumBiome / weightSum;
-        temp[idx + 2] = sumCoast / weightSum;
-      } else {
-        temp[idx + 0] = data[idx + 0];
-        temp[idx + 1] = data[idx + 1];
-        temp[idx + 2] = data[idx + 2];
-      }
-      temp[idx + 3] = data[idx + 3];
-    }
-  }
-
-  // Vertical pass
-  for (let y = 0; y < resolution; y++) {
-    for (let x = 0; x < resolution; x++) {
-      const idx = (y * resolution + x) * 4;
-
-      if (temp[idx + 3] < 0.5) {
-        result[idx + 0] = temp[idx + 0];
-        result[idx + 1] = temp[idx + 1];
-        result[idx + 2] = temp[idx + 2];
-        result[idx + 3] = temp[idx + 3];
-        continue;
-      }
-
-      let sumHeight = 0, sumBiome = 0, sumCoast = 0, weightSum = 0;
-
-      for (let k = 0; k < kernelSize; k++) {
-        const sy = Math.max(0, Math.min(resolution - 1, y + k - radius));
-        const sIdx = (sy * resolution + x) * 4;
-
-        if (temp[sIdx + 3] > 0.5) {
-          const w = kernel[k];
-          sumHeight += temp[sIdx + 0] * w;
-          sumBiome += temp[sIdx + 1] * w;
-          sumCoast += temp[sIdx + 2] * w;
-          weightSum += w;
-        }
-      }
-
-      if (weightSum > 0) {
-        result[idx + 0] = sumHeight / weightSum;
-        result[idx + 1] = sumBiome / weightSum;
-        result[idx + 2] = sumCoast / weightSum;
-      } else {
-        result[idx + 0] = temp[idx + 0];
-        result[idx + 1] = temp[idx + 1];
-        result[idx + 2] = temp[idx + 2];
-      }
-      result[idx + 3] = temp[idx + 3];
-    }
-  }
-
-  return result;
 }
 
 // Spatial grid for fast nearest-neighbor lookups
@@ -274,7 +147,7 @@ function calculateInlandHeight(
   z: number,
   lookup: CellLookup,
   noise2D: (x: number, y: number) => number
-): { height: number; nearestCell: MapCell | null; nearestDist: number; inlandDepth: number } {
+): { height: number; nearestCell: MapCell | null; nearestDist: number; inlandDepth: number; cellInlandDepth: number } {
   const sg = lookup.spatialGrid;
   const positions = sg.landPositions;
 
@@ -305,7 +178,7 @@ function calculateInlandHeight(
   }
 
   if (nearestIdx < 0) {
-    return { height: 0, nearestCell: null, nearestDist: Infinity, inlandDepth: 0 };
+    return { height: 0, nearestCell: null, nearestDist: Infinity, inlandDepth: 0, cellInlandDepth: 0 };
   }
 
   const nearestCell = lookup.landCells[nearestIdx];
@@ -318,26 +191,26 @@ function calculateInlandHeight(
   const hexInfluence = 1.0 - smoothstep(0, HEX_RADIUS * 1.2, nearestDist);
   const effectiveInlandDepth = cellInlandDepth * hexInfluence;
 
-  // Convert inland depth to height allowance
-  // 0-1 hex inland = flat beach (max height ~0.1)
-  // 1-2 hex inland = low plateau (max height ~0.2)
-  // 2-3 hex inland = medium (max height ~0.4)
-  // 3+ hex inland = mountains allowed (max height ~0.8+)
+  // Convert inland depth to height allowance (scaled up for more dramatic terrain)
+  // 0-1 hex inland = beach slope
+  // 1-2 hex inland = low hills
+  // 2-3 hex inland = medium hills
+  // 3+ hex inland = mountains
   let maxHeight: number;
   const depthInHexes = effectiveInlandDepth / HEX_SPACING;
 
   if (depthInHexes < 1) {
-    // Edge hexes - flat beach
-    maxHeight = 0.08 + depthInHexes * 0.05;
+    // Edge hexes - beach slope
+    maxHeight = 0.15 + depthInHexes * 0.15;
   } else if (depthInHexes < 2) {
-    // One hex from edge - low plateau
-    maxHeight = 0.13 + (depthInHexes - 1) * 0.15;
+    // One hex from edge - low hills
+    maxHeight = 0.30 + (depthInHexes - 1) * 0.35;
   } else if (depthInHexes < 3) {
-    // Two hexes from edge - medium elevation
-    maxHeight = 0.28 + (depthInHexes - 2) * 0.25;
+    // Two hexes from edge - medium hills
+    maxHeight = 0.65 + (depthInHexes - 2) * 0.45;
   } else {
-    // Three+ hexes from edge - mountains allowed
-    maxHeight = 0.53 + Math.min((depthInHexes - 3) * 0.3, 0.5);
+    // Three+ hexes from edge - mountains
+    maxHeight = 1.1 + Math.min((depthInHexes - 3) * 0.5, 0.8);
   }
 
   // Add subtle noise variation (not per-hex bumps, just texture)
@@ -348,7 +221,8 @@ function calculateInlandHeight(
     height: Math.max(0.05, height),
     nearestCell,
     nearestDist,
-    inlandDepth: effectiveInlandDepth
+    inlandDepth: effectiveInlandDepth,
+    cellInlandDepth  // Raw cell depth for biome (not interpolated)
   };
 }
 
@@ -364,15 +238,9 @@ export function generateHeightmapTexture(
   resolution: number = 512,
   seed: number = 12345
 ): HeightmapResult {
-  // Create seeded noise functions
-  // noise2D: used for domain warping (cragginess)
-  // noise2D_fine: used for micro-detail (rocky texture)
+  // Create seeded noise function for domain warping (cragginess)
   const noise2D = createNoise2D(() => {
     const x = Math.sin(seed * 9999) * 10000;
-    return x - Math.floor(x);
-  });
-  const noise2D_fine = createNoise2D(() => {
-    const x = Math.sin((seed + 2) * 9999) * 10000;
     return x - Math.floor(x);
   });
 
@@ -416,7 +284,7 @@ export function generateHeightmapTexture(
       const idx = (y * resolution + x) * 4;
 
       // STEP 1: Calculate height based on INLAND DEPTH (7-hex rule)
-      const { height, nearestCell, nearestDist, inlandDepth } = calculateInlandHeight(
+      const { height, nearestCell, nearestDist, cellInlandDepth } = calculateInlandHeight(
         worldX, worldZ, lookup, noise2D
       );
 
@@ -441,19 +309,27 @@ export function generateHeightmapTexture(
       const UNDERWATER_START = -0.18;
       const finalHeight = lerp(UNDERWATER_START, Math.max(0.05, height), landMask);
 
-      // STEP 4: BIOME MAPPING based on inland depth
-      const depthInHexes = inlandDepth / HEX_SPACING;
+      // STEP 4: BIOME MAPPING based on CELL inland depth (not interpolated)
+      // This ensures grass stays connected across adjacent hexes
+      const cellDepthInHexes = cellInlandDepth / HEX_SPACING;
       let biome: number;
-      if (depthInHexes < 0.4 || finalHeight < 0.02) {
-        biome = 0.35;  // Beach/sand - very thin strip at water edge
-      } else if (depthInHexes < 1.0) {
-        biome = 0.55 + (depthInHexes - 0.4) * 0.25;  // Jungle starts very close to shore
+
+      // Smooth transition from sand (0.35) to grass (0.7)
+      // Sand zone: < 0.85, Transition: 0.85-1.45, Grass: > 1.45
+      if (cellDepthInHexes < 0.85 || finalHeight < 0.05) {
+        biome = 0.35;  // Pure sand
+      } else if (cellDepthInHexes < 1.45) {
+        // Smooth blend from sand to grass
+        const t = smoothstep(0.85, 1.45, cellDepthInHexes);
+        biome = lerp(0.35, 0.7, t);
+      } else if (cellDepthInHexes < 2.2) {
+        biome = 0.7 + (cellDepthInHexes - 1.4) * 0.1;  // Grass to dense jungle
       } else {
-        biome = 0.7 + Math.min((depthInHexes - 1.0) * 0.2, 0.25);  // Dense jungle/mountain
+        biome = 0.8 + Math.min((cellDepthInHexes - 2.2) * 0.15, 0.15);  // Dense jungle/mountain
       }
 
-      // coastDist: 0 at water edge, 1 at island center
-      const coastDist = smoothstep(0, HEX_SPACING * 2, inlandDepth);
+      // coastDist: 0 at water edge, 1 at island center (use cell depth for consistency)
+      const coastDist = smoothstep(0, HEX_SPACING * 2, cellInlandDepth);
 
       data[idx + 0] = finalHeight;
       data[idx + 1] = biome;

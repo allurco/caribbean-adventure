@@ -10,7 +10,7 @@ import { hex } from "./hex";
 import type { MapSizeId } from "./mapConfig";
 
 const TEST_MARKET: PortMarket = {
-  prices: {
+  inDemandGood: null, prices: {
     Wood: { buy: 8, sell: 6 },
     Sugar: { buy: 20, sell: 15 },
     Rum: { buy: 30, sell: 23 },
@@ -38,27 +38,27 @@ function setupAtShipyard(overrides?: {
   const cells: MapCell[] = [
     {
       hex: hex(0, 0),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       hasShipyard: true,
       market: TEST_MARKET,
       nation: "England",
       dockingHex: hex(1, 0),
     },
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
     {
       hex: hex(0, 1),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       hasShipyard: false,
       market: TEST_MARKET,
       nation: "France",
       dockingHex: hex(-1, 1),
     },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, -1), terrain: "water", hasPort: false },
-    { hex: hex(1, -1), terrain: "water", hasPort: false },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
   ];
 
   const BuyShipGame: Game<CaribbeanState> = {
@@ -120,19 +120,19 @@ describe("buyShip move", () => {
     const cells: MapCell[] = [
       {
         hex: hex(0, 1),
-        terrain: "island",
+        terrain: "island", elevation: 2,
         hasPort: true,
         hasShipyard: false,
         market: TEST_MARKET,
         nation: "France",
         dockingHex: hex(0, 0),
       },
-      { hex: hex(0, 0), terrain: "water", hasPort: false },
-      { hex: hex(1, 0), terrain: "water", hasPort: false },
-      { hex: hex(1, 1), terrain: "water", hasPort: false },
-      { hex: hex(-1, 1), terrain: "water", hasPort: false },
-      { hex: hex(0, 2), terrain: "water", hasPort: false },
-      { hex: hex(-1, 2), terrain: "water", hasPort: false },
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, 2), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 2), terrain: "water", elevation: 0, hasPort: false },
     ];
     // Ship at docking hex (0, 0)
     const ship = createShipState(hex(0, 0), "Sloop");
@@ -164,13 +164,13 @@ describe("buyShip move", () => {
   it("rejects at water (no port)", () => {
     // Player starts at water hex
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "water", hasPort: false },
-      { hex: hex(1, 0), terrain: "water", hasPort: false },
-      { hex: hex(0, 1), terrain: "water", hasPort: false },
-      { hex: hex(-1, 1), terrain: "water", hasPort: false },
-      { hex: hex(-1, 0), terrain: "water", hasPort: false },
-      { hex: hex(0, -1), terrain: "water", hasPort: false },
-      { hex: hex(1, -1), terrain: "water", hasPort: false },
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
     ];
     const ship = createShipState(hex(0, 0), "Sloop");
     ship.gold = 100;

@@ -9,7 +9,7 @@ import { createNPCShip, createFlotillaShip } from "./npcManager";
 import type { MapSizeId } from "./mapConfig";
 
 const TEST_MARKET = {
-  prices: {
+  inDemandGood: null, prices: {
     Wood: { buy: 8, sell: 6 },
     Sugar: { buy: 20, sell: 15 },
     Rum: { buy: 30, sell: 23 },
@@ -34,22 +34,22 @@ function makeCells(): MapCell[] {
   return [
     {
       hex: hex(0, 0),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "England",
       market: TEST_MARKET,
     },
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
-    { hex: hex(2, 0), terrain: "water", hasPort: false },
-    { hex: hex(3, 0), terrain: "water", hasPort: false },
-    { hex: hex(4, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
-    { hex: hex(0, 2), terrain: "water", hasPort: false },
-    { hex: hex(1, 2), terrain: "water", hasPort: false },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(2, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(3, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(4, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, 2), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, 2), terrain: "water", elevation: 0, hasPort: false },
     {
       hex: hex(0, 3),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "Spain",
       market: TEST_MARKET,

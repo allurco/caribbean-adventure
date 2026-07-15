@@ -109,36 +109,36 @@ describe("findHomePort", () => {
   // Ships now dock at water hexes to access ports
   const dockingHexEngland: MapCell = {
     hex: hex(0, 0),
-    terrain: "water",
+    terrain: "water", elevation: 0,
     hasPort: false,
   };
   const portEngland: MapCell = {
     hex: hex(1, 0),
-    terrain: "island",
+    terrain: "island", elevation: 2,
     hasPort: true,
     nation: "England",
     dockingHex: hex(0, 0),
   };
   const dockingHexFrance: MapCell = {
     hex: hex(1, 1),
-    terrain: "water",
+    terrain: "water", elevation: 0,
     hasPort: false,
   };
   const portFrance: MapCell = {
     hex: hex(2, 0),
-    terrain: "island",
+    terrain: "island", elevation: 2,
     hasPort: true,
     nation: "France",
     dockingHex: hex(1, 1),
   };
   const dockingHexEngland2: MapCell = {
     hex: hex(2, 1),
-    terrain: "water",
+    terrain: "water", elevation: 0,
     hasPort: false,
   };
   const portEngland2: MapCell = {
     hex: hex(3, 0),
-    terrain: "island",
+    terrain: "island", elevation: 2,
     hasPort: true,
     nation: "England",
     dockingHex: hex(2, 1),
@@ -182,15 +182,15 @@ describe("findHomePort", () => {
 
 function makeDraftCells(): MapCell[] {
   return [
-    { hex: hex(0, 0), terrain: "water", hasPort: false }, // England docking hex
+    { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false }, // England docking hex
     {
       hex: hex(1, 0),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "England",
       dockingHex: hex(0, 0),
       market: {
-        prices: {
+        inDemandGood: null, prices: {
           Wood: { buy: 8, sell: 6 },
           Sugar: { buy: 20, sell: 15 },
           Rum: { buy: 30, sell: 23 },
@@ -198,15 +198,15 @@ function makeDraftCells(): MapCell[] {
         },
       },
     },
-    { hex: hex(2, 1), terrain: "water", hasPort: false }, // France docking hex
+    { hex: hex(2, 1), terrain: "water", elevation: 0, hasPort: false }, // France docking hex
     {
       hex: hex(2, 0),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "France",
       dockingHex: hex(2, 1),
       market: {
-        prices: {
+        inDemandGood: null, prices: {
           Wood: { buy: 7, sell: 5 },
           Sugar: { buy: 18, sell: 13 },
           Rum: { buy: 28, sell: 21 },
@@ -214,15 +214,15 @@ function makeDraftCells(): MapCell[] {
         },
       },
     },
-    { hex: hex(3, 1), terrain: "water", hasPort: false }, // Spain docking hex
+    { hex: hex(3, 1), terrain: "water", elevation: 0, hasPort: false }, // Spain docking hex
     {
       hex: hex(3, 0),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "Spain",
       dockingHex: hex(3, 1),
       market: {
-        prices: {
+        inDemandGood: null, prices: {
           Wood: { buy: 9, sell: 7 },
           Sugar: { buy: 22, sell: 17 },
           Rum: { buy: 32, sell: 25 },
@@ -230,9 +230,9 @@ function makeDraftCells(): MapCell[] {
         },
       },
     },
-    { hex: hex(0, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
-    { hex: hex(1, -1), terrain: "water", hasPort: false },
+    { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
   ];
 }
 

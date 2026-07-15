@@ -121,7 +121,7 @@ const CAPTAIN_D: Captain = {
 };
 
 const TEST_MARKET = {
-  prices: {
+  inDemandGood: null, prices: {
     Wood: { buy: 8, sell: 6 },
     Sugar: { buy: 20, sell: 15 },
     Rum: { buy: 30, sell: 23 },
@@ -134,37 +134,37 @@ function makeDraftCells(): MapCell[] {
     // England port at origin — P0 spawns here
     {
       hex: hex(0, 0),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "England",
       market: TEST_MARKET,
     },
     // Water hexes extending east for movement testing
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
-    { hex: hex(2, 0), terrain: "water", hasPort: false },
-    { hex: hex(3, 0), terrain: "water", hasPort: false },
-    { hex: hex(4, 0), terrain: "water", hasPort: false },
-    { hex: hex(5, 0), terrain: "water", hasPort: false },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(2, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(3, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(4, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(5, 0), terrain: "water", elevation: 0, hasPort: false },
     // Spain port far south — P1 spawns here
     {
       hex: hex(0, 3),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "Spain",
       market: TEST_MARKET,
     },
     // Water near Spain port
-    { hex: hex(1, 3), terrain: "water", hasPort: false },
-    { hex: hex(0, 2), terrain: "water", hasPort: false },
-    { hex: hex(1, 2), terrain: "water", hasPort: false },
+    { hex: hex(1, 3), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, 2), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, 2), terrain: "water", elevation: 0, hasPort: false },
     // Bridge water between north and south
-    { hex: hex(0, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
-    { hex: hex(1, 1), terrain: "water", hasPort: false },
+    { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, 1), terrain: "water", elevation: 0, hasPort: false },
     // France port for fallback
     {
       hex: hex(3, 3),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "France",
       market: TEST_MARKET,

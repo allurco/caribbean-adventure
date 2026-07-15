@@ -27,7 +27,7 @@ function setupCombatGame(options: {
 }) {
   const cells: MapCell[] = generateMap(5, 0).map((c) => ({
     ...c,
-    terrain: "water" as const,
+    terrain: "water" as const, elevation: 0,
     hasPort: false,
   }));
 
@@ -620,7 +620,7 @@ describe("bounty and flotilla system", () => {
   it("attacking a merchant NPC adds bounty to the player", () => {
     const cells: MapCell[] = generateMap(5, 0).map((c) => ({
       ...c,
-      terrain: "water" as const,
+      terrain: "water" as const, elevation: 0,
       hasPort: false,
     }));
 
@@ -688,7 +688,7 @@ describe("bounty and flotilla system", () => {
   it("boarding a merchant NPC adds bounty to the player", () => {
     const cells: MapCell[] = generateMap(5, 0).map((c) => ({
       ...c,
-      terrain: "water" as const,
+      terrain: "water" as const, elevation: 0,
       hasPort: false,
     }));
 
@@ -777,7 +777,7 @@ describe("bounty and flotilla system", () => {
   it("attacking a flotilla does NOT add bounty", () => {
     const cells: MapCell[] = generateMap(5, 0).map((c) => ({
       ...c,
-      terrain: "water" as const,
+      terrain: "water" as const, elevation: 0,
       hasPort: false,
     }));
 
@@ -848,11 +848,11 @@ describe("bounty and flotilla system", () => {
         return {
           ...c,
           hex: hex(0, 0),
-          terrain: "island" as const,
+          terrain: "island" as const, elevation: 2,
           hasPort: true,
           nation: "England" as const,
           market: {
-            prices: {
+            inDemandGood: null, prices: {
               Wood: { buy: 8, sell: 6 },
               Sugar: { buy: 20, sell: 15 },
               Rum: { buy: 30, sell: 23 },
@@ -861,7 +861,7 @@ describe("bounty and flotilla system", () => {
           },
         };
       }
-      return { ...c, terrain: "water" as const, hasPort: false };
+      return { ...c, terrain: "water" as const, elevation: 0, hasPort: false };
     });
 
     const ship0 = createShipWithFullStats(2, 0);

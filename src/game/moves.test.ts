@@ -4,7 +4,7 @@ import { hex, hexEquals } from "./hex";
 import type { MapCell } from "./mapGenerator";
 
 function cell(q: number, r: number, terrain: "water" | "island" = "water", hasPort = false): MapCell {
-  return { hex: hex(q, r), terrain, hasPort };
+  return { hex: hex(q, r), terrain, hasPort, elevation: terrain === "water" ? 0 : 2 };
 }
 
 describe("validMoveTargets", () => {

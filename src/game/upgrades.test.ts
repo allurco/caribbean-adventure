@@ -10,7 +10,7 @@ import { SHIP_SPECS, UPGRADES, REPAIR_COST_PER_POINT } from "./constants";
 import type { MapSizeId } from "./mapConfig";
 
 const TEST_MARKET = {
-  prices: {
+  inDemandGood: null, prices: {
     Wood: { buy: 8, sell: 6 },
     Sugar: { buy: 20, sell: 15 },
     Rum: { buy: 30, sell: 23 },
@@ -35,27 +35,27 @@ function makeCells(): MapCell[] {
   return [
     {
       hex: hex(0, 0),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "England",
       market: TEST_MARKET,
       dockingHex: hex(1, 0),
     },
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
-    { hex: hex(2, 0), terrain: "water", hasPort: false },
-    { hex: hex(3, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(2, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(3, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
     {
       hex: hex(0, 3),
-      terrain: "island",
+      terrain: "island", elevation: 2,
       hasPort: true,
       nation: "Spain",
       market: TEST_MARKET,
       dockingHex: hex(0, 2),
     },
-    { hex: hex(0, 2), terrain: "water", hasPort: false },
-    { hex: hex(1, 2), terrain: "water", hasPort: false },
+    { hex: hex(0, 2), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, 2), terrain: "water", elevation: 0, hasPort: false },
   ];
 }
 
@@ -97,13 +97,13 @@ function setupAtPortNoDraft() {
   const ship0 = createShipState(hex(1, 0), "Sloop");
   ship0.stats = structuredClone(SHIP_SPECS.Sloop);
   const cells: MapCell[] = [
-    { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 1), terrain: "water", hasPort: false },
-    { hex: hex(-1, 0), terrain: "water", hasPort: false },
-    { hex: hex(0, -1), terrain: "water", hasPort: false },
-    { hex: hex(1, -1), terrain: "water", hasPort: false },
+    { hex: hex(0, 0), terrain: "island", elevation: 2, hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
   ];
   const TestGame: Game<CaribbeanState> = {
     ...Caribbean,
@@ -231,13 +231,13 @@ describe("repair move", () => {
     ship0.stats.hull.current = 1;
     ship0.damage = { hull: 1, crew: 0, masts: 0 };
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
-      { hex: hex(1, 0), terrain: "water", hasPort: false },
-      { hex: hex(0, 1), terrain: "water", hasPort: false },
-      { hex: hex(-1, 1), terrain: "water", hasPort: false },
-      { hex: hex(-1, 0), terrain: "water", hasPort: false },
-      { hex: hex(0, -1), terrain: "water", hasPort: false },
-      { hex: hex(1, -1), terrain: "water", hasPort: false },
+      { hex: hex(0, 0), terrain: "island", elevation: 2, hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
+      { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
     ];
     const TestGame: Game<CaribbeanState> = {
       ...Caribbean,
@@ -313,13 +313,13 @@ describe("repair move", () => {
     ship0.stats.crew.current = 0;
     ship0.damage = { hull: 2, crew: 2, masts: 2 };
     const cells: MapCell[] = [
-      { hex: hex(0, 0), terrain: "island", hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
-      { hex: hex(1, 0), terrain: "water", hasPort: false },
-      { hex: hex(0, 1), terrain: "water", hasPort: false },
-      { hex: hex(-1, 1), terrain: "water", hasPort: false },
-      { hex: hex(-1, 0), terrain: "water", hasPort: false },
-      { hex: hex(0, -1), terrain: "water", hasPort: false },
-      { hex: hex(1, -1), terrain: "water", hasPort: false },
+      { hex: hex(0, 0), terrain: "island", elevation: 2, hasPort: true, market: TEST_MARKET, dockingHex: hex(1, 0) },
+      { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
     ];
     const TestGame: Game<CaribbeanState> = {
       ...Caribbean,

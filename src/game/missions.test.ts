@@ -16,12 +16,12 @@ import { SHIP_SPECS } from "./constants";
 function createTestPort(name: string, nation: "England" | "France" | "Spain" | "Netherlands"): MapCell {
   return {
     hex: hex(0, 0),
-    terrain: "island",
+    terrain: "island", elevation: 2,
     hasPort: true,
     portName: name,
     nation,
     market: {
-      prices: {
+      inDemandGood: null, prices: {
         Wood: { buy: 5, sell: 3 },
         Sugar: { buy: 8, sell: 6 },
         Rum: { buy: 10, sell: 8 },
@@ -36,8 +36,8 @@ function createTestState(): CaribbeanState {
     { ...createTestPort("Port Royal", "England"), hex: hex(0, 0) },
     { ...createTestPort("Havana", "Spain"), hex: hex(5, 0) },
     { ...createTestPort("Nassau", "England"), hex: hex(-5, 5) },
-    { hex: hex(1, 0), terrain: "water", hasPort: false },
-    { hex: hex(2, 0), terrain: "water", hasPort: false },
+    { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+    { hex: hex(2, 0), terrain: "water", elevation: 0, hasPort: false },
   ];
 
   return {
