@@ -33,10 +33,18 @@
 import { DataUtils } from "three";
 import type { TerrainBounds, TerrainHeightField } from "./terrainHeightField";
 
-/** Default texel density: finer than the land mesh lattice (0.15) so the shallows trace the same noisy coast. */
-export const TERRAIN_TEXELS_PER_UNIT = 8;
-/** Max texels per side; the large map needs ~730 at the default density. */
-export const TERRAIN_TEXTURE_MAX_SIZE = 1024;
+/**
+ * Default texel density, ~5.4 m per texel: finer than the land mesh lattice
+ * (0.15) so the shallows trace the same noisy coast, and fine enough that the
+ * surf outline, drawn from the coast distance, isn't visibly polygonal. The
+ * land mesh has its own lattice spacing and does not follow this.
+ */
+export const TERRAIN_TEXELS_PER_UNIT = 12;
+/**
+ * Max texels per side; the large map needs ~1100 at the default density. At
+ * 8 bytes per RGBA half-float texel that is under 10 MB.
+ */
+export const TERRAIN_TEXTURE_MAX_SIZE = 1152;
 
 export interface BakedTerrainField {
   /** RGBA half floats (raw bits), row-major, `width · height · 4` long. */

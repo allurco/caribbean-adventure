@@ -198,8 +198,8 @@ water are seabed (coral sand, algal deep seabed and coral patches, with
 albedos in `palette.ts`), drawn only on `SEABED_LAYER`.
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
-an RGBA **half-float** texture over `field.bounds` (8 texels per world unit,
-capped at 1024 per side; texel centres sampled, rows from `minZ` up, so
+an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
+capped at 1152 per side; texel centres sampled, rows from `minZ` up, so
 `uv = (xz - min) / (max - min)` with no flip):
 
 | Channel | Contents |
