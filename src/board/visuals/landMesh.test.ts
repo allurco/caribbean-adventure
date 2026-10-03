@@ -4,7 +4,7 @@ import { hexGrid } from "../../game/hex";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
-import { buildLandMesh, LAND_MESH_SKIRT_DEPTH } from "./landMesh";
+import { buildLandMesh, LAND_MESH_SKIRT_DEPTH, LAND_MESH_SPACING } from "./landMesh";
 
 function singleIsland(): MapCell[] {
   return hexGrid(4).map((h) =>
@@ -88,6 +88,21 @@ describe("buildLandMesh", () => {
     expect(triangleCount).toBe(0);
   });
 
+  it("samples finely enough to resolve interior relief", () => {
+    expect(LAND_MESH_SPACING).toBeLessThanOrEqual(0.15);
+  });
+
+  it("skipping open water yields exactly the full-lattice mesh", () => {
+    const cells = generateMap(12, 7);
+    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const fast = buildLandMesh(field);
+    const full = buildLandMesh(field, { skipOpenWater: false });
+    expect(fast.triangleCount).toBeGreaterThan(0);
+    expect(fast.triangleCount).toBe(full.triangleCount);
+    expect(fast.positions).toEqual(full.positions);
+    expect(fast.colors).toEqual(full.colors);
+  });
+
   it("benchmark: builds the land mesh for the largest map quickly", () => {
     const { radius } = getMapPreset("large");
     const cells = generateMap(radius, 31337);
@@ -99,6 +114,7 @@ describe("buildLandMesh", () => {
       `Land mesh, large map (radius ${radius}): ${triangleCount} triangles in ${elapsed.toFixed(1)}ms`
     );
     expect(triangleCount).toBeGreaterThan(0);
-    expect(elapsed).toBeLessThan(2000);
+    // One-time build; target is well under 200 ms, with headroom for slow CI.
+    expect(elapsed).toBeLessThan(300);
   });
 });

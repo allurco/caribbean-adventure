@@ -9,6 +9,7 @@ import {
   ELEVATION_HEIGHTS,
   COAST_NOISE_AMPLITUDE,
 } from "./terrainHeightField";
+import { LAND_MESH_SPACING } from "./landMesh";
 
 const key = (q: number, r: number) => `${q},${r}`;
 
@@ -250,12 +251,93 @@ describe("terrainHeightField", () => {
       expect(far).toBeLessThan(near);
     });
 
+    it("flags open water away from land as not near land", () => {
+      const cells = generateMap(12, 3);
+      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      let far = 0;
+      for (let x = -20; x <= 20; x += 0.13) {
+        for (let z = -20; z <= 20; z += 0.13) {
+          if (field.isNearLand(x, z)) continue;
+          expect(field.sampleCoastDistance(x, z)).toBeLessThanOrEqual(-(1 - COAST_NOISE_AMPLITUDE));
+          far++;
+        }
+      }
+      expect(far).toBeGreaterThan(1000);
+    });
+
     it("treats reef cells as water", () => {
       const cells = buildMap(3, { [key(0, 0)]: 1 }).map((c) =>
         c.hex.q === 2 && c.hex.r === 0 ? { ...c, terrain: "reef" as const } : c
       );
       const field = createTerrainHeightField(cells, SEED);
       expect(field.sampleHeight(...centre(2, 0))).toBeLessThan(0);
+    });
+  });
+
+  describe("interior relief", () => {
+    /** A radius-3 island where every land hex has the same elevation. */
+    function flatIsland(elevation: Elevation): MapCell[] {
+      const land: Record<string, Elevation> = {};
+      for (const h of hexGrid(3)) land[key(h.q, h.r)] = elevation;
+      return buildMap(7, land);
+    }
+
+    /** Std dev of (height − height without relief) over the island interior. */
+    function reliefSpread(elevation: Elevation): number {
+      const cells = flatIsland(elevation);
+      const field = createTerrainHeightField(cells, SEED);
+      const smooth = createTerrainHeightField(cells, SEED, { reliefScale: 0 });
+      const residuals: number[] = [];
+      for (let x = -3; x <= 3; x += 0.1) {
+        for (let z = -3; z <= 3; z += 0.1) {
+          residuals.push(field.sampleHeight(x, z) - smooth.sampleHeight(x, z));
+        }
+      }
+      const mean = residuals.reduce((s, v) => s + v, 0) / residuals.length;
+      const variance = residuals.reduce((s, v) => s + (v - mean) ** 2, 0) / residuals.length;
+      return Math.sqrt(variance);
+    }
+
+    it("grows with elevation: slight on beach, moderate in jungle, strong on mountains", () => {
+      const beach = reliefSpread(1);
+      const jungle = reliefSpread(2);
+      const mountain = reliefSpread(3);
+      expect(beach).toBeGreaterThan(0);
+      expect(jungle).toBeGreaterThan(beach * 2);
+      expect(mountain).toBeGreaterThan(jungle * 2);
+      // Mountains should read as peaks, not a faint texture.
+      expect(mountain).toBeGreaterThan(0.08);
+    });
+
+    it("vanishes at the coast, with zero slope", () => {
+      const cells = generateMap(12, 5);
+      const seed = terrainSeedFromCells(cells);
+      const field = createTerrainHeightField(cells, seed);
+      const smooth = createTerrainHeightField(cells, seed, { reliefScale: 0 });
+      let nearShore = 0;
+      for (let x = -20; x <= 20; x += 0.09) {
+        for (let z = -20; z <= 20; z += 0.09) {
+          const d = field.sampleCoastDistance(x, z);
+          const residual = Math.abs(field.sampleHeight(x, z) - smooth.sampleHeight(x, z));
+          if (d <= 0) {
+            expect(residual).toBe(0);
+          } else if (d < 0.05) {
+            // Fades like d², so it is negligible this close to the shore.
+            expect(residual).toBeLessThan(0.005);
+            nearShore++;
+          }
+        }
+      }
+      expect(nearShore).toBeGreaterThan(100);
+    });
+
+    it("is the same for the same seed and changes with the seed", () => {
+      const cells = flatIsland(3);
+      const a = createTerrainHeightField(cells, SEED);
+      const b = createTerrainHeightField(cells, SEED);
+      const c = createTerrainHeightField(cells, SEED + 1);
+      expect(a.sampleHeight(0.3, 0.7)).toBe(b.sampleHeight(0.3, 0.7));
+      expect(a.sampleHeight(0.3, 0.7)).not.toBe(c.sampleHeight(0.3, 0.7));
     });
   });
 
@@ -281,12 +363,12 @@ describe("terrainHeightField", () => {
       const start = performance.now();
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
       const built = performance.now();
-      // Sample at the land mesh's resolution (0.25 world units).
+      // Sample at the land mesh's resolution.
       const { minX, maxX, minZ, maxZ } = field.bounds;
       let samples = 0;
       let sink = 0;
-      for (let z = minZ; z <= maxZ; z += 0.25 * (Math.sqrt(3) / 2)) {
-        for (let x = minX; x <= maxX; x += 0.25) {
+      for (let z = minZ; z <= maxZ; z += LAND_MESH_SPACING * (Math.sqrt(3) / 2)) {
+        for (let x = minX; x <= maxX; x += LAND_MESH_SPACING) {
           sink += field.sampleHeight(x, z);
           samples++;
         }
