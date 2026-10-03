@@ -17,8 +17,8 @@ describe("palette", () => {
       shallows: 0x5fd4c9,
       wetSand: 0xb8925e,
       drySand: 0xe3cf9c,
-      jungle: 0x2f6b3a,
-      highlandRock: 0x76695a,
+      jungle: 0x367a43,
+      highlandRock: 0x9d8d79,
       surf: 0xf2faf7,
       palmFrond: 0x4f8a34,
       palmTrunk: 0x8a6a45,
@@ -29,6 +29,32 @@ describe("palette", () => {
     const frond = paletteColor("palmFrond");
     const jungle = paletteColor("jungle");
     expect(frond.g).toBeGreaterThan(jungle.g);
+  });
+
+  it("gives the jungle canopy a tropical-forest albedo (0.12–0.18 linear) and keeps it green", () => {
+    const { r, g, b } = paletteColor("jungle");
+    const albedo = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    expect(albedo).toBeGreaterThanOrEqual(0.12);
+    expect(albedo).toBeLessThanOrEqual(0.18);
+    expect(g).toBeGreaterThan(r);
+    expect(g).toBeGreaterThan(b);
+  });
+
+  it("gives highland rock a weathered-limestone albedo (0.25–0.30 linear) in a warm grey-tan", () => {
+    const rock = paletteColor("highlandRock");
+    const albedo = 0.2126 * rock.r + 0.7152 * rock.g + 0.0722 * rock.b;
+    expect(albedo).toBeGreaterThanOrEqual(0.25);
+    expect(albedo).toBeLessThanOrEqual(0.3);
+    expect(rock.r).toBeGreaterThanOrEqual(rock.g);
+    expect(rock.g).toBeGreaterThanOrEqual(rock.b);
+    // Low saturation in sRGB (HSV), so it reads as grey-tan rather than orange.
+    const { r, g, b } = rock.clone().convertLinearToSRGB();
+    expect((Math.max(r, g, b) - Math.min(r, g, b)) / Math.max(r, g, b)).toBeLessThan(0.3);
+  });
+
+  it("keeps highland rock clearly darker than dry sand", () => {
+    const albedo = ({ r, g, b }: Color) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    expect(albedo(paletteColor("highlandRock"))).toBeLessThan(0.6 * albedo(paletteColor("drySand")));
   });
 
   it("paletteColor round-trips to the sRGB hex", () => {

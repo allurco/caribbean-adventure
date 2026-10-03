@@ -20,21 +20,17 @@ import { Ocean } from "./visuals/Ocean";
 import { LandTerrain } from "./visuals/LandTerrain";
 import { TerrainDecorations } from "./visuals/TerrainDecorations";
 import { SunLight } from "./visuals/SunLight";
+import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import {
   HAZE_COLOR,
   HAZE_NEAR,
   HAZE_FAR,
-  HEMI_SKY_COLOR,
-  HEMI_GROUND_COLOR,
-  HEMI_INTENSITY,
   SUN_COLOR,
+  SUN_DIRECTION,
   SUN_INTENSITY,
   SUN_OFFSET,
   SHADOW_MAP_SIZE,
   SHADOW_EXTENT,
-  FILL_COLOR,
-  FILL_INTENSITY,
-  FILL_POSITION,
   BLOOM_INTENSITY,
   BLOOM_THRESHOLD,
   BLOOM_SMOOTHING,
@@ -132,6 +128,9 @@ function Scene({
   const { camera } = useThree();
   const targetPosition = useRef(new Vector3());
   const isAnimating = useRef(false);
+  // Physical sky as image-based lighting for the whole scene (replaces the old
+  // hemisphere and fill lights) and as the sea's reflection.
+  const skyEnvironment = useSkyEnvironment(SUN_DIRECTION);
 
   const cameraBounds = useMemo(
     () => cameraBoundsFromHexes(G.cells.map((c) => c.hex), CAMERA_BOUNDS_PADDING),
@@ -237,10 +236,7 @@ function Scene({
       <color attach="background" args={[HAZE_COLOR]} />
       <fog attach="fog" args={[HAZE_COLOR, HAZE_NEAR, HAZE_FAR]} />
 
-      {/* Sky blue from above, sea teal from below: tints shadows instead of greying them */}
-      <hemisphereLight args={[HEMI_SKY_COLOR, HEMI_GROUND_COLOR, HEMI_INTENSITY]} />
-
-      {/* Low, warm late-afternoon sun; shadow box follows the camera target */}
+      {/* High, warm mid-afternoon sun in front of the camera; shadow box follows the camera target */}
       <SunLight
         color={SUN_COLOR}
         intensity={SUN_INTENSITY}
@@ -249,19 +245,23 @@ function Scene({
         shadowExtent={SHADOW_EXTENT}
       />
 
-      {/* Cool sky fill for softer, bluer shadows */}
-      <directionalLight
-        position={FILL_POSITION}
-        color={FILL_COLOR}
-        intensity={FILL_INTENSITY}
-      />
-
       {/* Islands: one continuous mesh from the terrain height field */}
       <LandTerrain cells={G.cells} />
 
       {/* Ocean, coloured by depth from the same terrain height field and
-          sized so its edge is never on screen */}
-      <Ocean cells={G.cells} size={oceanSize} />
+          sized so its edge is never on screen. Waits for the sky it reflects. */}
+      {skyEnvironment && (
+        <Ocean
+          cells={G.cells}
+          size={oceanSize}
+          sun={SUN_DIRECTION}
+          sunColor={SUN_COLOR}
+          sunIntensity={SUN_INTENSITY}
+          sky={skyEnvironment.texture}
+          skyHeight={skyEnvironment.textureHeight}
+          skyIntensity={skyEnvironment.intensity}
+        />
+      )}
 
       {/* Terrain decorations: trees, rocks, forts, piers */}
       <TerrainDecorations cells={G.cells} />
