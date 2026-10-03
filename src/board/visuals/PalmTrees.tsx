@@ -127,7 +127,7 @@ export function PalmTrees({ palms }: PalmTreesProps) {
       args={[geometry, material, palms.length]}
       customDepthMaterial={depthMaterial}
       castShadow
-      receiveShadow
+      // No receiveShadow: the thin double-sided fronds shadow themselves into acne.
       frustumCulled={false}
     />
   );
