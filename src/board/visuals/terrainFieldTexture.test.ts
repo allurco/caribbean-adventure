@@ -15,6 +15,7 @@ import {
   COAST_ENCODE_RANGE,
   TERRAIN_TEXELS_PER_UNIT,
   TERRAIN_TEXTURE_MAX_SIZE,
+  TERRAIN_FIELD_GLSL,
   type BakedTerrainField,
 } from "./terrainFieldTexture";
 
@@ -66,6 +67,27 @@ describe("terrainFieldTexture", () => {
     it("round-trips coast distance within one 8-bit step", () => {
       for (let d = -COAST_ENCODE_RANGE; d <= COAST_ENCODE_RANGE; d += 0.017) {
         expect(Math.abs(decodeCoastDistance(encodeCoastDistance(d)) - d)).toBeLessThanOrEqual(COAST_STEP / 2 + 1e-9);
+      }
+    });
+
+    it("keeps the land/water sign of the coast distance through the round trip", () => {
+      // The surf draws foam only where the decoded distance is negative, so a
+      // point on land must never decode as water (and vice versa).
+      for (let d = 0.01; d <= COAST_ENCODE_RANGE; d += 0.01) {
+        expect(decodeCoastDistance(encodeCoastDistance(d))).toBeGreaterThan(0);
+        expect(decodeCoastDistance(encodeCoastDistance(-d))).toBeLessThan(0);
+      }
+      // The waterline itself lands on the land side, so it carries no foam.
+      expect(decodeCoastDistance(encodeCoastDistance(0))).toBeGreaterThanOrEqual(0);
+    });
+
+    it("decodes coast distance in GLSL with the same formula as TypeScript", () => {
+      // GLSL reads the byte as code / 255; the shader decoder is (g·2 − 1)·range.
+      expect(TERRAIN_FIELD_GLSL).toContain("float terrainFieldCoastDistance(vec4 texel)");
+      expect(TERRAIN_FIELD_GLSL).toContain(`(texel.g * 2.0 - 1.0) * ${COAST_ENCODE_RANGE.toFixed(4)}`);
+      for (let code = 0; code <= 255; code++) {
+        const glsl = ((code / 255) * 2 - 1) * Number(COAST_ENCODE_RANGE.toFixed(4));
+        expect(decodeCoastDistance(code)).toBeCloseTo(glsl, 9);
       }
     });
   });
