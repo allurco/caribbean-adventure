@@ -258,8 +258,9 @@ function Scene({
       {/* Islands: one continuous mesh from the terrain height field */}
       <LandTerrain cells={G.cells} />
 
-      {/* Simple deep blue ocean, sized so its edge is never on screen */}
-      <Ocean size={oceanSize} />
+      {/* Ocean, coloured by depth from the same terrain height field and
+          sized so its edge is never on screen */}
+      <Ocean cells={G.cells} size={oceanSize} />
 
       {/* Terrain decorations: trees, rocks, forts, piers */}
       <TerrainDecorations cells={G.cells} />
