@@ -11,7 +11,7 @@ import {
   UniformsUtils,
   DataTexture,
   RGBAFormat,
-  UnsignedByteType,
+  HalfFloatType,
   LinearFilter,
   ClampToEdgeWrapping,
 } from "three";
@@ -425,7 +425,7 @@ function terrainFieldTexture(cells: readonly MapCell[]): { texture: DataTexture;
   const { data, width, height, bounds } = bakeTerrainField(sharedTerrainField(cells), {
     sampleReef: createReefMask(cells),
   });
-  const texture = new DataTexture(data, width, height, RGBAFormat, UnsignedByteType);
+  const texture = new DataTexture(data, width, height, RGBAFormat, HalfFloatType);
   texture.minFilter = LinearFilter;
   texture.magFilter = LinearFilter;
   texture.wrapS = ClampToEdgeWrapping;
