@@ -1,6 +1,7 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { ShaderMaterial, PlaneGeometry, Vector3, MathUtils, Mesh } from "three";
+import { PALETTE_GLSL } from "./palette";
 
 const vertexShader = `
   varying vec3 eye;
@@ -32,7 +33,9 @@ const fragmentShader = `
   const float SEA_CHOPPY = 0.5;
   const float SEA_SPEED = 0.6;
   const float SEA_FREQ = 1.8;
-  const vec3 SEA_BASE = vec3(0.02, 0.05, 0.12);
+  ${PALETTE_GLSL}
+  const vec3 SEA_BASE = PALETTE_DEEP_WATER;
+  // No matching palette entry; kept as-is.
   const vec3 SEA_WATER_COLOR = vec3(0.08, 0.18, 0.35);
   #define SEA_TIME (iTime * SEA_SPEED)
 
