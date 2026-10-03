@@ -122,9 +122,12 @@ const fragmentShader = `
   const float SURF_PHASE_SPREAD = 3.0;   // radians of pulse offset between stretches of coast
   const float SURF_NOISE_SCALE = 6.0;    // frequency of the noise that breaks the foam up
   const float SURF_CHURN_AMOUNT = 0.35;  // radius (noise units) the breakup noise circles each churn cycle
-  const float SURF_COVERAGE = 0.8;       // < 1 leaves holes even in the densest foam
-  const float SURF_BREAKUP_SOFTNESS = 0.12; // edge softness of the foam patches
-  const float SURF_STRENGTH = 0.9;       // max blend of foam over the water colour
+  // Coverage, softness and strength were lowered for #38: over the clear,
+  // darker water the old values (0.8, 0.12, 0.9) gave solid white sheets.
+  const float SURF_COVERAGE = 0.62;      // < 1 leaves holes even in the densest foam
+  const float SURF_BREAKUP_SOFTNESS = 0.16; // edge softness of the foam patches
+  const float SURF_LACE_SCALE = 4.3;     // frequency multiplier of the fine octave that turns patches into lace
+  const float SURF_STRENGTH = 0.75;      // max blend of foam over the water colour: thin foam stays translucent
 
   // Shallow-water caustics (issue #11): a moving web of light on the seabed,
   // only in the shallows. It redistributes the seabed's direct sunlight before
@@ -208,7 +211,8 @@ const fragmentShader = `
     float churnAngle = 2.0 * PI * surfTime / SURF_CHURN_PERIOD;
     vec2 churn = vec2(cos(churnAngle), sin(churnAngle)) * SURF_CHURN_AMOUNT;
     vec2 q = worldXZ * SURF_NOISE_SCALE;
-    float n = 0.5 + 0.25 * noise(q + churn) + 0.25 * noise(q * 2.1 - churn.yx);
+    float n = 0.5 + 0.22 * noise(q + churn) + 0.18 * noise(q * 2.1 - churn.yx)
+      + 0.1 * noise(q * SURF_LACE_SCALE + churn * 1.7);
     float threshold = 1.0 - max(wash, breaker) * SURF_COVERAGE;
     float foam = smoothstep(threshold, threshold + SURF_BREAKUP_SOFTNESS, n);
 

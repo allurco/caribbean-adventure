@@ -106,8 +106,23 @@ describe("landFaceColor", () => {
     });
   });
 
-  it("is wet sand just above the waterline", () => {
-    expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: 0.01 })).toEqual([1, 0, 0]);
+  it("is wet sand at the waterline", () => {
+    expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: 0.0001 })[1]).toBeLessThan(0.01);
+  });
+
+  it("dries gradually up the swash zone, with no flat wet band (#38)", () => {
+    // Dry share is the green channel (dry sand (1,1,0) vs wet sand (1,0,0)).
+    const dry = (h: number) => landFaceColor(CHANNEL_COLORS, { ...flat, height: h })[1];
+    expect(dry(0.005)).toBeGreaterThan(0.05);
+    expect(dry(0.005)).toBeLessThan(0.5);
+    expect(dry(0.0125)).toBeGreaterThan(0.3);
+    expect(dry(0.0125)).toBeLessThan(0.8);
+    expect(dry(0.03)).toBe(1);
+    let prev = dry(0.0001);
+    for (let h = 0.001; h <= 0.03; h += 0.001) {
+      expect(dry(h)).toBeGreaterThanOrEqual(prev);
+      prev = dry(h);
+    }
   });
 
   it("blends beach to jungle to highland by height", () => {
@@ -168,24 +183,23 @@ describe("buildLandMesh", () => {
       // (g without r).
       expect(b / (r + g + b)).toBeLessThan(0.05);
       expect(r).toBeGreaterThanOrEqual(g - 1e-6);
-      if (g === 0 && b === 0) wet++;
+      if (g < r * 0.5 && b === 0) wet++;
       if (g > 0 && b === 0 && Math.abs(r - g) < 1e-6) dry++;
     }
     expect(wet).toBeGreaterThan(0);
     expect(dry).toBeGreaterThan(0);
   });
 
-  it("puts wet sand on faces just above the waterline", () => {
+  it("puts mostly wet sand on faces just above the waterline", () => {
     const field = createTerrainHeightField(mountainIsland(), 11);
     const { positions, colors, triangleCount } = buildLandMesh(field, { colors: CHANNEL_COLORS });
     let checked = 0;
     for (let t = 0; t < triangleCount; t++) {
       const { height, normalY } = faceGeometry(positions, t);
-      if (height <= 0 || height > 0.02 || normalY < 0.85) continue;
+      if (height <= 0 || height > 0.004 || normalY < 0.85) continue;
       const [r, g, b] = faceRgb(colors, t);
-      expect(g).toBe(0);
+      expect(g).toBeLessThan(r * 0.4);
       expect(b).toBe(0);
-      expect(r).toBeGreaterThan(0);
       checked++;
     }
     expect(checked).toBeGreaterThan(0);

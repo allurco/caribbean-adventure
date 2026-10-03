@@ -36,6 +36,8 @@ const COAST_NOISE_FREQUENCY = 1.3;
 
 /** Distance inland over which land rises from sea level to its target height. */
 const SHORE_RAMP = 0.9;
+/** Width of the soft toe where the land leaves the water (world units, ~12 m); see sampleHeight. */
+const SHORE_TOE = 0.18;
 /**
  * Coast distance is clamped to this; beyond it the field is flat. 4 units
  * (260 m) reaches past the seabed drop-off, where the profile is within a few
@@ -459,12 +461,21 @@ export function createTerrainHeightField(
     const blended = blendLand(x, z, scratch);
     const target = blended ? scratch[0] : ELEVATION_HEIGHTS[1];
     const elevation = blended ? scratch[1] : 1;
-    const t = 1 - Math.min(d / SHORE_RAMP, 1);
+    // Soft toe on beaches (#38): d²/(d + toe) leaves the waterline with zero
+    // slope and becomes d − toe inland, so a beach meets the water
+    // tangentially instead of rising at 34° from it. It fades out from beach
+    // (elevation 1) to jungle (2): rocky coasts still meet the sea steeply.
+    const toe = SHORE_TOE * Math.max(0, Math.min(1, 2 - elevation));
+    const inland = toe > 0 ? (d * d) / (d + toe) : d;
+    const t = 1 - Math.min(inland / SHORE_RAMP, 1);
     const ramp = 1 - t * t;
     if (reliefScale === 0) return SEA_LEVEL + target * ramp;
     const relief = reliefScale * reliefAmplitude(elevation) * reliefShape(reliefNoise, x, z, elevation);
-    // Relief is scaled by ramp² so it vanishes (with zero slope) at the shore.
-    return SEA_LEVEL + target * ramp + relief * ramp * ramp;
+    // Relief is scaled by the original ramp squared (no toe): it already
+    // vanishes with zero slope at the shore.
+    const tr = 1 - Math.min(d / SHORE_RAMP, 1);
+    const reliefRamp = 1 - tr * tr;
+    return SEA_LEVEL + target * ramp + relief * reliefRamp * reliefRamp;
   };
 
   const sampleElevation = (x: number, z: number): number => {

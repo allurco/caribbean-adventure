@@ -341,6 +341,29 @@ describe("terrainHeightField", () => {
       }
     });
 
+    it("meets the water softly: the land leaves the waterline at the seabed's gentle slope", () => {
+      const cells = buildMap(7, volcanoIsland());
+      const field = createTerrainHeightField(cells, SEED, { coastNoiseAmplitude: 0, reliefScale: 0 });
+      // From the beach/water hex edge midpoint inland, towards the beach centre.
+      const [ax, az] = centre(3, 0);
+      const [bx, bz] = centre(2, 0);
+      const mx = (ax + bx) / 2;
+      const mz = (az + bz) / 2;
+      const ux = (bx - ax) / Math.sqrt(3);
+      const uz = (bz - az) / Math.sqrt(3);
+      const step = 0.002;
+      const slopeAt = (s: number) =>
+        (field.sampleHeight(mx + ux * (s + step), mz + uz * (s + step)) - field.sampleHeight(mx + ux * s, mz + uz * s)) /
+        step;
+      // At the waterline: no steeper than the seabed's 1:21 beach face.
+      expect(slopeAt(0)).toBeLessThan(0.05);
+      // Through the first 3 m of height it steepens gradually, staying well
+      // below the old 34° (0.67) face at the water's edge.
+      for (let s = 0; field.sampleHeight(mx + ux * s, mz + uz * s) < 3 / 65; s += step) {
+        expect(slopeAt(s)).toBeLessThan(0.45);
+      }
+    });
+
     it("flags every point shallower than 100 m as near the seabed", () => {
       const cells = generateMap(12, 3);
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));

@@ -37,9 +37,13 @@ const CORAL_FREQUENCY = 1.4;
 const CORAL_COVER: readonly [number, number] = [-0.3, 0.5];
 const CORAL_MAX_COVER = 0.75;
 
-/** Faces up to this height are wet sand; it fades to dry sand over ±WET_SAND_FADE. */
-const WET_SAND_TOP = 0.05;
-const WET_SAND_FADE = 0.02;
+/**
+ * Sand dries from wet at the waterline to dry by this height (~1.9 m, the
+ * swash zone of a calm beach), along a smooth ramp. It used to be a flat
+ * wet band 3.25 m high, which read as a dark ledge above the clear water once
+ * the water stopped being painted wet-sand coloured at the shore (#38).
+ */
+const WET_SAND_TOP = 0.03;
 /**
  * Height bands [start, end] over which beach fades to jungle and jungle to
  * highland. Beach cells top out near 0.35 and jungle cells near 0.9
@@ -171,8 +175,6 @@ export function landFaceColor(
     rgb = lerpRgb(colors.wetSand, colors.seabedSand, smoothstep(0, SEABED_SAND_FADE, depth));
     rgb = lerpRgb(rgb, colors.deepSeabed, smoothstep(SEABED_DEEP_BAND[0], SEABED_DEEP_BAND[1], depth));
     if (coral > 0) rgb = lerpRgb(rgb, colors.coral, coral);
-  } else if (height <= WET_SAND_TOP - WET_SAND_FADE) {
-    rgb = [...colors.wetSand];
   } else {
     const jungle = smoothstep(SAND_TO_JUNGLE[0], SAND_TO_JUNGLE[1], height + noise * SAND_TO_JUNGLE_NOISE);
     const highland = smoothstep(
@@ -181,7 +183,7 @@ export function landFaceColor(
       height + noise * JUNGLE_TO_HIGHLAND_NOISE
     );
     rgb = lerpRgb(lerpRgb(colors.drySand, colors.jungle, jungle), colors.highland, highland);
-    const dry = smoothstep(WET_SAND_TOP - WET_SAND_FADE, WET_SAND_TOP + WET_SAND_FADE, height);
+    const dry = smoothstep(0, WET_SAND_TOP, height);
     rgb = lerpRgb(colors.wetSand, rgb, dry);
   }
   // Underwater faces (hidden by the ocean) stay sand, so the seabed drop-off isn't rock.
