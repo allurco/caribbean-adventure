@@ -16,11 +16,21 @@ export const LAND_MESH_SKIRT_DEPTH = 0.35;
 
 type Rgb = readonly [number, number, number];
 
-// Placeholder palette by elevation until the terrain shader lands.
-const SAND: Rgb = [0.82, 0.72, 0.55];
-const JUNGLE: Rgb = [0.22, 0.55, 0.28];
-const ROCK: Rgb = [0.5, 0.47, 0.42];
-const WET_SAND: Rgb = [0.6, 0.52, 0.4];
+/** Linear-RGB face colours by band; the renderer passes the shared palette's entries. */
+export interface LandMeshColors {
+  wetSand: Rgb;
+  drySand: Rgb;
+  jungle: Rgb;
+  highlandRock: Rgb;
+}
+
+// Neutral fallback for tests and callers without a palette.
+const DEFAULT_COLORS: LandMeshColors = {
+  wetSand: [0.6, 0.52, 0.4],
+  drySand: [0.82, 0.72, 0.55],
+  jungle: [0.22, 0.55, 0.28],
+  highlandRock: [0.5, 0.47, 0.42],
+};
 
 export interface LandMeshData {
   /** xyz per vertex, 3 vertices per triangle. */
@@ -33,6 +43,7 @@ export interface LandMeshData {
 export interface LandMeshOptions {
   spacing?: number;
   skirtDepth?: number;
+  colors?: LandMeshColors;
 }
 
 function lerpRgb(a: Rgb, b: Rgb, t: number): [number, number, number] {
@@ -40,11 +51,11 @@ function lerpRgb(a: Rgb, b: Rgb, t: number): [number, number, number] {
 }
 
 /** Face colour from blended elevation (1 beach … 3 mountain); wet sand below sea level. */
-function faceColor(elevation: number, height: number): [number, number, number] {
-  if (height <= 0) return [...WET_SAND];
-  if (elevation <= 1) return [...SAND];
-  if (elevation <= 2) return lerpRgb(SAND, JUNGLE, elevation - 1);
-  return lerpRgb(JUNGLE, ROCK, Math.min(1, elevation - 2));
+function faceColor(colors: LandMeshColors, elevation: number, height: number): [number, number, number] {
+  if (height <= 0) return [...colors.wetSand];
+  if (elevation <= 1) return [...colors.drySand];
+  if (elevation <= 2) return lerpRgb(colors.drySand, colors.jungle, elevation - 1);
+  return lerpRgb(colors.jungle, colors.highlandRock, Math.min(1, elevation - 2));
 }
 
 /** Hash in [0, 1) for small per-face colour variation. */
@@ -59,6 +70,7 @@ export function buildLandMesh(
 ): LandMeshData {
   const spacing = options.spacing ?? LAND_MESH_SPACING;
   const skirtDepth = options.skirtDepth ?? LAND_MESH_SKIRT_DEPTH;
+  const palette = options.colors ?? DEFAULT_COLORS;
   const rowHeight = spacing * (Math.sqrt(3) / 2);
   const { minX, maxX, minZ, maxZ } = field.bounds;
   const cols = Math.ceil((maxX - minX) / spacing) + 1;
@@ -90,7 +102,7 @@ export function buildLandMesh(
     const height = (vy[a] + vy[b] + vy[c]) / 3;
     const cx = (vx[a] + vx[b] + vx[c]) / 3;
     const cz = (vz[a] + vz[b] + vz[c]) / 3;
-    const [r, g, bl] = faceColor(elevation, height);
+    const [r, g, bl] = faceColor(palette, elevation, height);
     const shade = 0.93 + hash(cx, cz) * 0.14;
     for (const v of [a, b, c]) {
       positions.push(vx[v], vy[v], vz[v]);

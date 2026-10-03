@@ -31,6 +31,26 @@ describe("buildLandMesh", () => {
     expect(colors.length).toBe(positions.length);
   });
 
+  it("colours faces from the given palette", () => {
+    const field = createTerrainHeightField(singleIsland(), 5);
+    const sand = [0.9, 0.1, 0.1] as const;
+    const wet = [0.1, 0.1, 0.9] as const;
+    const { positions, colors } = buildLandMesh(field, {
+      colors: { drySand: sand, wetSand: wet, jungle: [0, 1, 0], highlandRock: [0, 0, 0] },
+    });
+    // A lone beach island is only dry or wet sand; each face is its base colour
+    // times a small brightness jitter, so the hue ratios survive.
+    for (let i = 0; i < colors.length; i += 9) {
+      const height = (positions[i + 1] + positions[i + 4] + positions[i + 7]) / 3;
+      const base = height <= 0 ? wet : sand;
+      const scale = colors[i] / base[0];
+      expect(scale).toBeGreaterThan(0.9);
+      expect(scale).toBeLessThan(1.1);
+      expect(colors[i + 1]).toBeCloseTo(base[1] * scale, 5);
+      expect(colors[i + 2]).toBeCloseTo(base[2] * scale, 5);
+    }
+  });
+
   it("winds every triangle to face up", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
     const { positions } = buildLandMesh(field);
