@@ -84,6 +84,28 @@ export const GRID_FADE: GridFadeParams = {
   baseOpacity: 0.15, // same as the old uniform outline
 };
 
+/**
+ * Camera-to-focus distance up to which `GRID_FADE` applies unchanged. Further
+ * out the fade radii grow in proportion to the distance, so the grid covers
+ * the same share of the screen: at full zoom-out (28) that is 2x, i.e. full
+ * grid within ~6 hexes and gone by ~14.
+ */
+export const GRID_FADE_ZOOM_DISTANCE = 14;
+
+/** Fade params for a camera `cameraDistance` from its focus point. */
+export function gridFadeForCameraDistance(
+  params: GridFadeParams,
+  cameraDistance: number
+): GridFadeParams {
+  const scale = Math.max(1, cameraDistance / GRID_FADE_ZOOM_DISTANCE);
+  if (scale === 1) return params;
+  return {
+    ...params,
+    fadeStart: params.fadeStart * scale,
+    fadeEnd: params.fadeEnd * scale,
+  };
+}
+
 function smoothstep(edge0: number, edge1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);

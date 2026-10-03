@@ -6,8 +6,9 @@ import {
   GRID_FADE,
   buildOutlineEmphasis,
   buildOutlinePositions,
+  gridFadeForCameraDistance,
 } from "./hexOutlineGrid";
-import { createHexOutlineMaterial } from "./hexOutlineMaterial";
+import { createHexOutlineMaterial, setHexOutlineFade } from "./hexOutlineMaterial";
 
 const OUTLINE_COLOR = "#ffffff";
 const OUTLINE_SIZE = 0.95;
@@ -33,8 +34,9 @@ interface WaterHexOutlinesProps {
 }
 
 /**
- * All water hex outlines as one LineSegments draw call. The focus point is
- * pushed to the shader as a uniform each frame; no React state per frame.
+ * All water hex outlines as one LineSegments draw call. The focus point and
+ * the zoom-scaled fade radii are pushed to the shader as uniforms each frame;
+ * no React state per frame.
  */
 export function WaterHexOutlines({ hexes, emphasis }: WaterHexOutlinesProps) {
   const controls = useThree((s) => s.controls);
@@ -67,14 +69,20 @@ export function WaterHexOutlines({ hexes, emphasis }: WaterHexOutlinesProps) {
 
   useFrame(({ camera }) => {
     const focus = material.uniforms.uFocus.value;
+    let distance: number;
     if (hasTarget(controls)) {
       focus.set(controls.target.x, controls.target.z);
-      return;
+      distance = camera.position.distanceTo(controls.target);
+    } else {
+      // Fallback: where the view direction meets the sea plane.
+      camera.getWorldDirection(ray.direction);
+      ray.origin.copy(camera.position);
+      if (!ray.intersectPlane(groundPlane, hit)) return;
+      focus.set(hit.x, hit.z);
+      distance = camera.position.distanceTo(hit);
     }
-    // Fallback: where the view direction meets the sea plane.
-    camera.getWorldDirection(ray.direction);
-    ray.origin.copy(camera.position);
-    if (ray.intersectPlane(groundPlane, hit)) focus.set(hit.x, hit.z);
+    // Widen the fade as the camera pulls back so the grid keeps its screen share.
+    setHexOutlineFade(material, gridFadeForCameraDistance(GRID_FADE, distance));
   });
 
   if (hexes.length === 0) return null;

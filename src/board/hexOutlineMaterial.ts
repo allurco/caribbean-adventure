@@ -47,6 +47,15 @@ export type HexOutlineUniforms = {
   uBaseOpacity: { value: number };
 };
 
+/** Push new fade radii (e.g. zoom-scaled) to an existing outline material. */
+export function setHexOutlineFade(
+  material: { uniforms: HexOutlineUniforms },
+  { fadeStart, fadeEnd }: GridFadeParams
+): void {
+  material.uniforms.uFadeStart.value = fadeStart;
+  material.uniforms.uFadeEnd.value = fadeEnd;
+}
+
 export function createHexOutlineMaterial(
   color: string,
   { fadeStart, fadeEnd, baseOpacity }: GridFadeParams
