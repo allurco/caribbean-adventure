@@ -8,8 +8,11 @@
  *   height(p) = coast(d) where d = signed distance to the land/water hex
  *               boundary (+ on land, − on water) plus simplex noise.
  *   d ≤ 0  → seabed, sloping down to −MAX_DEPTH.
- *   d > 0  → blendedTarget(p) · ramp(d), where blendedTarget is a smooth
- *            kernel-weighted average of nearby land cells' elevation heights.
+ *   d > 0  → blendedTarget(p) · ramp(d) + relief(p) · ramp(d)², where
+ *            blendedTarget is a smooth kernel-weighted average of nearby land
+ *            cells' elevation heights and relief is non-negative multi-octave
+ *            noise (rolling low down, ridged on mountains) whose amplitude
+ *            follows the blended elevation.
  *
  * Both branches are 0 at d = 0, so the coast sits at sea level, and land hex
  * edges are never boundary edges, so adjacent land hexes never dip.
@@ -41,9 +44,30 @@ const MAX_COAST_DISTANCE = 2;
  * blend only needs a hex and its 6 neighbours.
  */
 const BLEND_RADIUS = 2;
-/** Gentle surface relief on land, scaled by the shore ramp. */
-const LAND_NOISE_AMPLITUDE = 0.04;
-const LAND_NOISE_FREQUENCY = 0.9;
+/**
+ * Peak interior relief by elevation (1 beach, 2 jungle, 3 mountain), linearly
+ * interpolated on the blended elevation so it never seams at hex edges. Relief
+ * only ever raises the ground (0 … amplitude), so it can't cut a dip between
+ * land hexes or reorder beach < jungle < mountain at cell centres.
+ */
+export const RELIEF_AMPLITUDES = { 1: 0.05, 2: 0.16, 3: 0.5 } as const;
+/** Base relief frequency in cycles per world unit (a hex is ~1.7 across). */
+const RELIEF_FREQUENCY = 0.7;
+/**
+ * Noise octaves; each doubles the frequency and scales the weight by
+ * RELIEF_GAIN. A third octave is finer than the land mesh resolves and only
+ * adds spikes.
+ */
+const RELIEF_OCTAVES = 2;
+const RELIEF_GAIN = 0.4;
+/** Exponent on the ridged term (1 − |n|): higher gives narrower crests and broader valleys. */
+const RIDGE_SHARPNESS = 2;
+/**
+ * Rounds the crease at each ridge crest (|n| becomes √(n² + s²) − s), which
+ * caps the steepest slope so peaks don't turn into spikes.
+ */
+const RIDGE_SOFTNESS = 0.15;
+const RIDGE_SOFT_MAX = Math.sqrt(1 + RIDGE_SOFTNESS * RIDGE_SOFTNESS) - RIDGE_SOFTNESS;
 
 const SQRT3 = Math.sqrt(3);
 const HEX_DIRS: readonly [number, number][] = [
@@ -65,6 +89,8 @@ export interface TerrainBounds {
 export interface TerrainHeightFieldOptions {
   /** Override the shoreline noise amplitude (0 makes the coast trace hex edges exactly). */
   coastNoiseAmplitude?: number;
+  /** Scale the interior relief (0 leaves only the smooth blended target, e.g. as a test baseline). */
+  reliefScale?: number;
 }
 
 export interface TerrainHeightField {
@@ -74,6 +100,11 @@ export interface TerrainHeightField {
   sampleCoastDistance: (x: number, z: number) => number;
   /** Blended land elevation (1 beach … 3 mountain) at (x, z); 0 where no land cell is near. */
   sampleElevation: (x: number, z: number) => number;
+  /**
+   * Cheap test: is the hex containing (x, z) land or next to land? Where it is
+   * false the point is open water at least 1 − coastNoiseAmplitude offshore.
+   */
+  isNearLand: (x: number, z: number) => boolean;
   /** World-space XZ extent of the map cells, padded by one hex. */
   bounds: TerrainBounds;
 }
@@ -163,6 +194,44 @@ function fbm2(noise: NoiseFunction2D, x: number, z: number): number {
   return 0.67 * noise(x, z) + 0.33 * noise(x * 2.1 + 17.3, z * 2.1 - 5.7);
 }
 
+/** Peak relief amplitude at a blended elevation (1 … 3). */
+function reliefAmplitude(elevation: number): number {
+  if (elevation <= 1) return RELIEF_AMPLITUDES[1];
+  if (elevation <= 2) return RELIEF_AMPLITUDES[1] + (RELIEF_AMPLITUDES[2] - RELIEF_AMPLITUDES[1]) * (elevation - 1);
+  return RELIEF_AMPLITUDES[2] + (RELIEF_AMPLITUDES[3] - RELIEF_AMPLITUDES[2]) * Math.min(1, elevation - 2);
+}
+
+const RELIEF_WEIGHT_SUM = (() => {
+  let sum = 0;
+  for (let i = 0, w = 1; i < RELIEF_OCTAVES; i++, w *= RELIEF_GAIN) sum += w;
+  return sum;
+})();
+
+/**
+ * Interior relief shape in [0, 1]: rolling fBm on low ground, blending to a
+ * ridged multifractal (crests where the noise crosses zero) from jungle up to
+ * mountain, so mountains get peaks and ridgelines rather than taller humps.
+ */
+function reliefShape(noise: NoiseFunction2D, x: number, z: number, elevation: number): number {
+  let rolling = 0;
+  let ridged = 0;
+  let frequency = RELIEF_FREQUENCY;
+  let weight = 1;
+  for (let i = 0; i < RELIEF_OCTAVES; i++) {
+    // Offset each octave so their lattices don't line up.
+    const n = noise(x * frequency + i * 31.7, z * frequency - i * 17.9);
+    rolling += weight * n;
+    const softAbs = (Math.sqrt(n * n + RIDGE_SOFTNESS * RIDGE_SOFTNESS) - RIDGE_SOFTNESS) / RIDGE_SOFT_MAX;
+    ridged += weight * Math.pow(1 - softAbs, RIDGE_SHARPNESS);
+    frequency *= 2;
+    weight *= RELIEF_GAIN;
+  }
+  rolling = 0.5 + (0.5 * rolling) / RELIEF_WEIGHT_SUM;
+  ridged /= RELIEF_WEIGHT_SUM;
+  const ridgeMix = Math.max(0, Math.min(1, elevation - 2));
+  return rolling + (ridged - rolling) * ridgeMix;
+}
+
 /**
  * Build the terrain height field for a map. Cost is linear in the number of
  * coastline edges; sampling is O(1) (a hex lookup plus ~a dozen nearby edges).
@@ -174,8 +243,9 @@ export function createTerrainHeightField(
 ): TerrainHeightField {
   const coastNoiseAmplitude = options.coastNoiseAmplitude ?? COAST_NOISE_AMPLITUDE;
   const rng = mulberry32(seed);
+  const reliefScale = options.reliefScale ?? 1;
   const coastNoise = createNoise2D(rng);
-  const landNoise = createNoise2D(rng);
+  const reliefNoise = createNoise2D(rng);
 
   // Land elevation by hex; anything else (water, reef, off-map) is sea.
   const landElevation = new Map<number, number>();
@@ -302,10 +372,13 @@ export function createTerrainHeightField(
     if (d <= 0) {
       return SEA_LEVEL - MAX_DEPTH * Math.tanh((-d * SEABED_SLOPE) / MAX_DEPTH);
     }
-    const target = blendLand(x, z, scratch) ? scratch[0] : ELEVATION_HEIGHTS[1];
+    const blended = blendLand(x, z, scratch);
+    const target = blended ? scratch[0] : ELEVATION_HEIGHTS[1];
+    const elevation = blended ? scratch[1] : 1;
     const t = 1 - Math.min(d / SHORE_RAMP, 1);
     const ramp = 1 - t * t;
-    const relief = LAND_NOISE_AMPLITUDE * landNoise(x * LAND_NOISE_FREQUENCY, z * LAND_NOISE_FREQUENCY);
+    if (reliefScale === 0) return SEA_LEVEL + target * ramp;
+    const relief = reliefScale * reliefAmplitude(elevation) * reliefShape(reliefNoise, x, z, elevation);
     // Relief is scaled by ramp² so it vanishes (with zero slope) at the shore.
     return SEA_LEVEL + target * ramp + relief * ramp * ramp;
   };
@@ -315,5 +388,7 @@ export function createTerrainHeightField(
     return blendLand(x, z, out) ? out[1] : 0;
   };
 
-  return { sampleHeight, sampleCoastDistance, sampleElevation, bounds };
+  const isNearLand = (x: number, z: number): boolean => landArrays.has(worldToHexKey(x, z));
+
+  return { sampleHeight, sampleCoastDistance, sampleElevation, isNearLand, bounds };
 }
