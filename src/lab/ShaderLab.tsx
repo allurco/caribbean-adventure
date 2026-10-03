@@ -1,39 +1,36 @@
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Stats } from "@react-three/drei";
-import { useMemo } from "react";
+import { useRef, useState } from "react";
 import * as THREE from "three";
 import vertexShader from "./water.vert?raw";
 import fragmentShader from "./water.frag?raw";
 
 /**
  * A single rectangle that fills the screen, painted entirely by water.frag.
- * The material is rebuilt whenever the shader source changes, so editing the
- * .vert / .frag files hot-reloads the picture without a manual refresh.
+ * The material is keyed on the shader source, so editing the .vert / .frag
+ * files remounts and recompiles it without a manual refresh.
  */
 function FullscreenShader() {
-  const material = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        vertexShader,
-        fragmentShader,
-        uniforms: {
-          uTime: { value: 0 },
-        },
-      }),
-    // Rebuild the material when either shader's source changes, so saving a
-    // .frag / .vert edit recompiles and repaints without a full page reload.
-    [vertexShader, fragmentShader],
-  );
+  const materialRef = useRef<THREE.ShaderMaterial>(null);
+  const [uniforms] = useState(() => ({ uTime: { value: 0 } }));
 
   // Advance the clock every frame and feed it to the shader.
   useFrame((state) => {
-    material.uniforms.uTime.value = state.clock.elapsedTime;
+    if (materialRef.current) {
+      materialRef.current.uniforms.uTime.value = state.clock.elapsedTime;
+    }
   });
 
   return (
     <mesh>
       <planeGeometry args={[2, 2]} />
-      <primitive object={material} attach="material" />
+      <shaderMaterial
+        key={vertexShader + fragmentShader}
+        ref={materialRef}
+        vertexShader={vertexShader}
+        fragmentShader={fragmentShader}
+        uniforms={uniforms}
+      />
     </mesh>
   );
 }
