@@ -1,4 +1,5 @@
-import { hexDistance } from "./hex";
+import { wrappedDistance } from "./hex";
+import type { MapWrap } from "./hex";
 import type { CaribbeanState, Mission, MissionType, MapCell, NPCShip } from "./types";
 
 const TAVERN_COST = 5;
@@ -49,7 +50,8 @@ function getPortCells(cells: MapCell[]): MapCell[] {
 function getDistantPorts(
   currentPortName: string,
   cells: MapCell[],
-  minDistance: number
+  minDistance: number,
+  wrap: MapWrap
 ): MapCell[] {
   const ports = getPortCells(cells);
   const currentPort = ports.find((p) => p.portName === currentPortName);
@@ -57,16 +59,17 @@ function getDistantPorts(
 
   return ports.filter((p) => {
     if (p.portName === currentPortName) return false;
-    return hexDistance(currentPort.hex, p.hex) >= minDistance;
+    return wrappedDistance(currentPort.hex, p.hex, wrap) >= minDistance;
   });
 }
 
 function generateDeliveryMission(
   currentPortName: string,
   cells: MapCell[],
+  wrap: MapWrap,
   rng: () => number
 ): Mission | null {
-  const distantPorts = getDistantPorts(currentPortName, cells, MIN_DELIVERY_DISTANCE);
+  const distantPorts = getDistantPorts(currentPortName, cells, MIN_DELIVERY_DISTANCE, wrap);
   if (distantPorts.length === 0) {
     // Fall back to any other port
     const anyOtherPort = getPortCells(cells).filter((p) => p.portName !== currentPortName);
@@ -128,9 +131,10 @@ function generateAssassinationMission(
 function generateEscortMission(
   currentPortName: string,
   cells: MapCell[],
+  wrap: MapWrap,
   rng: () => number
 ): Mission | null {
-  const distantPorts = getDistantPorts(currentPortName, cells, MIN_DELIVERY_DISTANCE);
+  const distantPorts = getDistantPorts(currentPortName, cells, MIN_DELIVERY_DISTANCE, wrap);
   if (distantPorts.length === 0) {
     const anyOtherPort = getPortCells(cells).filter((p) => p.portName !== currentPortName);
     if (anyOtherPort.length === 0) return null;
@@ -174,11 +178,11 @@ export function generateMission(
 
   switch (missionType) {
     case "DELIVERY":
-      return generateDeliveryMission(currentPortName, G.cells, rng);
+      return generateDeliveryMission(currentPortName, G.cells, G.wrap, rng);
     case "ASSASSINATION":
       return generateAssassinationMission(G.npcs, rng);
     case "ESCORT":
-      return generateEscortMission(currentPortName, G.cells, rng);
+      return generateEscortMission(currentPortName, G.cells, G.wrap, rng);
     default:
       return null;
   }

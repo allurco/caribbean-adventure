@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hex } from "./hex";
+import { hex, offsetToHex, createWrap } from "./hex";
 import type { CaribbeanState, MapCell, NPCShip, Mission } from "./types";
 import {
   generateMission,
@@ -143,6 +143,37 @@ describe("generateMission", () => {
     expect(mission).not.toBeNull();
     expect(mission!.type).toBe("ASSASSINATION");
     expect(mission!.targetNpcId).toBeUndefined(); // Generic bounty
+  });
+});
+
+describe("mission distances on a map that wraps east–west", () => {
+  function wrappedState(wrapped: boolean): CaribbeanState {
+    return {
+      ...createTestState(),
+      cells: [
+        { ...createTestPort("Port Royal", "England"), hex: offsetToHex(0, 2) },
+        // One hex away across the seam, though nine columns away on the flat map.
+        { ...createTestPort("Havana", "Spain"), hex: offsetToHex(9, 2) },
+        { ...createTestPort("Nassau", "England"), hex: offsetToHex(5, 2) },
+      ],
+      wrap: wrapped ? createWrap(10) : null,
+    };
+  }
+  // First roll picks a delivery mission; later rolls pick the first candidate.
+  const rolls = () => {
+    const values = [0.1];
+    return () => values.shift() ?? 0;
+  };
+
+  it("does not count a port just across the seam as distant", () => {
+    const mission = generateMission("Port Royal", wrappedState(true), rolls());
+    expect(mission?.type).toBe("DELIVERY");
+    expect(mission?.targetPortName).toBe("Nassau");
+  });
+
+  it("counts the same port as distant when the map does not wrap", () => {
+    const mission = generateMission("Port Royal", wrappedState(false), rolls());
+    expect(mission?.targetPortName).toBe("Havana");
   });
 });
 
