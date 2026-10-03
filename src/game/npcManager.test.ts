@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hex, hexEquals, hexDistance } from "./hex";
+import { hex, hexEquals, hexDistance, hexRect, offsetToHex, createWrap, wrappedDistance, NO_WRAP } from "./hex";
 import type { Hex } from "./hex";
 import { generateMap } from "./mapGenerator";
 import type { MapCell, CaribbeanState, NPCShip, Nation } from "./types";
@@ -69,7 +69,7 @@ describe("getPortCells", () => {
 describe("findPath", () => {
   it("finds direct path between adjacent hexes", () => {
     const cells = createSimpleMapWithPorts();
-    const path = findPath(hex(0, 0), hex(1, 0), cells, {}, {});
+    const path = findPath(hex(0, 0), hex(1, 0), cells, {}, {}, NO_WRAP);
     expect(path).toHaveLength(2);
     expect(hexEquals(path[0], hex(0, 0))).toBe(true);
     expect(hexEquals(path[1], hex(1, 0))).toBe(true);
@@ -85,7 +85,7 @@ describe("findPath", () => {
       { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
       { hex: hex(1, -1), terrain: "water", elevation: 0, hasPort: false },
     ];
-    const path = findPath(hex(0, 0), hex(2, 0), cells, {}, {});
+    const path = findPath(hex(0, 0), hex(2, 0), cells, {}, {}, NO_WRAP);
     // Should go around the island
     expect(path.length).toBeGreaterThan(2);
     expect(hexEquals(path[0], hex(0, 0))).toBe(true);
@@ -97,7 +97,7 @@ describe("findPath", () => {
   it("allows path to end at port (island with hasPort)", () => {
     const cells = createSimpleMapWithPorts();
     const portHex = hex(2, 0); // Spanish port
-    const path = findPath(hex(0, 0), portHex, cells, {}, {});
+    const path = findPath(hex(0, 0), portHex, cells, {}, {}, NO_WRAP);
     expect(path.length).toBeGreaterThan(0);
     expect(hexEquals(path[path.length - 1], portHex)).toBe(true);
   });
@@ -107,7 +107,7 @@ describe("findPath", () => {
     const playerShips = {
       "0": { position: hex(1, 0) },
     };
-    const path = findPath(hex(0, 0), hex(2, 0), cells, playerShips as Record<string, { position: Hex }>, {});
+    const path = findPath(hex(0, 0), hex(2, 0), cells, playerShips as Record<string, { position: Hex }>, {}, NO_WRAP);
     // Should not go through player position
     expect(path.some((h) => hexEquals(h, hex(1, 0)))).toBe(false);
   });
@@ -118,7 +118,7 @@ describe("findPath", () => {
       { hex: hex(2, 0), terrain: "water", elevation: 0, hasPort: false },
       // No connection between them
     ];
-    const path = findPath(hex(0, 0), hex(2, 0), cells, {}, {});
+    const path = findPath(hex(0, 0), hex(2, 0), cells, {}, {}, NO_WRAP);
     expect(path).toHaveLength(0);
   });
 });
@@ -219,6 +219,71 @@ describe("spawnMerchant", () => {
         expect(npc.nation).toBe(spawnPort?.nation);
       }
     }
+  });
+});
+
+describe("NPCs on a map that wraps east–west", () => {
+  const wrap = createWrap(10);
+
+  /** Open water 10 columns wide, with a port on each side of the seam. */
+  function wrappedCells(): MapCell[] {
+    return hexRect(10, 5).map((h): MapCell => {
+      const isEastPort = hexEquals(h, offsetToHex(8, 2));
+      const isWestPort = hexEquals(h, offsetToHex(1, 2));
+      if (isEastPort || isWestPort) {
+        return { hex: h, terrain: "island", elevation: 1, hasPort: true, nation: isEastPort ? "Spain" : "England" };
+      }
+      return { hex: h, terrain: "water", elevation: 0, hasPort: false };
+    });
+  }
+
+  it("findPath crosses the seam when that is the short way", () => {
+    const cells = wrappedCells();
+    const start = offsetToHex(9, 2);
+    const end = offsetToHex(0, 2);
+    const path = findPath(start, end, cells, {}, {}, wrap);
+    expect(path).toHaveLength(2);
+    expect(hexEquals(path[1], end)).toBe(true);
+  });
+
+  it("findPath returns a path as long as the wrapped distance, all in canonical columns", () => {
+    const cells = wrappedCells();
+    const start = offsetToHex(7, 2);
+    const end = offsetToHex(1, 2); // the west port
+    const path = findPath(start, end, cells, {}, {}, wrap);
+    expect(path.length - 1).toBe(wrappedDistance(start, end, wrap));
+    expect(path.length - 1).toBeLessThan(hexDistance(start, end));
+    expect(path.every((h) => h.q >= 0 && h.q < 10)).toBe(true);
+    for (let i = 1; i < path.length; i++) {
+      expect(wrappedDistance(path[i - 1], path[i], wrap)).toBe(1);
+    }
+  });
+
+  it("findPath does not cross the seam when the map does not wrap", () => {
+    const cells = wrappedCells();
+    const path = findPath(offsetToHex(9, 2), offsetToHex(0, 2), cells, {}, {}, NO_WRAP);
+    expect(path.length - 1).toBe(9);
+  });
+
+  it("a merchant sails across the seam towards its destination port", () => {
+    const G = createTestState(wrappedCells());
+    G.wrap = wrap;
+    const npc = createNPCShip("npc-1", offsetToHex(9, 2), offsetToHex(1, 2), "Spain", "Flute", () => 0.5);
+    G.npcs["npc-1"] = npc;
+
+    expect(moveNPC(G, "npc-1")).toBe(true);
+
+    const moved = G.npcs["npc-1"].position;
+    expect(moved.q).toBeLessThan(2); // now west of the seam
+    expect(wrappedDistance(moved, offsetToHex(1, 2), wrap)).toBeLessThan(2);
+  });
+
+  it("a merchant reaches a port across the seam and despawns", () => {
+    const G = createTestState(wrappedCells());
+    G.wrap = wrap;
+    G.npcs["npc-1"] = createNPCShip("npc-1", offsetToHex(9, 2), offsetToHex(1, 2), "Spain", "Galleon", () => 0.5);
+    for (let turn = 0; turn < 3 && G.npcs["npc-1"]; turn++) moveAllNPCs(G);
+    expect(G.npcs["npc-1"]).toBeUndefined();
   });
 });
 
