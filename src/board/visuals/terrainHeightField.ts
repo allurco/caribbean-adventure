@@ -7,7 +7,8 @@
  *
  *   height(p) = coast(d) where d = signed distance to the land/water hex
  *               boundary (+ on land, − on water) plus simplex noise.
- *   d ≤ 0  → seabed, sloping down to −MAX_DEPTH.
+ *   d ≤ 0  → seabed: the metric shelf and drop-off of `seabedProfile.ts`,
+ *            raised to a 1–3 m deep crest over reef hexes (#38).
  *   d > 0  → blendedTarget(p) · ramp(d) + relief(p) · ramp(d)², where
  *            blendedTarget is a smooth kernel-weighted average of nearby land
  *            cells' elevation heights and relief is non-negative multi-octave
@@ -20,6 +21,8 @@
 import { createNoise2D, type NoiseFunction2D } from "simplex-noise";
 import type { MapCell } from "../../game/types";
 import { hexToWorld } from "../../game/hex";
+import { seabedDepth } from "./seabedProfile";
+import { metresToUnits, unitsToMetres } from "./worldScale";
 
 /** World height that each land elevation rises to (1 beach, 2 jungle, 3 mountain). */
 export const ELEVATION_HEIGHTS = { 1: 0.3, 2: 0.75, 3: 1.4 } as const;
@@ -33,11 +36,34 @@ const COAST_NOISE_FREQUENCY = 1.3;
 
 /** Distance inland over which land rises from sea level to its target height. */
 const SHORE_RAMP = 0.9;
-/** Seabed depth far from shore, and its slope at the shoreline. */
-const MAX_DEPTH = 1.0;
-const SEABED_SLOPE = 0.6;
-/** Coast distance is clamped to this; beyond it the field is flat. */
-const MAX_COAST_DISTANCE = 2;
+/**
+ * Coast distance is clamped to this; beyond it the field is flat. 4 units
+ * (260 m) reaches past the seabed drop-off, where the profile is within a few
+ * metres of its floor.
+ */
+const MAX_COAST_DISTANCE = 4;
+/**
+ * Coastline edges are indexed by every hex within this hex distance of their
+ * land hex. A point in hex H within MAX_COAST_DISTANCE of an edge of land hex
+ * L has |H − L| ≤ 1 + MAX_COAST_DISTANCE + 1 between centres, and hexes n
+ * apart have centres at least 1.5·n apart, so n ≤ (MAX + 2) / 1.5.
+ */
+const COAST_INDEX_RADIUS = Math.floor((MAX_COAST_DISTANCE + 2) / 1.5);
+/**
+ * Reef rise (#38): reef hexes rise to a crest REEF_CREST_DEPTH ± REEF_CREST_VARIATION
+ * metres below the surface. The rise starts REEF_FOOT outside the reef outline
+ * and reaches the crest REEF_TOP inside it (world units), so the steepest
+ * reef front stays below ~70° and the crest covers the middle of the hex.
+ */
+const REEF_CREST_DEPTH = 2;
+const REEF_CREST_VARIATION = 0.9;
+const REEF_CREST_FREQUENCY = 1.6;
+const REEF_FOOT = 0.6;
+const REEF_TOP = 0.4;
+/** Smooth-max width (metres) where the reef crest meets an already shallow shelf. */
+const REEF_BLEND = 1;
+/** Hexes within this distance of land may have seabed above the visible-seabed cut-off (see isNearSeabed). */
+const SEABED_LAND_RADIUS = 3;
 /**
  * Elevation blend kernel radius. 2 reaches adjacent centres (√3 apart) with a
  * small weight and never reaches ring-2 centres from inside a hex, so the
@@ -105,6 +131,12 @@ export interface TerrainHeightField {
    * false the point is open water at least 1 − coastNoiseAmplitude offshore.
    */
   isNearLand: (x: number, z: number) => boolean;
+  /**
+   * Cheap test: is the hex containing (x, z) within 3 hexes of land or next to
+   * a reef? Where it is false the seabed is deeper than 100 m, deep enough
+   * that clear water hides it, so seabed geometry can skip it.
+   */
+  isNearSeabed: (x: number, z: number) => boolean;
   /** World-space XZ extent of the map cells, padded by one hex. */
   bounds: TerrainBounds;
 }
@@ -246,6 +278,8 @@ export function createTerrainHeightField(
   const reliefScale = options.reliefScale ?? 1;
   const coastNoise = createNoise2D(rng);
   const reliefNoise = createNoise2D(rng);
+  // Drawn after the others so adding it left the coast and relief unchanged.
+  const reefNoise = createNoise2D(rng);
 
   // Land elevation by hex; anything else (water, reef, off-map) is sea.
   const landElevation = new Map<number, number>();
@@ -269,10 +303,11 @@ export function createTerrainHeightField(
   const bounds: TerrainBounds = { minX: minX - 2, maxX: maxX + 2, minZ: minZ - 2, maxZ: maxZ + 2 };
 
   // Coastline segments (shared edge of a land hex and a non-land neighbour),
-  // indexed by every hex within 2 of either side. A point inside hex H is
-  // within MAX_COAST_DISTANCE (2) only of edges of hexes within 2 of H, so the
-  // per-hex lists make the clamped distance exact.
+  // indexed by every hex within COAST_INDEX_RADIUS of the land side, which
+  // makes the clamped distance exact (see COAST_INDEX_RADIUS).
   const segmentsNear = new Map<number, number[]>();
+  // Hexes whose seabed can be shallower than the visible-seabed cut-off.
+  const nearSeabed = new Set<number>();
   // Land centres (x, z, targetHeight, elevation) for each hex and its neighbours.
   const landNear = new Map<number, number[]>();
 
@@ -288,6 +323,7 @@ export function createTerrainHeightField(
       if (!list) landNear.set(k, (list = []));
       list.push(cx, cz, elevationHeight(elevation), elevation);
     });
+    forEachHexWithin(q, r, SEABED_LAND_RADIUS, (nq, nr) => nearSeabed.add(hexKey(nq, nr)));
 
     for (const [dq, dr] of HEX_DIRS) {
       const nq = q + dq;
@@ -301,25 +337,65 @@ export function createTerrainHeightField(
       const ux = (nx - cx) / SQRT3;
       const uz = (nz - cz) / SQRT3;
       const segment = [mx - uz * 0.5, mz + ux * 0.5, mx + uz * 0.5, mz - ux * 0.5];
-      const addTo = (hq: number, hr: number) => {
+      forEachHexWithin(q, r, COAST_INDEX_RADIUS, (hq, hr) => {
         const k = hexKey(hq, hr);
         let list = segmentsNear.get(k);
         if (!list) segmentsNear.set(k, (list = []));
         list.push(...segment);
-      };
-      // Index by hexes within 2 of the land side and of the water side;
-      // a hex near both just checks the segment twice, which is harmless.
-      const seen = new Set<number>();
-      const addOnce = (hq: number, hr: number) => {
-        const k = hexKey(hq, hr);
-        if (seen.has(k)) return;
-        seen.add(k);
-        addTo(hq, hr);
-      };
-      forEachHexWithin(q, r, 2, addOnce);
-      forEachHexWithin(nq, nr, 2, addOnce);
+      });
     }
   }
+
+  // Reef outline segments (edges between a reef hex and a non-reef hex),
+  // indexed by every hex within 1 of the reef hex: a point within REEF_FOOT
+  // (< 1) of an outline edge lies in the reef hex or one of its neighbours.
+  const reefHexes = new Set<number>();
+  for (const cell of cells) {
+    if (cell.terrain === "reef") reefHexes.add(hexKey(cell.hex.q, cell.hex.r));
+  }
+  const reefSegmentsNear = new Map<number, number[]>();
+  for (const cell of cells) {
+    if (cell.terrain !== "reef") continue;
+    const { q, r } = cell.hex;
+    const [cx, , cz] = hexToWorld(cell.hex);
+    forEachHexWithin(q, r, 1, (nq, nr) => {
+      const k = hexKey(nq, nr);
+      nearSeabed.add(k);
+      if (!reefSegmentsNear.has(k)) reefSegmentsNear.set(k, []);
+    });
+    for (const [dq, dr] of HEX_DIRS) {
+      const nq = q + dq;
+      const nr = r + dr;
+      if (reefHexes.has(hexKey(nq, nr))) continue;
+      const [nx, , nz] = hexToWorld({ q: nq, r: nr, s: -nq - nr });
+      const mx = (cx + nx) / 2;
+      const mz = (cz + nz) / 2;
+      const ux = (nx - cx) / SQRT3;
+      const uz = (nz - cz) / SQRT3;
+      const segment = [mx - uz * 0.5, mz + ux * 0.5, mx + uz * 0.5, mz - ux * 0.5];
+      forEachHexWithin(q, r, 1, (hq, hr) => reefSegmentsNear.get(hexKey(hq, hr))?.push(...segment));
+    }
+  }
+  const reefSegmentArrays = new Map<number, Float64Array>();
+  for (const [k, list] of reefSegmentsNear) reefSegmentArrays.set(k, Float64Array.from(list));
+
+  /**
+   * How far the reef rise has got at (x, z), 0 … 1: 0 more than REEF_FOOT
+   * outside every reef outline, 1 from REEF_TOP inside one.
+   */
+  const reefRise = (x: number, z: number): number => {
+    const k = worldToHexKey(x, z);
+    const segments = reefSegmentArrays.get(k);
+    if (!segments) return 0;
+    let dist = Infinity;
+    for (let i = 0; i < segments.length; i += 4) {
+      const d = pointSegmentDistance(x, z, segments[i], segments[i + 1], segments[i + 2], segments[i + 3]);
+      if (d < dist) dist = d;
+    }
+    const signed = reefHexes.has(k) ? dist : -dist;
+    const t = Math.max(0, Math.min(1, (signed + REEF_FOOT) / (REEF_FOOT + REEF_TOP)));
+    return t * t * (3 - 2 * t);
+  };
 
   const segmentArrays = new Map<number, Float64Array>();
   for (const [k, list] of segmentsNear) segmentArrays.set(k, Float64Array.from(list));
@@ -370,7 +446,15 @@ export function createTerrainHeightField(
   const sampleHeight = (x: number, z: number): number => {
     const d = sampleCoastDistance(x, z);
     if (d <= 0) {
-      return SEA_LEVEL - MAX_DEPTH * Math.tanh((-d * SEABED_SLOPE) / MAX_DEPTH);
+      // Depths in metres, as the profile is.
+      const shelf = -seabedDepth(unitsToMetres(-d));
+      const rise = reefRise(x, z);
+      if (rise === 0) return SEA_LEVEL + metresToUnits(shelf);
+      const crest = -(REEF_CREST_DEPTH + REEF_CREST_VARIATION * fbm2(reefNoise, x * REEF_CREST_FREQUENCY, z * REEF_CREST_FREQUENCY));
+      // Polynomial smooth max, so a crest meeting an already shallow shelf leaves no crease.
+      const h = Math.max(REEF_BLEND - Math.abs(shelf - crest), 0) / REEF_BLEND;
+      const top = Math.max(shelf, crest) + (h * h * REEF_BLEND) / 4;
+      return SEA_LEVEL + metresToUnits(shelf + (top - shelf) * rise);
     }
     const blended = blendLand(x, z, scratch);
     const target = blended ? scratch[0] : ELEVATION_HEIGHTS[1];
@@ -389,6 +473,7 @@ export function createTerrainHeightField(
   };
 
   const isNearLand = (x: number, z: number): boolean => landArrays.has(worldToHexKey(x, z));
+  const isNearSeabed = (x: number, z: number): boolean => nearSeabed.has(worldToHexKey(x, z));
 
-  return { sampleHeight, sampleCoastDistance, sampleElevation, isNearLand, bounds };
+  return { sampleHeight, sampleCoastDistance, sampleElevation, isNearLand, isNearSeabed, bounds };
 }
