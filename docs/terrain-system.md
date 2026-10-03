@@ -195,13 +195,24 @@ capped at 1024 per side; texel centres sampled, rows from `minZ` up, so
 |---------|----------|
 | R | Height (world Y). Code 170 is sea level exactly, step 1.5/255, range -1 … +0.5 (clamped) |
 | G | Coast signed distance (+ land, - water), range ±2.25, for shore foam (#10) |
-| B | Reserved: reef mask (#11), currently 0 |
+| B | Reef mask (#11), 0 … 1: 1 inside a reef hex, 0 everywhere else, ramping over a 0.2-unit rim just inside the reef outline (`reefMask.ts`) |
 | A | Reserved, 255 |
 
 `TERRAIN_FIELD_GLSL` holds the matching decode helpers. `Ocean.tsx` colours
 the water by depth below sea level: wet sand (seabed showing through) at the
 waterline, then turquoise shallows, reef teal and deep water, blending into
 the unchanged open-sea look by depth ~0.7. Outside the bounds it is open sea.
+
+Reef hexes (B > 0) are drawn over that as dark, mottled coral heads on lighter
+reef flats, so a reef hex reads differently from any open water. Shallow
+water gets a moving web of caustic light (thin lines at the zero crossings of
+two drifting noise layers), at full strength across the turquoise shallows and
+gone by depth ~0.55. The depth field falls off steeply: depth 0.3 is only about
+half a hex offshore, so a fade ending much shallower than that sits entirely
+under the surf. The caustics are driven by `causticTime`, a
+wrapped CPU clock in `causticMotion.ts` that stops under
+`prefers-reduced-motion`. The reef and caustic tuning constants are named in
+the header of the fragment shader in `Ocean.tsx`.
 
 ---
 

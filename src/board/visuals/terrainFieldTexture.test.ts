@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { MapCell } from "../../game/types";
-import { hexGrid } from "../../game/hex";
+import { hexGrid, hexToWorld, worldToHex } from "../../game/hex";
+import { createReefMask } from "./reefMask";
 import { createTerrainHeightField, type TerrainHeightField } from "./terrainHeightField";
 import { LAND_MESH_SPACING } from "./landMesh";
 import {
@@ -10,6 +11,8 @@ import {
   decodeHeight,
   encodeCoastDistance,
   decodeCoastDistance,
+  encodeReef,
+  decodeReef,
   HEIGHT_ENCODE_MIN,
   HEIGHT_ENCODE_MAX,
   COAST_ENCODE_RANGE,
@@ -81,6 +84,23 @@ describe("terrainFieldTexture", () => {
       expect(decodeCoastDistance(encodeCoastDistance(0))).toBeGreaterThanOrEqual(0);
     });
 
+    it("encodes the reef mask as 0 … 255 and clamps it", () => {
+      expect(encodeReef(0)).toBe(0);
+      expect(encodeReef(1)).toBe(255);
+      expect(encodeReef(-0.5)).toBe(0);
+      expect(encodeReef(2)).toBe(255);
+      for (let m = 0; m <= 1; m += 0.01) {
+        expect(Math.abs(decodeReef(encodeReef(m)) - m)).toBeLessThanOrEqual(0.5 / 255 + 1e-9);
+      }
+      // Open water must decode as exactly no reef.
+      expect(decodeReef(encodeReef(0))).toBe(0);
+    });
+
+    it("decodes the reef mask in GLSL straight from the normalised B channel", () => {
+      expect(TERRAIN_FIELD_GLSL).toContain("float terrainFieldReef(vec4 texel)");
+      expect(TERRAIN_FIELD_GLSL).toContain("return texel.b;");
+    });
+
     it("decodes coast distance in GLSL with the same formula as TypeScript", () => {
       // GLSL reads the byte as code / 255; the shader decoder is (g·2 − 1)·range.
       expect(TERRAIN_FIELD_GLSL).toContain("float terrainFieldCoastDistance(vec4 texel)");
@@ -133,11 +153,28 @@ describe("terrainFieldTexture", () => {
       }
     });
 
-    it("leaves B clear (reef mask, reserved) and A opaque", () => {
+    it("leaves B clear (no reefs) and A opaque when no reef mask is given", () => {
       const baked = bakeTerrainField(rampField(), { texelsPerUnit: 4 });
       for (let k = 0; k < baked.data.length; k += 4) {
         expect(baked.data[k + 2]).toBe(0);
         expect(baked.data[k + 3]).toBe(255);
+      }
+    });
+
+    it("stores the reef mask in B at each texel centre, without touching R, G or A", () => {
+      const field = rampField();
+      // A known ramp across x, so a swapped axis or offset texel shows up.
+      const sampleReef = (x: number) => Math.max(0, Math.min(1, (x - field.bounds.minX) / 10));
+      const plain = bakeTerrainField(field, { texelsPerUnit: 4 });
+      const withReefs = bakeTerrainField(field, { texelsPerUnit: 4, sampleReef });
+      for (let j = 0; j < withReefs.height; j++) {
+        for (let i = 0; i < withReefs.width; i++) {
+          const [x] = texelCenter(withReefs, i, j);
+          const [r, g, b, a] = texel(withReefs, i, j);
+          const [r0, g0, , a0] = texel(plain, i, j);
+          expect(b).toBe(encodeReef(sampleReef(x)));
+          expect([r, g, a]).toEqual([r0, g0, a0]);
+        }
       }
     });
   });
@@ -180,6 +217,50 @@ describe("terrainFieldTexture", () => {
         }
       }
       expect(offOutline).toBeGreaterThan(20);
+    });
+  });
+
+  describe("with reefs on a real map", () => {
+    // The 7-hex island plus a ring-2 hex and a pair of adjacent ring-3 hexes as reef.
+    const reefKeys = ["2,0", "0,3", "1,2"];
+    const cells = islandMap().map((c) =>
+      reefKeys.includes(`${c.hex.q},${c.hex.r}`) ? { ...c, terrain: "reef" as const, elevation: 0 as const } : c
+    );
+    const field = createTerrainHeightField(cells, 1234);
+    const baked = bakeTerrainField(field, { sampleReef: createReefMask(cells) });
+
+    it("marks the texel at every reef hex centre as full reef", () => {
+      for (const k of reefKeys) {
+        const [q, r] = k.split(",").map(Number);
+        const [x, , z] = hexToWorld({ q, r, s: -q - r });
+        const { minX, maxX, minZ, maxZ } = baked.bounds;
+        const i = Math.floor(((x - minX) / (maxX - minX)) * baked.width);
+        const j = Math.floor(((z - minZ) / (maxZ - minZ)) * baked.height);
+        expect(texel(baked, i, j)[2]).toBe(255);
+      }
+    });
+
+    it("never marks a texel that sits in a non-reef hex", () => {
+      let reefTexels = 0;
+      for (let j = 0; j < baked.height; j++) {
+        for (let i = 0; i < baked.width; i++) {
+          const [x, z] = texelCenter(baked, i, j);
+          const h = worldToHex(x, z);
+          const b = texel(baked, i, j)[2];
+          if (!reefKeys.includes(`${h.q},${h.r}`)) expect(b).toBe(0);
+          else if (b > 0) reefTexels++;
+        }
+      }
+      expect(reefTexels).toBeGreaterThan(0);
+    });
+
+    it("leaves the height and coast distance channels as they were without reefs", () => {
+      const plain = bakeTerrainField(field);
+      for (let k = 0; k < baked.data.length; k += 4) {
+        expect(baked.data[k]).toBe(plain.data[k]);
+        expect(baked.data[k + 1]).toBe(plain.data[k + 1]);
+        expect(baked.data[k + 3]).toBe(255);
+      }
     });
   });
 

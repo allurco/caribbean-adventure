@@ -1,6 +1,6 @@
 /**
  * Bakes the terrain height field (ADR 0001) into texture data for GPU
- * consumers (ocean depth colour now; shore foam and reefs later).
+ * consumers (ocean depth colour, shore foam and reefs).
  *
  * Pure: no Three.js, so the layout is unit-tested. The component wraps `data`
  * in a DataTexture (RGBA, UnsignedByte, linear filtering, clamp to edge).
@@ -17,7 +17,9 @@
  *      (land above +0.5 saturates, which water shaders never need).
  *   G  coast signed distance (+ land, − water), ±COAST_ENCODE_RANGE, for
  *      shore foam (#10).
- *   B  reserved for a reef mask (#11); 0 for now.
+ *   B  reef mask (#11), 0 … 1 as 0 … 255: 0 off reef, 255 inside a reef hex,
+ *      ramping over a soft rim just inside the reef outline (see reefMask.ts).
+ *      0 everywhere when the bake is given no `sampleReef`.
  *   A  reserved; 255.
  *
  * 8-bit RGBA rather than float so linear filtering works on every WebGL
@@ -51,6 +53,8 @@ export interface BakedTerrainField {
 export interface BakeTerrainFieldOptions {
   texelsPerUnit?: number;
   maxSize?: number;
+  /** Reef mask in [0, 1] at world (x, z), baked into B; omitted means no reefs. */
+  sampleReef?: (x: number, z: number) => number;
 }
 
 const toByte = (v: number): number => Math.max(0, Math.min(255, Math.round(v)));
@@ -71,6 +75,14 @@ export function decodeCoastDistance(code: number): number {
   return (code / 255) * 2 * COAST_ENCODE_RANGE - COAST_ENCODE_RANGE;
 }
 
+export function encodeReef(mask: number): number {
+  return toByte(mask * 255);
+}
+
+export function decodeReef(code: number): number {
+  return code / 255;
+}
+
 /**
  * GLSL helpers matching the encoding above. Paste into a shader that has a
  * `vec4 mapBounds` (minX, maxX, minZ, maxZ) uniform in scope.
@@ -87,6 +99,9 @@ export const TERRAIN_FIELD_GLSL = `
   }
   float terrainFieldCoastDistance(vec4 texel) {
     return (texel.g * 2.0 - 1.0) * ${COAST_ENCODE_RANGE.toFixed(4)};
+  }
+  float terrainFieldReef(vec4 texel) {
+    return texel.b;
   }
 `;
 
@@ -117,6 +132,7 @@ export function bakeTerrainField(
   const width = Math.max(1, Math.min(maxSize, Math.ceil(spanX * density)));
   const height = Math.max(1, Math.min(maxSize, Math.ceil(spanZ * density)));
 
+  const { sampleReef } = options;
   const data = new Uint8Array(width * height * 4);
   const baked: BakedTerrainField = { data, width, height, bounds };
   for (let j = 0; j < height; j++) {
@@ -125,7 +141,7 @@ export function bakeTerrainField(
       const k = (j * width + i) * 4;
       data[k] = encodeHeight(field.sampleHeight(x, z));
       data[k + 1] = encodeCoastDistance(field.sampleCoastDistance(x, z));
-      data[k + 2] = 0;
+      data[k + 2] = sampleReef ? encodeReef(sampleReef(x, z)) : 0;
       data[k + 3] = 255;
     }
   }

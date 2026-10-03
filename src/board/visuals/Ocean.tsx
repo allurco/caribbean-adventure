@@ -20,6 +20,8 @@ import { PALETTE_GLSL } from "./palette";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { bakeTerrainField, TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
 import { advanceSurfTime, SURF_TIMING_GLSL } from "./surfMotion";
+import { advanceCausticTime, CAUSTIC_TIMING_GLSL } from "./causticMotion";
+import { createReefMask } from "./reefMask";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
 import type { TerrainBounds } from "./terrainHeightField";
 
@@ -96,6 +98,34 @@ const fragmentShader = `
   const float SURF_COVERAGE = 0.8;       // < 1 leaves holes even in the densest foam
   const float SURF_BREAKUP_SOFTNESS = 0.12; // edge softness of the foam patches
   const float SURF_STRENGTH = 0.9;       // max blend of foam over the water colour
+
+  // Reef patches (issue #11). The reef mask is the field's B channel
+  // (reefMask.ts): 1 inside a reef hex, 0 everywhere else, with a soft rim just
+  // inside the reef outline. Reefs read as dark, mottled coral heads on lighter
+  // reef flats, which open water (a smooth depth gradient) never has.
+  const float REEF_NOISE_SCALE = 2.6;     // coral patch frequency, per world unit (a hex is ~1.7 across)
+  const float REEF_DETAIL_SCALE = 2.3;    // frequency multiplier of the second, finer noise octave
+  const float REEF_CORAL_COVER = 0.5;     // noise threshold for coral: higher leaves fewer, smaller heads
+  const float REEF_CORAL_SOFTNESS = 0.16; // edge softness of each coral head
+  const float REEF_CORAL_DARKEN = 0.45;   // coral colour = reef teal times this, darker than any open water
+  const float REEF_FLAT_TEAL = 0.35;      // reef flats between the coral: shallows mixed this far toward reef teal
+  const float REEF_DEPTH_SHOW = 0.25;     // how much the plain depth colour still shows through the reef
+  const float REEF_STRENGTH = 0.95;       // max blend of the reef over the water at full mask
+
+  // Shallow-water caustics (issue #11): a soft moving web of light on the
+  // seabed, only in the shallows. Time only enters as sin/cos of
+  // 2π·causticTime/period (causticTime is wrapped on the CPU, see
+  // causticMotion.ts), so it never jumps or loses precision.
+  uniform float causticTime;
+  ${CAUSTIC_TIMING_GLSL}
+  const float CAUSTIC_SCALE = 3.2;          // light-web frequency, per world unit
+  const float CAUSTIC_LAYER_B_SCALE = 1.37; // second layer's frequency multiplier, so the layers never line up
+  const float CAUSTIC_DRIFT = 0.6;          // radius (noise units) each layer circles once per period
+  const float CAUSTIC_LINE_WIDTH = 0.12;    // noise distance from a zero crossing that still lights: smaller gives thinner lines
+  const float CAUSTIC_FADE_IN = 0.04;       // depth over which caustics fade in from the waterline
+  const float CAUSTIC_FADE_START = 0.25;    // full strength across the turquoise shallows, to this depth ...
+  const float CAUSTIC_FADE_END = 0.55;      // ... and gone by this depth (open sea is ~0.8 deep)
+  const float CAUSTIC_STRENGTH = 0.35;      // light added at full strength, as a fraction of PALETTE_SURF
 
   mat2 octave_m = mat2(1.7, 1.2, -1.2, 1.4);
 
@@ -185,6 +215,34 @@ const fragmentShader = `
     float foam = smoothstep(threshold, threshold + SURF_BREAKUP_SOFTNESS, n);
 
     return foam * smoothstep(0.0, SURF_EDGE_SOFTNESS, off) * SURF_STRENGTH;
+  }
+
+  // Water body colour over a reef: dark coral heads on lighter reef flats.
+  vec3 reefBodyColor(vec2 worldXZ, float depth) {
+    vec2 q = worldXZ * REEF_NOISE_SCALE;
+    float n = 0.5 + 0.35 * noise(q) + 0.15 * noise(q * REEF_DETAIL_SCALE + vec2(17.0, -9.0));
+    float coral = smoothstep(REEF_CORAL_COVER, REEF_CORAL_COVER + REEF_CORAL_SOFTNESS, n);
+    vec3 flats = mix(PALETTE_SHALLOWS, PALETTE_REEF_TEAL, REEF_FLAT_TEAL);
+    vec3 body = mix(flats, PALETTE_REEF_TEAL * REEF_CORAL_DARKEN, coral);
+    return mix(body, depthColor(depth), REEF_DEPTH_SHOW);
+  }
+
+  // Caustic light (0..CAUSTIC_STRENGTH) on the seabed at worldXZ; 0 beyond the shallows.
+  float caustics(vec2 worldXZ, float depth) {
+    float fade = smoothstep(0.0, CAUSTIC_FADE_IN, depth) * (1.0 - smoothstep(CAUSTIC_FADE_START, CAUSTIC_FADE_END, depth));
+    if (fade <= 0.0) return 0.0;
+    // Two ridged-noise webs, each circling a small loop on its own period.
+    float a = 2.0 * PI * causticTime / CAUSTIC_PERIOD_A;
+    float b = 2.0 * PI * causticTime / CAUSTIC_PERIOD_B;
+    vec2 q = worldXZ * CAUSTIC_SCALE;
+    // Each layer's light lines are the noise zero crossings: thin contours that
+    // wind into a web, rather than a broad lift that the bright shallows hide.
+    float n1 = noise(q + vec2(cos(a), sin(a)) * CAUSTIC_DRIFT);
+    float n2 = noise(q * CAUSTIC_LAYER_B_SCALE + vec2(sin(b), cos(b)) * CAUSTIC_DRIFT + vec2(31.0, 7.0));
+    float r1 = 1.0 - smoothstep(0.0, CAUSTIC_LINE_WIDTH, abs(n1));
+    float r2 = 1.0 - smoothstep(0.0, CAUSTIC_LINE_WIDTH, abs(n2));
+    float web = max(r1, r2);
+    return web * fade * CAUSTIC_STRENGTH;
   }
 
   float sea_octave(vec2 uv, float choppy) {
@@ -315,6 +373,15 @@ const fragmentShader = `
     vec3 nearShore = getSeaColor(depthColor(depth), p, n, light, dir);
     vec3 seaColor = mix(nearShore, openSea, smoothstep(TEAL_END, DEEP_START, depth));
 
+    // Reefs over the water body, lit the same way so the rim has no seam.
+    float reef = inField ? terrainFieldReef(fieldTexel) * REEF_STRENGTH : 0.0;
+    if (reef > 0.0) {
+      seaColor = mix(seaColor, getSeaColor(reefBodyColor(vWorld.xz, depth), p, n, light, dir), reef);
+    }
+
+    // Caustic light in the shallows (reefs included), under the surf.
+    seaColor += PALETTE_SURF * caustics(vWorld.xz, depth);
+
     // Surf on top, lightly shaded by the wave normal so it sits on the water.
     float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField));
     vec3 foamColor = PALETTE_SURF * (0.8 + 0.2 * diffuse(n, light, 1.0));
@@ -332,7 +399,9 @@ interface OceanProps {
 
 /** The baked terrain field as a GPU texture (layout in terrainFieldTexture.ts). */
 function terrainFieldTexture(cells: readonly MapCell[]): { texture: DataTexture; bounds: TerrainBounds } {
-  const { data, width, height, bounds } = bakeTerrainField(sharedTerrainField(cells));
+  const { data, width, height, bounds } = bakeTerrainField(sharedTerrainField(cells), {
+    sampleReef: createReefMask(cells),
+  });
   const texture = new DataTexture(data, width, height, RGBAFormat, UnsignedByteType);
   texture.minFilter = LinearFilter;
   texture.magFilter = LinearFilter;
@@ -374,6 +443,7 @@ export function Ocean({ cells, size = 1024 }: OceanProps) {
         {
           iTime: { value: 0 },
           surfTime: { value: 0 },
+          causticTime: { value: 0 },
           light: { value: sun },
           mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
         },
@@ -395,6 +465,7 @@ export function Ocean({ cells, size = 1024 }: OceanProps) {
       const mat = meshRef.current.material as ShaderMaterial;
       mat.uniforms.iTime.value = (performance.now() * 0.001) % 10000;
       mat.uniforms.surfTime.value = advanceSurfTime(mat.uniforms.surfTime.value, delta, reducedMotion);
+      mat.uniforms.causticTime.value = advanceCausticTime(mat.uniforms.causticTime.value, delta, reducedMotion);
     }
   });
 

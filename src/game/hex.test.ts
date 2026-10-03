@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hex, neighbors, isAdjacent, hexDistance } from "./hex";
+import { hex, neighbors, isAdjacent, hexDistance, hexGrid, hexToWorld, worldToHex, type Hex } from "./hex";
 
 describe("isAdjacent", () => {
   it("returns true for all six neighbors of the origin", () => {
@@ -71,5 +71,38 @@ describe("hexDistance", () => {
     const a = hex(-3, 0);
     const b = hex(3, 0);
     expect(hexDistance(a, b)).toBe(6);
+  });
+});
+
+describe("worldToHex", () => {
+  // Compare as strings so -0 and 0 (which hex() produces for s) don't differ.
+  const axial = (h: Hex): string => `${h.q + 0},${h.r + 0},${h.s + 0}`;
+
+  it("is the inverse of hexToWorld at every hex centre", () => {
+    for (const h of hexGrid(4)) {
+      const [x, , z] = hexToWorld(h);
+      expect(axial(worldToHex(x, z))).toEqual(axial(h));
+    }
+  });
+
+  it("keeps points well inside a hex in that hex", () => {
+    // The inradius of a size-1 flat-top hex is √3/2; stay just inside it in every direction.
+    const inside = (Math.sqrt(3) / 2) * 0.95;
+    for (const h of hexGrid(2)) {
+      const [cx, , cz] = hexToWorld(h);
+      for (let a = 0; a < 12; a++) {
+        const angle = (a / 12) * 2 * Math.PI;
+        expect(axial(worldToHex(cx + inside * Math.cos(angle), cz + inside * Math.sin(angle)))).toEqual(axial(h));
+      }
+    }
+  });
+
+  it("returns the neighbour once a point crosses the shared edge", () => {
+    const origin = hex(0, 0);
+    for (const n of neighbors(origin)) {
+      const [nx, , nz] = hexToWorld(n);
+      // 55% of the way to the neighbour's centre is past the shared edge (at 50%).
+      expect(axial(worldToHex(nx * 0.55, nz * 0.55))).toEqual(axial(n));
+    }
   });
 });
