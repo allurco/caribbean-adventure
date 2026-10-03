@@ -10,6 +10,7 @@ import {
 } from "three";
 import type { MapCell, Decoration, Elevation } from "../../game/types";
 import { hexToWorld } from "../../game/hex";
+import { paletteColor } from "./palette";
 
 // Height of hex TOP surface above water level for each elevation
 const ELEVATION_TOP_HEIGHTS: Record<Elevation, number> = {
@@ -32,7 +33,7 @@ const pierGeometry = new BoxGeometry(0.15, 0.05, 0.6);
 // Materials
 const palmTrunkMaterial = new MeshStandardMaterial({ color: new Color(0.45, 0.35, 0.2) });  // Lighter brown
 const palmFrondsMaterial = new MeshStandardMaterial({ color: new Color(0.2, 0.5, 0.15) });  // Tropical green
-const rockMaterial = new MeshStandardMaterial({ color: new Color(0.5, 0.48, 0.45) });
+const rockMaterial = new MeshStandardMaterial({ color: paletteColor("highlandRock") });
 // Fort disabled - port marker in HexGrid serves this purpose
 // const fortMaterial = new MeshStandardMaterial({ color: new Color(0.75, 0.7, 0.6) });
 const pierMaterial = new MeshStandardMaterial({ color: new Color(0.45, 0.35, 0.25) });
