@@ -293,7 +293,8 @@ describe("buildLandMesh", () => {
       `Land mesh, large map (radius ${radius}): ${triangleCount} triangles in ${elapsed.toFixed(1)}ms`
     );
     expect(triangleCount).toBeGreaterThan(0);
-    // One-time build; target is well under 200 ms, with headroom for slow CI.
-    expect(elapsed).toBeLessThan(300);
+    // One-time build; ~110-165 ms locally, ~320 ms on GitHub runners since the
+    // slope/occlusion shading (#9). The limit only guards against gross regressions.
+    expect(elapsed).toBeLessThan(500);
   });
 });
