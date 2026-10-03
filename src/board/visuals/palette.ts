@@ -21,7 +21,12 @@ import { Color } from "three";
  * - jungle 0.15: tropical rainforest canopy, about 0.12-0.14 measured over
  *   Amazonian forest (Culf, Fisch & Hodnett 1995, J. Climate 8:1544); range
  *   0.12-0.18 with drier canopy. Was 0.11.
- * - highlandRock 0.15: dark volcanic rock, 0.10-0.15. Already in range.
+ * - highlandRock 0.28: weathered limestone, about 0.25-0.35. Many Caribbean
+ *   islands are limestone or coral (the Bahamas, the Caymans, much of the
+ *   Greater Antilles). Fresh limestone is brighter in the visible spectrum;
+ *   weathered, soil- and lichen-stained surfaces sit lower (USGS Spectral
+ *   Library v7, Kokaly et al. 2017, limestone and calcite samples). Was 0.15
+ *   (dark volcanic); the hue is unchanged.
  * - wetSand 0.32, drySand 0.63: at or above wet sand 0.20-0.30 and dry sand
  *   0.35-0.45 (Oke 1987, Boundary Layer Climates, table 1.1). Not lowered.
  * These are broadband values; visible-band canopy reflectance is lower, so the
@@ -34,7 +39,7 @@ export const PALETTE_HEX = {
   wetSand: 0xb8925e, // Narrow band at the waterline (albedo 0.32)
   drySand: 0xe3cf9c, // Beaches (albedo 0.63)
   jungle: 0x367a43, // Elevation 2: rainforest canopy (albedo 0.15, Culf et al. 1995)
-  highlandRock: 0x76695a, // Elevation 3, steep slopes: volcanic rock (albedo 0.15)
+  highlandRock: 0x9d8d79, // Elevation 3, steep slopes: weathered limestone (albedo 0.28)
   surf: 0xf2faf7, // Shore foam
   palmFrond: 0x4f8a34, // Palm fronds, a sunlit step up from the jungle floor (issue #14)
   palmTrunk: 0x8a6a45, // Palm trunks and coconuts
