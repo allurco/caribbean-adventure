@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial } from "three";
 import type { MapCell } from "../../game/types";
-import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
+import { sharedTerrainField } from "./sharedTerrainField";
 import { buildLandMesh, type LandMeshColors } from "./landMesh";
 import { paletteColor, type PaletteName } from "./palette";
 
@@ -35,7 +35,7 @@ const LAND_COLORS: LandMeshColors = {
 /** All islands as one continuous, flat-shaded mesh sampled from the terrain height field. */
 export function LandTerrain({ cells }: LandTerrainProps) {
   const geometry = useMemo(() => {
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const field = sharedTerrainField(cells);
     const { positions, colors } = buildLandMesh(field, { colors: LAND_COLORS });
     const geo = new BufferGeometry();
     geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
