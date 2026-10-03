@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validMoveTargets } from "./moves";
-import { hex, hexEquals, neighbors, hexDistance } from "./hex";
+import { hex, hexEquals, neighbors, hexDistance, NO_WRAP } from "./hex";
 import { generateMap } from "./mapGenerator";
 import type { MapCell, Elevation, Biome } from "./types";
 import { SHIP_SPECS } from "./constants";
@@ -27,7 +27,7 @@ describe("reef terrain mechanics", () => {
         cell(0, 1),
       ];
       // Sloop has shallowDraft: true
-      const targets = validMoveTargets(hex(0, 0), cells, [], true);
+      const targets = validMoveTargets(hex(0, 0), cells, NO_WRAP, [], true);
       expect(targets).toHaveLength(2);
       expect(targets.some((h) => hexEquals(h, hex(1, 0)))).toBe(true);
     });
@@ -39,7 +39,7 @@ describe("reef terrain mechanics", () => {
         cell(0, 1),
       ];
       // Galleon has shallowDraft: false
-      const targets = validMoveTargets(hex(0, 0), cells, [], false);
+      const targets = validMoveTargets(hex(0, 0), cells, NO_WRAP, [], false);
       expect(targets).toHaveLength(1);
       expect(targets.some((h) => hexEquals(h, hex(1, 0)))).toBe(false);
       expect(targets.some((h) => hexEquals(h, hex(0, 1)))).toBe(true);
@@ -51,7 +51,7 @@ describe("reef terrain mechanics", () => {
         cell(1, 0, "reef"),
       ];
       const shallowDraft = SHIP_SPECS["Flute"].shallowDraft;
-      const targets = validMoveTargets(hex(0, 0), cells, [], shallowDraft);
+      const targets = validMoveTargets(hex(0, 0), cells, NO_WRAP, [], shallowDraft);
       expect(targets).toHaveLength(1);
       expect(targets.some((h) => hexEquals(h, hex(1, 0)))).toBe(true);
     });
@@ -62,7 +62,7 @@ describe("reef terrain mechanics", () => {
         cell(1, 0, "reef"),
       ];
       const shallowDraft = SHIP_SPECS["Frigate"].shallowDraft;
-      const targets = validMoveTargets(hex(0, 0), cells, [], shallowDraft);
+      const targets = validMoveTargets(hex(0, 0), cells, NO_WRAP, [], shallowDraft);
       expect(targets).toHaveLength(0);
     });
 
@@ -74,7 +74,7 @@ describe("reef terrain mechanics", () => {
         cell(-1, 1, "island"),
       ];
       // Deep-draft ship: can enter water, cannot enter reef or island
-      const targets = validMoveTargets(hex(0, 0), cells, [], false);
+      const targets = validMoveTargets(hex(0, 0), cells, NO_WRAP, [], false);
       expect(targets).toHaveLength(1);
       expect(targets.some((h) => hexEquals(h, hex(0, 1)))).toBe(true);
     });
@@ -86,7 +86,7 @@ describe("reef terrain mechanics", () => {
         cell(0, 1, "reef"),
       ];
       const occupied = [hex(1, 0)];
-      const targets = validMoveTargets(hex(0, 0), cells, occupied, true);
+      const targets = validMoveTargets(hex(0, 0), cells, NO_WRAP, occupied, true);
       expect(targets).toHaveLength(1);
       expect(targets.some((h) => hexEquals(h, hex(1, 0)))).toBe(false);
       expect(targets.some((h) => hexEquals(h, hex(0, 1)))).toBe(true);

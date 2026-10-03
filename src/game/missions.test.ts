@@ -49,6 +49,7 @@ function createTestState(): CaribbeanState {
     draftHands: {},
     floatingLoot: [],
     npcIdCounter: 0,
+    wrap: null,
   };
 }
 

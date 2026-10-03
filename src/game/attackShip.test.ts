@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { hex } from "./hex";
+import { hex, hexRect, offsetToHex, createWrap } from "./hex";
 import { generateMap } from "./mapGenerator";
 import type { MapCell } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
@@ -52,6 +52,7 @@ function setupCombatGame(options: {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
       ...options.customSetup,
     }),
   };
@@ -60,6 +61,63 @@ function setupCombatGame(options: {
   client.start();
   return client;
 }
+
+describe("combat across the east–west seam", () => {
+  const wrap = createWrap(8);
+  const cells: MapCell[] = hexRect(8, 5).map((h) => ({
+    hex: h,
+    terrain: "water" as const,
+    elevation: 0 as const,
+    hasPort: false,
+  }));
+  const at = (col: number, row: number, upgrades: string[] = []) => {
+    const ship = createShipState(offsetToHex(col, row), "Sloop");
+    ship.upgrades = upgrades;
+    return ship;
+  };
+
+  it("lets a ship on the east edge attack a ship on the west edge at range 1", () => {
+    const client = setupCombatGame({
+      ship0: at(7, 2),
+      ship1: at(0, 2),
+      customSetup: { cells, wrap },
+    });
+    client.moves.attackShip("1");
+    const { ctx, G } = client.getState()!;
+    expect(ctx.phase).toBe("combat");
+    expect(G.combat!.distance).toBe(1);
+  });
+
+  it("measures long-gun range the short way round", () => {
+    const client = setupCombatGame({
+      ship0: at(6, 2, ["long_guns"]),
+      ship1: at(0, 2),
+      customSetup: { cells, wrap },
+    });
+    client.moves.attackShip("1");
+    expect(client.getState()!.G.combat!.distance).toBe(2);
+  });
+
+  it("does not reach across the seam on a map that does not wrap", () => {
+    const client = setupCombatGame({
+      ship0: at(7, 2),
+      ship1: at(0, 2),
+      customSetup: { cells, wrap: null },
+    });
+    client.moves.attackShip("1");
+    expect(client.getState()!.G.combat).toBeUndefined();
+  });
+
+  it("lets the spyglass reach a ship across the seam", () => {
+    const client = setupCombatGame({
+      ship0: at(7, 2),
+      ship1: at(0, 2),
+      customSetup: { cells, wrap },
+    });
+    client.moves.spyglass("1", false);
+    expect(client.getState()!.G.ships["0"].scoutedShips).toContain("1");
+  });
+});
 
 describe("attackShip move", () => {
   it("transitions to combat phase", () => {
@@ -671,6 +729,7 @@ describe("bounty and flotilla system", () => {
           },
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
 
@@ -741,6 +800,7 @@ describe("bounty and flotilla system", () => {
           },
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
 
@@ -828,6 +888,7 @@ describe("bounty and flotilla system", () => {
           },
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
 
@@ -913,6 +974,7 @@ describe("bounty and flotilla system", () => {
           },
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
 
@@ -971,6 +1033,7 @@ describe("bounty and flotilla system", () => {
           },
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
 

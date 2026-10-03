@@ -592,6 +592,7 @@ function setupAtPort() {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: TradeGame });
@@ -625,6 +626,7 @@ function setupNoPort() {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: NoPortGame });
@@ -792,6 +794,7 @@ describe("trade move", () => {
           npcs: {},
           floatingLoot: [],
           npcIdCounter: 0,
+          wrap: null,
         }),
       };
 
@@ -862,6 +865,7 @@ describe("trade move", () => {
           npcs: {},
           floatingLoot: [],
           npcIdCounter: 0,
+          wrap: null,
         }),
       };
 

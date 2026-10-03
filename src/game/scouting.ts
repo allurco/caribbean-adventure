@@ -1,4 +1,5 @@
-import { hexDistance } from "./hex";
+import { wrappedDistance } from "./hex";
+import type { Hex, MapWrap } from "./hex";
 import type { ShipState, NPCShip, GoodType } from "./types";
 import { GOOD_TYPES } from "./types";
 
@@ -21,10 +22,11 @@ export function getScoutingRange(ship: ShipState): number {
  */
 export function isInScoutingRange(
   scout: ShipState,
-  targetPosition: { q: number; r: number; s: number }
+  targetPosition: Hex,
+  wrap: MapWrap
 ): boolean {
   const range = getScoutingRange(scout);
-  const distance = hexDistance(scout.position, targetPosition);
+  const distance = wrappedDistance(scout.position, targetPosition, wrap);
   return distance > 0 && distance <= range;
 }
 
@@ -33,10 +35,11 @@ export function isInScoutingRange(
  */
 export function canScoutNPC(
   scout: ShipState,
-  npc: NPCShip
+  npc: NPCShip,
+  wrap: MapWrap
 ): boolean {
   if (npc.isIdentified) return false; // Already identified
-  return isInScoutingRange(scout, npc.position);
+  return isInScoutingRange(scout, npc.position, wrap);
 }
 
 /**
@@ -45,10 +48,11 @@ export function canScoutNPC(
 export function canScoutPlayer(
   scout: ShipState,
   target: ShipState,
-  targetId: string
+  targetId: string,
+  wrap: MapWrap
 ): boolean {
   if (scout.scoutedShips.includes(targetId)) return false; // Already scouted
-  return isInScoutingRange(scout, target.position);
+  return isInScoutingRange(scout, target.position, wrap);
 }
 
 /**
@@ -58,7 +62,8 @@ export function getValidScoutTargets(
   scout: ShipState,
   scoutId: string,
   ships: Record<string, ShipState>,
-  npcs: Record<string, NPCShip>
+  npcs: Record<string, NPCShip>,
+  wrap: MapWrap
 ): { players: string[]; npcs: string[] } {
   const players: string[] = [];
   const npcTargets: string[] = [];
@@ -66,14 +71,14 @@ export function getValidScoutTargets(
   // Check player ships
   for (const [id, ship] of Object.entries(ships)) {
     if (id === scoutId) continue;
-    if (canScoutPlayer(scout, ship, id)) {
+    if (canScoutPlayer(scout, ship, id, wrap)) {
       players.push(id);
     }
   }
 
   // Check NPCs
   for (const [id, npc] of Object.entries(npcs)) {
-    if (canScoutNPC(scout, npc)) {
+    if (canScoutNPC(scout, npc, wrap)) {
       npcTargets.push(id);
     }
   }

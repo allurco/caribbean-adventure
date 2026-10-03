@@ -1,6 +1,6 @@
 import type { Game } from "boardgame.io";
 import { INVALID_MOVE } from "boardgame.io/core";
-import { hex, hexDistance, hexEquals, neighbors } from "./hex";
+import { hex, hexEquals, canonicalHex, wrappedDistance, wrappedNeighbors } from "./hex";
 import { generateMap } from "./mapGenerator";
 import { getMapPreset } from "./mapConfig";
 import type { MapSizeId } from "./mapConfig";
@@ -163,6 +163,8 @@ export const Caribbean: Game<CaribbeanState> = {
       ships,
       npcs: {},
       mapSize,
+      // The current maps are hexagons, which cannot wrap; rectangular maps will set this.
+      wrap: null,
       captainDeck: remaining,
       draftHands: hands,
       floatingLoot: [],
@@ -174,8 +176,8 @@ export const Caribbean: Game<CaribbeanState> = {
   moves: {
     moveShip: ({ G, ctx }, q: number, r: number) => {
       const ship = G.ships[ctx.currentPlayer];
-      const target = hex(q, r);
-      if (hexDistance(ship.position, target) !== 1) return INVALID_MOVE;
+      const target = canonicalHex(hex(q, r), G.wrap);
+      if (wrappedDistance(ship.position, target, G.wrap) !== 1) return INVALID_MOVE;
       const cell = G.cells.find((c) => hexEquals(c.hex, target));
       if (!cell) return INVALID_MOVE;
       // Ships cannot enter island hexes (must dock at water)
@@ -200,7 +202,7 @@ export const Caribbean: Game<CaribbeanState> = {
       action: "BUY" | "SELL",
     ) => {
       const ship = G.ships[ctx.currentPlayer];
-      const port = findAccessiblePort(ship.position, G.cells);
+      const port = findAccessiblePort(ship.position, G.cells, G.wrap);
       if (!port?.market) return INVALID_MOVE;
       if (action === "BUY") {
         if (!canBuy(ship, good, amount, port.market)) return INVALID_MOVE;
@@ -219,7 +221,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
     buyUpgrade: ({ G, ctx }, upgradeId: string) => {
       const ship = G.ships[ctx.currentPlayer];
-      const port = findAccessiblePort(ship.position, G.cells);
+      const port = findAccessiblePort(ship.position, G.cells, G.wrap);
       if (!port?.hasPort || !port.market) return INVALID_MOVE;
       if (!canBuyUpgrade(ship, upgradeId)) return INVALID_MOVE;
       applyUpgrade(ship, upgradeId);
@@ -227,7 +229,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
     repair: ({ G, ctx }, category: DamageCategory, points: number) => {
       const ship = G.ships[ctx.currentPlayer];
-      const port = findAccessiblePort(ship.position, G.cells);
+      const port = findAccessiblePort(ship.position, G.cells, G.wrap);
       if (!port?.hasPort || !port.market) return INVALID_MOVE;
       if (points <= 0) return INVALID_MOVE;
       if (!canRepair(ship, category)) return INVALID_MOVE;
@@ -236,7 +238,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
     buyShip: ({ G, ctx }, newClass: ShipClass) => {
       const ship = G.ships[ctx.currentPlayer];
-      const port = findAccessiblePort(ship.position, G.cells);
+      const port = findAccessiblePort(ship.position, G.cells, G.wrap);
       if (!port?.hasPort || !port.hasShipyard) return INVALID_MOVE;
       if (
         !(SHIP_CLASSES as readonly string[]).includes(newClass)
@@ -302,7 +304,7 @@ export const Caribbean: Game<CaribbeanState> = {
               ship.homeDockingHex = port.dockingHex;
             } else {
               // Fallback: find any water hex adjacent to the port
-              const portNeighbors = neighbors(port.hex);
+              const portNeighbors = wrappedNeighbors(port.hex, G.wrap);
               const waterNeighbor = portNeighbors.find((n) => {
                 const cell = G.cells.find((c) => hexEquals(c.hex, n));
                 return cell && cell.terrain === "water" && !occupiedHexes.some((o) => hexEquals(o, n));
@@ -351,8 +353,8 @@ export const Caribbean: Game<CaribbeanState> = {
       moves: {
         moveShip: ({ G, ctx }, q: number, r: number) => {
           const ship = G.ships[ctx.currentPlayer];
-          const target = hex(q, r);
-          if (hexDistance(ship.position, target) !== 1) return INVALID_MOVE;
+          const target = canonicalHex(hex(q, r), G.wrap);
+          if (wrappedDistance(ship.position, target, G.wrap) !== 1) return INVALID_MOVE;
           const cell = G.cells.find((c) => hexEquals(c.hex, target));
           if (!cell) return INVALID_MOVE;
           // Ships cannot enter island hexes (must dock at water)
@@ -371,7 +373,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
           // Check for mission completion at new position
           if (ship.activeMission) {
-            const port = findAccessiblePort(ship.position, G.cells);
+            const port = findAccessiblePort(ship.position, G.cells, G.wrap);
             if (port?.portName) {
               // Check delivery mission
               if (checkDeliveryMission(ship.activeMission, port.portName)) {
@@ -398,7 +400,7 @@ export const Caribbean: Game<CaribbeanState> = {
           action: "BUY" | "SELL",
         ) => {
           const ship = G.ships[ctx.currentPlayer];
-          const port = findAccessiblePort(ship.position, G.cells);
+          const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.market) return INVALID_MOVE;
           if (action === "BUY") {
             if (!canBuy(ship, good, amount, port.market)) return INVALID_MOVE;
@@ -417,7 +419,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
         buyUpgrade: ({ G, ctx }, upgradeId: string) => {
           const ship = G.ships[ctx.currentPlayer];
-          const port = findAccessiblePort(ship.position, G.cells);
+          const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.hasPort || !port.market) return INVALID_MOVE;
           if (!canBuyUpgrade(ship, upgradeId)) return INVALID_MOVE;
           applyUpgrade(ship, upgradeId);
@@ -425,7 +427,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
         repair: ({ G, ctx }, category: DamageCategory, points: number) => {
           const ship = G.ships[ctx.currentPlayer];
-          const port = findAccessiblePort(ship.position, G.cells);
+          const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.hasPort || !port.market) return INVALID_MOVE;
           if (points <= 0) return INVALID_MOVE;
           if (!canRepair(ship, category)) return INVALID_MOVE;
@@ -434,7 +436,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
         buyShip: ({ G, ctx }, newClass: ShipClass) => {
           const ship = G.ships[ctx.currentPlayer];
-          const port = findAccessiblePort(ship.position, G.cells);
+          const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.hasPort || !port.hasShipyard) return INVALID_MOVE;
           if (
             !(SHIP_CLASSES as readonly string[]).includes(newClass)
@@ -456,13 +458,13 @@ export const Caribbean: Game<CaribbeanState> = {
           if (isNPC) {
             const npc = G.npcs[targetId];
             if (!npc) return INVALID_MOVE;
-            if (!canScoutNPC(ship, npc)) return INVALID_MOVE;
+            if (!canScoutNPC(ship, npc, G.wrap)) return INVALID_MOVE;
             // Mark NPC as identified
             npc.isIdentified = true;
           } else {
             const target = G.ships[targetId];
             if (!target) return INVALID_MOVE;
-            if (!canScoutPlayer(ship, target, targetId)) return INVALID_MOVE;
+            if (!canScoutPlayer(ship, target, targetId, G.wrap)) return INVALID_MOVE;
             // Add to scouted ships list
             if (!ship.scoutedShips.includes(targetId)) {
               ship.scoutedShips.push(targetId);
@@ -472,7 +474,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
         listenForRumors: ({ G, ctx, random }) => {
           const ship = G.ships[ctx.currentPlayer];
-          const port = findAccessiblePort(ship.position, G.cells);
+          const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.hasPort || !port.portName) return INVALID_MOVE;
           if (!canAffordTavern(ship.gold)) return INVALID_MOVE;
           if (ship.activeMission) return INVALID_MOVE; // Already have a mission
@@ -506,7 +508,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const defender = G.ships[targetId];
           if (!defender) return INVALID_MOVE;
 
-          const distance = hexDistance(attacker.position, defender.position);
+          const distance = wrappedDistance(attacker.position, defender.position, G.wrap);
           if (!canAttack(attacker, defender, distance)) return INVALID_MOVE;
 
           G.combat = {
@@ -533,7 +535,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const npc = G.npcs[npcId];
           if (!npc) return INVALID_MOVE;
 
-          const distance = hexDistance(attacker.position, npc.position);
+          const distance = wrappedDistance(attacker.position, npc.position, G.wrap);
           if (!canAttackNPC(attacker, npc, distance)) return INVALID_MOVE;
 
           // Add bounty for attacking a merchant (not flotillas)

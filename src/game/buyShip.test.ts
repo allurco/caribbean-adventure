@@ -76,6 +76,7 @@ function setupAtShipyard(overrides?: {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
 
@@ -152,6 +153,7 @@ describe("buyShip move", () => {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: NoShipyardGame });
@@ -189,6 +191,7 @@ describe("buyShip move", () => {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: WaterGame });

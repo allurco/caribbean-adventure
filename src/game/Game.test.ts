@@ -3,7 +3,7 @@ import { Client } from "boardgame.io/client";
 import { Caribbean, MOVES_PER_TURN, getMaxMoves } from "./Game";
 import type { CaribbeanState } from "./Game";
 import type { Game } from "boardgame.io";
-import { hex } from "./hex";
+import { hex, hexEquals, hexRect, offsetToHex, createWrap } from "./hex";
 import { generateMap } from "./mapGenerator";
 import type { MapCell } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
@@ -33,6 +33,7 @@ function setup() {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: TestGame });
@@ -57,6 +58,7 @@ function setupAtEdge() {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: EdgeGame });
@@ -109,6 +111,85 @@ describe("moveShip move", () => {
   });
 });
 
+describe("moveShip across the east–west seam", () => {
+  const wrap = createWrap(8);
+
+  function setupWrapped(wrapped = true) {
+    const cells: MapCell[] = hexRect(8, 4).map((h) => ({
+      hex: h,
+      terrain: "water" as const,
+      elevation: 0 as const,
+      hasPort: false,
+    }));
+    const WrapGame: Game<CaribbeanState> = {
+      ...Caribbean,
+      phases: {},
+      setup: () => ({
+        cells,
+        ships: {
+          "0": createShipState(offsetToHex(7, 1)),
+          "1": createShipState(offsetToHex(3, 3)),
+        },
+        mapSize: "small" as MapSizeId,
+        captainDeck: [],
+        draftHands: {},
+        floatingLoot: [],
+        npcs: {},
+        npcIdCounter: 0,
+        wrap: wrapped ? wrap : null,
+      }),
+    };
+    const client = Client<CaribbeanState>({ game: WrapGame });
+    client.start();
+    return client;
+  }
+
+  it("sails off the east edge onto the west edge for one move", () => {
+    const client = setupWrapped();
+    const west = offsetToHex(0, 1);
+    client.moves.moveShip(west.q, west.r);
+    const { G, ctx } = client.getState()!;
+    expect(hexEquals(G.ships["0"].position, west)).toBe(true);
+    expect(ctx.numMoves).toBe(1);
+  });
+
+  it("accepts the uncanonical copy of the target and stores the canonical hex", () => {
+    const client = setupWrapped();
+    const west = offsetToHex(0, 1);
+    // The same hex seen one wrap to the east, as a renderer drawing past the seam would send it.
+    client.moves.moveShip(west.q + 8, west.r - 4);
+    const { G } = client.getState()!;
+    expect(G.ships["0"].position.q).toBe(0);
+    expect(hexEquals(G.ships["0"].position, west)).toBe(true);
+  });
+
+  it("can sail back from the west edge onto the east edge", () => {
+    const client = setupWrapped();
+    const west = offsetToHex(0, 1);
+    client.moves.moveShip(west.q, west.r);
+    client.moves.moveShip(7, -2); // offset (7, 1), the hex it started on
+    const { G, ctx } = client.getState()!;
+    expect(hexEquals(G.ships["0"].position, offsetToHex(7, 1))).toBe(true);
+    expect(ctx.numMoves).toBe(2);
+  });
+
+  it("does not cross the seam when the map does not wrap", () => {
+    const client = setupWrapped(false);
+    const west = offsetToHex(0, 1);
+    client.moves.moveShip(west.q, west.r);
+    const { G } = client.getState()!;
+    expect(hexEquals(G.ships["0"].position, offsetToHex(7, 1))).toBe(true);
+  });
+});
+
+describe("Caribbean.setup", () => {
+  it("stores the map's wrap in G (none yet for the hexagonal maps)", () => {
+    const client = Client<CaribbeanState>({ game: Caribbean, numPlayers: 2 });
+    client.start();
+    expect(client.getState()!.G.wrap).toBeNull();
+  });
+});
+
 describe("moveShip port logic", () => {
   function setupWithIslands() {
     const cells: MapCell[] = [
@@ -135,6 +216,7 @@ describe("moveShip port logic", () => {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: IslandGame });
@@ -210,6 +292,7 @@ function setupTwoPlayer() {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });

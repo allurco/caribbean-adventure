@@ -279,6 +279,7 @@ function setupDraft() {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: DraftGame, numPlayers: 2 });

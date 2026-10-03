@@ -25,6 +25,7 @@ function createTestState(cells: MapCell[]): CaribbeanState {
     draftHands: {},
     floatingLoot: [],
     npcIdCounter: 0,
+    wrap: null,
     combat: undefined,
   };
 }
