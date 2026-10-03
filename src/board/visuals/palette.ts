@@ -24,6 +24,8 @@ export const PALETTE_HEX = {
   jungle: 0x2f6b3a, // Elevation 2
   highlandRock: 0x76695a, // Elevation 3, steep slopes
   surf: 0xf2faf7, // Shore foam
+  palmFrond: 0x4f8a34, // Palm fronds, a sunlit step up from the jungle floor (issue #14)
+  palmTrunk: 0x8a6a45, // Palm trunks and coconuts
 } as const;
 
 export type PaletteName = keyof typeof PALETTE_HEX;

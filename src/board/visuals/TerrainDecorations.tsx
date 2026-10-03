@@ -2,7 +2,6 @@ import { useMemo, useRef, useEffect } from "react";
 import {
   InstancedMesh,
   Object3D,
-  CylinderGeometry,
   BoxGeometry,
   SphereGeometry,
   MeshStandardMaterial,
@@ -13,8 +12,8 @@ import { hexToWorld } from "../../game/hex";
 import { paletteColor } from "./palette";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { placeOnGround, type GroundPlacementOptions } from "./groundPlacement";
+import { PalmTrees } from "./PalmTrees";
 
-const TRUNK_HEIGHT = 0.45;
 const ROCK_RADIUS = 0.12;
 // Rock centre above its base, per unit scale; the rest of the rock is buried.
 const ROCK_LIFT = 0.04;
@@ -23,19 +22,10 @@ const ROCK_LIFT = 0.04;
 const TREE_PLACEMENT: GroundPlacementOptions = { footprintRadius: 0.06, sink: 0.03, maxSlope: 0.9 };
 const ROCK_PLACEMENT: GroundPlacementOptions = { footprintRadius: ROCK_RADIUS, sink: 0.02, maxSlope: 1.6 };
 
-// Create geometries for different decoration types
-// Palm tree: tall thin trunk with spherical frond cluster at top
-const palmTreeGeometries = {
-  trunk: new CylinderGeometry(0.02, 0.035, TRUNK_HEIGHT, 6),  // Taller, thinner trunk
-  fronds: new SphereGeometry(0.22, 8, 6),  // Spherical frond cluster
-};
-
 const rockGeometry = new SphereGeometry(ROCK_RADIUS, 6, 5);
 const pierGeometry = new BoxGeometry(0.15, 0.05, 0.6);
 
 // Materials
-const palmTrunkMaterial = new MeshStandardMaterial({ color: new Color(0.45, 0.35, 0.2) });  // Lighter brown
-const palmFrondsMaterial = new MeshStandardMaterial({ color: new Color(0.2, 0.5, 0.15) });  // Tropical green
 const rockMaterial = new MeshStandardMaterial({ color: paletteColor("highlandRock") });
 // Fort disabled - port marker in HexGrid serves this purpose
 // const fortMaterial = new MeshStandardMaterial({ color: new Color(0.75, 0.7, 0.6) });
@@ -123,52 +113,8 @@ export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
   }, [cells]);
 
   // Refs for instanced meshes
-  const treeTrunkRef = useRef<InstancedMesh>(null!);
-  const treeFoliageRef = useRef<InstancedMesh>(null!);
   const rockRef = useRef<InstancedMesh>(null!);
   const pierRef = useRef<InstancedMesh>(null!);
-
-  // Update palm tree trunk instances
-  useEffect(() => {
-    if (!treeTrunkRef.current || decorationsByType.trees.length === 0) return;
-
-    const mesh = treeTrunkRef.current;
-    decorationsByType.trees.forEach((tree, i) => {
-      // Palm trunk: base on the ground (the trunk scales about its centre), slight random lean
-      tempObject.position.set(tree.worldX, tree.worldY + (TRUNK_HEIGHT / 2) * tree.scale, tree.worldZ);
-      // Slight lean based on rotation for natural look
-      const lean = 0.1 + Math.sin(tree.rotation * 3) * 0.08;
-      tempObject.rotation.set(lean, tree.rotation, 0);
-      tempObject.scale.setScalar(tree.scale);
-      tempObject.updateMatrix();
-      mesh.setMatrixAt(i, tempObject.matrix);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-  }, [decorationsByType.trees]);
-
-  // Update palm tree frond instances
-  useEffect(() => {
-    if (!treeFoliageRef.current || decorationsByType.trees.length === 0) return;
-
-    const mesh = treeFoliageRef.current;
-    decorationsByType.trees.forEach((tree, i) => {
-      // Fronds at top of trunk, flattened sphere
-      const lean = 0.1 + Math.sin(tree.rotation * 3) * 0.08;
-      // Position fronds at top of leaning trunk
-      const topOffsetX = Math.sin(lean) * 0.4 * tree.scale;
-      tempObject.position.set(
-        tree.worldX + topOffsetX * Math.sin(tree.rotation),
-        tree.worldY + (TRUNK_HEIGHT + 0.03) * tree.scale,
-        tree.worldZ + topOffsetX * Math.cos(tree.rotation)
-      );
-      tempObject.rotation.set(0, tree.rotation, 0);
-      // Flatten the sphere to make frond cluster (wider than tall)
-      tempObject.scale.set(tree.scale * 1.2, tree.scale * 0.6, tree.scale * 1.2);
-      tempObject.updateMatrix();
-      mesh.setMatrixAt(i, tempObject.matrix);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-  }, [decorationsByType.trees]);
 
   // Update rock instances
   useEffect(() => {
@@ -213,27 +159,7 @@ export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
 
   return (
     <>
-      {/* Palm tree trunks */}
-      {decorationsByType.trees.length > 0 && (
-        <instancedMesh
-          ref={treeTrunkRef}
-          args={[palmTreeGeometries.trunk, palmTrunkMaterial, decorationsByType.trees.length]}
-          castShadow
-          receiveShadow
-          frustumCulled={false}
-        />
-      )}
-
-      {/* Palm tree fronds */}
-      {decorationsByType.trees.length > 0 && (
-        <instancedMesh
-          ref={treeFoliageRef}
-          args={[palmTreeGeometries.fronds, palmFrondsMaterial, decorationsByType.trees.length]}
-          castShadow
-          receiveShadow
-          frustumCulled={false}
-        />
-      )}
+      <PalmTrees palms={decorationsByType.trees} />
 
       {/* Rocks */}
       {decorationsByType.rocks.length > 0 && (
