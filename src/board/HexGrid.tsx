@@ -5,16 +5,13 @@ import {
   InstancedMesh,
   Object3D,
   CylinderGeometry,
-  BufferGeometry,
-  Float32BufferAttribute,
-  LineBasicMaterial,
-  LineLoop,
 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
 import type { Hex } from "../game/hex";
 import { hexToWorld, hexEquals } from "../game/hex";
 import type { MapCell, Elevation } from "../game/types";
+import { WaterHexOutlines } from "./WaterHexOutlines";
 
 const TILE_SIZE = 1;
 const HEX_BASE_DEPTH = 0.1;
@@ -31,8 +28,10 @@ const ELEVATION_TOP_HEIGHTS: Record<Elevation, number> = {
 
 const PORT_MARKER_RADIUS = 0.35;
 const PORT_MARKER_HEIGHT = 0.3;
-const WATER_HEX_OUTLINE_COLOR = "#ffffff";
-const WATER_HEX_OUTLINE_OPACITY = 0.15;
+// Minimum outline opacity for hexes the player is acting on. These ignore the
+// distance fade, so targets stay crisp anywhere on the map.
+const OUTLINE_OPACITY_TARGET = 0.45;
+const OUTLINE_OPACITY_HOVERED = 0.85;
 
 const COLOR_HOVERED = "#facc15";
 const COLOR_ATTACK_TARGET = "#ef4444";
@@ -51,25 +50,6 @@ function createHexShape(size: number): Shape {
   shape.closePath();
   return shape;
 }
-
-// Create hex outline geometry for water hexes
-function createHexOutlineGeometry(size: number): BufferGeometry {
-  const vertices: number[] = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i;
-    vertices.push(size * Math.cos(angle), size * Math.sin(angle), 0);
-  }
-  const geometry = new BufferGeometry();
-  geometry.setAttribute("position", new Float32BufferAttribute(vertices, 3));
-  return geometry;
-}
-
-const hexOutlineGeometry = createHexOutlineGeometry(TILE_SIZE * 0.95);
-const hexOutlineMaterial = new LineBasicMaterial({
-  color: WATER_HEX_OUTLINE_COLOR,
-  transparent: true,
-  opacity: WATER_HEX_OUTLINE_OPACITY,
-});
 
 // Create geometries for each elevation level
 const hexShape = createHexShape(TILE_SIZE);
@@ -363,6 +343,17 @@ export function HexGrid({
     [interactive, allWaterInteractive, onHexClick, waterCells]
   );
 
+  const waterHexes = useMemo(() => waterCells.map((c) => c.hex), [waterCells]);
+
+  const outlineEmphasis = useMemo(() => {
+    const emphasis = new Map<number, number>();
+    allWaterInteractive.forEach((i) => emphasis.set(i, OUTLINE_OPACITY_TARGET));
+    if (hoveredCell && hoveredMeshType === "water" && hoveredId !== null) {
+      emphasis.set(hoveredId, OUTLINE_OPACITY_HOVERED);
+    }
+    return emphasis;
+  }, [allWaterInteractive, hoveredCell, hoveredMeshType, hoveredId]);
+
   const hoveredPos = useMemo(() => {
     if (!hoveredCell) return null;
     const [x, y, z] = hexToWorld(hoveredCell.hex);
@@ -398,18 +389,9 @@ export function HexGrid({
         </instancedMesh>
       )}
 
-      {/* Water hex wireframe outlines */}
-      {waterCells.map((cell) => {
-        const [x, y, z] = hexToWorld(cell.hex);
-        return (
-          <primitive
-            key={`outline-${cell.hex.q}-${cell.hex.r}`}
-            object={new LineLoop(hexOutlineGeometry, hexOutlineMaterial)}
-            position={[x, y + 0.01, z]}
-            rotation={[-Math.PI / 2, 0, 0]}
-          />
-        );
-      })}
+      {/* Water hex outlines: fade with distance from the camera focus,
+          acted-on hexes stay at full strength */}
+      <WaterHexOutlines hexes={waterHexes} emphasis={outlineEmphasis} />
 
       {/* Attack target highlights (red) */}
       {attackTargetPositions.map((pos, i) => (
