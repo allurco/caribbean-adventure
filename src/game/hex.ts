@@ -45,3 +45,19 @@ export const hexToWorld = (h: Hex): [number, number, number] => [
   0,
   SIZE * ((SQRT3 / 2) * h.q + SQRT3 * h.r),
 ];
+
+/** World XZ position -> the flat-top hex containing it (inverse of hexToWorld, cube-rounded). */
+export const worldToHex = (x: number, z: number): Hex => {
+  const qf = ((2 / 3) * x) / SIZE;
+  const rf = (z / SQRT3 - x / 3) / SIZE;
+  const sf = -qf - rf;
+  let q = Math.round(qf);
+  let r = Math.round(rf);
+  const s = Math.round(sf);
+  const dq = Math.abs(q - qf);
+  const dr = Math.abs(r - rf);
+  const ds = Math.abs(s - sf);
+  if (dq > dr && dq > ds) q = -r - s;
+  else if (dr > ds) r = -q - s;
+  return hex(q, r);
+};
