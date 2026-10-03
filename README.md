@@ -33,8 +33,8 @@ What exists today:
 You need Node.js 20.19 or newer (Vite 7 requires it).
 
 ```bash
-git clone https://github.com/allurco/caribbean-adventture-.git
-cd caribbean-adventture-
+git clone https://github.com/allurco/caribbean-adventure.git
+cd caribbean-adventure
 npm install
 npm run dev
 ```
