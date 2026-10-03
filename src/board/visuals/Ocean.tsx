@@ -1,19 +1,29 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { ShaderMaterial, PlaneGeometry, Vector3, MathUtils, Mesh } from "three";
+import {
+  ShaderMaterial,
+  PlaneGeometry,
+  Vector3,
+  MathUtils,
+  Mesh,
+  UniformsLib,
+  UniformsUtils,
+} from "three";
 import { PALETTE_GLSL } from "./palette";
 
 const vertexShader = `
   varying vec3 eye;
   varying vec3 pos;
   varying vec2 vUv;
+  #include <fog_pars_vertex>
 
   void main () {
-    vec4 mvp = modelViewMatrix * vec4(position, 1.0);
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     pos = position;
-    eye = vec3(mvp) * normalMatrix;
+    eye = vec3(mvPosition) * normalMatrix;
     vUv = uv;
-    gl_Position = projectionMatrix * mvp;
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
   }
 `;
 
@@ -44,6 +54,7 @@ const fragmentShader = `
   varying vec3 eye;
   varying vec3 pos;
   varying vec2 vUv;
+  #include <fog_pars_fragment>
 
   // Wrap coordinates to prevent floating-point precision loss at large values
   vec2 wrapCoord(vec2 p) {
@@ -190,6 +201,7 @@ const fragmentShader = `
     seaColor /= sqrt(sqrt(length(dist)));
 
     gl_FragColor = vec4(seaColor, 0.98);
+    #include <fog_fragment>
   }
 `;
 
@@ -216,10 +228,15 @@ export function Ocean({ size = 1024 }: OceanProps) {
     return new ShaderMaterial({
       vertexShader,
       fragmentShader,
-      uniforms: {
-        iTime: { value: 0 },
-        light: { value: sun },
-      },
+      // Opt in to scene fog: three fills these uniforms from scene.fog.
+      uniforms: UniformsUtils.merge([
+        UniformsLib.fog,
+        {
+          iTime: { value: 0 },
+          light: { value: sun },
+        },
+      ]),
+      fog: true,
       transparent: true,
     });
   }, [sun]);
