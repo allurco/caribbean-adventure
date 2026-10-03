@@ -103,7 +103,9 @@ All HUD/overlay UI uses **TailwindCSS v4** (via `@tailwindcss/vite` plugin). No 
 
 ### Issue tracker
 
-Issues and PRDs are tracked as local markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Issues and specs are tracked as GitHub Issues on this repo (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+**This repo is public and built in the open.** Issues, PR descriptions, commit messages, and every tracked file are visible to anyone. Never include secrets, credentials, personal or employer details, absolute local paths, or private notes. Keep scratch work out of the repo.
 
 ### Triage labels
 

@@ -1,73 +1,72 @@
-# React + TypeScript + Vite
+# Project Caribbean
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A turn-based naval strategy game for up to six players, set in the age of sail. Captain a ship, trade between ports, take on missions, and fight rival captains and NPC flotillas on a procedurally generated archipelago.
 
-Currently, two official plugins are available:
+Inspired by classic age-of-sail board games, rebuilt as a 3D browser game.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+> **Status: early development, built in public.** Expect rough edges, half-finished features, and breaking changes. Progress is tracked in [GitHub Issues](../../issues).
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+What exists today:
 
-## Expanding the ESLint configuration
+- **Captain draft.** Each player drafts a captain from a dealt hand before the game starts.
+- **Hex-based sailing.** Up to three actions per turn on a hex map, adjusted by your ship's condition.
+- **Procedural maps.** Islands, ports, and biomes are generated from noise, with several map-size presets.
+- **Trading and shipyards.** Buy and sell goods, repair, jury-rig, buy upgrades, or buy a new ship.
+- **Ship combat.** Seamanship, cannon fire, boarding, fleeing, damage, and loot.
+- **NPCs and reputation.** NPC merchants and flotillas roam the map, and bounties escalate as your reputation drops.
+- **Missions.** Delivery, escort, and assassination contracts.
+- **Scoring.** Stash gold and earn glory to win.
+- **3D rendering.** Shader-driven terrain and ocean built with React Three Fiber.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Tech stack
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- [React 19](https://react.dev) + [Vite](https://vite.dev) + TypeScript (strict)
+- [boardgame.io](https://boardgame.io) for game state, turns, phases, and multiplayer
+- [Three.js](https://threejs.org) via [React Three Fiber](https://r3f.docs.pmnd.rs) and [drei](https://github.com/pmndrs/drei)
+- [Tailwind CSS v4](https://tailwindcss.com) for the HUD
+- [Vitest](https://vitest.dev) for tests
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Getting started
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+You need Node.js 20.19 or newer (Vite 7 requires it).
+
+```bash
+git clone https://github.com/allurco/caribbean-adventure.git
+cd caribbean-adventure
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Then open the URL Vite prints (usually http://localhost:5173).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+The game currently runs as a single local client: all players take turns on one screen. Networked multiplayer through a boardgame.io server is planned.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the dev server |
+| `npm run build` | Type-check and build for production |
+| `npm run preview` | Preview the production build |
+| `npm test` | Run the test suite once |
+| `npm run test:watch` | Run tests in watch mode |
+| `npm run lint` | Lint with ESLint |
+
+## Project structure
+
 ```
+src/
+├── game/    Game rules: pure TypeScript, no React or Three.js
+├── board/   Rendering: React components, 3D scene, and HUD
+├── lab/     Shader experiments (open the app at /#lab)
+└── App.tsx  Wires the game to the board via boardgame.io
+docs/        Design notes (for example, terrain-system.md)
+```
+
+Game logic and rendering are kept strictly separate. Everything under `src/game/` is pure functions over a JSON-serializable state, and it is unit-tested. `src/board/` only reads state and dispatches moves.
+
+## Contributing
+
+This is a personal project being built in the open. Ideas and bug reports are welcome in [Issues](../../issues). Open an issue before starting on a pull request, so we can agree on the approach first.
