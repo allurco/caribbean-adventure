@@ -15,8 +15,8 @@ const OUTPUT_LINE = "gl_FragColor = vec4( retColor, 1.0 );";
  * - Drop the solar disc. It is ~19000× the sky and would put a second sun in
  *   the image-based lighting on top of the shadow-casting directional light.
  * - Below the horizon, Sky just repeats the horizon colour, which would light
- *   the undersides of everything like open sky. Replace it with sky light
- *   bounced off the sea: horizon colour × `groundAlbedo`.
+ *   the undersides of everything like open sky. Replace it with the sea's
+ *   own radiance, `groundRadiance` (see `groundBounceRadiance`).
  *
  * Throws if the source no longer has the lines being patched (a three.js
  * upgrade), so the disc can never silently come back.
@@ -29,11 +29,38 @@ export function skyEnvironmentFragmentShader(source: string): string {
   }
   return source
     .replace(SOLAR_DISC_LINE, "")
-    .replace(UNIFORM_ANCHOR, `${UNIFORM_ANCHOR}\n\t\tuniform vec3 groundAlbedo;`)
+    .replace(UNIFORM_ANCHOR, `${UNIFORM_ANCHOR}\n\t\tuniform vec3 groundRadiance;`)
     .replace(
       OUTPUT_LINE,
-      `retColor *= mix( groundAlbedo, vec3( 1.0 ), smoothstep( -0.02, 0.0, direction.y ) );\n\t\t\t${OUTPUT_LINE}`
+      `retColor = mix( groundRadiance, retColor, smoothstep( -0.02, 0.0, direction.y ) );\n\t\t\t${OUTPUT_LINE}`
     );
+}
+
+export interface GroundBounceInputs {
+  albedo: readonly [number, number, number];
+  /** Direct sun irradiance on level ground, in scene units (intensity · sin elevation). */
+  directHorizontal: number;
+  /** Diffuse share of global horizontal irradiance (as in `skyEnvironmentIntensity`). */
+  diffuseFraction: number;
+  /** The scale the baked sky is lit at (`scene.environmentIntensity`). */
+  environmentIntensity: number;
+}
+
+/**
+ * Radiance of the sea below the horizon, in the baked map's raw units.
+ *
+ * A diffuse surface of albedo ρ under irradiance E has radiance ρ·E/π. The sea
+ * receives the sun's direct light plus the sky's, so E = direct / (1 − f).
+ * The map is later scaled by `environmentIntensity`, so this divides by it.
+ */
+export function groundBounceRadiance({
+  albedo,
+  directHorizontal,
+  diffuseFraction,
+  environmentIntensity,
+}: GroundBounceInputs): [number, number, number] {
+  const scale = directHorizontal / (1 - diffuseFraction) / Math.PI / environmentIntensity;
+  return [albedo[0] * scale, albedo[1] * scale, albedo[2] * scale];
 }
 
 export interface SkyIntensityInputs {
@@ -67,6 +94,24 @@ export function skyEnvironmentIntensity({
   const directHorizontal = sunIntensity * Math.sin((sunElevationDeg * Math.PI) / 180);
   const diffuseTarget = (diffuseFraction / (1 - diffuseFraction)) * directHorizontal;
   return diffuseTarget / measuredSkyIrradiance;
+}
+
+/**
+ * Share of the downward-facing view, from height `height` above a plane, that
+ * a disc of radius `radius` directly below fills (cosine-weighted view factor
+ * of a coaxial disc: R² / (R² + h²)).
+ */
+export function downwardViewFactor(height: number, radius: number): number {
+  if (height === 0) return 1;
+  return (radius * radius) / (radius * radius + height * height);
+}
+
+type Rgb = readonly [number, number, number];
+
+/** Albedo of the sea as seen from above it: shallows fill `shallowShare` of the view, deep water the rest. */
+export function seaBounceAlbedo(shallow: Rgb, deep: Rgb, shallowShare: number): [number, number, number] {
+  const mix = (i: number) => shallow[i] * shallowShare + deep[i] * (1 - shallowShare);
+  return [mix(0), mix(1), mix(2)];
 }
 
 /** Rec. 709 relative luminance of a linear RGB colour. */

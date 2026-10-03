@@ -56,6 +56,11 @@ describe("sunDirection", () => {
 describe("the scene sun", () => {
   const view = viewDirectionXZ(CAMERA_OFFSET);
 
+  it("swings as far to the side as the glint margin allows: one degree more breaks it", () => {
+    const wider = sunDirection(view, SUN_ELEVATION_DEG, SUN_AZIMUTH_DEG + Math.sign(SUN_AZIMUTH_DEG));
+    expect(Math.abs(glintNdc(6, 4 / 3, wider).x)).toBeGreaterThan(0.9);
+  });
+
   it("sits in front of the camera, not behind it", () => {
     const along = SUN_DIRECTION[0] * view[0] + SUN_DIRECTION[2] * view[1];
     expect(along).toBeGreaterThan(0);
@@ -75,9 +80,9 @@ describe("the scene sun", () => {
     ["max zoom-out, 16:9", CAMERA_MAX_DISTANCE, 16 / 9],
     ["max zoom-out, 1400x900", CAMERA_MAX_DISTANCE, 1400 / 900],
     ["close zoom, 4:3", 6, 4 / 3],
-  ])("puts the mirror glint in the upper half of the screen (%s)", (_label, distance, aspect) => {
+  ])("puts the mirror glint in the upper half of the screen, 0.1 in from the side (%s)", (_label, distance, aspect) => {
     const ndc = glintNdc(distance, aspect, SUN_DIRECTION);
-    expect(Math.abs(ndc.x)).toBeLessThan(1);
+    expect(Math.abs(ndc.x)).toBeLessThan(0.9);
     expect(ndc.y).toBeGreaterThan(0);
     expect(ndc.y).toBeLessThan(1);
   });

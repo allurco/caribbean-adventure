@@ -10,6 +10,7 @@
 
 import { CAMERA_OFFSET } from "../cameraBounds";
 import { sunDirection, viewDirectionXZ } from "./sunDirection";
+import { downwardViewFactor, seaBounceAlbedo } from "./skyEnvironment";
 
 /** Pale, slightly warm sky haze. Used for both the fog and the scene background. */
 export const HAZE_COLOR = "#bcd4da";
@@ -36,12 +37,14 @@ export const SUN_INTENSITY = 2.5;
  * by the sun's elevation; with the camera pitched 46.7° down and a 45° vertical
  * field of view, view rays dip 24°–69°, so 35° puts the glint in the upper
  * half of the screen at every zoom (tested). It is still low enough for long,
- * late-afternoon shadows. The 25° swing to the left keeps the glint off the
- * port panel on the right and gives shadows a diagonal, not a straight-down,
- * direction.
+ * late-afternoon shadows. The swing to the left keeps the glint off the port
+ * panel on the right, and lights the camera-facing slopes from the side so they
+ * are not fully backlit. 32° is the widest swing that keeps the glint at least
+ * 0.1 (NDC) inside the screen edge at every tested zoom and aspect; the
+ * binding case is close zoom at 4:3, where 36° puts it off screen.
  */
 export const SUN_ELEVATION_DEG = 35;
-export const SUN_AZIMUTH_DEG = -25;
+export const SUN_AZIMUTH_DEG = -32;
 export const SUN_DIRECTION = sunDirection(
   viewDirectionXZ(CAMERA_OFFSET),
   SUN_ELEVATION_DEG,
@@ -77,10 +80,28 @@ export const SKY_MIE_DIRECTIONAL_G = 0.8;
  */
 export const SKY_DIFFUSE_FRACTION = 0.18;
 /**
- * Diffuse reflectance of the sea, which lights the scene from below. Open
- * ocean reflects about 6% (Payne 1972); slightly green-blue from the water.
+ * Diffuse reflectance of the sea, which lights the scene from below.
+ *
+ * What lights an island slope from below is the water at its foot, and that
+ * is mostly turquoise shallows over sand, not open ocean:
+ * - Deep water reflects about 6% (Payne 1972), slightly green-blue.
+ * - Clear water a few metres deep over white carbonate sand reflects about
+ *   0.2–0.3 in the green and blue, but much less in the red, which water
+ *   absorbs within a few metres (Maritorena et al. 1994, bottom-reflectance
+ *   model).
+ * - A slope point about 0.5 u (≈ 33 m) up, with shallows reaching about 0.5 u
+ *   (≈ 33 m) out from the waterline (the turquoise bands in Ocean.tsx run
+ *   0.4–0.7 u), sees the shallows fill R²/(R² + h²) = 0.5 of its downward view.
  */
-export const SEA_BOUNCE_ALBEDO: [number, number, number] = [0.04, 0.07, 0.08];
+const SHALLOW_SEA_ALBEDO = [0.12, 0.3, 0.3] as const;
+const DEEP_SEA_ALBEDO = [0.04, 0.07, 0.08] as const;
+const BOUNCE_SLOPE_HEIGHT = 0.5;
+const SHALLOWS_REACH = 0.5;
+export const SEA_BOUNCE_ALBEDO = seaBounceAlbedo(
+  SHALLOW_SEA_ALBEDO,
+  DEEP_SEA_ALBEDO,
+  downwardViewFactor(BOUNCE_SLOPE_HEIGHT, SHALLOWS_REACH)
+);
 
 /**
  * Shadow map resolution and the half-width of the shadow camera's box.
