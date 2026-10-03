@@ -70,3 +70,7 @@ Game logic and rendering are kept strictly separate. Everything under `src/game/
 ## Contributing
 
 This is a personal project being built in the open. Ideas and bug reports are welcome in [Issues](../../issues). Open an issue before starting on a pull request, so we can agree on the approach first.
+
+## License
+
+[MIT](LICENSE)
