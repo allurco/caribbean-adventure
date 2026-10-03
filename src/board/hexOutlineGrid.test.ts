@@ -4,6 +4,9 @@ import {
   buildOutlinePositions,
   buildOutlineEmphasis,
   gridFadeOpacity,
+  gridFadeForCameraDistance,
+  GRID_FADE,
+  GRID_FADE_ZOOM_DISTANCE,
 } from "./hexOutlineGrid";
 import { hexToWorld } from "../game/hex";
 import type { Hex } from "../game/hex";
@@ -88,5 +91,35 @@ describe("gridFadeOpacity", () => {
   it("never drops below the emphasis opacity of an acted-on hex", () => {
     expect(gridFadeOpacity(50, 0.6, params)).toBeCloseTo(0.6);
     expect(gridFadeOpacity(0, 0.6, params)).toBeCloseTo(0.6);
+  });
+});
+
+describe("gridFadeForCameraDistance", () => {
+  it("is unchanged at close zoom", () => {
+    expect(gridFadeForCameraDistance(GRID_FADE, 4)).toEqual(GRID_FADE);
+    expect(gridFadeForCameraDistance(GRID_FADE, GRID_FADE_ZOOM_DISTANCE)).toEqual(GRID_FADE);
+  });
+
+  it("widens the fade in proportion to the distance when zoomed out", () => {
+    const wide = gridFadeForCameraDistance(GRID_FADE, GRID_FADE_ZOOM_DISTANCE * 2);
+    expect(wide.fadeStart).toBeCloseTo(GRID_FADE.fadeStart * 2);
+    expect(wide.fadeEnd).toBeCloseTo(GRID_FADE.fadeEnd * 2);
+    expect(wide.baseOpacity).toBe(GRID_FADE.baseOpacity);
+  });
+
+  it("grows continuously and monotonically with distance", () => {
+    const just = gridFadeForCameraDistance(GRID_FADE, GRID_FADE_ZOOM_DISTANCE + 1e-6);
+    expect(just.fadeEnd).toBeCloseTo(GRID_FADE.fadeEnd);
+    let prev = GRID_FADE.fadeEnd;
+    for (let d = GRID_FADE_ZOOM_DISTANCE; d <= 40; d += 2) {
+      const { fadeEnd } = gridFadeForCameraDistance(GRID_FADE, d);
+      expect(fadeEnd).toBeGreaterThanOrEqual(prev);
+      prev = fadeEnd;
+    }
+  });
+
+  it("covers a visibly larger area at full zoom-out", () => {
+    const zoomedOut = gridFadeForCameraDistance(GRID_FADE, 28);
+    expect(zoomedOut.fadeEnd).toBeGreaterThan(GRID_FADE.fadeEnd * 1.5);
   });
 });
