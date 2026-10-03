@@ -19,6 +19,8 @@ import type { MapCell } from "../../game/types";
 import { PALETTE_GLSL } from "./palette";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { bakeTerrainField, TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
+import { advanceSurfTime, SURF_TIMING_GLSL } from "./surfMotion";
+import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
 import type { TerrainBounds } from "./terrainHeightField";
 
 const vertexShader = `
@@ -72,6 +74,28 @@ const fragmentShader = `
   const float TEAL_END = 0.4;         // fully reef teal, starts turning deep
   const float DEEP_START = 0.7;       // open sea from here on
   const float OPEN_SEA_DEPTH = 1.0;   // used outside the map bounds
+  const float OPEN_SEA_COAST_DISTANCE = 10.0; // offshore distance assumed outside the map bounds
+
+  // Shore surf (issue #10). Distances are world units offshore from the
+  // waterline (a hex is ~1.7 across); the foam lives on the ocean plane only
+  // where the baked coast distance is negative, so it never draws on land.
+  uniform float surfTime; // seconds, wrapped on the CPU to a whole number of periods
+  ${SURF_TIMING_GLSL}
+  const float SURF_EDGE_SOFTNESS = 0.02; // foam fades in over this just offshore, so it meets the land with no gap
+  const float SURF_WASH_MIN = 0.12;      // width of the shore wash at the ebb of the pulse
+  const float SURF_WASH_MAX = 0.32;      // ... and at the flood
+  const float SURF_BREAKER_NEAR = 0.3;   // the outer breaker line rolls between these distances
+  const float SURF_BREAKER_FAR = 0.55;
+  const float SURF_BREAKER_WIDTH = 0.06; // half-width of the breaker line
+  const float SURF_BREAKER_LAG = 1.2;    // radians the breaker trails the wash in the pulse
+  const float SURF_MAX_REACH = 0.62;     // no foam beyond this (keep >= BREAKER_FAR + BREAKER_WIDTH)
+  const float SURF_PHASE_SCALE = 0.45;   // along-coast phase noise frequency; lower = longer stretches in step
+  const float SURF_PHASE_SPREAD = 3.0;   // radians of pulse offset between stretches of coast
+  const float SURF_NOISE_SCALE = 6.0;    // frequency of the noise that breaks the foam up
+  const float SURF_CHURN_AMOUNT = 0.35;  // radius (noise units) the breakup noise circles each churn cycle
+  const float SURF_COVERAGE = 0.8;       // < 1 leaves holes even in the densest foam
+  const float SURF_BREAKUP_SOFTNESS = 0.12; // edge softness of the foam patches
+  const float SURF_STRENGTH = 0.9;       // max blend of foam over the water colour
 
   mat2 octave_m = mat2(1.7, 1.2, -1.2, 1.4);
 
@@ -85,11 +109,16 @@ const fragmentShader = `
   varying vec3 vWorld;
   #include <fog_pars_fragment>
 
-  // Depth below sea level from the baked height field; 0 on land and at the waterline.
-  float seaDepth(vec2 worldXZ) {
-    vec2 uv = terrainFieldUv(worldXZ);
-    if (!terrainFieldInside(uv)) return OPEN_SEA_DEPTH;
-    return max(-terrainFieldHeight(texture2D(terrainField, uv)), 0.0);
+  // Depth below sea level from a baked field texel; 0 on land and at the waterline.
+  float seaDepth(vec4 texel, bool inField) {
+    if (!inField) return OPEN_SEA_DEPTH;
+    return max(-terrainFieldHeight(texel), 0.0);
+  }
+
+  // Signed distance to the coast (+ land, - water) from a baked field texel.
+  float coastDistance(vec4 texel, bool inField) {
+    if (!inField) return -OPEN_SEA_COAST_DISTANCE;
+    return terrainFieldCoastDistance(texel);
   }
 
   // Water body colour: seabed at the waterline, turquoise shallows, reef teal, deep water.
@@ -121,6 +150,41 @@ const fragmentShader = `
       mix(hash(iw + vec2(0.0, 1.0)), hash(iw + vec2(1.0, 1.0)), u.x),
       u.y
     );
+  }
+
+  // Foam amount (0..1) on the water at worldXZ, given the signed coast distance.
+  // Time only enters as sin/cos of 2π·surfTime/period (surfTime is wrapped on
+  // the CPU), so nothing here loses precision over a long session.
+  float surfFoam(vec2 worldXZ, float coastDist) {
+    float off = -coastDist; // distance offshore; <= 0 on land
+    if (off <= 0.0 || off >= SURF_MAX_REACH) return 0.0;
+
+    // Each stretch of coast gets its own phase, so the surf doesn't move in step.
+    float phase = noise(worldXZ * SURF_PHASE_SCALE) * SURF_PHASE_SPREAD;
+    float pulseAngle = 2.0 * PI * surfTime / SURF_PULSE_PERIOD + phase;
+
+    // Shore wash: dense at the waterline, reaching further out at the flood.
+    float pulse = 0.5 + 0.5 * sin(pulseAngle);
+    float washReach = mix(SURF_WASH_MIN, SURF_WASH_MAX, pulse);
+    float wash = 1.0 - smoothstep(washReach * 0.35, washReach, off);
+
+    // Breaker line: trails the wash, rolling in toward the shore and back out,
+    // brightest when it is closest in.
+    float roll = 0.5 + 0.5 * sin(pulseAngle - SURF_BREAKER_LAG);
+    float breakerAt = mix(SURF_BREAKER_FAR, SURF_BREAKER_NEAR, roll);
+    float breaker = (1.0 - smoothstep(0.0, SURF_BREAKER_WIDTH, abs(off - breakerAt))) * mix(0.35, 0.8, roll);
+
+    // Break the bands into patches: the breakup noise circles a small loop each
+    // churn cycle (bounded offset, so precision-safe), and denser foam lets
+    // more of the noise through.
+    float churnAngle = 2.0 * PI * surfTime / SURF_CHURN_PERIOD;
+    vec2 churn = vec2(cos(churnAngle), sin(churnAngle)) * SURF_CHURN_AMOUNT;
+    vec2 q = worldXZ * SURF_NOISE_SCALE;
+    float n = 0.5 + 0.25 * noise(q + churn) + 0.25 * noise(q * 2.1 - churn.yx);
+    float threshold = 1.0 - max(wash, breaker) * SURF_COVERAGE;
+    float foam = smoothstep(threshold, threshold + SURF_BREAKUP_SOFTNESS, n);
+
+    return foam * smoothstep(0.0, SURF_EDGE_SOFTNESS, off) * SURF_STRENGTH;
   }
 
   float sea_octave(vec2 uv, float choppy) {
@@ -240,10 +304,21 @@ const fragmentShader = `
 
     // Open sea is the deep base colour; nearer land the palette depth colour
     // takes over. Both share the same lighting so the blend has no seam.
+    // One field fetch feeds both depth and coast distance; sampled outside the
+    // branch so the texture lookup stays in uniform control flow.
+    vec2 fieldUv = terrainFieldUv(vWorld.xz);
+    bool inField = terrainFieldInside(fieldUv);
+    vec4 fieldTexel = texture2D(terrainField, fieldUv);
+
     vec3 openSea = getSeaColor(SEA_BASE, p, n, light, dir);
-    float depth = seaDepth(vWorld.xz);
+    float depth = seaDepth(fieldTexel, inField);
     vec3 nearShore = getSeaColor(depthColor(depth), p, n, light, dir);
     vec3 seaColor = mix(nearShore, openSea, smoothstep(TEAL_END, DEEP_START, depth));
+
+    // Surf on top, lightly shaded by the wave normal so it sits on the water.
+    float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField));
+    vec3 foamColor = PALETTE_SURF * (0.8 + 0.2 * diffuse(n, light, 1.0));
+    seaColor = mix(seaColor, foamColor, foam);
 
     gl_FragColor = vec4(seaColor, 0.98);
     #include <fog_fragment>
@@ -298,6 +373,7 @@ export function Ocean({ cells, size = 1024 }: OceanProps) {
         UniformsLib.fog,
         {
           iTime: { value: 0 },
+          surfTime: { value: 0 },
           light: { value: sun },
           mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
         },
@@ -312,11 +388,13 @@ export function Ocean({ cells, size = 1024 }: OceanProps) {
   useEffect(() => () => material.dispose(), [material]);
 
   const meshRef = useRef<Mesh>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     if (meshRef.current) {
       const mat = meshRef.current.material as ShaderMaterial;
       mat.uniforms.iTime.value = (performance.now() * 0.001) % 10000;
+      mat.uniforms.surfTime.value = advanceSurfTime(mat.uniforms.surfTime.value, delta, reducedMotion);
     }
   });
 
