@@ -193,9 +193,11 @@ in metres at the render scale of `worldScale.ts` (65 m per unit): a ~1:21
 beach face, a 2–15 m shelf about a hex wide, and a drop-off at ~175 m offshore
 to a ~122 m floor. Reef hexes rise to a noisy 1–3 m crest. The land mesh
 (`landMesh.ts`) covers this seabed down to 100 m around islands and reefs.
-Faces above sea level draw in the main pass as before. Faces wholly under
-water are seabed (coral sand, algal deep seabed and coral patches, with
-albedos in `palette.ts`), drawn only on `SEABED_LAYER`.
+Faces above sea level draw in the main pass as before, flat-shaded. Faces
+wholly under water are seabed (coral sand, algal deep seabed and coral
+patches, with albedos in `palette.ts`), drawn only on `SEABED_LAYER`,
+smooth-shaded with per-vertex colours, and split in four where they span
+more than 5 m of height (crack-free: the split is decided per edge).
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
