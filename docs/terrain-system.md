@@ -183,24 +183,25 @@ void main() {
 
 ## 3. Ocean Shader (Ocean.tsx)
 
-Samples heightmap for:
-- **Depth-based transparency**: Shallow = more transparent, Deep = opaque
-- **Shoreline foam**: Animated where coastDist is low
+> Updated for ADR 0001 (issue #6). The ocean no longer uses `TerrainHeightmap.ts`.
 
-```glsl
-vec4 hm = texture2D(heightmap, worldToUV(vWorldPos));
-float depth = -hm.r;
-float coastDist = hm.b;
+The ocean reads the **new** terrain height field (`terrainHeightField.ts`, via
+`sharedTerrainField(cells)`), baked once per map by `terrainFieldTexture.ts`
+into an 8-bit RGBA texture over `field.bounds` (8 texels per world unit,
+capped at 1024 per side; texel centres sampled, rows from `minZ` up, so
+`uv = (xz - min) / (max - min)` with no flip):
 
-// Transparency
-float alpha = mix(0.5, 0.9, smoothstep(0.0, 0.4, depth));
+| Channel | Contents |
+|---------|----------|
+| R | Height (world Y). Code 170 is sea level exactly, step 1.5/255, range -1 … +0.5 (clamped) |
+| G | Coast signed distance (+ land, - water), range ±2.25, for shore foam (#10) |
+| B | Reserved: reef mask (#11), currently 0 |
+| A | Reserved, 255 |
 
-// Foam at shoreline
-float foam = 0.0;
-if (coastDist < 0.2) {
-    foam = fbm(vWorldPos.xz * 6.0 + time) * smoothstep(0.2, 0.0, coastDist);
-}
-```
+`TERRAIN_FIELD_GLSL` holds the matching decode helpers. `Ocean.tsx` colours
+the water by depth below sea level: wet sand (seabed showing through) at the
+waterline, then turquoise shallows, reef teal and deep water, blending into
+the unchanged open-sea look by depth ~0.7. Outside the bounds it is open sea.
 
 ---
 
