@@ -388,7 +388,10 @@ const fragmentShader = `
       seabed *= 1.0 + (sunDirect / max(downwelling, vec3(1e-6))) * (light - 1.0);
     }
     vec3 deep = deepWaterReflectance() * downwelling;
-    return seabed * t + deep * (1.0 - t);
+    vec3 body = seabed * t + deep * (1.0 - t);
+    // Stylistic, not physics: a mild saturation boost in the shallows only.
+    float luma = dot(body, vec3(0.2126, 0.7152, 0.0722));
+    return max(mix(vec3(luma), body, 1.0 + shallowSaturationBoost(depth)), 0.0);
   }
 
   void main() {

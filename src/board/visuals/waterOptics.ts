@@ -1,7 +1,12 @@
 /**
  * Optics of clear tropical water (#38 step 3), per RGB channel, sampled at
- * 600 / 550 / 450 nm (the same wavelengths as the seabed albedos in
+ * 650 / 550 / 450 nm (the same wavelengths as the seabed albedos in
  * palette.ts). Pure maths, mirrored in GLSL by `WATER_OPTICS_GLSL`.
+ *
+ * Red is sampled at 650 nm, not 600: the red channel spans roughly 600–700 nm
+ * and pure-water absorption rises steeply across it (0.22 / m at 600 nm,
+ * 0.34 at 650, 0.47 at 680, Pope & Fry). At 600 nm the shallows kept so much
+ * red that turquoise water over sand read grey.
  *
  * Coefficients are for pure seawater, the clearest natural water; real
  * Caribbean water carries a little extra absorption from dissolved matter and
@@ -13,7 +18,9 @@
  * - Scattering b: Smith & Baker (1981), "Optical properties of the clearest
  *   natural waters (200-800 nm)", Applied Optics 20(2), via a table that also
  *   lists Pope & Fry's absorption and takes the backscatter ratio of pure
- *   water as 1/2 after Morel (1974).
+ *   water as 1/2 after Morel (1974). The red value is the 600 nm one: we have
+ *   not verified the 650 nm value. Scattering falls with wavelength, so this
+ *   is an upper bound, and in red it is under 0.5% of absorption either way.
  * - Deep-water irradiance reflectance (just below the surface)
  *   R∞ = 0.33 · b_b / a: Morel & Prieur (1977), Limnology and Oceanography
  *   22(4), Eq. 1.
@@ -35,10 +42,19 @@ const WATER_IOR = 1.333;
 /** Schlick reflectance of water at normal incidence: ((1.333 − 1) / (1.333 + 1))² ≈ 0.02. */
 const WATER_F0 = 0.02;
 
-/** Pure-water absorption at 600 / 550 / 450 nm, per metre (Pope & Fry 1997). */
-export const WATER_ABSORPTION: Rgb = [0.2224, 0.0565, 0.00922];
-/** Pure-seawater scattering at 600 / 550 / 450 nm, per metre (Smith & Baker 1981). */
+/** Pure-water absorption at 650 / 550 / 450 nm, per metre (Pope & Fry 1997). */
+export const WATER_ABSORPTION: Rgb = [0.34, 0.0565, 0.00922];
+/** Pure-seawater scattering at 600 / 550 / 450 nm, per metre (Smith & Baker 1981); see above for red. */
 export const WATER_SCATTERING: Rgb = [0.0014, 0.0019, 0.0045];
+
+/**
+ * STYLISTIC, NOT PHYSICS (user decision, #38): extra saturation for the water
+ * colour in the shallows, toward the vivid turquoise of the Water Pro
+ * reference, fading out by SHALLOW_BOOST_DEPTH so deep water is untouched.
+ */
+const SHALLOW_SATURATION_BOOST = 0.35;
+const SHALLOW_BOOST_DEPTH = 15; // metres
+const SHALLOW_BOOST_RAMP = 2; // metres
 /** Share of scattering that goes backwards in pure water (Morel 1974). */
 const BACKSCATTER_RATIO = 0.5;
 
@@ -75,6 +91,24 @@ export function schlickFresnel(cosTheta: number): number {
   return WATER_F0 + (1 - WATER_F0) * Math.pow(1 - c, 5);
 }
 
+const smoothstep = (e0: number, e1: number, x: number) => {
+  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
+/**
+ * Saturation boost (stylistic) for water over a seabed `depthMetres` down: it
+ * ramps in over the first SHALLOW_BOOST_RAMP (bare sand at the waterline
+ * stays sand) and is 0 from SHALLOW_BOOST_DEPTH.
+ */
+export function shallowSaturationBoost(depthMetres: number): number {
+  return (
+    SHALLOW_SATURATION_BOOST *
+    smoothstep(0, SHALLOW_BOOST_RAMP, depthMetres) *
+    (1 - smoothstep(0, SHALLOW_BOOST_DEPTH, depthMetres))
+  );
+}
+
 const vec3 = (v: Rgb) => `vec3(${v.join(", ")})`;
 
 /** GLSL constants and functions matching the TypeScript above. */
@@ -97,5 +131,10 @@ export const WATER_OPTICS_GLSL = `
   float schlickFresnel(float cosTheta) {
     float c = clamp(cosTheta, 0.0, 1.0);
     return WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - c, 5.0);
+  }
+  // Stylistic, not physics: see shallowSaturationBoost in waterOptics.ts.
+  float shallowSaturationBoost(float depthMetres) {
+    return ${SHALLOW_SATURATION_BOOST.toFixed(3)} * smoothstep(0.0, ${SHALLOW_BOOST_RAMP.toFixed(1)}, depthMetres)
+      * (1.0 - smoothstep(0.0, ${SHALLOW_BOOST_DEPTH.toFixed(1)}, depthMetres));
   }
 `;

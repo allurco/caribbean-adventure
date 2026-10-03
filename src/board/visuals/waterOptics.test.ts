@@ -7,13 +7,14 @@ import {
   refractedCosine,
   waterBodyRadiance,
   schlickFresnel,
+  shallowSaturationBoost,
   WATER_OPTICS_GLSL,
 } from "./waterOptics";
 
 type Rgb = readonly [number, number, number];
 
-/** Clean coral sand bottom reflectance at 600 / 550 / 450 nm (as the palette's seabedSand). */
-const SAND: Rgb = [0.518, 0.456, 0.339];
+/** Clean coral sand bottom reflectance at 650 / 550 / 450 nm (as the palette's seabedSand). */
+const SAND: Rgb = [0.564, 0.456, 0.339];
 
 /** Water-body radiance over sand `depth` metres down, seen from straight above with the sun overhead. */
 const overSand = (depth: number) =>
@@ -21,8 +22,8 @@ const overSand = (depth: number) =>
 
 describe("waterOptics (#38 step 3)", () => {
   describe("coefficients", () => {
-    it("uses Pope & Fry (1997) pure-water absorption at 600 / 550 / 450 nm, per metre", () => {
-      expect(WATER_ABSORPTION).toEqual([0.2224, 0.0565, 0.00922]);
+    it("uses Pope & Fry (1997) pure-water absorption at 650 / 550 / 450 nm, per metre", () => {
+      expect(WATER_ABSORPTION).toEqual([0.34, 0.0565, 0.00922]);
     });
 
     it("uses Smith & Baker (1981) pure-seawater scattering at 600 / 550 / 450 nm, per metre", () => {
@@ -69,10 +70,10 @@ describe("waterOptics (#38 step 3)", () => {
       expect(overSand(0)).toEqual(SAND);
     });
 
-    it("is turquoise over 3 m of water: green and blue together, well above red", () => {
+    it("is turquoise over 3 m of water: green and blue together, far above red", () => {
       const [r, g, b] = overSand(3);
-      expect(g).toBeGreaterThan(2 * r);
-      expect(b).toBeGreaterThan(2 * r);
+      expect(g).toBeGreaterThan(3 * r);
+      expect(b).toBeGreaterThan(3 * r);
       expect(Math.abs(g - b) / Math.max(g, b)).toBeLessThan(0.15);
     });
 
@@ -99,6 +100,24 @@ describe("waterOptics (#38 step 3)", () => {
     });
   });
 
+  describe("shallow-water saturation boost (stylistic, not physics)", () => {
+    it("leaves the bare sand at the waterline alone, is mild over the shelf and gone by 15 m", () => {
+      expect(shallowSaturationBoost(0)).toBe(0);
+      expect(shallowSaturationBoost(3)).toBeGreaterThan(0.2);
+      expect(shallowSaturationBoost(3)).toBeLessThanOrEqual(0.5);
+      expect(shallowSaturationBoost(15)).toBe(0);
+      expect(shallowSaturationBoost(60)).toBe(0);
+    });
+
+    it("fades steadily with depth past the first 2 m", () => {
+      let prev = shallowSaturationBoost(2);
+      for (let d = 2.5; d <= 15; d += 0.5) {
+        expect(shallowSaturationBoost(d)).toBeLessThanOrEqual(prev);
+        prev = shallowSaturationBoost(d);
+      }
+    });
+  });
+
   describe("refraction and Fresnel", () => {
     it("leaves a vertical ray vertical", () => {
       expect(refractedCosine(1)).toBeCloseTo(1, 12);
@@ -119,12 +138,13 @@ describe("waterOptics (#38 step 3)", () => {
 
   describe("GLSL", () => {
     it("declares the same coefficients the TypeScript uses", () => {
-      expect(WATER_OPTICS_GLSL).toContain("const vec3 WATER_ABSORPTION = vec3(0.2224, 0.0565, 0.00922);");
+      expect(WATER_OPTICS_GLSL).toContain("const vec3 WATER_ABSORPTION = vec3(0.34, 0.0565, 0.00922);");
       expect(WATER_OPTICS_GLSL).toContain("const vec3 WATER_SCATTERING = vec3(0.0014, 0.0019, 0.0045);");
       expect(WATER_OPTICS_GLSL).toContain("vec3 waterTransmittance(float pathMetres)");
       expect(WATER_OPTICS_GLSL).toContain("vec3 deepWaterReflectance()");
       expect(WATER_OPTICS_GLSL).toContain("float refractedCosine(float cosAir)");
       expect(WATER_OPTICS_GLSL).toContain("float schlickFresnel(float cosTheta)");
+      expect(WATER_OPTICS_GLSL).toContain("float shallowSaturationBoost(float depthMetres)");
     });
   });
 });

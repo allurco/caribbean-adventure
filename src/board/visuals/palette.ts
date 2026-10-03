@@ -35,18 +35,19 @@ import { Color } from "three";
  * Measured values are broadband; visible-band canopy reflectance is lower, so
  * the jungle value errs bright.
  *
- * Seabed albedos (#38) are bottom reflectances sampled at 600 / 550 / 450 nm
- * for R / G / B, from the spectra digitised from Fig. 6 of Maritorena, Morel &
+ * Seabed albedos (#38) are bottom reflectances sampled at 650 / 550 / 450 nm
+ * for R / G / B (the same wavelengths as the water in waterOptics.ts), from
+ * the spectra digitised from Fig. 6 of Maritorena, Morel &
  * Gentili (1994), "Diffuse reflectance of oceanic shallow waters: Influence of
  * water depth and bottom albedo", Limnology and Oceanography, as
  * distributed with Hydrolight 5 (coral_sand.txt, brown_algae.txt,
  * green_algae.txt):
- * - seabedSand: clean coral sand, 0.518 / 0.456 / 0.339.
- * - coral: brown algae (Turbinaria and Sargassum), 0.094 / 0.058 / 0.024. We
+ * - seabedSand: clean coral sand, 0.564 / 0.456 / 0.339.
+ * - coral: brown algae (Turbinaria and Sargassum), 0.075 / 0.058 / 0.024. We
  *   could not source a measured live-coral spectrum; this dark brown one
  *   stands in for it.
  * - deepSeabed: a design choice for the drop-off, half coral sand and half
- *   green algae (Boodlea, 0.215 / 0.269 / 0.055).
+ *   green algae (Boodlea, 0.139 / 0.269 / 0.055).
  */
 export const PALETTE_HEX = {
   wetSand: 0xb8925e, // Narrow band at the waterline (albedo 0.32)
@@ -56,9 +57,9 @@ export const PALETTE_HEX = {
   surf: 0xf2faf7, // Shore foam
   palmFrond: 0x4f8a34, // Palm fronds, a sunlit step up from the jungle floor (issue #14)
   palmTrunk: 0x8a6a45, // Palm trunks and coconuts
-  seabedSand: 0xbfb49d, // Shallow seabed: clean coral sand (Maritorena et al. 1994)
-  coral: 0x56442b, // Reef coral heads (brown-algae spectrum as a stand-in)
-  deepSeabed: 0xa3a27b, // Seabed down the drop-off: half sand, half green algae
+  seabedSand: 0xc6b49d, // Shallow seabed: clean coral sand (Maritorena et al. 1994)
+  coral: 0x4d442b, // Reef coral heads (brown-algae spectrum as a stand-in)
+  deepSeabed: 0xa0a27b, // Seabed down the drop-off: half sand, half green algae
 } as const;
 
 export type PaletteName = keyof typeof PALETTE_HEX;

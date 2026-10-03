@@ -33,9 +33,9 @@ const SEABED_DEEP_BAND: readonly [number, number] = [metresToUnits(10), metresTo
  * which a patch fills in, and the densest cover a face gets (sand and rubble
  * show between coral heads even in a dense patch).
  */
-const CORAL_FREQUENCY = 1.4;
-const CORAL_COVER: readonly [number, number] = [-0.3, 0.5];
-const CORAL_MAX_COVER = 0.75;
+const CORAL_FREQUENCY = 3;
+const CORAL_COVER: readonly [number, number] = [-0.05, 0.3];
+const CORAL_MAX_COVER = 0.85;
 /**
  * Seabed refinement: a seabed triangle spanning more than this much height
  * (5 m) is split in four, halving the lattice (to ~5 m) down the drop-off and
