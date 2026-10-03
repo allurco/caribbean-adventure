@@ -17,7 +17,7 @@ import { getValidScoutTargets } from "../game/scouting";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
 import { HexGrid } from "./HexGrid";
 import { Ocean } from "./visuals/Ocean";
-import { HexTerrain } from "./visuals/HexTerrain";
+import { LandTerrain } from "./visuals/LandTerrain";
 import { TerrainDecorations } from "./visuals/TerrainDecorations";
 import { SunLight } from "./visuals/SunLight";
 import {
@@ -200,8 +200,8 @@ function Scene({
         intensity={FILL_INTENSITY}
       />
 
-      {/* Low-poly hex terrain */}
-      <HexTerrain cells={G.cells} />
+      {/* Islands: one continuous mesh from the terrain height field */}
+      <LandTerrain cells={G.cells} />
 
       {/* Simple deep blue ocean */}
       <Ocean size={gridSize} />
