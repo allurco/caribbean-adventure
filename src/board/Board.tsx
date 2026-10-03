@@ -203,8 +203,8 @@ function Scene({
       {/* Islands: one continuous mesh from the terrain height field */}
       <LandTerrain cells={G.cells} />
 
-      {/* Simple deep blue ocean */}
-      <Ocean size={gridSize} />
+      {/* Ocean, coloured by depth from the same terrain height field */}
+      <Ocean cells={G.cells} size={gridSize} />
 
       {/* Terrain decorations: trees, rocks, forts, piers */}
       <TerrainDecorations cells={G.cells} />

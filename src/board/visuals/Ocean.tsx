@@ -1,25 +1,37 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import {
   ShaderMaterial,
   PlaneGeometry,
   Vector3,
+  Vector4,
   MathUtils,
   Mesh,
   UniformsLib,
   UniformsUtils,
+  DataTexture,
+  RGBAFormat,
+  UnsignedByteType,
+  LinearFilter,
+  ClampToEdgeWrapping,
 } from "three";
+import type { MapCell } from "../../game/types";
 import { PALETTE_GLSL } from "./palette";
+import { sharedTerrainField } from "./sharedTerrainField";
+import { bakeTerrainField, TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
+import type { TerrainBounds } from "./terrainHeightField";
 
 const vertexShader = `
   varying vec3 eye;
   varying vec3 pos;
   varying vec2 vUv;
+  varying vec3 vWorld;
   #include <fog_pars_vertex>
 
   void main () {
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     pos = position;
+    vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
     eye = vec3(mvPosition) * normalMatrix;
     vUv = uv;
     gl_Position = projectionMatrix * mvPosition;
@@ -49,12 +61,41 @@ const fragmentShader = `
   const vec3 SEA_WATER_COLOR = vec3(0.08, 0.18, 0.35);
   #define SEA_TIME (iTime * SEA_SPEED)
 
+  // Depth colour bands, in world units below sea level. The field's seabed is
+  // -tanh(0.6 * distance offshore), so open sea sits at ~0.8 and these bands
+  // end roughly 0.1, 0.2, 0.7 and 1.5 world units out from the coast (a hex
+  // is ~1.7 across).
+  const float SEABED_FADE = 0.06;     // seabed shows through up to here
+  const float SHALLOWS_END = 0.12;    // turquoise shallows start turning teal
+  const float TEAL_END = 0.4;         // fully reef teal, starts turning deep
+  const float DEEP_START = 0.7;       // open sea from here on
+  const float OPEN_SEA_DEPTH = 1.0;   // used outside the map bounds
+
   mat2 octave_m = mat2(1.7, 1.2, -1.2, 1.4);
+
+  uniform sampler2D terrainField;
+  uniform vec4 mapBounds; // minX, maxX, minZ, maxZ
+  ${TERRAIN_FIELD_GLSL}
 
   varying vec3 eye;
   varying vec3 pos;
   varying vec2 vUv;
+  varying vec3 vWorld;
   #include <fog_pars_fragment>
+
+  // Depth below sea level from the baked height field; 0 on land and at the waterline.
+  float seaDepth(vec2 worldXZ) {
+    vec2 uv = terrainFieldUv(worldXZ);
+    if (!terrainFieldInside(uv)) return OPEN_SEA_DEPTH;
+    return max(-terrainFieldHeight(texture2D(terrainField, uv)), 0.0);
+  }
+
+  // Water body colour: seabed at the waterline, turquoise shallows, reef teal, deep water.
+  vec3 depthColor(float depth) {
+    vec3 c = mix(PALETTE_WET_SAND, PALETTE_SHALLOWS, smoothstep(0.0, SEABED_FADE, depth));
+    c = mix(c, PALETTE_REEF_TEAL, smoothstep(SHALLOWS_END, TEAL_END, depth));
+    return mix(c, PALETTE_DEEP_WATER, smoothstep(TEAL_END, DEEP_START, depth));
+  }
 
   // Wrap coordinates to prevent floating-point precision loss at large values
   vec2 wrapCoord(vec2 p) {
@@ -174,11 +215,11 @@ const fragmentShader = `
     return ret;
   }
 
-  vec3 getSeaColor(vec3 p, vec3 n, vec3 l, vec3 eye, vec3 dist) {
+  vec3 getSeaColor(vec3 base, vec3 p, vec3 n, vec3 l, vec3 eye, vec3 dist) {
     float fresnel = 1.0 - max(dot(n, -eye), 0.0);
     fresnel = pow(fresnel, 3.0) * 0.45;
     vec3 reflected = getSkyColor(reflect(eye, n)) * 0.99;
-    vec3 refracted = SEA_BASE + diffuse(n, l, 80.0) * SEA_WATER_COLOR * 0.27;
+    vec3 refracted = base + diffuse(n, l, 80.0) * SEA_WATER_COLOR * 0.27;
     vec3 color = mix(refracted, reflected, fresnel);
     float atten = max(1.0 - dot(dist, dist) * 0.001, 0.0);
     color += SEA_WATER_COLOR * (p.y - SEA_HEIGHT) * 0.15 * atten;
@@ -197,8 +238,12 @@ const fragmentShader = `
     vec3 dist = p - ori;
     vec3 n = getNormal(p, dot(dist, dist) * EPSILON_NRM);
 
-    vec3 seaColor = getSeaColor(p, n, light, dir, dist);
-    seaColor /= sqrt(sqrt(length(dist)));
+    // Open sea keeps its original look; nearer land the palette depth colour
+    // takes over, without the distance falloff so the palette colours read true.
+    vec3 openSea = getSeaColor(SEA_BASE, p, n, light, dir, dist) / sqrt(sqrt(length(dist)));
+    float depth = seaDepth(vWorld.xz);
+    vec3 nearShore = getSeaColor(depthColor(depth), p, n, light, dir, dist);
+    vec3 seaColor = mix(nearShore, openSea, smoothstep(TEAL_END, DEEP_START, depth));
 
     gl_FragColor = vec4(seaColor, 0.98);
     #include <fog_fragment>
@@ -206,10 +251,23 @@ const fragmentShader = `
 `;
 
 interface OceanProps {
+  cells: readonly MapCell[];
   size?: number;
 }
 
-export function Ocean({ size = 1024 }: OceanProps) {
+/** The baked terrain field as a GPU texture (layout in terrainFieldTexture.ts). */
+function terrainFieldTexture(cells: readonly MapCell[]): { texture: DataTexture; bounds: TerrainBounds } {
+  const { data, width, height, bounds } = bakeTerrainField(sharedTerrainField(cells));
+  const texture = new DataTexture(data, width, height, RGBAFormat, UnsignedByteType);
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.wrapS = ClampToEdgeWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+  return { texture, bounds };
+}
+
+export function Ocean({ cells, size = 1024 }: OceanProps) {
   const sun = useMemo(() => {
     const s = new Vector3();
     const phi = MathUtils.degToRad(85);
@@ -224,8 +282,15 @@ export function Ocean({ size = 1024 }: OceanProps) {
     return geo;
   }, [size]);
 
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  // Built once per map.
+  const field = useMemo(() => terrainFieldTexture(cells), [cells]);
+  useEffect(() => () => field.texture.dispose(), [field]);
+
   const material = useMemo(() => {
-    return new ShaderMaterial({
+    const { minX, maxX, minZ, maxZ } = field.bounds;
+    const mat = new ShaderMaterial({
       vertexShader,
       fragmentShader,
       // Opt in to scene fog: three fills these uniforms from scene.fog.
@@ -234,12 +299,17 @@ export function Ocean({ size = 1024 }: OceanProps) {
         {
           iTime: { value: 0 },
           light: { value: sun },
+          mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
         },
       ]),
       fog: true,
       transparent: true,
     });
-  }, [sun]);
+    // UniformsUtils.merge clones uniform values, so the texture is attached afterwards.
+    mat.uniforms.terrainField = { value: field.texture };
+    return mat;
+  }, [sun, field]);
+  useEffect(() => () => material.dispose(), [material]);
 
   const meshRef = useRef<Mesh>(null);
 
