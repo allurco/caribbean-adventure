@@ -512,13 +512,13 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   // Calculate potential attack targets (players + NPCs) - must be before early return
   const attackTargetIds = useMemo(() => {
     if (!currentShipState) return [];
-    return getValidAttackTargets(currentShipState, G.ships, currentPlayer);
-  }, [currentShipState, G.ships, currentPlayer]);
+    return getValidAttackTargets(currentShipState, G.ships, currentPlayer, G.wrap);
+  }, [currentShipState, G.ships, currentPlayer, G.wrap]);
 
   const npcAttackTargetIds = useMemo(() => {
     if (!currentShipState) return [];
-    return getValidNPCAttackTargets(currentShipState, G.npcs);
-  }, [currentShipState, G.npcs]);
+    return getValidNPCAttackTargets(currentShipState, G.npcs, G.wrap);
+  }, [currentShipState, G.npcs, G.wrap]);
 
   const attackTargetHexes = useMemo(() => {
     const playerHexes = attackTargetIds.map((id) => G.ships[id]?.position).filter(Boolean) as Hex[];

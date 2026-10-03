@@ -1,5 +1,5 @@
-import { hexDistance } from "./hex";
-import type { Hex } from "./hex";
+import { hexDistance, canonicalHex, nearestImage, wrappedDistance } from "./hex";
+import type { Hex, MapWrap } from "./hex";
 import type { ShipState, FloatingLoot, DamageState, NPCShip, MapCell } from "./types";
 
 export const BASE_ATTACK_RANGE = 1;
@@ -40,21 +40,30 @@ function cubeRound(q: number, r: number, s: number): Hex {
 /**
  * Get all hexes along the line from a to b (inclusive of endpoints).
  * Uses cube coordinate interpolation for accurate hex line drawing.
+ * On a wrapped map the line goes the short way round the seam, and every hex
+ * in it is canonical.
  */
-export function getHexLine(a: Hex, b: Hex): Hex[] {
-  const N = hexDistance(a, b);
+export function getHexLine(a: Hex, b: Hex, wrap: MapWrap): Hex[] {
+  const end = nearestImage(a, b, wrap);
+  const N = hexDistance(a, end);
   if (N === 0) return [a];
 
   const results: Hex[] = [];
   for (let i = 0; i <= N; i++) {
     const t = i / N;
     // Interpolate in cube coordinates
-    const q = lerp(a.q, b.q, t);
-    const r = lerp(a.r, b.r, t);
-    const s = lerp(a.s, b.s, t);
-    results.push(cubeRound(q, r, s));
+    const q = lerp(a.q, end.q, t);
+    const r = lerp(a.r, end.r, t);
+    const s = lerp(a.s, end.s, t);
+    results.push(canonicalHex(cubeRound(q, r, s), wrap));
   }
   return results;
+}
+
+/** The map a line-of-sight check needs: its cells and its wrap. */
+export interface LineOfSightMap {
+  cells: MapCell[];
+  wrap: MapWrap;
 }
 
 /**
@@ -62,8 +71,8 @@ export function getHexLine(a: Hex, b: Hex): Hex[] {
  * Mountains (elevation 3) block line of sight.
  * @returns true if line of sight is clear, false if blocked by a mountain
  */
-export function checkLineOfSight(a: Hex, b: Hex, cells: MapCell[]): boolean {
-  const line = getHexLine(a, b);
+export function checkLineOfSight(a: Hex, b: Hex, cells: MapCell[], wrap: MapWrap): boolean {
+  const line = getHexLine(a, b, wrap);
 
   // Create a map for quick cell lookup
   const cellMap = new Map<string, MapCell>();
@@ -90,9 +99,9 @@ export function checkLineOfSight(a: Hex, b: Hex, cells: MapCell[]): boolean {
 export function hasLineOfSight(
   attacker: { position: Hex },
   defender: { position: Hex },
-  cells: MapCell[]
+  map: LineOfSightMap
 ): boolean {
-  return checkLineOfSight(attacker.position, defender.position, cells);
+  return checkLineOfSight(attacker.position, defender.position, map.cells, map.wrap);
 }
 
 /**
@@ -121,15 +130,15 @@ export function canAttack(
   attacker: ShipState,
   defender: ShipState,
   distance: number,
-  cells?: MapCell[]
+  losMap?: LineOfSightMap
 ): boolean {
   if (distance <= 0) return false;
   if (defender.isDerelict) return false;
   if (!attacker.stats || attacker.stats.crew.current <= 0) return false;
   if (distance > getShipAttackRange(attacker)) return false;
 
-  // Check line of sight if cells are provided
-  if (cells && !hasLineOfSight(attacker, defender, cells)) {
+  // Check line of sight if the map is provided
+  if (losMap && !hasLineOfSight(attacker, defender, losMap)) {
     return false;
   }
 
@@ -219,6 +228,7 @@ export function getValidAttackTargets(
   attacker: ShipState,
   ships: Record<string, ShipState>,
   attackerId: string,
+  wrap: MapWrap,
   cells?: MapCell[]
 ): string[] {
   if (!attacker.stats || attacker.stats.crew.current <= 0) {
@@ -232,10 +242,10 @@ export function getValidAttackTargets(
     if (id === attackerId) continue;
     if (ship.isDerelict) continue;
 
-    const distance = hexDistance(attacker.position, ship.position);
+    const distance = wrappedDistance(attacker.position, ship.position, wrap);
     if (distance > 0 && distance <= range) {
       // Check line of sight if cells are provided
-      if (cells && !hasLineOfSight(attacker, ship, cells)) {
+      if (cells && !hasLineOfSight(attacker, ship, { cells, wrap })) {
         continue;
       }
       targets.push(id);
@@ -249,15 +259,15 @@ export function canAttackNPC(
   attacker: ShipState,
   npc: NPCShip,
   distance: number,
-  cells?: MapCell[]
+  losMap?: LineOfSightMap
 ): boolean {
   if (distance <= 0) return false;
   if (npc.isDerelict) return false;
   if (!attacker.stats || attacker.stats.crew.current <= 0) return false;
   if (distance > getShipAttackRange(attacker)) return false;
 
-  // Check line of sight if cells are provided
-  if (cells && !hasLineOfSight(attacker, npc, cells)) {
+  // Check line of sight if the map is provided
+  if (losMap && !hasLineOfSight(attacker, npc, losMap)) {
     return false;
   }
 
@@ -267,6 +277,7 @@ export function canAttackNPC(
 export function getValidNPCAttackTargets(
   attacker: ShipState,
   npcs: Record<string, NPCShip>,
+  wrap: MapWrap,
   cells?: MapCell[]
 ): string[] {
   if (!attacker.stats || attacker.stats.crew.current <= 0) {
@@ -279,10 +290,10 @@ export function getValidNPCAttackTargets(
   for (const [id, npc] of Object.entries(npcs)) {
     if (npc.isDerelict) continue;
 
-    const distance = hexDistance(attacker.position, npc.position);
+    const distance = wrappedDistance(attacker.position, npc.position, wrap);
     if (distance > 0 && distance <= range) {
       // Check line of sight if cells are provided
-      if (cells && !hasLineOfSight(attacker, npc, cells)) {
+      if (cells && !hasLineOfSight(attacker, npc, { cells, wrap })) {
         continue;
       }
       targets.push(id);

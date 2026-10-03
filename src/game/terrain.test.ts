@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validMoveTargets } from "./moves";
-import { hex, hexEquals, neighbors, hexDistance, NO_WRAP } from "./hex";
+import { hex, hexEquals, neighbors, hexDistance, hexRect, offsetToHex, createWrap, NO_WRAP } from "./hex";
 import { generateMap } from "./mapGenerator";
 import type { MapCell, Elevation, Biome } from "./types";
 import { SHIP_SPECS } from "./constants";
@@ -438,7 +438,7 @@ describe("terrain elevation and biomes", () => {
   describe("getHexLine utility", () => {
     it("returns single hex for same start and end", () => {
       const a = hex(0, 0);
-      const line = getHexLine(a, a);
+      const line = getHexLine(a, a, NO_WRAP);
       expect(line).toHaveLength(1);
       expect(hexEquals(line[0], a)).toBe(true);
     });
@@ -446,7 +446,7 @@ describe("terrain elevation and biomes", () => {
     it("returns correct hexes for adjacent hexes", () => {
       const a = hex(0, 0);
       const b = hex(1, 0);
-      const line = getHexLine(a, b);
+      const line = getHexLine(a, b, NO_WRAP);
       expect(line).toHaveLength(2);
       expect(hexEquals(line[0], a)).toBe(true);
       expect(hexEquals(line[1], b)).toBe(true);
@@ -455,7 +455,7 @@ describe("terrain elevation and biomes", () => {
     it("returns all hexes along a straight line", () => {
       const a = hex(0, 0);
       const b = hex(3, 0);
-      const line = getHexLine(a, b);
+      const line = getHexLine(a, b, NO_WRAP);
       expect(line).toHaveLength(4); // distance 3 + 1
       expect(hexEquals(line[0], hex(0, 0))).toBe(true);
       expect(hexEquals(line[1], hex(1, 0))).toBe(true);
@@ -466,7 +466,7 @@ describe("terrain elevation and biomes", () => {
     it("returns correct number of hexes for diagonal line", () => {
       const a = hex(0, 0);
       const b = hex(2, -2);
-      const line = getHexLine(a, b);
+      const line = getHexLine(a, b, NO_WRAP);
       expect(line).toHaveLength(hexDistance(a, b) + 1);
     });
   });
@@ -477,7 +477,7 @@ describe("terrain elevation and biomes", () => {
         cell(0, 0, "water", false, 0),
         cell(1, 0, "water", false, 0),
       ];
-      const hasLOS = checkLineOfSight(hex(0, 0), hex(1, 0), cells);
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(1, 0), cells, NO_WRAP);
       expect(hasLOS).toBe(true);
     });
 
@@ -487,7 +487,7 @@ describe("terrain elevation and biomes", () => {
         cell(1, 0, "water", false, 0),
         cell(2, 0, "water", false, 0),
       ];
-      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells, NO_WRAP);
       expect(hasLOS).toBe(true);
     });
 
@@ -497,7 +497,7 @@ describe("terrain elevation and biomes", () => {
         cell(1, 0, "island", false, 3), // Mountain in the middle
         cell(2, 0, "water", false, 0),
       ];
-      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells, NO_WRAP);
       expect(hasLOS).toBe(false);
     });
 
@@ -507,7 +507,7 @@ describe("terrain elevation and biomes", () => {
         cell(1, 0, "island", false, 2), // Jungle doesn't block
         cell(2, 0, "water", false, 0),
       ];
-      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells, NO_WRAP);
       expect(hasLOS).toBe(true);
     });
 
@@ -517,7 +517,7 @@ describe("terrain elevation and biomes", () => {
         cell(1, 0, "island", false, 1), // Beach doesn't block
         cell(2, 0, "water", false, 0),
       ];
-      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells, NO_WRAP);
       expect(hasLOS).toBe(true);
     });
 
@@ -528,7 +528,7 @@ describe("terrain elevation and biomes", () => {
         cell(1, 0, "water", false, 0),
         cell(2, 0, "island", false, 3), // End is mountain
       ];
-      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells);
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(2, 0), cells, NO_WRAP);
       expect(hasLOS).toBe(true);
     });
 
@@ -540,8 +540,27 @@ describe("terrain elevation and biomes", () => {
         cell(2, 0, "island", false, 3), // Mountain
         cell(3, 0, "water", false, 0),
       ];
-      const hasLOS = checkLineOfSight(hex(0, 0), hex(3, 0), cells);
+      const hasLOS = checkLineOfSight(hex(0, 0), hex(3, 0), cells, NO_WRAP);
       expect(hasLOS).toBe(false);
+    });
+
+    it("draws the line the short way across the east–west seam", () => {
+      const wrap = createWrap(8);
+      const from = offsetToHex(6, 2);
+      const to = offsetToHex(1, 2);
+      const line = getHexLine(from, to, wrap);
+      expect(line).toHaveLength(4); // 6 → 7 → 0 → 1
+      expect(line.every((h) => h.q >= 0 && h.q < 8)).toBe(true);
+      expect(line.map((h) => h.q)).toEqual([6, 7, 0, 1]);
+    });
+
+    it("is blocked by a mountain sitting on the seam", () => {
+      const wrap = createWrap(8);
+      const cells: MapCell[] = hexRect(8, 5).map((h) =>
+        h.q === 7 ? cell(h.q, h.r, "island", false, 3) : cell(h.q, h.r, "water", false, 0)
+      );
+      expect(checkLineOfSight(offsetToHex(6, 2), offsetToHex(0, 2), cells, wrap)).toBe(false);
+      expect(checkLineOfSight(offsetToHex(0, 2), offsetToHex(1, 2), cells, wrap)).toBe(true);
     });
 
     it("MOUNTAIN_ELEVATION constant is 3", () => {

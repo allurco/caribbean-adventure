@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hex } from "./hex";
+import { hex, createWrap, offsetToHex, NO_WRAP } from "./hex";
 import type { ShipState } from "./types";
 import { createShipState } from "./economy";
 import {
@@ -17,10 +17,12 @@ import {
   isDerelict,
   createLootFromShip,
   getValidAttackTargets,
+  getValidNPCAttackTargets,
   resolveFleeAttempt,
   shouldNPCFlee,
   getEffectiveCannons,
 } from "./combat";
+import { createNPCShip } from "./npcManager";
 
 function createShipWithStats(
   position: { q: number; r: number },
@@ -320,7 +322,7 @@ describe("getValidAttackTargets", () => {
       "1": createShipWithStats({ q: 1, r: 0 }), // distance 1
       "2": createShipWithStats({ q: 2, r: 0 }), // distance 2
     };
-    const targets = getValidAttackTargets(attacker, ships, "0");
+    const targets = getValidAttackTargets(attacker, ships, "0", NO_WRAP);
     expect(targets).toContain("1");
     expect(targets).not.toContain("2");
   });
@@ -332,7 +334,7 @@ describe("getValidAttackTargets", () => {
       "1": createShipWithStats({ q: 1, r: 0 }),
       "2": createShipWithStats({ q: 2, r: 0 }),
     };
-    const targets = getValidAttackTargets(attacker, ships, "0");
+    const targets = getValidAttackTargets(attacker, ships, "0", NO_WRAP);
     expect(targets).toContain("1");
     expect(targets).toContain("2");
   });
@@ -343,7 +345,7 @@ describe("getValidAttackTargets", () => {
       "0": attacker,
       "1": createShipWithStats({ q: 1, r: 0 }),
     };
-    const targets = getValidAttackTargets(attacker, ships, "0");
+    const targets = getValidAttackTargets(attacker, ships, "0", NO_WRAP);
     expect(targets).not.toContain("0");
   });
 
@@ -353,7 +355,7 @@ describe("getValidAttackTargets", () => {
       "0": attacker,
       "1": createShipWithStats({ q: 1, r: 0 }, { isDerelict: true }),
     };
-    const targets = getValidAttackTargets(attacker, ships, "0");
+    const targets = getValidAttackTargets(attacker, ships, "0", NO_WRAP);
     expect(targets).not.toContain("1");
   });
 
@@ -363,7 +365,7 @@ describe("getValidAttackTargets", () => {
       "0": attacker,
       "1": createShipWithStats({ q: 3, r: 0 }), // distance 3
     };
-    const targets = getValidAttackTargets(attacker, ships, "0");
+    const targets = getValidAttackTargets(attacker, ships, "0", NO_WRAP);
     expect(targets).toHaveLength(0);
   });
 
@@ -374,8 +376,27 @@ describe("getValidAttackTargets", () => {
       "0": attacker,
       "1": createShipWithStats({ q: 1, r: 0 }),
     };
-    const targets = getValidAttackTargets(attacker, ships, "0");
+    const targets = getValidAttackTargets(attacker, ships, "0", NO_WRAP);
     expect(targets).toHaveLength(0);
+  });
+});
+
+describe("attack targets across the east–west seam", () => {
+  const wrap = createWrap(8);
+  const at = (col: number, row: number, upgrades: string[] = []) =>
+    createShipWithStats(offsetToHex(col, row), { upgrades });
+
+  it("finds a player ship just across the seam", () => {
+    const attacker = at(7, 2);
+    const ships: Record<string, ShipState> = { "0": attacker, "1": at(0, 2) };
+    expect(getValidAttackTargets(attacker, ships, "0", wrap)).toEqual(["1"]);
+    expect(getValidAttackTargets(attacker, ships, "0", NO_WRAP)).toEqual([]);
+  });
+
+  it("finds an NPC two hexes across the seam with long guns", () => {
+    const attacker = at(6, 2, ["long_guns"]);
+    const npc = createNPCShip("npc-1", offsetToHex(0, 2), offsetToHex(4, 0), "Spain", "Flute", () => 0.5);
+    expect(getValidNPCAttackTargets(attacker, { "npc-1": npc }, wrap)).toEqual(["npc-1"]);
   });
 });
 
