@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import {
+  Color,
   ShaderMaterial,
   PlaneGeometry,
   Vector3,
   Vector4,
-  MathUtils,
   Mesh,
   UniformsLib,
   UniformsUtils,
@@ -15,6 +15,9 @@ import {
   LinearFilter,
   ClampToEdgeWrapping,
 } from "three";
+import type { Texture } from "three";
+import { cubeUvDefines } from "./skyEnvironment";
+import type { Vec3 } from "./sunDirection";
 import type { MapCell } from "../../game/types";
 import { PALETTE_GLSL } from "./palette";
 import { sharedTerrainField } from "./sharedTerrainField";
@@ -45,7 +48,17 @@ const vertexShader = `
 
 const fragmentShader = `
   uniform float iTime;
-  uniform vec3 light;
+  uniform vec3 light; // unit vector towards the sun, shared with the scene's directional light
+  uniform vec3 sunIrradiance; // linear sun colour × intensity, as the directional light
+
+  // The scene's sky environment (a PMREM; see useSkyEnvironment.ts).
+  uniform sampler2D skyEnv;
+  uniform float skyIntensity;
+  #include <cube_uv_reflection_fragment>
+  // Mirror-like lookup; the wave normals carry the surface detail.
+  const float SKY_REFLECTION_ROUGHNESS = 0.05;
+  // Schlick Fresnel reflectance of water at normal incidence: ((1.33 - 1) / (1.33 + 1))^2.
+  const float WATER_F0 = 0.02;
 
   const float PI = 3.14159265358;
   // Finite-difference step for wave normals, in world units. It must stay well
@@ -330,23 +343,22 @@ const fragmentShader = `
     return pow(max(dot(reflect(e, n), l), 0.0), s) * nrm;
   }
 
+  // Sky radiance along e. Rays reflected below the horizon would see the sea
+  // itself, so they are held at the horizon.
   vec3 getSkyColor(vec3 e) {
-    e.y = max(e.y, 0.0);
-    vec3 ret;
-    ret.x = pow(1.0 - e.y, 2.0);
-    ret.y = 1.0 - e.y;
-    ret.z = 0.6 + (1.0 - e.y) * 0.4;
-    return ret;
+    vec3 dir = normalize(vec3(e.x, max(e.y, 0.0), e.z) + vec3(0.0, 1e-4, 0.0));
+    return textureCubeUV(skyEnv, dir, SKY_REFLECTION_ROUGHNESS).rgb * skyIntensity;
   }
 
   vec3 getSeaColor(vec3 base, vec3 p, vec3 n, vec3 l, vec3 eye) {
-    float fresnel = 1.0 - max(dot(n, -eye), 0.0);
-    fresnel = pow(fresnel, 3.0) * 0.45;
-    vec3 reflected = getSkyColor(reflect(eye, n)) * 0.99;
+    float cosTheta = max(dot(n, -eye), 0.0);
+    float fresnel = WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - cosTheta, 5.0);
+    vec3 reflected = getSkyColor(reflect(eye, n));
     vec3 refracted = base + diffuse(n, l, 80.0) * SEA_WATER_COLOR * 0.27;
     vec3 color = mix(refracted, reflected, fresnel);
     color += SEA_WATER_COLOR * (p.y - SEA_HEIGHT) * 0.15;
-    color += vec3(specular(n, l, eye, 90.0)) * 0.5;
+    // Sun glint: the same Fresnel as the sky reflection, lit by the scene's sun.
+    color += sunIrradiance * fresnel * specular(n, l, eye, 90.0) * max(dot(n, l), 0.0);
     return color;
   }
 
@@ -395,6 +407,17 @@ const fragmentShader = `
 interface OceanProps {
   cells: readonly MapCell[];
   size?: number;
+  /** Unit vector towards the sun (the scene's SUN_DIRECTION). */
+  sun: Vec3;
+  /** The directional sun's colour (sRGB) and intensity, so the glint matches it. */
+  sunColor: string;
+  sunIntensity: number;
+  /** The sky environment PMREM the sea reflects. */
+  sky: Texture;
+  /** Height in texels of the `sky` PMREM atlas. */
+  skyHeight: number;
+  /** Radiance scale for `sky`, matching `scene.environmentIntensity`. */
+  skyIntensity: number;
 }
 
 /** The baked terrain field as a GPU texture (layout in terrainFieldTexture.ts). */
@@ -411,15 +434,16 @@ function terrainFieldTexture(cells: readonly MapCell[]): { texture: DataTexture;
   return { texture, bounds };
 }
 
-export function Ocean({ cells, size = 1024 }: OceanProps) {
-  const sun = useMemo(() => {
-    const s = new Vector3();
-    const phi = MathUtils.degToRad(85);
-    const theta = MathUtils.degToRad(180);
-    s.setFromSphericalCoords(1, phi, theta);
-    return s;
-  }, []);
-
+export function Ocean({
+  cells,
+  size = 1024,
+  sun,
+  sunColor,
+  sunIntensity,
+  sky,
+  skyHeight,
+  skyIntensity,
+}: OceanProps) {
   const geometry = useMemo(() => {
     const geo = new PlaneGeometry(size, size);
     geo.rotateX(-Math.PI / 2);
@@ -444,17 +468,21 @@ export function Ocean({ cells, size = 1024 }: OceanProps) {
           iTime: { value: 0 },
           surfTime: { value: 0 },
           causticTime: { value: 0 },
-          light: { value: sun },
+          light: { value: new Vector3(...sun) },
+          sunIrradiance: { value: new Color(sunColor).multiplyScalar(sunIntensity) },
+          skyIntensity: { value: skyIntensity },
           mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
         },
       ]),
+      defines: cubeUvDefines(skyHeight),
       fog: true,
       transparent: true,
     });
-    // UniformsUtils.merge clones uniform values, so the texture is attached afterwards.
+    // UniformsUtils.merge clones uniform values, so textures are attached afterwards.
     mat.uniforms.terrainField = { value: field.texture };
+    mat.uniforms.skyEnv = { value: sky };
     return mat;
-  }, [sun, field]);
+  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field]);
   useEffect(() => () => material.dispose(), [material]);
 
   const meshRef = useRef<Mesh>(null);
