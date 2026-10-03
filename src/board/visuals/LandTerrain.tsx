@@ -15,11 +15,21 @@ function linearRgb(name: PaletteName): [number, number, number] {
   return [r, g, b];
 }
 
+const JUNGLE = linearRgb("jungle");
+const ROCK = linearRgb("highlandRock");
+/** Share of rock in the flat highland colour: mossy upland between jungle and bare rock. */
+const HIGHLAND_ROCK_SHARE = 0.55;
+
 const LAND_COLORS: LandMeshColors = {
   wetSand: linearRgb("wetSand"),
   drySand: linearRgb("drySand"),
-  jungle: linearRgb("jungle"),
-  highlandRock: linearRgb("highlandRock"),
+  jungle: JUNGLE,
+  highland: [
+    JUNGLE[0] + (ROCK[0] - JUNGLE[0]) * HIGHLAND_ROCK_SHARE,
+    JUNGLE[1] + (ROCK[1] - JUNGLE[1]) * HIGHLAND_ROCK_SHARE,
+    JUNGLE[2] + (ROCK[2] - JUNGLE[2]) * HIGHLAND_ROCK_SHARE,
+  ],
+  rock: ROCK,
 };
 
 /** All islands as one continuous, flat-shaded mesh sampled from the terrain height field. */
