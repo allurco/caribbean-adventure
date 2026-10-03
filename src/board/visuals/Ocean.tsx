@@ -26,6 +26,7 @@ import { sharedTerrainField } from "./sharedTerrainField";
 import { bakeTerrainField, TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
 import { advanceSurfTime, SURF_TIMING_GLSL } from "./surfMotion";
 import { advanceCausticTime, CAUSTIC_TIMING_GLSL } from "./causticMotion";
+import { CAUSTIC_PATTERN_GLSL } from "./causticPattern";
 import { createReefMask } from "./reefMask";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
 import type { TerrainBounds } from "./terrainHeightField";
@@ -119,21 +120,18 @@ const fragmentShader = `
   const float SURF_BREAKUP_SOFTNESS = 0.12; // edge softness of the foam patches
   const float SURF_STRENGTH = 0.9;       // max blend of foam over the water colour
 
-  // Shallow-water caustics (issue #11): a soft moving web of light on the
-  // seabed, only in the shallows; it brightens the seabed before the water
-  // attenuates it (#38). Time only enters as sin/cos of
+  // Shallow-water caustics (issue #11): a moving web of light on the seabed,
+  // only in the shallows. It redistributes the seabed's direct sunlight before
+  // the water attenuates it; scale, contrast and level of detail are in
+  // causticPattern.ts (#38). Time only enters as sin/cos of
   // 2π·causticTime/period (causticTime is wrapped on the CPU, see
   // causticMotion.ts), so it never jumps or loses precision.
   uniform float causticTime;
   ${CAUSTIC_TIMING_GLSL}
-  const float CAUSTIC_SCALE = 3.2;          // light-web frequency, per world unit
+  ${CAUSTIC_PATTERN_GLSL}
   const float CAUSTIC_LAYER_B_SCALE = 1.37; // second layer's frequency multiplier, so the layers never line up
   const float CAUSTIC_DRIFT = 0.6;          // radius (noise units) each layer circles once per period
   const float CAUSTIC_LINE_WIDTH = 0.12;    // noise distance from a zero crossing that still lights: smaller gives thinner lines
-  const float CAUSTIC_FADE_IN = 0.5;        // metres of depth over which caustics fade in from the waterline
-  const float CAUSTIC_FADE_START = 6.0;     // full strength across the shallow shelf, to this depth in metres ...
-  const float CAUSTIC_FADE_END = 15.0;      // ... and gone by this depth
-  const float CAUSTIC_STRENGTH = 0.35;      // extra light on the seabed at full strength, as a fraction of its own
 
   mat2 octave_m = mat2(1.7, 1.2, -1.2, 1.4);
 
@@ -211,22 +209,18 @@ const fragmentShader = `
     return foam * smoothstep(0.0, SURF_EDGE_SOFTNESS, off) * SURF_STRENGTH;
   }
 
-  // Caustic light (0..CAUSTIC_STRENGTH) on the seabed at worldXZ, depth metres down; 0 beyond the shallows.
-  float caustics(vec2 worldXZ, float depth) {
-    float fade = smoothstep(0.0, CAUSTIC_FADE_IN, depth) * (1.0 - smoothstep(CAUSTIC_FADE_START, CAUSTIC_FADE_END, depth));
-    if (fade <= 0.0) return 0.0;
+  // The caustic web (0..1) at noise coordinate q: 1 on the light lines.
+  float causticWeb(vec2 q) {
     // Two ridged-noise webs, each circling a small loop on its own period.
     float a = 2.0 * PI * causticTime / CAUSTIC_PERIOD_A;
     float b = 2.0 * PI * causticTime / CAUSTIC_PERIOD_B;
-    vec2 q = worldXZ * CAUSTIC_SCALE;
     // Each layer's light lines are the noise zero crossings: thin contours that
     // wind into a web, rather than a broad lift that the bright shallows hide.
     float n1 = noise(q + vec2(cos(a), sin(a)) * CAUSTIC_DRIFT);
     float n2 = noise(q * CAUSTIC_LAYER_B_SCALE + vec2(sin(b), cos(b)) * CAUSTIC_DRIFT + vec2(31.0, 7.0));
     float r1 = 1.0 - smoothstep(0.0, CAUSTIC_LINE_WIDTH, abs(n1));
     float r2 = 1.0 - smoothstep(0.0, CAUSTIC_LINE_WIDTH, abs(n2));
-    float web = max(r1, r2);
-    return web * fade * CAUSTIC_STRENGTH;
+    return max(r1, r2);
   }
 
   float sea_octave(vec2 uv, float choppy) {
@@ -350,6 +344,11 @@ const fragmentShader = `
   vec3 waterBody() {
     vec2 screenUv = gl_FragCoord.xy / screenSize;
     vec3 seabed = texture2D(seabedColor, screenUv).rgb;
+    // Caustic cell size on screen, from the derivative of the noise coordinate
+    // (taken here, in uniform control flow).
+    vec2 causticUv = vWorld.xz * CAUSTIC_FREQUENCY;
+    vec2 causticFootprint = fwidth(causticUv);
+    float causticCellPixels = 1.0 / max(max(causticFootprint.x, causticFootprint.y), 1e-6);
 
     // The seabed's depth below the surface, and the path down to it along this
     // pixel's view ray, in metres.
@@ -363,12 +362,19 @@ const fragmentShader = `
     vec3 t = waterTransmittance(depth / refractedCosine(sunCos) + viewPath);
     t *= 1.0 - smoothstep(SEABED_FADE_START, SEABED_FADE_END, depth);
 
-    seabed *= 1.0 + caustics(vWorld.xz, depth);
-
     // Downwelling irradiance on a level surface, in the units three lights the
     // seabed with (Lambert: sun irradiance / π, plus the sky's diffuse term).
+    vec3 sunDirect = sunIrradiance * sunCos / PI;
     vec3 skyDiffuse = textureCubeUV(skyEnv, vec3(0.0, 1.0, 0.0), 1.0).rgb * skyIntensity;
-    vec3 downwelling = sunIrradiance * sunCos / PI + skyDiffuse;
+    vec3 downwelling = sunDirect + skyDiffuse;
+
+    // Caustics redistribute only the direct sunlight on the seabed (the
+    // prepass lit it with sun and sky together, so scale the sun's share).
+    float causticContrastHere = causticContrast(depth) * causticLod(causticCellPixels);
+    if (causticContrastHere > 0.0) {
+      float light = causticLight(causticWeb(causticUv), causticContrastHere);
+      seabed *= 1.0 + (sunDirect / max(downwelling, vec3(1e-6))) * (light - 1.0);
+    }
     vec3 deep = deepWaterReflectance() * downwelling;
     return seabed * t + deep * (1.0 - t);
   }
