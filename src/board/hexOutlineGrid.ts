@@ -1,66 +1,19 @@
-import type { Hex } from "../game/hex";
-import { hexToWorld } from "../game/hex";
-
 /**
- * Pure helpers for the merged water-hex outline geometry used by HexGrid.
- *
- * All water outlines live in one LineSegments geometry: six segments (two
- * vertices each) per hex, in world space. A per-vertex `aEmphasis` attribute
- * carries the minimum opacity for hexes the player is acting on, so the
- * shader can keep them visible while the rest of the grid fades out.
+ * Look and fade tunables for the water hex grid lines. The line geometry
+ * itself (unique shared edges) lives in `hexGridEdges.ts`.
  */
 
-export const SEGMENTS_PER_OUTLINE = 6;
-export const VERTICES_PER_OUTLINE = SEGMENTS_PER_OUTLINE * 2;
-
-/** World-space positions (xyz per vertex) for flat-top hex outlines. */
-export function buildOutlinePositions(
-  hexes: readonly Hex[],
-  size: number,
-  y: number
-): Float32Array {
-  const corners: [number, number][] = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 3) * i;
-    corners.push([size * Math.cos(angle), size * Math.sin(angle)]);
-  }
-
-  const positions = new Float32Array(hexes.length * VERTICES_PER_OUTLINE * 3);
-  let p = 0;
-  hexes.forEach((h) => {
-    const [cx, , cz] = hexToWorld(h);
-    for (let edge = 0; edge < SEGMENTS_PER_OUTLINE; edge++) {
-      const a = corners[edge];
-      const b = corners[(edge + 1) % SEGMENTS_PER_OUTLINE];
-      // Local XY hex shape laid flat on the XZ plane (rotation -PI/2 about X).
-      positions[p++] = cx + a[0];
-      positions[p++] = y;
-      positions[p++] = cz - a[1];
-      positions[p++] = cx + b[0];
-      positions[p++] = y;
-      positions[p++] = cz - b[1];
-    }
-  });
-  return positions;
-}
+/**
+ * Calm grid line colour: a pale, desaturated sea tint that sits with the
+ * water instead of the stark white of the shore surf (issue #32).
+ */
+export const GRID_LINE_COLOR = "#9ccfd6";
 
 /**
- * Per-vertex emphasis (minimum opacity) for `hexCount` outlines.
- * `emphasisByIndex` maps an outline index to its emphasis; other hexes get 0.
+ * Colour emphasised lines (hover, move and attack targets) blend toward, in
+ * proportion to their emphasis, so acted-on hexes still pop.
  */
-export function buildOutlineEmphasis(
-  hexCount: number,
-  emphasisByIndex: ReadonlyMap<number, number>,
-  target: Float32Array = new Float32Array(hexCount * VERTICES_PER_OUTLINE)
-): Float32Array {
-  target.fill(0);
-  emphasisByIndex.forEach((value, index) => {
-    if (index < 0 || index >= hexCount) return;
-    const start = index * VERTICES_PER_OUTLINE;
-    target.fill(value, start, start + VERTICES_PER_OUTLINE);
-  });
-  return target;
-}
+export const GRID_EMPHASIS_COLOR = "#ffffff";
 
 export interface GridFadeParams {
   /** Distance from the focus point (world units) where fading begins. */
@@ -81,7 +34,9 @@ const HEX_SPACING = Math.sqrt(3);
 export const GRID_FADE: GridFadeParams = {
   fadeStart: 3 * HEX_SPACING, // full faint grid within ~3 hexes
   fadeEnd: 7 * HEX_SPACING, // gone beyond ~7 hexes
-  baseOpacity: 0.15, // same as the old uniform outline
+  // One shared line per edge now, where the old inset rings drew two white
+  // lines; a little more opacity keeps the tinted grid easy to count.
+  baseOpacity: 0.2,
 };
 
 /**
@@ -112,14 +67,17 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 /**
- * Outline opacity at `distance` from the focus point. CPU mirror of the
- * fragment shader in `hexOutlineMaterial.ts`; keep the two in sync.
+ * Line opacity at `distance` from the focus point, with `shore` (0..1, see
+ * `shoreFade` in `hexGridEdges.ts`) thinning the calm grid in the shallows.
+ * Emphasis is not faded. CPU mirror of the fragment shader in
+ * `hexOutlineMaterial.ts`; keep the two in sync.
  */
 export function gridFadeOpacity(
   distance: number,
   emphasis: number,
-  { fadeStart, fadeEnd, baseOpacity }: GridFadeParams
+  { fadeStart, fadeEnd, baseOpacity }: GridFadeParams,
+  shore = 1
 ): number {
   const fade = 1 - smoothstep(fadeStart, fadeEnd, distance);
-  return Math.max(baseOpacity * fade, emphasis);
+  return Math.max(baseOpacity * fade * shore, emphasis);
 }

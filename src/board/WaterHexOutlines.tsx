@@ -3,16 +3,22 @@ import { BufferAttribute, BufferGeometry, Plane, Ray, Vector3 } from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { Hex } from "../game/hex";
 import {
+  GRID_EMPHASIS_COLOR,
   GRID_FADE,
-  buildOutlineEmphasis,
-  buildOutlinePositions,
+  GRID_LINE_COLOR,
   gridFadeForCameraDistance,
 } from "./hexOutlineGrid";
+import {
+  buildEdgeEmphasis,
+  buildEdgeLinePositions,
+  buildEdgeShoreFade,
+  buildHexGridEdges,
+} from "./hexGridEdges";
 import { createHexOutlineMaterial, setHexOutlineFade } from "./hexOutlineMaterial";
 
-const OUTLINE_COLOR = "#ffffff";
-const OUTLINE_SIZE = 0.95;
 const OUTLINE_Y = 0.01;
+// Segments per hex edge, so the shore fade follows the coast along each edge.
+const EDGE_SUBDIVISIONS = 4;
 
 const groundPlane = new Plane(new Vector3(0, 1, 0), 0);
 const ray = new Ray();
@@ -29,32 +35,42 @@ function hasTarget(controls: unknown): controls is { target: Vector3 } {
 
 interface WaterHexOutlinesProps {
   hexes: readonly Hex[];
-  /** Outline index -> minimum opacity, for hexes the player is acting on. */
+  /** Hex index -> minimum opacity, for hexes the player is acting on. */
   emphasis: ReadonlyMap<number, number>;
+  /** Signed distance to the coast at world (x, z): + land, - water. */
+  coastDistance: (x: number, z: number) => number;
 }
 
 /**
- * All water hex outlines as one LineSegments draw call. The focus point and
- * the zoom-scaled fade radii are pushed to the shader as uniforms each frame;
+ * The water hex grid as one LineSegments draw call, built from unique edges
+ * so neighbouring hexes share a single line. The focus point and the
+ * zoom-scaled fade radii are pushed to the shader as uniforms each frame;
  * no React state per frame.
  */
-export function WaterHexOutlines({ hexes, emphasis }: WaterHexOutlinesProps) {
+export function WaterHexOutlines({ hexes, emphasis, coastDistance }: WaterHexOutlinesProps) {
   const controls = useThree((s) => s.controls);
-  const material = useMemo(() => createHexOutlineMaterial(OUTLINE_COLOR, GRID_FADE), []);
+  const material = useMemo(
+    () => createHexOutlineMaterial(GRID_LINE_COLOR, GRID_EMPHASIS_COLOR, GRID_FADE),
+    []
+  );
+
+  const edges = useMemo(() => buildHexGridEdges(hexes), [hexes]);
 
   const geometry = useMemo(() => {
+    const positions = buildEdgeLinePositions(edges, OUTLINE_Y, EDGE_SUBDIVISIONS);
     const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(positions, 3));
     geo.setAttribute(
-      "position",
-      new BufferAttribute(buildOutlinePositions(hexes, OUTLINE_SIZE, OUTLINE_Y), 3)
+      "aShore",
+      new BufferAttribute(buildEdgeShoreFade(positions, coastDistance), 1)
     );
     geo.setAttribute(
       "aEmphasis",
-      new BufferAttribute(buildOutlineEmphasis(hexes.length, new Map()), 1)
+      new BufferAttribute(buildEdgeEmphasis(edges, EDGE_SUBDIVISIONS, new Map()), 1)
     );
     geo.computeBoundingSphere();
     return geo;
-  }, [hexes]);
+  }, [edges, coastDistance]);
 
   useEffect(() => () => geometry.dispose(), [geometry]);
   useEffect(() => () => material.dispose(), [material]);
@@ -63,9 +79,9 @@ export function WaterHexOutlines({ hexes, emphasis }: WaterHexOutlinesProps) {
   useEffect(() => {
     const attr = geometry.getAttribute("aEmphasis");
     if (!(attr instanceof BufferAttribute)) return;
-    buildOutlineEmphasis(hexes.length, emphasis, attr.array as Float32Array);
+    buildEdgeEmphasis(edges, EDGE_SUBDIVISIONS, emphasis, attr.array as Float32Array);
     attr.needsUpdate = true;
-  }, [geometry, hexes.length, emphasis]);
+  }, [geometry, edges, emphasis]);
 
   useFrame(({ camera }) => {
     const focus = material.uniforms.uFocus.value;
@@ -85,7 +101,7 @@ export function WaterHexOutlines({ hexes, emphasis }: WaterHexOutlinesProps) {
     setHexOutlineFade(material, gridFadeForCameraDistance(GRID_FADE, distance));
   });
 
-  if (hexes.length === 0) return null;
+  if (edges.count === 0) return null;
 
   return (
     <lineSegments
