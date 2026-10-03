@@ -16,21 +16,24 @@ import { Color } from "three";
  *   a uniform only if it needs to change at runtime.
  */
 /**
- * Land albedos (linear luminance, issue #38) are checked against measured
- * shortwave albedos and raised only where they fell below the range:
- * - jungle 0.15: tropical rainforest canopy, about 0.12-0.14 measured over
- *   Amazonian forest (Culf, Fisch & Hodnett 1995, J. Climate 8:1544); range
- *   0.12-0.18 with drier canopy. Was 0.11.
- * - highlandRock 0.28: weathered limestone, about 0.25-0.35. Many Caribbean
- *   islands are limestone or coral (the Bahamas, the Caymans, much of the
- *   Greater Antilles). Fresh limestone is brighter in the visible spectrum;
- *   weathered, soil- and lichen-stained surfaces sit lower (USGS Spectral
- *   Library v7, Kokaly et al. 2017, limestone and calcite samples). Was 0.15
- *   (dark volcanic); the hue is unchanged.
- * - wetSand 0.32, drySand 0.63: at or above wet sand 0.20-0.30 and dry sand
- *   0.35-0.45 (Oke 1987, Boundary Layer Climates, table 1.1). Not lowered.
- * These are broadband values; visible-band canopy reflectance is lower, so the
- * jungle value errs bright.
+ * Land albedos (linear luminance, issue #38), compared with measured
+ * shortwave albedos and raised only where they fell below them:
+ * - jungle 0.15: Culf, Fisch & Hodnett (1995), "The Albedo of Amazonian
+ *   Forest and Ranch Land", J. Climate 8:1544-1554, measured a mean forest
+ *   albedo of 0.134 (ranch land 0.180) over several years at three sites.
+ *   Was 0.11.
+ * - highlandRock 0.28: weathered carbonate rock. Many Caribbean islands are
+ *   limestone or coral (the Bahamas, the Caymans, much of the Greater
+ *   Antilles). McGreevy, Warke & Smith (2000), "Controls on stone temperatures
+ *   and the benefits of interdisciplinary exchange", J. Am. Inst. Conservation
+ *   39(2), table 1, measured Antrim chalk at 0.25 and Antrim basalt at 0.12.
+ *   0.28 sits a little above that single carbonate measurement, chosen to
+ *   keep shadowed cliff faces readable. Was 0.15 (volcanic); the hue is
+ *   unchanged.
+ * - wetSand 0.32, drySand 0.63: unchanged. Both are bright for natural sand,
+ *   so neither needed raising.
+ * Measured values are broadband; visible-band canopy reflectance is lower, so
+ * the jungle value errs bright.
  */
 export const PALETTE_HEX = {
   deepWater: 0x0e3a5b, // Open sea
@@ -39,7 +42,7 @@ export const PALETTE_HEX = {
   wetSand: 0xb8925e, // Narrow band at the waterline (albedo 0.32)
   drySand: 0xe3cf9c, // Beaches (albedo 0.63)
   jungle: 0x367a43, // Elevation 2: rainforest canopy (albedo 0.15, Culf et al. 1995)
-  highlandRock: 0x9d8d79, // Elevation 3, steep slopes: weathered limestone (albedo 0.28)
+  highlandRock: 0x9d8d79, // Elevation 3, steep slopes: weathered limestone (albedo 0.28; chalk measured 0.25, McGreevy et al. 2000)
   surf: 0xf2faf7, // Shore foam
   palmFrond: 0x4f8a34, // Palm fronds, a sunlit step up from the jungle floor (issue #14)
   palmTrunk: 0x8a6a45, // Palm trunks and coconuts
