@@ -13,11 +13,24 @@
  */
 import { createNoise2D } from "simplex-noise";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
+import { metresToUnits } from "./worldScale";
 
 /** Lattice edge length in world units (a hex is 2 units across); fine enough to resolve the interior relief. */
 export const LAND_MESH_SPACING = 0.15;
-/** Triangles whose highest vertex is below this depth are dropped (hidden by the ocean). */
-export const LAND_MESH_SKIRT_DEPTH = 0.35;
+/**
+ * Triangles whose highest vertex is below this depth are dropped: 100 m of
+ * clear water hides the seabed (#38), and the ocean shader treats missing
+ * seabed as bottomless.
+ */
+export const LAND_MESH_SKIRT_DEPTH = metresToUnits(100);
+
+/** Underwater: wet sand fades to seabed sand over the first SEABED_SAND_FADE of depth. */
+const SEABED_SAND_FADE = metresToUnits(1.5);
+/** Seabed sand gives way to the deep seabed colour between these depths (down the drop-off). */
+const SEABED_DEEP_BAND: readonly [number, number] = [metresToUnits(10), metresToUnits(30)];
+/** Coral patch noise frequency (cycles per world unit) and the noise band over which a patch fills in. */
+const CORAL_FREQUENCY = 2.5;
+const CORAL_COVER: readonly [number, number] = [-0.25, 0.35];
 
 /** Faces up to this height are wet sand; it fades to dry sand over ±WET_SAND_FADE. */
 const WET_SAND_TOP = 0.05;
@@ -61,6 +74,12 @@ export interface LandMeshColors {
   highland: Rgb;
   /** Steep faces at any height. */
   rock: Rgb;
+  /** Clean sand on the shallow seabed. */
+  seabedSand: Rgb;
+  /** Live coral on reefs. */
+  coral: Rgb;
+  /** Seabed down the drop-off. */
+  deepSeabed: Rgb;
 }
 
 // Neutral fallback for tests and callers without a palette.
@@ -70,6 +89,9 @@ const DEFAULT_COLORS: LandMeshColors = {
   jungle: [0.22, 0.55, 0.28],
   highland: [0.42, 0.45, 0.33],
   rock: [0.5, 0.47, 0.42],
+  seabedSand: [0.52, 0.46, 0.34],
+  coral: [0.09, 0.06, 0.02],
+  deepSeabed: [0.3, 0.3, 0.2],
 };
 
 /** What `landFaceColor` needs to know about a face. */
@@ -82,6 +104,8 @@ export interface LandFaceSample {
   noise: number;
   /** Neighbourhood mean height minus the face height: positive in hollows and at slope bases. */
   cavity: number;
+  /** Share of the face covered by live coral, 0 … 1 (only on reefs, under water). */
+  coral: number;
 }
 
 export interface LandMeshData {
@@ -90,6 +114,11 @@ export interface LandMeshData {
   /** rgb per vertex (same for all 3 vertices of a face). */
   colors: Float32Array;
   triangleCount: number;
+  /**
+   * The first this many triangles reach above sea level; the rest lie wholly
+   * under water (seabed only the water shader sees).
+   */
+  aboveWaterTriangleCount: number;
 }
 
 export interface LandMeshOptions {
@@ -104,6 +133,8 @@ export interface LandMeshOptions {
   skipOpenWater?: boolean;
   /** Occlusion strength (0 turns it off). Default LAND_MESH_OCCLUSION. */
   occlusion?: number;
+  /** Reef mask in [0, 1] at world (x, z) (reefMask.ts); coral grows in patches where it is set. */
+  sampleReef?: (x: number, z: number) => number;
 }
 
 function lerpRgb(a: Rgb, b: Rgb, t: number): [number, number, number] {
@@ -118,17 +149,24 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 /**
  * Ground colour of one face: height bands (wet sand, beach, jungle, highland)
  * with noise-shifted boundaries, rock blended in by steepness, then darkened
- * by occlusion. Faces at or below sea level are wet sand (under the ocean).
- * `occlusion` scales the darkening per unit of cavity.
+ * by occlusion. Faces below sea level are seabed: wet sand turning to clean
+ * sand within the first metres, then the deep seabed colour down the drop-off,
+ * with coral where `sample.coral` is set. `occlusion` scales the darkening per
+ * unit of cavity.
  */
 export function landFaceColor(
   colors: LandMeshColors,
   sample: LandFaceSample,
   occlusion = LAND_MESH_OCCLUSION
 ): [number, number, number] {
-  const { height, normalY, noise, cavity } = sample;
+  const { height, normalY, noise, cavity, coral } = sample;
   let rgb: [number, number, number];
-  if (height <= WET_SAND_TOP - WET_SAND_FADE) {
+  if (height <= SEA_LEVEL) {
+    const depth = SEA_LEVEL - height;
+    rgb = lerpRgb(colors.wetSand, colors.seabedSand, smoothstep(0, SEABED_SAND_FADE, depth));
+    rgb = lerpRgb(rgb, colors.deepSeabed, smoothstep(SEABED_DEEP_BAND[0], SEABED_DEEP_BAND[1], depth));
+    if (coral > 0) rgb = lerpRgb(rgb, colors.coral, coral);
+  } else if (height <= WET_SAND_TOP - WET_SAND_FADE) {
     rgb = [...colors.wetSand];
   } else {
     const jungle = smoothstep(SAND_TO_JUNGLE[0], SAND_TO_JUNGLE[1], height + noise * SAND_TO_JUNGLE_NOISE);
@@ -167,6 +205,13 @@ function boundaryNoise(x: number, z: number): number {
   return 0.7 * bandNoise(x * f, z * f) + 0.3 * bandNoise(x * f * 2.3 + 41.2, z * f * 2.3 - 13.5);
 }
 
+/** Coral cover (0 … 1) of a patch at (x, z): reef heads separated by sand channels. */
+function coralPatch(x: number, z: number): number {
+  const f = CORAL_FREQUENCY;
+  const n = 0.7 * bandNoise(x * f + 211.3, z * f - 87.1) + 0.3 * bandNoise(x * f * 2.7 - 19.9, z * f * 2.7 + 63.4);
+  return smoothstep(CORAL_COVER[0], CORAL_COVER[1], n);
+}
+
 /** Hash in [0, 1) for small per-face colour variation. */
 function hash(x: number, z: number): number {
   const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
@@ -182,6 +227,7 @@ export function buildLandMesh(
   const skipOpenWater = options.skipOpenWater ?? true;
   const palette = options.colors ?? DEFAULT_COLORS;
   const occlusion = options.occlusion ?? LAND_MESH_OCCLUSION;
+  const { sampleReef } = options;
   const rowHeight = spacing * (Math.sqrt(3) / 2);
   const { minX, maxX, minZ, maxZ } = field.bounds;
   const cols = Math.ceil((maxX - minX) / spacing) + 1;
@@ -194,12 +240,12 @@ export function buildLandMesh(
   };
   const vertexZ = (v: number) => minZ + Math.floor(v / cols) * rowHeight;
 
-  // Near-land flag per vertex (cheap hex lookup). Over open water (~80% of
-  // the lattice) the field is deeper than the skirt, so those vertices are
-  // never sampled; heights are sampled lazily, once, for the rest.
+  // Near-seabed flag per vertex (cheap hex lookup). Over open water the field
+  // is deeper than the skirt, so those vertices are never sampled; heights are
+  // sampled lazily, once, for the rest.
   const near = new Uint8Array(cols * rows);
   for (let v = 0; v < near.length; v++) {
-    near[v] = !skipOpenWater || field.isNearLand(vertexX(v), vertexZ(v)) ? 1 : 0;
+    near[v] = !skipOpenWater || field.isNearSeabed(vertexX(v), vertexZ(v)) ? 1 : 0;
   }
   const vy = new Float32Array(cols * rows).fill(NaN);
   const heightAt = (v: number): number => {
@@ -264,14 +310,23 @@ export function buildLandMesh(
     return cavityAt[v];
   };
 
-  // Pass 2: write the kept triangles straight into the output arrays.
+  // Pass 2: write the kept triangles straight into the output arrays, those
+  // reaching above sea level first and the seabed after them.
+  const aboveWater = (t: number) =>
+    Math.max(vy[kept[t * 3]], vy[kept[t * 3 + 1]], vy[kept[t * 3 + 2]]) > SEA_LEVEL;
+  let aboveWaterTriangleCount = 0;
+  for (let t = 0; t < triangleCount; t++) if (aboveWater(t)) aboveWaterTriangleCount++;
+  let nextAbove = 0;
+  let nextBelow = aboveWaterTriangleCount;
+
   const positions = new Float32Array(triangleCount * 9);
   const colors = new Float32Array(triangleCount * 9);
-  const sample: LandFaceSample = { height: 0, normalY: 1, noise: 0, cavity: 0 };
+  const sample: LandFaceSample = { height: 0, normalY: 1, noise: 0, cavity: 0, coral: 0 };
   for (let t = 0; t < triangleCount; t++) {
     const a = kept[t * 3];
     const b = kept[t * 3 + 1];
     const c = kept[t * 3 + 2];
+    const out = aboveWater(t) ? nextAbove++ : nextBelow++;
     const ax = vertexX(a);
     const az = vertexZ(a);
     const ux = vertexX(b) - ax;
@@ -290,11 +345,13 @@ export function buildLandMesh(
     sample.normalY = ny / Math.sqrt(nx * nx + ny * ny + nz * nz);
     sample.noise = boundaryNoise(cx, cz);
     sample.cavity = occlusion > 0 ? (vertexCavity(a) + vertexCavity(b) + vertexCavity(c)) / 3 : 0;
+    const reef = sampleReef && sample.height <= SEA_LEVEL ? sampleReef(cx, cz) : 0;
+    sample.coral = reef > 0 ? reef * coralPatch(cx, cz) : 0;
     const [r, g, bl] = landFaceColor(palette, sample, occlusion);
     const shade = 0.93 + hash(cx, cz) * 0.14;
     for (let k = 0; k < 3; k++) {
       const v = kept[t * 3 + k];
-      const o = t * 9 + k * 3;
+      const o = out * 9 + k * 3;
       positions[o] = vertexX(v);
       positions[o + 1] = vy[v];
       positions[o + 2] = vertexZ(v);
@@ -304,5 +361,5 @@ export function buildLandMesh(
     }
   }
 
-  return { positions, colors, triangleCount };
+  return { positions, colors, triangleCount, aboveWaterTriangleCount };
 }

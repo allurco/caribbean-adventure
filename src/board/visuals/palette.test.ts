@@ -22,7 +22,23 @@ describe("palette", () => {
       surf: 0xf2faf7,
       palmFrond: 0x4f8a34,
       palmTrunk: 0x8a6a45,
+      seabedSand: 0xbfb49d,
+      coral: 0x56442b,
+      deepSeabed: 0xa3a27b,
     });
+  });
+
+  describe("seabed (#38): bottom reflectance at 600 / 550 / 450 nm (Maritorena et al. 1994, Fig. 6)", () => {
+    const close = (name: "seabedSand" | "coral" | "deepSeabed", rgb: [number, number, number]) => {
+      const c = paletteColor(name);
+      expect(c.r).toBeCloseTo(rgb[0], 2);
+      expect(c.g).toBeCloseTo(rgb[1], 2);
+      expect(c.b).toBeCloseTo(rgb[2], 2);
+    };
+    it("makes seabed sand clean coral sand", () => close("seabedSand", [0.518, 0.456, 0.339]));
+    it("makes coral the brown-algae spectrum, a dark stand-in for live coral", () =>
+      close("coral", [0.094, 0.058, 0.024]));
+    it("makes the deep seabed half coral sand, half green algae", () => close("deepSeabed", [0.367, 0.363, 0.197]));
   });
 
   it("keeps palm fronds brighter than the jungle floor so palms stand out", () => {

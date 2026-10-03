@@ -1,9 +1,12 @@
 import { useEffect, useMemo } from "react";
 import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial } from "three";
+import type { Mesh } from "three";
 import type { MapCell } from "../../game/types";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { buildLandMesh, type LandMeshColors } from "./landMesh";
 import { paletteColor, type PaletteName } from "./palette";
+import { createReefMask } from "./reefMask";
+import { SEABED_LAYER } from "./seabedPrepass";
 
 interface LandTerrainProps {
   cells: MapCell[];
@@ -30,23 +33,54 @@ const LAND_COLORS: LandMeshColors = {
     JUNGLE[2] + (ROCK[2] - JUNGLE[2]) * HIGHLAND_ROCK_SHARE,
   ],
   rock: ROCK,
+  seabedSand: linearRgb("seabedSand"),
+  coral: linearRgb("coral"),
+  deepSeabed: linearRgb("deepSeabed"),
 };
 
-/** All islands as one continuous, flat-shaded mesh sampled from the terrain height field. */
+function geometryFrom(positions: Float32Array, colors: Float32Array): BufferGeometry {
+  const geo = new BufferGeometry();
+  geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
+  geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  // flatShading lights with screen-space face normals, but the shadow-receive
+  // code still reads the normal attribute for its normal bias.
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Show a mesh in the seabed prepass as well as the main pass. */
+const alsoInPrepass = (mesh: Mesh | null) => {
+  mesh?.layers.enable(SEABED_LAYER);
+};
+/** Show a mesh only in the seabed prepass: the water covers it in the main pass. */
+const onlyInPrepass = (mesh: Mesh | null) => {
+  mesh?.layers.set(SEABED_LAYER);
+};
+
+/**
+ * All islands and the seabed around them as one continuous, flat-shaded
+ * surface sampled from the terrain height field. Faces reaching above sea
+ * level draw in the main pass; the rest is seabed, drawn only into the seabed
+ * prepass that the water shader looks through (#38).
+ */
 export function LandTerrain({ cells }: LandTerrainProps) {
-  const geometry = useMemo(() => {
+  const { land, seabed } = useMemo(() => {
     const field = sharedTerrainField(cells);
-    const { positions, colors } = buildLandMesh(field, { colors: LAND_COLORS });
-    const geo = new BufferGeometry();
-    geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
-    geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
-    // flatShading lights with screen-space face normals, but the shadow-receive
-    // code still reads the normal attribute for its normal bias.
-    geo.computeVertexNormals();
-    return geo;
+    const mesh = buildLandMesh(field, { colors: LAND_COLORS, sampleReef: createReefMask(cells) });
+    const split = mesh.aboveWaterTriangleCount * 9;
+    return {
+      land: geometryFrom(mesh.positions.subarray(0, split), mesh.colors.subarray(0, split)),
+      seabed: geometryFrom(mesh.positions.subarray(split), mesh.colors.subarray(split)),
+    };
   }, [cells]);
 
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(
+    () => () => {
+      land.dispose();
+      seabed.dispose();
+    },
+    [land, seabed]
+  );
 
   const material = useMemo(
     () =>
@@ -61,5 +95,10 @@ export function LandTerrain({ cells }: LandTerrainProps) {
 
   useEffect(() => () => material.dispose(), [material]);
 
-  return <mesh geometry={geometry} material={material} receiveShadow castShadow />;
+  return (
+    <>
+      <mesh ref={alsoInPrepass} geometry={land} material={material} receiveShadow castShadow />
+      <mesh ref={onlyInPrepass} geometry={seabed} material={material} receiveShadow />
+    </>
+  );
 }

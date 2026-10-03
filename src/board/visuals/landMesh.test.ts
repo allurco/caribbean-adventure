@@ -45,7 +45,14 @@ const CHANNEL_COLORS: LandMeshColors = {
   jungle: [0, 1, 0],
   highland: [1, 0.5, 0],
   rock: [0, 0, 1],
+  // Underwater: greys, told apart by brightness.
+  seabedSand: [0.8, 0.8, 0.8],
+  coral: [0.1, 0.1, 0.1],
+  deepSeabed: [0.4, 0.4, 0.4],
 };
+
+/** Metres to world units at the render scale. */
+const m = (metres: number) => metres / 65;
 
 function faceRgb(colors: Float32Array, t: number): [number, number, number] {
   return [colors[t * 9], colors[t * 9 + 1], colors[t * 9 + 2]];
@@ -72,7 +79,32 @@ function faceGeometry(p: Float32Array, t: number) {
 }
 
 describe("landFaceColor", () => {
-  const flat = { height: 0.3, normalY: 1, noise: 0, cavity: 0 };
+  const flat = { height: 0.3, normalY: 1, noise: 0, cavity: 0, coral: 0 };
+
+  describe("under water (#38)", () => {
+    it("is clean seabed sand on the shallow shelf", () => {
+      expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-3) })).toEqual([0.8, 0.8, 0.8]);
+      expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-8) })).toEqual([0.8, 0.8, 0.8]);
+    });
+
+    it("turns to the deep seabed colour down the drop-off", () => {
+      expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-50) })).toEqual([0.4, 0.4, 0.4]);
+      const mid = landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-20) })[0];
+      expect(mid).toBeGreaterThan(0.4);
+      expect(mid).toBeLessThan(0.8);
+    });
+
+    it("is coral where the face is covered by coral", () => {
+      for (const c of landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-2), coral: 1 })) expect(c).toBeCloseTo(0.1, 9);
+      const half = landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-2), coral: 0.5 })[0];
+      expect(half).toBeCloseTo(0.45, 6);
+    });
+
+    it("never turns steep underwater faces to rock", () => {
+      const [, , b] = landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-30), normalY: 0.3 });
+      expect(b).toBeCloseTo(landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-30) })[2], 9);
+    });
+  });
 
   it("is wet sand just above the waterline", () => {
     expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: 0.01 })).toEqual([1, 0, 0]);
@@ -129,13 +161,14 @@ describe("buildLandMesh", () => {
     let wet = 0;
     let dry = 0;
     for (let t = 0; t < triangleCount; t++) {
+      const { height } = faceGeometry(positions, t);
+      if (height <= 0) continue; // seabed
       const [r, g, b] = faceRgb(colors, t);
       // At most a trace of rock (b) on the steepest shore faces, and no jungle
       // (g without r).
       expect(b / (r + g + b)).toBeLessThan(0.05);
       expect(r).toBeGreaterThanOrEqual(g - 1e-6);
-      const { height } = faceGeometry(positions, t);
-      if (height > 0 && g === 0 && b === 0) wet++;
+      if (g === 0 && b === 0) wet++;
       if (g > 0 && b === 0 && Math.abs(r - g) < 1e-6) dry++;
     }
     expect(wet).toBeGreaterThan(0);
@@ -243,17 +276,58 @@ describe("buildLandMesh", () => {
     }
   });
 
-  it("only covers land and the shallow skirt around it", () => {
+  it("only covers land and the seabed above the cut-off around it", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
     const { positions } = buildLandMesh(field);
     for (let i = 0; i < positions.length; i += 9) {
       const top = Math.max(positions[i + 1], positions[i + 4], positions[i + 7]);
       expect(top).toBeGreaterThan(-LAND_MESH_SKIRT_DEPTH);
     }
-    // A single hex island is small: nothing far from the origin.
+    // A single hex island: the seabed reaches the cut-off ~230 m (3.5 units) out.
     for (let i = 0; i < positions.length; i += 3) {
-      expect(Math.hypot(positions[i], positions[i + 2])).toBeLessThan(3);
+      expect(Math.hypot(positions[i], positions[i + 2])).toBeLessThan(5.5);
     }
+  });
+
+  it("covers the shelf and drop-off down to 100 m (#38)", () => {
+    expect(LAND_MESH_SKIRT_DEPTH).toBeCloseTo(m(100), 9);
+    const field = createTerrainHeightField(singleIsland(), 5);
+    const { positions } = buildLandMesh(field);
+    let deepest = 0;
+    for (let i = 1; i < positions.length; i += 3) deepest = Math.min(deepest, positions[i]);
+    expect(deepest).toBeLessThan(m(-90));
+  });
+
+  it("puts the triangles above the waterline first, then the seabed", () => {
+    const field = createTerrainHeightField(mountainIsland(), 11);
+    const { positions, triangleCount, aboveWaterTriangleCount } = buildLandMesh(field);
+    expect(aboveWaterTriangleCount).toBeGreaterThan(0);
+    expect(aboveWaterTriangleCount).toBeLessThan(triangleCount);
+    for (let t = 0; t < triangleCount; t++) {
+      const o = t * 9;
+      const top = Math.max(positions[o + 1], positions[o + 4], positions[o + 7]);
+      if (t < aboveWaterTriangleCount) expect(top).toBeGreaterThan(0);
+      else expect(top).toBeLessThanOrEqual(0);
+    }
+  });
+
+  it("covers reef seabed with coral", () => {
+    const cells = singleIsland().map((c): MapCell => (c.hex.q === 3 && c.hex.r === 0 ? { ...c, terrain: "reef" } : c));
+    const field = createTerrainHeightField(cells, 5);
+    // Reef everywhere within one unit of the reef hex centre (x = 4.5, z ≈ 2.6).
+    const sampleReef = (x: number, z: number) => (Math.hypot(x - 4.5, z - Math.sqrt(3) * 1.5) < 0.6 ? 1 : 0);
+    const { positions, colors, triangleCount } = buildLandMesh(field, { colors: CHANNEL_COLORS, sampleReef });
+    let reefFaces = 0;
+    let darkest = Infinity;
+    for (let t = 0; t < triangleCount; t++) {
+      const { x, z } = faceGeometry(positions, t);
+      if (sampleReef(x, z) === 0) continue;
+      reefFaces++;
+      darkest = Math.min(darkest, faceRgb(colors, t)[0]);
+    }
+    expect(reefFaces).toBeGreaterThan(10);
+    // Some faces are mostly coral (0.1), well below clean sand (0.8).
+    expect(darkest).toBeLessThan(0.3);
   });
 
   it("produces nothing for an all-water map", () => {
