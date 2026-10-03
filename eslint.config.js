@@ -20,4 +20,21 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Game logic stays pure: no rendering libraries in src/game/.
+    files: ['src/game/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['react', 'react-dom', 'react/*', 'react-dom/*', 'three', 'three/*', 'three-stdlib', '@react-three/*'],
+              message: 'src/game/ must stay free of React and Three.js. Put rendering code in src/board/.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ])
