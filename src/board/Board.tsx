@@ -19,6 +19,28 @@ import { HexGrid } from "./HexGrid";
 import { Ocean } from "./visuals/Ocean";
 import { HexTerrain } from "./visuals/HexTerrain";
 import { TerrainDecorations } from "./visuals/TerrainDecorations";
+import { SunLight } from "./visuals/SunLight";
+import {
+  HAZE_COLOR,
+  HAZE_NEAR,
+  HAZE_FAR,
+  HEMI_SKY_COLOR,
+  HEMI_GROUND_COLOR,
+  HEMI_INTENSITY,
+  SUN_COLOR,
+  SUN_INTENSITY,
+  SUN_OFFSET,
+  SHADOW_MAP_SIZE,
+  SHADOW_EXTENT,
+  FILL_COLOR,
+  FILL_INTENSITY,
+  FILL_POSITION,
+  BLOOM_INTENSITY,
+  BLOOM_THRESHOLD,
+  BLOOM_SMOOTHING,
+  VIGNETTE_DARKNESS,
+  VIGNETTE_OFFSET,
+} from "./visuals/atmosphere";
 import { Ship, SinkingShip } from "./Ship";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
@@ -155,30 +177,27 @@ function Scene({
 
   return (
     <>
-      {/* Dark blue background */}
-      <color attach="background" args={["#0a1929"]} />
+      {/* Horizon haze: background matches the fog so the far edge dissolves */}
+      <color attach="background" args={[HAZE_COLOR]} />
+      <fog attach="fog" args={[HAZE_COLOR, HAZE_NEAR, HAZE_FAR]} />
 
-      <ambientLight intensity={0.35} />
+      {/* Sky blue from above, sea teal from below: tints shadows instead of greying them */}
+      <hemisphereLight args={[HEMI_SKY_COLOR, HEMI_GROUND_COLOR, HEMI_INTENSITY]} />
 
-      {/* Main sun light with shadows - angled for isometric view */}
-      <directionalLight
-        position={[50, 60, 20]}
-        intensity={2.2}
-        castShadow
-        shadow-mapSize={[8192, 8192]}
-        shadow-camera-far={150}
-        shadow-camera-left={-25}
-        shadow-camera-right={25}
-        shadow-camera-top={25}
-        shadow-camera-bottom={-25}
-        shadow-bias={-0.0001}
-        shadow-normalBias={0.02}
+      {/* Low, warm late-afternoon sun; shadow box follows the camera target */}
+      <SunLight
+        color={SUN_COLOR}
+        intensity={SUN_INTENSITY}
+        offset={SUN_OFFSET}
+        shadowMapSize={SHADOW_MAP_SIZE}
+        shadowExtent={SHADOW_EXTENT}
       />
 
-      {/* Fill light for softer shadows */}
+      {/* Cool sky fill for softer, bluer shadows */}
       <directionalLight
-        position={[-40, 30, 40]}
-        intensity={0.3}
+        position={FILL_POSITION}
+        color={FILL_COLOR}
+        intensity={FILL_INTENSITY}
       />
 
       {/* Low-poly hex terrain */}
@@ -287,11 +306,11 @@ function Scene({
       {/* Post-processing effects */}
       <EffectComposer>
         <Bloom
-          intensity={0.3}
-          luminanceThreshold={0.8}
-          luminanceSmoothing={0.9}
+          intensity={BLOOM_INTENSITY}
+          luminanceThreshold={BLOOM_THRESHOLD}
+          luminanceSmoothing={BLOOM_SMOOTHING}
         />
-        <Vignette darkness={0.4} offset={0.3} />
+        <Vignette darkness={VIGNETTE_DARKNESS} offset={VIGNETTE_OFFSET} />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       </EffectComposer>
     </>
