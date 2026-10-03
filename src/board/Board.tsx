@@ -236,7 +236,7 @@ function Scene({
       <color attach="background" args={[HAZE_COLOR]} />
       <fog attach="fog" args={[HAZE_COLOR, HAZE_NEAR, HAZE_FAR]} />
 
-      {/* Low, warm late-afternoon sun in front of the camera; shadow box follows the camera target */}
+      {/* High, warm mid-afternoon sun in front of the camera; shadow box follows the camera target */}
       <SunLight
         color={SUN_COLOR}
         intensity={SUN_INTENSITY}

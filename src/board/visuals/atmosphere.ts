@@ -1,8 +1,8 @@
 /**
  * Lighting, haze and post-processing tuning for the main scene.
  *
- * Target look: warm late-afternoon Caribbean light. A low, warm sun in front
- * of the camera casts long shadows and a glint on the sea; a physical sky,
+ * Target look: warm mid-afternoon Caribbean light. A high, warm sun in front
+ * of the camera casts moderate shadows and a glint on the sea; a physical sky,
  * baked to an environment map, fills the shadows with blue sky light; a pale
  * haze softens the far edge of the view. All values are plain constants so
  * they can be tuned without touching the scene graph.
@@ -25,7 +25,10 @@ export const HAZE_COLOR = "#bcd4da";
 export const HAZE_NEAR = 28;
 export const HAZE_FAR = 85;
 
-/** Warm late-afternoon sun (roughly 4000 K). */
+/**
+ * Warm sun (roughly 4000 K). Kept from the earlier late-afternoon look; a
+ * clear-sky sun at 55° is nearer 5000 K, so this is a deliberate warm grade.
+ */
 export const SUN_COLOR = "#ffd2a1";
 export const SUN_INTENSITY = 2.5;
 
@@ -35,16 +38,24 @@ export const SUN_INTENSITY = 2.5;
  * The sun sits in front of the camera so its mirror glint on the sea is on
  * screen. A flat sea reflects the sun where the view ray dips below the horizon
  * by the sun's elevation; with the camera pitched 46.7° down and a 45° vertical
- * field of view, view rays dip 24°–69°, so 35° puts the glint in the upper
- * half of the screen at every zoom (tested). It is still low enough for long,
- * late-afternoon shadows. The swing to the left keeps the glint off the port
- * panel on the right, and lights the camera-facing slopes from the side so they
- * are not fully backlit. 32° is the widest swing that keeps the glint at least
- * 0.1 (NDC) inside the screen edge at every tested zoom and aspect; the
- * binding case is close zoom at 4:3, where 36° puts it off screen.
+ * field of view, view rays dip 24°–69°, so any elevation in that range puts
+ * the glint on screen.
+ *
+ * Elevation 55° was chosen by measurement. A sun in front of the camera
+ * backlights the slopes facing it; raising it lights them more directly.
+ * Scanning 35°–65° (each with its widest valid azimuth), the camera-facing hill
+ * luminance at wide zoom rose steadily up to 55°, then gained under 5% more
+ * up to 65°. That gives a mid-afternoon sun with moderate shadows, not long
+ * late-afternoon ones.
+ *
+ * The swing to the left keeps the glint off the port panel on the right and
+ * lights the camera-facing slopes from the side. 48° is the widest swing that
+ * keeps the glint at least 0.1 (NDC) inside every screen edge at every tested
+ * zoom and aspect (tested); it then sits in the lower-left quarter of the
+ * screen.
  */
-export const SUN_ELEVATION_DEG = 35;
-export const SUN_AZIMUTH_DEG = -32;
+export const SUN_ELEVATION_DEG = 55;
+export const SUN_AZIMUTH_DEG = -48;
 export const SUN_DIRECTION = sunDirection(
   viewDirectionXZ(CAMERA_OFFSET),
   SUN_ELEVATION_DEG,

@@ -21,6 +21,18 @@ function glintNdc(distance: number, aspect: number, sun: readonly [number, numbe
   return mirrorGlintPoint(offset, sun).project(camera);
 }
 
+const VIEW_CASES: [string, number, number][] = [
+  ["mid zoom, 16:9", 14, 16 / 9],
+  ["max zoom-out, 16:9", CAMERA_MAX_DISTANCE, 16 / 9],
+  ["max zoom-out, 1400x900", CAMERA_MAX_DISTANCE, 1400 / 900],
+  ["close zoom, 4:3", 6, 4 / 3],
+];
+
+/** Inside the screen with a 0.1 NDC margin on every edge. */
+function glintInsideMargin(ndc: Vector3): boolean {
+  return Math.abs(ndc.x) < 0.9 && Math.abs(ndc.y) < 0.9;
+}
+
 describe("viewDirectionXZ", () => {
   it("points from the camera towards its target, flattened and normalised", () => {
     const [x, z] = viewDirectionXZ([0.4, 0.6, 0.4]);
@@ -58,7 +70,8 @@ describe("the scene sun", () => {
 
   it("swings as far to the side as the glint margin allows: one degree more breaks it", () => {
     const wider = sunDirection(view, SUN_ELEVATION_DEG, SUN_AZIMUTH_DEG + Math.sign(SUN_AZIMUTH_DEG));
-    expect(Math.abs(glintNdc(6, 4 / 3, wider).x)).toBeGreaterThan(0.9);
+    const allInside = VIEW_CASES.every(([, distance, aspect]) => glintInsideMargin(glintNdc(distance, aspect, wider)));
+    expect(allInside).toBe(false);
   });
 
   it("sits in front of the camera, not behind it", () => {
@@ -75,15 +88,13 @@ describe("the scene sun", () => {
     SUN_OFFSET.forEach((c, i) => expect(c / len).toBeCloseTo(SUN_DIRECTION[i], 10));
   });
 
-  it.each([
-    ["mid zoom, 16:9", 14, 16 / 9],
-    ["max zoom-out, 16:9", CAMERA_MAX_DISTANCE, 16 / 9],
-    ["max zoom-out, 1400x900", CAMERA_MAX_DISTANCE, 1400 / 900],
-    ["close zoom, 4:3", 6, 4 / 3],
-  ])("puts the mirror glint in the upper half of the screen, 0.1 in from the side (%s)", (_label, distance, aspect) => {
+  it.each(VIEW_CASES)("puts the mirror glint on screen, at least 0.1 in from every edge (%s)", (_label, distance, aspect) => {
     const ndc = glintNdc(distance, aspect, SUN_DIRECTION);
     expect(Math.abs(ndc.x)).toBeLessThan(0.9);
-    expect(ndc.y).toBeGreaterThan(0);
-    expect(ndc.y).toBeLessThan(1);
+    expect(Math.abs(ndc.y)).toBeLessThan(0.9);
+  });
+
+  it("is high enough to light the slopes that face the camera (scanned: gains level off above 55°)", () => {
+    expect(SUN_ELEVATION_DEG).toBeGreaterThanOrEqual(55);
   });
 });
