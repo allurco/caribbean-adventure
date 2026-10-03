@@ -1,69 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
-  VERTICES_PER_OUTLINE,
-  buildOutlinePositions,
-  buildOutlineEmphasis,
   gridFadeOpacity,
   gridFadeForCameraDistance,
+  GRID_EMPHASIS_COLOR,
   GRID_FADE,
   GRID_FADE_ZOOM_DISTANCE,
+  GRID_LINE_COLOR,
 } from "./hexOutlineGrid";
-import { hexToWorld } from "../game/hex";
-import type { Hex } from "../game/hex";
-
-const hex = (q: number, r: number): Hex => ({ q, r, s: -q - r });
-
-describe("buildOutlinePositions", () => {
-  it("emits six line segments (12 vertices) per hex", () => {
-    const positions = buildOutlinePositions([hex(0, 0), hex(1, 0)], 1, 0.01);
-    expect(VERTICES_PER_OUTLINE).toBe(12);
-    expect(positions.length).toBe(2 * VERTICES_PER_OUTLINE * 3);
-  });
-
-  it("places every vertex on the hex corners around the hex centre", () => {
-    const h = hex(2, -1);
-    const [cx, , cz] = hexToWorld(h);
-    const positions = buildOutlinePositions([h], 0.95, 0.01);
-    for (let v = 0; v < VERTICES_PER_OUTLINE; v++) {
-      const x = positions[v * 3];
-      const y = positions[v * 3 + 1];
-      const z = positions[v * 3 + 2];
-      expect(y).toBeCloseTo(0.01);
-      expect(Math.hypot(x - cx, z - cz)).toBeCloseTo(0.95);
-    }
-  });
-
-  it("closes the loop: each segment ends where the next one starts", () => {
-    const positions = buildOutlinePositions([hex(0, 0)], 1, 0);
-    for (let edge = 0; edge < 6; edge++) {
-      const end = (edge * 2 + 1) * 3;
-      const nextStart = (((edge + 1) % 6) * 2) * 3;
-      expect(positions[end]).toBeCloseTo(positions[nextStart]);
-      expect(positions[end + 2]).toBeCloseTo(positions[nextStart + 2]);
-    }
-  });
-});
-
-describe("buildOutlineEmphasis", () => {
-  it("is zero for hexes without emphasis", () => {
-    const emphasis = buildOutlineEmphasis(3, new Map());
-    expect(emphasis.length).toBe(3 * VERTICES_PER_OUTLINE);
-    expect(Array.from(emphasis).every((v) => v === 0)).toBe(true);
-  });
-
-  it("writes the emphasis value to all vertices of the given hex", () => {
-    const emphasis = buildOutlineEmphasis(3, new Map([[1, 0.5]]));
-    for (let v = 0; v < 3 * VERTICES_PER_OUTLINE; v++) {
-      const inHex1 = v >= VERTICES_PER_OUTLINE && v < 2 * VERTICES_PER_OUTLINE;
-      expect(emphasis[v]).toBe(inHex1 ? 0.5 : 0);
-    }
-  });
-
-  it("ignores indices outside the range", () => {
-    const emphasis = buildOutlineEmphasis(1, new Map([[5, 1], [-1, 1]]));
-    expect(Array.from(emphasis).every((v) => v === 0)).toBe(true);
-  });
-});
 
 describe("gridFadeOpacity", () => {
   const params = { fadeStart: 4, fadeEnd: 10, baseOpacity: 0.15 };
@@ -91,6 +34,26 @@ describe("gridFadeOpacity", () => {
   it("never drops below the emphasis opacity of an acted-on hex", () => {
     expect(gridFadeOpacity(50, 0.6, params)).toBeCloseTo(0.6);
     expect(gridFadeOpacity(0, 0.6, params)).toBeCloseTo(0.6);
+  });
+
+  it("scales the base opacity by the shore fade", () => {
+    expect(gridFadeOpacity(0, 0, params, 1)).toBeCloseTo(0.15);
+    expect(gridFadeOpacity(0, 0, params, 0.5)).toBeCloseTo(0.075);
+    expect(gridFadeOpacity(0, 0, params, 0)).toBe(0);
+  });
+
+  it("keeps acted-on hexes visible at the shore", () => {
+    expect(gridFadeOpacity(0, 0.45, params, 0)).toBeCloseTo(0.45);
+  });
+});
+
+describe("grid line colours", () => {
+  it("uses a sea tint, not stark white, for the calm grid", () => {
+    expect(GRID_LINE_COLOR.toLowerCase()).not.toBe("#ffffff");
+  });
+
+  it("brightens emphasised lines toward a distinct colour", () => {
+    expect(GRID_EMPHASIS_COLOR.toLowerCase()).not.toBe(GRID_LINE_COLOR.toLowerCase());
   });
 });
 

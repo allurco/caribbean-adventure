@@ -265,6 +265,7 @@ export function HexGrid({
   );
 
   const waterHexes = useMemo(() => waterCells.map((c) => c.hex), [waterCells]);
+  const coastDistance = useMemo(() => sharedTerrainField(cells).sampleCoastDistance, [cells]);
 
   const outlineEmphasis = useMemo(() => {
     const emphasis = new Map<number, number>();
@@ -298,9 +299,13 @@ export function HexGrid({
         </instancedMesh>
       )}
 
-      {/* Water hex outlines: fade with distance from the camera focus,
-          acted-on hexes stay at full strength */}
-      <WaterHexOutlines hexes={waterHexes} emphasis={outlineEmphasis} />
+      {/* Water hex grid: one line per shared edge, fading with distance from
+          the camera focus and across the shallows; acted-on hexes stay strong */}
+      <WaterHexOutlines
+        hexes={waterHexes}
+        emphasis={outlineEmphasis}
+        coastDistance={coastDistance}
+      />
 
       {/* Attack target highlights (red) */}
       {attackTargetPositions.map((pos, i) => (
