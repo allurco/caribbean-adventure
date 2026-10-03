@@ -15,14 +15,26 @@ import { Color } from "three";
  *   Injected constants keep shaders free of extra uniforms; switch an entry to
  *   a uniform only if it needs to change at runtime.
  */
+/**
+ * Land albedos (linear luminance, issue #38) are checked against measured
+ * shortwave albedos and raised only where they fell below the range:
+ * - jungle 0.15: tropical rainforest canopy, about 0.12-0.14 measured over
+ *   Amazonian forest (Culf, Fisch & Hodnett 1995, J. Climate 8:1544); range
+ *   0.12-0.18 with drier canopy. Was 0.11.
+ * - highlandRock 0.15: dark volcanic rock, 0.10-0.15. Already in range.
+ * - wetSand 0.32, drySand 0.63: at or above wet sand 0.20-0.30 and dry sand
+ *   0.35-0.45 (Oke 1987, Boundary Layer Climates, table 1.1). Not lowered.
+ * These are broadband values; visible-band canopy reflectance is lower, so the
+ * jungle value errs bright.
+ */
 export const PALETTE_HEX = {
   deepWater: 0x0e3a5b, // Open sea
   reefTeal: 0x1c8c8c, // Reefs, mid-depth water
   shallows: 0x5fd4c9, // Water next to the shore
-  wetSand: 0xb8925e, // Narrow band at the waterline
-  drySand: 0xe3cf9c, // Beaches
-  jungle: 0x2f6b3a, // Elevation 2
-  highlandRock: 0x76695a, // Elevation 3, steep slopes
+  wetSand: 0xb8925e, // Narrow band at the waterline (albedo 0.32)
+  drySand: 0xe3cf9c, // Beaches (albedo 0.63)
+  jungle: 0x367a43, // Elevation 2: rainforest canopy (albedo 0.15, Culf et al. 1995)
+  highlandRock: 0x76695a, // Elevation 3, steep slopes: volcanic rock (albedo 0.15)
   surf: 0xf2faf7, // Shore foam
   palmFrond: 0x4f8a34, // Palm fronds, a sunlit step up from the jungle floor (issue #14)
   palmTrunk: 0x8a6a45, // Palm trunks and coconuts

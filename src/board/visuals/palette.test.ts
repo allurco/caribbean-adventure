@@ -17,7 +17,7 @@ describe("palette", () => {
       shallows: 0x5fd4c9,
       wetSand: 0xb8925e,
       drySand: 0xe3cf9c,
-      jungle: 0x2f6b3a,
+      jungle: 0x367a43,
       highlandRock: 0x76695a,
       surf: 0xf2faf7,
       palmFrond: 0x4f8a34,
@@ -29,6 +29,15 @@ describe("palette", () => {
     const frond = paletteColor("palmFrond");
     const jungle = paletteColor("jungle");
     expect(frond.g).toBeGreaterThan(jungle.g);
+  });
+
+  it("gives the jungle canopy a tropical-forest albedo (0.12–0.18 linear) and keeps it green", () => {
+    const { r, g, b } = paletteColor("jungle");
+    const albedo = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    expect(albedo).toBeGreaterThanOrEqual(0.12);
+    expect(albedo).toBeLessThanOrEqual(0.18);
+    expect(g).toBeGreaterThan(r);
+    expect(g).toBeGreaterThan(b);
   });
 
   it("paletteColor round-trips to the sRGB hex", () => {
