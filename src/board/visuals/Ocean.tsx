@@ -44,8 +44,10 @@ const fragmentShader = `
   uniform vec3 light;
 
   const float PI = 3.14159265358;
-  const float EPSILON = 1e-3;
-  #define EPSILON_NRM (5e-4)
+  // Finite-difference step for wave normals, in world units. It must stay well
+  // above float precision at the wave coordinates, which grow with SEA_TIME;
+  // a step near 1e-5 turns the normals into noise (white static) within minutes.
+  const float NORMAL_STEP = 0.02;
 
   const int NUM_STEPS = 6;
   const int ITER_GEOMETRY = 2;
@@ -215,14 +217,13 @@ const fragmentShader = `
     return ret;
   }
 
-  vec3 getSeaColor(vec3 base, vec3 p, vec3 n, vec3 l, vec3 eye, vec3 dist) {
+  vec3 getSeaColor(vec3 base, vec3 p, vec3 n, vec3 l, vec3 eye) {
     float fresnel = 1.0 - max(dot(n, -eye), 0.0);
     fresnel = pow(fresnel, 3.0) * 0.45;
     vec3 reflected = getSkyColor(reflect(eye, n)) * 0.99;
     vec3 refracted = base + diffuse(n, l, 80.0) * SEA_WATER_COLOR * 0.27;
     vec3 color = mix(refracted, reflected, fresnel);
-    float atten = max(1.0 - dot(dist, dist) * 0.001, 0.0);
-    color += SEA_WATER_COLOR * (p.y - SEA_HEIGHT) * 0.15 * atten;
+    color += SEA_WATER_COLOR * (p.y - SEA_HEIGHT) * 0.15;
     color += vec3(specular(n, l, eye, 90.0)) * 0.5;
     return color;
   }
@@ -235,14 +236,13 @@ const fragmentShader = `
     vec3 p;
     heightMapTracing(ori, dir, p);
 
-    vec3 dist = p - ori;
-    vec3 n = getNormal(p, dot(dist, dist) * EPSILON_NRM);
+    vec3 n = getNormal(p, NORMAL_STEP);
 
-    // Open sea keeps its original look; nearer land the palette depth colour
-    // takes over, without the distance falloff so the palette colours read true.
-    vec3 openSea = getSeaColor(SEA_BASE, p, n, light, dir, dist) / sqrt(sqrt(length(dist)));
+    // Open sea is the deep base colour; nearer land the palette depth colour
+    // takes over. Both share the same lighting so the blend has no seam.
+    vec3 openSea = getSeaColor(SEA_BASE, p, n, light, dir);
     float depth = seaDepth(vWorld.xz);
-    vec3 nearShore = getSeaColor(depthColor(depth), p, n, light, dir, dist);
+    vec3 nearShore = getSeaColor(depthColor(depth), p, n, light, dir);
     vec3 seaColor = mix(nearShore, openSea, smoothstep(TEAL_END, DEEP_START, depth));
 
     gl_FragColor = vec4(seaColor, 0.98);
