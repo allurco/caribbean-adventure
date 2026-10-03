@@ -6,14 +6,49 @@
  * wraps the arrays in a BufferGeometry.
  *
  * Triangles are emitted unindexed with one colour per face, for the faceted
- * low-poly look under flat shading.
+ * low-poly look under flat shading. Each face is coloured from its height
+ * (wet sand → beach → jungle → highland, with noise-shifted boundaries), its
+ * slope (rock on steep faces) and a cheap occlusion term (darker where the
+ * face sits below its neighbourhood); see `landFaceColor`.
  */
-import type { TerrainHeightField } from "./terrainHeightField";
+import { createNoise2D } from "simplex-noise";
+import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 
 /** Lattice edge length in world units (a hex is 2 units across); fine enough to resolve the interior relief. */
 export const LAND_MESH_SPACING = 0.15;
 /** Triangles whose highest vertex is below this depth are dropped (hidden by the ocean). */
 export const LAND_MESH_SKIRT_DEPTH = 0.35;
+
+/** Faces up to this height are wet sand; it fades to dry sand over ±WET_SAND_FADE. */
+const WET_SAND_TOP = 0.05;
+const WET_SAND_FADE = 0.02;
+/**
+ * Height bands [start, end] over which beach fades to jungle and jungle to
+ * highland. Beach cells top out near 0.35 and jungle cells near 0.9
+ * (ELEVATION_HEIGHTS plus relief), so a lone beach island stays sand.
+ */
+const SAND_TO_JUNGLE: readonly [number, number] = [0.42, 0.55];
+const JUNGLE_TO_HIGHLAND: readonly [number, number] = [1.0, 1.2];
+/** How far the boundary noise shifts each band, in world height. */
+const SAND_TO_JUNGLE_NOISE = 0.08;
+const JUNGLE_TO_HIGHLAND_NOISE = 0.15;
+/** Boundary noise frequency in cycles per world unit, and its fixed seed. */
+const BAND_NOISE_FREQUENCY = 1.1;
+const BAND_NOISE_SEED = 0x9e3779b9;
+/**
+ * Steepness (1 − normal.y) over which a face turns to rock: ~50° to ~62°.
+ * Beach shores rise at up to ~50°, so gentle coasts keep their sand while
+ * steep coasts and mountain flanks show rock.
+ */
+const ROCK_STEEPNESS: readonly [number, number] = [0.36, 0.53];
+/**
+ * Occlusion: darkening per world unit the face sits below the mean height of a
+ * ring of lattice points OCCLUSION_RING_STEPS (even) lattice steps around each
+ * vertex, capped at OCCLUSION_MAX.
+ */
+export const LAND_MESH_OCCLUSION = 1.6;
+const OCCLUSION_MAX = 0.3;
+const OCCLUSION_RING_STEPS = 4;
 
 type Rgb = readonly [number, number, number];
 
@@ -22,7 +57,10 @@ export interface LandMeshColors {
   wetSand: Rgb;
   drySand: Rgb;
   jungle: Rgb;
-  highlandRock: Rgb;
+  /** Flat high ground. */
+  highland: Rgb;
+  /** Steep faces at any height. */
+  rock: Rgb;
 }
 
 // Neutral fallback for tests and callers without a palette.
@@ -30,8 +68,21 @@ const DEFAULT_COLORS: LandMeshColors = {
   wetSand: [0.6, 0.52, 0.4],
   drySand: [0.82, 0.72, 0.55],
   jungle: [0.22, 0.55, 0.28],
-  highlandRock: [0.5, 0.47, 0.42],
+  highland: [0.42, 0.45, 0.33],
+  rock: [0.5, 0.47, 0.42],
 };
+
+/** What `landFaceColor` needs to know about a face. */
+export interface LandFaceSample {
+  /** Mean height of the face (world Y). */
+  height: number;
+  /** Y of the unit face normal: 1 flat, 0 vertical. */
+  normalY: number;
+  /** Boundary noise in [-1, 1]. */
+  noise: number;
+  /** Neighbourhood mean height minus the face height: positive in hollows and at slope bases. */
+  cavity: number;
+}
 
 export interface LandMeshData {
   /** xyz per vertex, 3 vertices per triangle. */
@@ -51,18 +102,69 @@ export interface LandMeshOptions {
    * open water lies below the skirt.
    */
   skipOpenWater?: boolean;
+  /** Occlusion strength (0 turns it off). Default LAND_MESH_OCCLUSION. */
+  occlusion?: number;
 }
 
 function lerpRgb(a: Rgb, b: Rgb, t: number): [number, number, number] {
   return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 }
 
-/** Face colour from blended elevation (1 beach … 3 mountain); wet sand below sea level. */
-function faceColor(colors: LandMeshColors, elevation: number, height: number): [number, number, number] {
-  if (height <= 0) return [...colors.wetSand];
-  if (elevation <= 1) return [...colors.drySand];
-  if (elevation <= 2) return lerpRgb(colors.drySand, colors.jungle, elevation - 1);
-  return lerpRgb(colors.jungle, colors.highlandRock, Math.min(1, elevation - 2));
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Ground colour of one face: height bands (wet sand, beach, jungle, highland)
+ * with noise-shifted boundaries, rock blended in by steepness, then darkened
+ * by occlusion. Faces at or below sea level are wet sand (under the ocean).
+ * `occlusion` scales the darkening per unit of cavity.
+ */
+export function landFaceColor(
+  colors: LandMeshColors,
+  sample: LandFaceSample,
+  occlusion = LAND_MESH_OCCLUSION
+): [number, number, number] {
+  const { height, normalY, noise, cavity } = sample;
+  let rgb: [number, number, number];
+  if (height <= WET_SAND_TOP - WET_SAND_FADE) {
+    rgb = [...colors.wetSand];
+  } else {
+    const jungle = smoothstep(SAND_TO_JUNGLE[0], SAND_TO_JUNGLE[1], height + noise * SAND_TO_JUNGLE_NOISE);
+    const highland = smoothstep(
+      JUNGLE_TO_HIGHLAND[0],
+      JUNGLE_TO_HIGHLAND[1],
+      height + noise * JUNGLE_TO_HIGHLAND_NOISE
+    );
+    rgb = lerpRgb(lerpRgb(colors.drySand, colors.jungle, jungle), colors.highland, highland);
+    const dry = smoothstep(WET_SAND_TOP - WET_SAND_FADE, WET_SAND_TOP + WET_SAND_FADE, height);
+    rgb = lerpRgb(colors.wetSand, rgb, dry);
+  }
+  // Underwater faces (hidden by the ocean) stay sand, so the seabed drop-off isn't rock.
+  const rock = height > SEA_LEVEL ? smoothstep(ROCK_STEEPNESS[0], ROCK_STEEPNESS[1], 1 - normalY) : 0;
+  if (rock > 0) rgb = lerpRgb(rgb, colors.rock, rock);
+  const shade = 1 - Math.min(OCCLUSION_MAX, Math.max(0, cavity) * occlusion);
+  return [rgb[0] * shade, rgb[1] * shade, rgb[2] * shade];
+}
+
+/** Seeded PRNG (mulberry32) for the fixed boundary noise. */
+function mulberry32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const bandNoise = createNoise2D(mulberry32(BAND_NOISE_SEED));
+
+/** Two-octave boundary noise in [-1, 1]. */
+function boundaryNoise(x: number, z: number): number {
+  const f = BAND_NOISE_FREQUENCY;
+  return 0.7 * bandNoise(x * f, z * f) + 0.3 * bandNoise(x * f * 2.3 + 41.2, z * f * 2.3 - 13.5);
 }
 
 /** Hash in [0, 1) for small per-face colour variation. */
@@ -79,6 +181,7 @@ export function buildLandMesh(
   const skirtDepth = options.skirtDepth ?? LAND_MESH_SKIRT_DEPTH;
   const skipOpenWater = options.skipOpenWater ?? true;
   const palette = options.colors ?? DEFAULT_COLORS;
+  const occlusion = options.occlusion ?? LAND_MESH_OCCLUSION;
   const rowHeight = spacing * (Math.sqrt(3) / 2);
   const { minX, maxX, minZ, maxZ } = field.bounds;
   const cols = Math.ceil((maxX - minX) / spacing) + 1;
@@ -139,23 +242,55 @@ export function buildLandMesh(
     }
   }
 
-  // Pass 2: write the kept triangles straight into the output arrays.
-  const ve = new Float32Array(cols * rows).fill(NaN);
-  const elevationAt = (v: number): number => {
-    if (Number.isNaN(ve[v])) ve[v] = heightAt(v) > -skirtDepth ? field.sampleElevation(vertexX(v), vertexZ(v)) : 0;
-    return ve[v];
+  // Per-vertex cavity: mean height of a hexagon of lattice points
+  // OCCLUSION_RING_STEPS steps away, minus the vertex height. With an even
+  // step count, rows j ± k share row j's parity, so (i ± k, j) and
+  // (i ± k/2, j ± k) are exactly k·spacing away.
+  const ring = OCCLUSION_RING_STEPS;
+  const cavityAt = new Float32Array(cols * rows).fill(NaN);
+  const vertexCavity = (v: number): number => {
+    if (!Number.isNaN(cavityAt[v])) return cavityAt[v];
+    const j = Math.floor(v / cols);
+    const i = v - j * cols;
+    const at = (di: number, dj: number) => {
+      const ii = Math.max(0, Math.min(cols - 1, i + di));
+      const jj = Math.max(0, Math.min(rows - 1, j + dj));
+      return heightAt(jj * cols + ii);
+    };
+    const half = ring / 2;
+    const mean =
+      (at(ring, 0) + at(-ring, 0) + at(half, ring) + at(-half, ring) + at(half, -ring) + at(-half, -ring)) / 6;
+    cavityAt[v] = mean - heightAt(v);
+    return cavityAt[v];
   };
+
+  // Pass 2: write the kept triangles straight into the output arrays.
   const positions = new Float32Array(triangleCount * 9);
   const colors = new Float32Array(triangleCount * 9);
+  const sample: LandFaceSample = { height: 0, normalY: 1, noise: 0, cavity: 0 };
   for (let t = 0; t < triangleCount; t++) {
     const a = kept[t * 3];
     const b = kept[t * 3 + 1];
     const c = kept[t * 3 + 2];
-    const elevation = (elevationAt(a) + elevationAt(b) + elevationAt(c)) / 3;
-    const height = (vy[a] + vy[b] + vy[c]) / 3;
-    const cx = (vertexX(a) + vertexX(b) + vertexX(c)) / 3;
-    const cz = (vertexZ(a) + vertexZ(b) + vertexZ(c)) / 3;
-    const [r, g, bl] = faceColor(palette, elevation, height);
+    const ax = vertexX(a);
+    const az = vertexZ(a);
+    const ux = vertexX(b) - ax;
+    const uy = vy[b] - vy[a];
+    const uz = vertexZ(b) - az;
+    const wx = vertexX(c) - ax;
+    const wy = vy[c] - vy[a];
+    const wz = vertexZ(c) - az;
+    // Face normal u × w (the triangles are wound to face +Y).
+    const nx = uy * wz - uz * wy;
+    const ny = uz * wx - ux * wz;
+    const nz = ux * wy - uy * wx;
+    const cx = ax + (ux + wx) / 3;
+    const cz = az + (uz + wz) / 3;
+    sample.height = (vy[a] + vy[b] + vy[c]) / 3;
+    sample.normalY = ny / Math.sqrt(nx * nx + ny * ny + nz * nz);
+    sample.noise = boundaryNoise(cx, cz);
+    sample.cavity = occlusion > 0 ? (vertexCavity(a) + vertexCavity(b) + vertexCavity(c)) / 3 : 0;
+    const [r, g, bl] = landFaceColor(palette, sample, occlusion);
     const shade = 0.93 + hash(cx, cz) * 0.14;
     for (let k = 0; k < 3; k++) {
       const v = kept[t * 3 + k];
