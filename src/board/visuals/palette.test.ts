@@ -12,9 +12,6 @@ import {
 describe("palette", () => {
   it("defines the issue #8 starting values and the issue #14 palm colours", () => {
     expect(PALETTE_HEX).toEqual({
-      deepWater: 0x0e3a5b,
-      reefTeal: 0x1c8c8c,
-      shallows: 0x5fd4c9,
       wetSand: 0xb8925e,
       drySand: 0xe3cf9c,
       jungle: 0x367a43,
@@ -90,7 +87,7 @@ describe("palette", () => {
   });
 
   it("glslConstName converts camelCase to PALETTE_UPPER_SNAKE", () => {
-    expect(glslConstName("deepWater")).toBe("PALETTE_DEEP_WATER");
+    expect(glslConstName("seabedSand")).toBe("PALETTE_SEABED_SAND");
     expect(glslConstName("highlandRock")).toBe("PALETTE_HIGHLAND_ROCK");
     expect(glslConstName("surf")).toBe("PALETTE_SURF");
   });
@@ -98,9 +95,15 @@ describe("palette", () => {
   it("PALETTE_GLSL declares one linear vec3 constant per entry", () => {
     const lines = PALETTE_GLSL.split("\n");
     expect(lines).toHaveLength(PALETTE_NAMES.length);
-    const deep = paletteColor("deepWater");
-    expect(lines).toContain(`const vec3 PALETTE_DEEP_WATER = ${glslVec3(deep)};`);
-    // Linear, not sRGB: 0x0E/255 = 0.0549 in sRGB is ~0.0044 linear.
-    expect(deep.r).toBeCloseTo(0.0044, 3);
+    const jungle = paletteColor("jungle");
+    expect(lines).toContain(`const vec3 PALETTE_JUNGLE = ${glslVec3(jungle)};`);
+    // Linear, not sRGB: 0x36/255 = 0.2118 in sRGB is ~0.0368 linear.
+    expect(jungle.r).toBeCloseTo(0.0368, 3);
+  });
+
+  it("has no hand-picked water colours: the water takes its colour from the seabed (#38)", () => {
+    expect(PALETTE_NAMES).not.toContain("deepWater");
+    expect(PALETTE_NAMES).not.toContain("reefTeal");
+    expect(PALETTE_NAMES).not.toContain("shallows");
   });
 });

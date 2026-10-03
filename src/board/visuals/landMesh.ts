@@ -25,12 +25,17 @@ export const LAND_MESH_SPACING = 0.15;
 export const LAND_MESH_SKIRT_DEPTH = metresToUnits(100);
 
 /** Underwater: wet sand fades to seabed sand over the first SEABED_SAND_FADE of depth. */
-const SEABED_SAND_FADE = metresToUnits(1.5);
+const SEABED_SAND_FADE = metresToUnits(0.5);
 /** Seabed sand gives way to the deep seabed colour between these depths (down the drop-off). */
 const SEABED_DEEP_BAND: readonly [number, number] = [metresToUnits(10), metresToUnits(30)];
-/** Coral patch noise frequency (cycles per world unit) and the noise band over which a patch fills in. */
-const CORAL_FREQUENCY = 2.5;
-const CORAL_COVER: readonly [number, number] = [-0.25, 0.35];
+/**
+ * Coral patch noise frequency (cycles per world unit), the noise band over
+ * which a patch fills in, and the densest cover a face gets (sand and rubble
+ * show between coral heads even in a dense patch).
+ */
+const CORAL_FREQUENCY = 1.4;
+const CORAL_COVER: readonly [number, number] = [-0.3, 0.5];
+const CORAL_MAX_COVER = 0.75;
 
 /** Faces up to this height are wet sand; it fades to dry sand over ±WET_SAND_FADE. */
 const WET_SAND_TOP = 0.05;
@@ -209,7 +214,7 @@ function boundaryNoise(x: number, z: number): number {
 function coralPatch(x: number, z: number): number {
   const f = CORAL_FREQUENCY;
   const n = 0.7 * bandNoise(x * f + 211.3, z * f - 87.1) + 0.3 * bandNoise(x * f * 2.7 - 19.9, z * f * 2.7 + 63.4);
-  return smoothstep(CORAL_COVER[0], CORAL_COVER[1], n);
+  return CORAL_MAX_COVER * smoothstep(CORAL_COVER[0], CORAL_COVER[1], n);
 }
 
 /** Hash in [0, 1) for small per-face colour variation. */

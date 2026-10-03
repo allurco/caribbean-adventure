@@ -9,7 +9,7 @@ import { Color } from "three";
  *   colour management converts the sRGB hex into the linear working space, so
  *   it can go straight into a material or a `vec3` uniform.
  * - GLSL: shaders paste `PALETTE_GLSL` into their source. It declares one
- *   `const vec3 PALETTE_<NAME>` per entry (e.g. `PALETTE_DEEP_WATER`), holding
+ *   `const vec3 PALETTE_<NAME>` per entry (e.g. `PALETTE_SEABED_SAND`), holding
  *   the same linear values, which is what our pipeline expects: the
  *   EffectComposer renders in linear space and encodes to sRGB at the end.
  *   Injected constants keep shaders free of extra uniforms; switch an entry to
@@ -49,9 +49,6 @@ import { Color } from "three";
  *   green algae (Boodlea, 0.215 / 0.269 / 0.055).
  */
 export const PALETTE_HEX = {
-  deepWater: 0x0e3a5b, // Open sea
-  reefTeal: 0x1c8c8c, // Reefs, mid-depth water
-  shallows: 0x5fd4c9, // Water next to the shore
   wetSand: 0xb8925e, // Narrow band at the waterline (albedo 0.32)
   drySand: 0xe3cf9c, // Beaches (albedo 0.63)
   jungle: 0x367a43, // Elevation 2: rainforest canopy (albedo 0.15, Culf et al. 1995)
@@ -79,7 +76,7 @@ export function glslVec3(color: Color): string {
   return `vec3(${f(color.r)}, ${f(color.g)}, ${f(color.b)})`;
 }
 
-/** `deepWater` -> `PALETTE_DEEP_WATER`. */
+/** `seabedSand` -> `PALETTE_SEABED_SAND`. */
 export function glslConstName(name: PaletteName): string {
   return `PALETTE_${name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase()}`;
 }
