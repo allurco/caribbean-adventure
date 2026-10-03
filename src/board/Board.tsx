@@ -41,6 +41,18 @@ import {
   VIGNETTE_DARKNESS,
   VIGNETTE_OFFSET,
 } from "./visuals/atmosphere";
+import {
+  CAMERA_BOUNDS_PADDING,
+  CAMERA_FOV,
+  CAMERA_MAX_DISTANCE,
+  CAMERA_OFFSET,
+  CAMERA_PITCH,
+  MAX_VIEW_ASPECT,
+  cameraBoundsFromHexes,
+  clampToCameraBounds,
+  groundViewReach,
+  oceanPlaneSize,
+} from "./cameraBounds";
 import { Ship, SinkingShip } from "./Ship";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
@@ -76,7 +88,6 @@ function Scene({
   G,
   currentPlayer,
   cam,
-  gridSize,
   movesRemaining,
   attackMode,
   spyglassMode,
@@ -98,7 +109,6 @@ function Scene({
   G: CaribbeanState;
   currentPlayer: string;
   cam: { isoDistance: number };
-  gridSize: number;
   movesRemaining: number;
   attackMode: boolean;
   spyglassMode: boolean;
@@ -123,6 +133,46 @@ function Scene({
   const targetPosition = useRef(new Vector3());
   const isAnimating = useRef(false);
 
+  const cameraBounds = useMemo(
+    () => cameraBoundsFromHexes(G.cells.map((c) => c.hex), CAMERA_BOUNDS_PADDING),
+    [G.cells]
+  );
+
+  // The ocean is a finite square, so its edge must stay off screen. Fog alone
+  // can't hide it: at full zoom-out the top corners of the view hit the sea
+  // only ~46 units deep, well short of HAZE_FAR (85). So size the plane from
+  // the geometry instead: the focus never leaves the padded map hull, and from
+  // any such focus the frustum reaches at most `groundViewReach` further across
+  // the sea (fixed pitch since rotation is off, max zoom, widest aspect). A
+  // plane spanning extent + reach on every side covers everything visible.
+  const oceanSize = useMemo(
+    () =>
+      oceanPlaneSize(
+        cameraBounds,
+        groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)
+      ),
+    [cameraBounds]
+  );
+
+  // Keep the focus over the map: after every MapControls update (pan, zoom,
+  // damping, focus-lerp) pull the target back inside the bounds and move the
+  // camera by the same delta, so the view angle and zoom are unchanged.
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const correction = new Vector3();
+    const clamp = () => {
+      const { dx, dz } = clampToCameraBounds(cameraBounds, controls.target.x, controls.target.z);
+      if (dx === 0 && dz === 0) return;
+      correction.set(dx, 0, dz);
+      controls.target.add(correction);
+      camera.position.add(correction);
+    };
+    clamp();
+    controls.addEventListener("change", clamp);
+    return () => controls.removeEventListener("change", clamp);
+  }, [cameraBounds, camera]);
+
   // Animate camera to focus position when it changes
   useEffect(() => {
     if (focusPosition && controlsRef.current) {
@@ -136,6 +186,11 @@ function Scene({
     if (isAnimating.current && controlsRef.current) {
       const controls = controlsRef.current;
       const target = controls.target;
+
+      // Aim for the clamped focus so the lerp can actually arrive
+      const goal = targetPosition.current;
+      const { x, z } = clampToCameraBounds(cameraBounds, goal.x, goal.z);
+      goal.set(x, 0, z);
 
       // Lerp towards target
       target.lerp(targetPosition.current, 0.08);
@@ -203,8 +258,8 @@ function Scene({
       {/* Islands: one continuous mesh from the terrain height field */}
       <LandTerrain cells={G.cells} />
 
-      {/* Simple deep blue ocean */}
-      <Ocean size={gridSize} />
+      {/* Simple deep blue ocean, sized so its edge is never on screen */}
+      <Ocean size={oceanSize} />
 
       {/* Terrain decorations: trees, rocks, forts, piers */}
       <TerrainDecorations cells={G.cells} />
@@ -300,7 +355,7 @@ function Scene({
         makeDefault
         enableRotate={false}
         minDistance={cam.isoDistance * 0.15}
-        maxDistance={28}
+        maxDistance={CAMERA_MAX_DISTANCE}
       />
 
       {/* Post-processing effects */}
@@ -551,8 +606,12 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
       <Canvas
         shadows={{ type: PCFSoftShadowMap }}
         camera={{
-          position: [cam.isoDistance * 0.4, cam.isoDistance * 0.6, cam.isoDistance * 0.4],
-          fov: 45,
+          position: [
+            cam.isoDistance * CAMERA_OFFSET[0],
+            cam.isoDistance * CAMERA_OFFSET[1],
+            cam.isoDistance * CAMERA_OFFSET[2],
+          ],
+          fov: CAMERA_FOV,
           near: 0.1,
           far: 1000,
         }}
@@ -562,7 +621,6 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
           G={G}
           currentPlayer={currentPlayer}
           cam={cam}
-          gridSize={cam.isoDistance * 2}
           movesRemaining={movesRemaining}
           attackMode={attackMode}
           spyglassMode={spyglassMode}
