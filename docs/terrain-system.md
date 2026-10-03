@@ -205,7 +205,11 @@ the unchanged open-sea look by depth ~0.7. Outside the bounds it is open sea.
 
 Reef hexes (B > 0) are drawn over that as dark, mottled coral heads on lighter
 reef flats, so a reef hex reads differently from any open water. Shallow
-water (depth below ~0.3) gets soft moving caustics, driven by `causticTime`, a
+water gets a moving web of caustic light (thin lines at the zero crossings of
+two drifting noise layers), at full strength across the turquoise shallows and
+gone by depth ~0.55. The depth field falls off steeply: depth 0.3 is only about
+half a hex offshore, so a fade ending much shallower than that sits entirely
+under the surf. The caustics are driven by `causticTime`, a
 wrapped CPU clock in `causticMotion.ts` that stops under
 `prefers-reduced-motion`. The reef and caustic tuning constants are named in
 the header of the fragment shader in `Ocean.tsx`.

@@ -121,11 +121,11 @@ const fragmentShader = `
   const float CAUSTIC_SCALE = 3.2;          // light-web frequency, per world unit
   const float CAUSTIC_LAYER_B_SCALE = 1.37; // second layer's frequency multiplier, so the layers never line up
   const float CAUSTIC_DRIFT = 0.6;          // radius (noise units) each layer circles once per period
-  const float CAUSTIC_SHARPNESS = 5.0;      // exponent on the ridges: higher gives thinner, crisper lines
-  const float CAUSTIC_FADE_IN = 0.02;       // depth over which caustics fade in from the waterline
-  const float CAUSTIC_FADE_START = 0.08;    // full strength down to this depth ...
-  const float CAUSTIC_FADE_END = 0.3;       // ... and gone by this depth (open sea is ~0.8 deep)
-  const float CAUSTIC_STRENGTH = 0.3;       // light added at full strength, as a fraction of PALETTE_SURF
+  const float CAUSTIC_LINE_WIDTH = 0.12;    // noise distance from a zero crossing that still lights: smaller gives thinner lines
+  const float CAUSTIC_FADE_IN = 0.04;       // depth over which caustics fade in from the waterline
+  const float CAUSTIC_FADE_START = 0.25;    // full strength across the turquoise shallows, to this depth ...
+  const float CAUSTIC_FADE_END = 0.55;      // ... and gone by this depth (open sea is ~0.8 deep)
+  const float CAUSTIC_STRENGTH = 0.35;      // light added at full strength, as a fraction of PALETTE_SURF
 
   mat2 octave_m = mat2(1.7, 1.2, -1.2, 1.4);
 
@@ -235,9 +235,13 @@ const fragmentShader = `
     float a = 2.0 * PI * causticTime / CAUSTIC_PERIOD_A;
     float b = 2.0 * PI * causticTime / CAUSTIC_PERIOD_B;
     vec2 q = worldXZ * CAUSTIC_SCALE;
-    float r1 = 1.0 - abs(noise(q + vec2(cos(a), sin(a)) * CAUSTIC_DRIFT));
-    float r2 = 1.0 - abs(noise(q * CAUSTIC_LAYER_B_SCALE + vec2(sin(b), cos(b)) * CAUSTIC_DRIFT + vec2(31.0, 7.0)));
-    float web = 0.5 * (pow(r1, CAUSTIC_SHARPNESS) + pow(r2, CAUSTIC_SHARPNESS));
+    // Each layer's light lines are the noise zero crossings: thin contours that
+    // wind into a web, rather than a broad lift that the bright shallows hide.
+    float n1 = noise(q + vec2(cos(a), sin(a)) * CAUSTIC_DRIFT);
+    float n2 = noise(q * CAUSTIC_LAYER_B_SCALE + vec2(sin(b), cos(b)) * CAUSTIC_DRIFT + vec2(31.0, 7.0));
+    float r1 = 1.0 - smoothstep(0.0, CAUSTIC_LINE_WIDTH, abs(n1));
+    float r2 = 1.0 - smoothstep(0.0, CAUSTIC_LINE_WIDTH, abs(n2));
+    float web = max(r1, r2);
     return web * fade * CAUSTIC_STRENGTH;
   }
 
