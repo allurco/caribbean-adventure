@@ -78,6 +78,7 @@ function setupMainPhase(p0Class: ShipClass = "Sloop", p1Class: ShipClass = "Flut
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: DraftGame, numPlayers: 2 });
@@ -120,6 +121,7 @@ function setupAtPortNoDraft() {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: TestGame });
@@ -254,6 +256,7 @@ describe("repair move", () => {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame });
@@ -336,6 +339,7 @@ describe("repair move", () => {
       floatingLoot: [],
       npcs: {},
       npcIdCounter: 0,
+      wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame });

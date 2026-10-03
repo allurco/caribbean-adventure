@@ -225,10 +225,11 @@ function Scene({
     return validMoveTargets(
       currentShipState.position,
       G.cells,
+      G.wrap,
       otherShipPositions,
       shallowDraft
     );
-  }, [currentShipState, G.cells, otherShipPositions]);
+  }, [currentShipState, G.cells, G.wrap, otherShipPositions]);
 
   return (
     <>
@@ -441,7 +442,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   useEffect(() => {
     if (!currentShipState || ctx.phase === "draft") return;
 
-    const accessiblePort = findAccessiblePort(currentShipState.position, G.cells);
+    const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
     const currentPortId = accessiblePort?.portName ?? null;
     const prevPortId = prevPortRef.current;
 
@@ -454,7 +455,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
     }
 
     prevPortRef.current = currentPortId;
-  }, [currentShipState?.position, G.cells, ctx.phase, currentShipState]);
+  }, [currentShipState?.position, G.cells, G.wrap, ctx.phase, currentShipState]);
 
   // Detect turn changes
   useEffect(() => {
@@ -511,13 +512,13 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   // Calculate potential attack targets (players + NPCs) - must be before early return
   const attackTargetIds = useMemo(() => {
     if (!currentShipState) return [];
-    return getValidAttackTargets(currentShipState, G.ships, currentPlayer);
-  }, [currentShipState, G.ships, currentPlayer]);
+    return getValidAttackTargets(currentShipState, G.ships, currentPlayer, G.wrap);
+  }, [currentShipState, G.ships, currentPlayer, G.wrap]);
 
   const npcAttackTargetIds = useMemo(() => {
     if (!currentShipState) return [];
-    return getValidNPCAttackTargets(currentShipState, G.npcs);
-  }, [currentShipState, G.npcs]);
+    return getValidNPCAttackTargets(currentShipState, G.npcs, G.wrap);
+  }, [currentShipState, G.npcs, G.wrap]);
 
   const attackTargetHexes = useMemo(() => {
     const playerHexes = attackTargetIds.map((id) => G.ships[id]?.position).filter(Boolean) as Hex[];
@@ -530,8 +531,8 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   // Calculate spyglass targets
   const spyglassTargets = useMemo(() => {
     if (!currentShipState) return { players: [], npcs: [] };
-    return getValidScoutTargets(currentShipState, currentPlayer, G.ships, G.npcs);
-  }, [currentShipState, currentPlayer, G.ships, G.npcs]);
+    return getValidScoutTargets(currentShipState, currentPlayer, G.ships, G.npcs, G.wrap);
+  }, [currentShipState, currentPlayer, G.ships, G.npcs, G.wrap]);
 
   const spyglassTargetHexes = useMemo(() => {
     const playerHexes = spyglassTargets.players.map((id) => G.ships[id]?.position).filter(Boolean) as Hex[];
@@ -745,7 +746,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
 
       {/* Right: Port panel - only in main phase when docked at a port */}
       {!inCombat && currentShipState && (() => {
-        const accessiblePort = findAccessiblePort(currentShipState.position, G.cells);
+        const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
         if (!accessiblePort?.market) return null;
         return (
           <PortPanel

@@ -1,5 +1,5 @@
-import { hexEquals, neighbors } from "./hex";
-import type { Hex } from "./hex";
+import { hexEquals, canonicalHex, wrappedNeighbors } from "./hex";
+import type { Hex, MapWrap } from "./hex";
 import type {
   CaribbeanState,
   MapCell,
@@ -56,13 +56,22 @@ function isWalkable(
   return false;
 }
 
+/**
+ * Breadth-first shortest path from `start` to `end` over wrapped neighbours, so on a
+ * wrapped map it crosses the seam whenever that is shorter. Every hex in the returned
+ * path is canonical.
+ */
 export function findPath(
   start: Hex,
   end: Hex,
   cells: MapCell[],
   playerShips: Record<string, { position: Hex }>,
-  npcs: Record<string, { position: Hex }>
+  npcs: Record<string, { position: Hex }>,
+  wrap: MapWrap
 ): Hex[] {
+  start = canonicalHex(start, wrap);
+  end = canonicalHex(end, wrap);
+
   // BFS pathfinding
   const startCell = getCellAt(cells, start);
   const endCell = getCellAt(cells, end);
@@ -83,7 +92,7 @@ export function findPath(
   while (queue.length > 0) {
     const current = queue.shift()!;
 
-    for (const neighbor of neighbors(current.hex)) {
+    for (const neighbor of wrappedNeighbors(current.hex, wrap)) {
       const key = hexKey(neighbor);
       if (visited.has(key)) continue;
 
@@ -282,7 +291,8 @@ export function moveNPC(G: CaribbeanState, npcId: string): boolean {
     destination,
     G.cells,
     G.ships as Record<string, { position: Hex }>,
-    G.npcs as Record<string, { position: Hex }>
+    G.npcs as Record<string, { position: Hex }>,
+    G.wrap
   );
 
   if (path.length <= 1) {

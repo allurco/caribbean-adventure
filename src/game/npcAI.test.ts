@@ -91,6 +91,7 @@ function setupMainPhaseWithNPCs() {
         "npc-1": npc1,
       },
       npcIdCounter: 1,
+      wrap: null,
     }),
   };
   const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
@@ -151,6 +152,7 @@ describe("NPC AI movement", () => {
           "npc-1": npc1,
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
@@ -198,6 +200,7 @@ describe("NPC AI movement", () => {
           "npc-1": npc1,
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
@@ -295,6 +298,7 @@ describe("Flotilla hunting behavior", () => {
           "flotilla-1": flotilla,
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
@@ -344,6 +348,7 @@ describe("Flotilla hunting behavior", () => {
           "flotilla-1": flotilla,
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
@@ -392,6 +397,7 @@ describe("Flotilla hunting behavior", () => {
           "flotilla-1": flotilla,
         },
         npcIdCounter: 1,
+        wrap: null,
       }),
     };
     const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });

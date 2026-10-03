@@ -1,4 +1,4 @@
-import type { Hex } from "./hex";
+import type { Hex, MapWrap } from "./hex";
 import type { Terrain } from "./terrain";
 import type { MapSizeId } from "./mapConfig";
 
@@ -198,6 +198,11 @@ export interface CaribbeanState {
   ships: Record<string, ShipState>;
   npcs: Record<string, NPCShip>;
   mapSize: MapSizeId;
+  /**
+   * East–west wrap of the map, or null if it does not wrap. All hex positions in
+   * state are kept canonical (column in [0, columns)) under this wrap.
+   */
+  wrap: MapWrap;
   captainDeck: Captain[];
   draftHands: Record<string, Captain[]>;
   combat?: CombatState;
