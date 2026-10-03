@@ -38,13 +38,13 @@ const LAND_COLORS: LandMeshColors = {
   deepSeabed: linearRgb("deepSeabed"),
 };
 
-function geometryFrom(positions: Float32Array, colors: Float32Array): BufferGeometry {
+function geometryFrom(positions: Float32Array, colors: Float32Array, normals: Float32Array): BufferGeometry {
   const geo = new BufferGeometry();
   geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
   geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
-  // flatShading lights with screen-space face normals, but the shadow-receive
-  // code still reads the normal attribute for its normal bias.
-  geo.computeVertexNormals();
+  // Land: face normals (flatShading lights with screen-space normals anyway,
+  // but shadow bias reads these). Seabed: the field's smooth normals.
+  geo.setAttribute("normal", new Float32BufferAttribute(normals, 3));
   return geo;
 }
 
@@ -69,8 +69,16 @@ export function LandTerrain({ cells }: LandTerrainProps) {
     const mesh = buildLandMesh(field, { colors: LAND_COLORS, sampleReef: createReefMask(cells) });
     const split = mesh.aboveWaterTriangleCount * 9;
     return {
-      land: geometryFrom(mesh.positions.subarray(0, split), mesh.colors.subarray(0, split)),
-      seabed: geometryFrom(mesh.positions.subarray(split), mesh.colors.subarray(split)),
+      land: geometryFrom(
+        mesh.positions.subarray(0, split),
+        mesh.colors.subarray(0, split),
+        mesh.normals.subarray(0, split)
+      ),
+      seabed: geometryFrom(
+        mesh.positions.subarray(split),
+        mesh.colors.subarray(split),
+        mesh.normals.subarray(split)
+      ),
     };
   }, [cells]);
 
@@ -95,10 +103,17 @@ export function LandTerrain({ cells }: LandTerrainProps) {
 
   useEffect(() => () => material.dispose(), [material]);
 
+  // The seabed is smooth-shaded so no facets show through clear water.
+  const seabedMaterial = useMemo(
+    () => new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }),
+    []
+  );
+  useEffect(() => () => seabedMaterial.dispose(), [seabedMaterial]);
+
   return (
     <>
       <mesh ref={alsoInPrepass} geometry={land} material={material} receiveShadow castShadow />
-      <mesh ref={onlyInPrepass} geometry={seabed} material={material} receiveShadow />
+      <mesh ref={onlyInPrepass} geometry={seabed} material={seabedMaterial} receiveShadow />
     </>
   );
 }

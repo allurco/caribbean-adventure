@@ -325,6 +325,89 @@ describe("buildLandMesh", () => {
     }
   });
 
+  describe("smooth, refined seabed (#38)", () => {
+    const field = createTerrainHeightField(singleIsland(), 5);
+    const mesh = buildLandMesh(field);
+    const seabedTriangles = () => {
+      const out: number[] = [];
+      for (let t = mesh.aboveWaterTriangleCount; t < mesh.triangleCount; t++) out.push(t);
+      return out;
+    };
+    const key = (p: Float32Array, v: number) => `${p[v * 3].toFixed(5)},${p[v * 3 + 2].toFixed(5)}`;
+
+    it("gives seabed vertices the field's own smooth normal, shared by every triangle that meets there", () => {
+      const { positions, normals } = mesh;
+      const seen = new Map<string, [number, number, number]>();
+      let shared = 0;
+      for (const t of seabedTriangles()) {
+        for (let k = 0; k < 3; k++) {
+          const v = t * 3 + k;
+          const n: [number, number, number] = [normals[v * 3], normals[v * 3 + 1], normals[v * 3 + 2]];
+          expect(Math.hypot(...n)).toBeCloseTo(1, 4);
+          expect(n[1]).toBeGreaterThan(0);
+          const prev = seen.get(key(positions, v));
+          if (prev) {
+            shared++;
+            for (let i = 0; i < 3; i++) expect(n[i]).toBeCloseTo(prev[i], 6);
+          } else seen.set(key(positions, v), n);
+        }
+      }
+      expect(shared).toBeGreaterThan(1000);
+    });
+
+    it("blends seabed colours smoothly: a vertex has the same colour in every triangle", () => {
+      const { positions, colors } = mesh;
+      const seen = new Map<string, number>();
+      for (const t of seabedTriangles()) {
+        for (let k = 0; k < 3; k++) {
+          const v = t * 3 + k;
+          const prev = seen.get(key(positions, v));
+          if (prev === undefined) seen.set(key(positions, v), colors[v * 3]);
+          else expect(colors[v * 3]).toBeCloseTo(prev, 6);
+        }
+      }
+    });
+
+    it("refines steep seabed: every seabed triangle rising more than ~10 m is a half-size one", () => {
+      const { positions } = mesh;
+      let steep = 0;
+      for (const t of seabedTriangles()) {
+        const o = t * 9;
+        const ys = [positions[o + 1], positions[o + 4], positions[o + 7]];
+        if ((Math.max(...ys) - Math.min(...ys)) * 65 <= 10) continue;
+        steep++;
+        for (const [a, b] of [[0, 3], [3, 6], [6, 0]]) {
+          const edge = Math.hypot(positions[o + a] - positions[o + b], positions[o + a + 2] - positions[o + b + 2]);
+          expect(edge).toBeLessThan(LAND_MESH_SPACING * 0.55);
+        }
+      }
+      expect(steep).toBeGreaterThan(0);
+    });
+
+    it("has no cracks: no triangle corner sits at the middle of another triangle's edge", () => {
+      const { positions, triangleCount } = mesh;
+      const corners = new Set<string>();
+      for (let v = 0; v < triangleCount * 3; v++) corners.add(key(positions, v));
+      const mid = (a: number, b: number) =>
+        `${((positions[a * 3] + positions[b * 3]) / 2).toFixed(5)},${((positions[a * 3 + 2] + positions[b * 3 + 2]) / 2).toFixed(5)}`;
+      for (let t = 0; t < triangleCount; t++) {
+        const v = t * 3;
+        for (const [a, b] of [[v, v + 1], [v + 1, v + 2], [v + 2, v]]) expect(corners.has(mid(a, b))).toBe(false);
+      }
+    });
+
+    it("keeps the land above water faceted: one normal and colour per face", () => {
+      const { normals, colors } = mesh;
+      for (let t = 0; t < mesh.aboveWaterTriangleCount; t++) {
+        const o = t * 9;
+        for (let i = 0; i < 3; i++) {
+          expect(normals[o + 3 + i]).toBe(normals[o + i]);
+          expect(colors[o + 6 + i]).toBe(colors[o + i]);
+        }
+      }
+    });
+  });
+
   it("covers reef seabed with coral", () => {
     const cells = singleIsland().map((c): MapCell => (c.hex.q === 3 && c.hex.r === 0 ? { ...c, terrain: "reef" } : c));
     const field = createTerrainHeightField(cells, 5);
@@ -375,10 +458,11 @@ describe("buildLandMesh", () => {
     const cells = generateMap(radius, 31337);
     const start = performance.now();
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
-    const { triangleCount } = buildLandMesh(field);
+    const { triangleCount, aboveWaterTriangleCount } = buildLandMesh(field);
     const elapsed = performance.now() - start;
     console.log(
-      `Land mesh, large map (radius ${radius}): ${triangleCount} triangles in ${elapsed.toFixed(1)}ms`
+      `Land mesh, large map (radius ${radius}): ${triangleCount} triangles ` +
+        `(${aboveWaterTriangleCount} above water) in ${elapsed.toFixed(1)}ms`
     );
     expect(triangleCount).toBeGreaterThan(0);
     // One-time build; ~110-165 ms locally, ~320 ms on GitHub runners since the

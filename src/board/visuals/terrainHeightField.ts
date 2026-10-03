@@ -201,7 +201,8 @@ function forEachHexWithin(q: number, r: number, radius: number, visit: (q: numbe
   }
 }
 
-function pointSegmentDistance(
+/** Squared distance from (px, pz) to segment (a, b); callers take one sqrt of the minimum. */
+function pointSegmentDistanceSq(
   px: number,
   pz: number,
   ax: number,
@@ -214,7 +215,7 @@ function pointSegmentDistance(
   const t = Math.max(0, Math.min(1, ((px - ax) * ex + (pz - az) * ez) / (ex * ex + ez * ez)));
   const dx = px - (ax + ex * t);
   const dz = pz - (az + ez * t);
-  return Math.sqrt(dx * dx + dz * dz);
+  return dx * dx + dz * dz;
 }
 
 function elevationHeight(elevation: number): number {
@@ -389,31 +390,58 @@ export function createTerrainHeightField(
     const k = worldToHexKey(x, z);
     const segments = reefSegmentArrays.get(k);
     if (!segments) return 0;
-    let dist = Infinity;
+    let distSq = Infinity;
     for (let i = 0; i < segments.length; i += 4) {
-      const d = pointSegmentDistance(x, z, segments[i], segments[i + 1], segments[i + 2], segments[i + 3]);
-      if (d < dist) dist = d;
+      const d = pointSegmentDistanceSq(x, z, segments[i], segments[i + 1], segments[i + 2], segments[i + 3]);
+      if (d < distSq) distSq = d;
     }
+    const dist = Math.sqrt(distSq);
     const signed = reefHexes.has(k) ? dist : -dist;
     const t = Math.max(0, Math.min(1, (signed + REEF_FOOT) / (REEF_FOOT + REEF_TOP)));
     return t * t * (3 - 2 * t);
   };
 
+  // Each hex's segments sorted by distance from the hex centre, as
+  // [ax, az, bx, bz, centreDistance − 1, …]. Every point of the hex is within 1
+  // (the circumradius) of its centre, so the last value is a lower bound on a
+  // segment's distance from any point in the hex, and the scan in
+  // sampleCoastDistance can stop at the first segment whose bound exceeds the
+  // best distance so far: the result is exact.
+  const SEGMENT_STRIDE = 5;
   const segmentArrays = new Map<number, Float64Array>();
-  for (const [k, list] of segmentsNear) segmentArrays.set(k, Float64Array.from(list));
+  for (const [k, list] of segmentsNear) {
+    const q = Math.floor(k / KEY_WIDTH) - KEY_OFFSET;
+    const r = (k % KEY_WIDTH) - KEY_OFFSET;
+    const [cx, , cz] = hexToWorld({ q, r, s: -q - r });
+    const order: number[] = [];
+    const bound: number[] = [];
+    for (let i = 0; i < list.length; i += 4) {
+      order.push(i);
+      bound.push(Math.sqrt(pointSegmentDistanceSq(cx, cz, list[i], list[i + 1], list[i + 2], list[i + 3])) - 1);
+    }
+    order.sort((a, b) => bound[a / 4] - bound[b / 4]);
+    const sorted = new Float64Array(order.length * SEGMENT_STRIDE);
+    order.forEach((i, n) => {
+      sorted.set([list[i], list[i + 1], list[i + 2], list[i + 3], bound[i / 4]], n * SEGMENT_STRIDE);
+    });
+    segmentArrays.set(k, sorted);
+  }
   const landArrays = new Map<number, Float64Array>();
   for (const [k, list] of landNear) landArrays.set(k, Float64Array.from(list));
 
   const sampleCoastDistance = (x: number, z: number): number => {
     const k = worldToHexKey(x, z);
     const segments = segmentArrays.get(k);
-    let dist = MAX_COAST_DISTANCE;
+    let distSq = MAX_COAST_DISTANCE * MAX_COAST_DISTANCE;
     if (segments) {
-      for (let i = 0; i < segments.length; i += 4) {
-        const d = pointSegmentDistance(x, z, segments[i], segments[i + 1], segments[i + 2], segments[i + 3]);
-        if (d < dist) dist = d;
+      for (let i = 0; i < segments.length; i += SEGMENT_STRIDE) {
+        const lowerBound = segments[i + 4];
+        if (lowerBound > 0 && lowerBound * lowerBound >= distSq) break;
+        const d = pointSegmentDistanceSq(x, z, segments[i], segments[i + 1], segments[i + 2], segments[i + 3]);
+        if (d < distSq) distSq = d;
       }
     }
+    const dist = Math.sqrt(distSq);
     const signed = landElevation.has(k) ? dist : -dist;
     if (coastNoiseAmplitude === 0) return signed;
     return signed + coastNoiseAmplitude * fbm2(coastNoise, x * COAST_NOISE_FREQUENCY, z * COAST_NOISE_FREQUENCY);

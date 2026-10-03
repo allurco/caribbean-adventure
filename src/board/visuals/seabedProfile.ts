@@ -16,7 +16,7 @@
  *
  *   drop(s)  = DROP_HEIGHT · (σ(s) − σ(0)) / (1 − σ(0)),
  *     σ(s) = ½ · (1 + tanh((s − DROP_OFFSHORE) / DROP_WIDTH))
- *     The drop-off at the shelf edge: a steep (~60° at its steepest) wall
+ *     The drop-off at the shelf edge: a steep (~53° at its steepest) wall
  *     centred DROP_OFFSHORE out, normalised so it is exactly 0 at the waterline.
  *
  * Both terms are smooth and strictly increasing, so the sum has no terraces or
@@ -35,8 +35,11 @@ const SHELF_LENGTH = 300;
 const DROP_HEIGHT = 108;
 /** Distance offshore of the middle of the drop-off, metres (about 1.5 hexes). */
 const DROP_OFFSHORE = 175;
-/** Half-width scale of the drop-off, metres. */
-const DROP_WIDTH = 28;
+/**
+ * Half-width scale of the drop-off, metres. 28 m made the lip so sharp that
+ * the mesh's linear interpolation drew it as a saw-tooth contour.
+ */
+const DROP_WIDTH = 40;
 
 /** Depth the profile levels out at far offshore, metres. */
 export const SEABED_FLOOR_DEPTH = SHELF_DEPTH + DROP_HEIGHT;
