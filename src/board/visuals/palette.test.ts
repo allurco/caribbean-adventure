@@ -10,7 +10,7 @@ import {
 } from "./palette";
 
 describe("palette", () => {
-  it("defines the issue #8 starting values", () => {
+  it("defines the issue #8 starting values and the issue #14 palm colours", () => {
     expect(PALETTE_HEX).toEqual({
       deepWater: 0x0e3a5b,
       reefTeal: 0x1c8c8c,
@@ -20,7 +20,15 @@ describe("palette", () => {
       jungle: 0x2f6b3a,
       highlandRock: 0x76695a,
       surf: 0xf2faf7,
+      palmFrond: 0x4f8a34,
+      palmTrunk: 0x8a6a45,
     });
+  });
+
+  it("keeps palm fronds brighter than the jungle floor so palms stand out", () => {
+    const frond = paletteColor("palmFrond");
+    const jungle = paletteColor("jungle");
+    expect(frond.g).toBeGreaterThan(jungle.g);
   });
 
   it("paletteColor round-trips to the sRGB hex", () => {
