@@ -8,6 +8,7 @@ import {
   buildLandMesh,
   landFaceColor,
   LAND_MESH_SKIRT_DEPTH,
+  VISIBLE_SEABED_DEPTH,
   LAND_MESH_SPACING,
   type LandMeshColors,
 } from "./landMesh";
@@ -303,13 +304,13 @@ describe("buildLandMesh", () => {
     }
   });
 
-  it("covers the shelf and drop-off down to 100 m (#38)", () => {
-    expect(LAND_MESH_SKIRT_DEPTH).toBeCloseTo(m(100), 9);
+  it("covers the seabed down to the depth where the water hides it (#38)", () => {
+    expect(LAND_MESH_SKIRT_DEPTH).toBeCloseTo(m(VISIBLE_SEABED_DEPTH), 9);
     const field = createTerrainHeightField(singleIsland(), 5);
     const { positions } = buildLandMesh(field);
     let deepest = 0;
     for (let i = 1; i < positions.length; i += 3) deepest = Math.min(deepest, positions[i]);
-    expect(deepest).toBeLessThan(m(-90));
+    expect(deepest).toBeLessThan(m(-VISIBLE_SEABED_DEPTH));
   });
 
   it("puts the triangles above the waterline first, then the seabed", () => {

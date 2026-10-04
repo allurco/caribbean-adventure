@@ -135,7 +135,7 @@ export interface TerrainHeightField {
   isNearLand: (x: number, z: number) => boolean;
   /**
    * Cheap test: is the hex containing (x, z) within 3 hexes of land or next to
-   * a reef? Where it is false the seabed is deeper than 100 m, deep enough
+   * a reef? Where it is false the seabed is deeper than the mesh cut-off, deep enough
    * that clear water hides it, so seabed geometry can skip it.
    */
   isNearSeabed: (x: number, z: number) => boolean;

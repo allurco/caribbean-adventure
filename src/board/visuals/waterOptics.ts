@@ -109,6 +109,44 @@ export function shallowSaturationBoost(depthMetres: number): number {
   );
 }
 
+/**
+ * The water shader fades the seabed's remaining light out between these
+ * depths (metres), so wherever the mesh stops, the cut never shows.
+ */
+export const SEABED_FADE_START = 70;
+export const SEABED_FADE_END = 95;
+/**
+ * Depth (metres) the shader assumes where no seabed was drawn: past the fade,
+ * so it reads as deep water, but close enough that interpolating towards it at
+ * the mesh's edge stays smooth (a far-off value made a saw-tooth).
+ */
+export const NO_SEABED_DEPTH = SEABED_FADE_END + 10;
+
+/**
+ * How much of the seabed's own light still reaches the surface from
+ * `depthMetres` down, at most, in the strongest channel: Beer–Lambert along
+ * the shortest possible path (sun overhead, seen from straight above: 2 ×
+ * depth), times the shader's fade.
+ */
+export function seabedVisibility(depthMetres: number): number {
+  const fade = 1 - smoothstep(SEABED_FADE_START, SEABED_FADE_END, depthMetres);
+  return Math.max(...waterTransmittance(2 * depthMetres)) * fade;
+}
+
+/** Contribution below which the seabed is treated as invisible. */
+const SEABED_VISIBILITY_THRESHOLD = 0.01;
+
+/**
+ * Shallowest depth, to 0.1 m, from which the seabed contributes under 1% in
+ * every channel; the seabed mesh stops here. `seabedVisibility` falls
+ * steadily with depth, so the first depth under the threshold is the cut.
+ */
+export const VISIBLE_SEABED_DEPTH = (() => {
+  let d = 0;
+  while (seabedVisibility(d) > SEABED_VISIBILITY_THRESHOLD) d += 0.1;
+  return Math.round(d * 10) / 10;
+})();
+
 const vec3 = (v: Rgb) => `vec3(${v.join(", ")})`;
 
 /** GLSL constants and functions matching the TypeScript above. */
@@ -117,6 +155,9 @@ export const WATER_OPTICS_GLSL = `
   const vec3 WATER_SCATTERING = ${vec3(WATER_SCATTERING)};
   const float WATER_IOR = ${WATER_IOR.toFixed(3)};
   const float WATER_F0 = ${WATER_F0.toFixed(2)};
+  const float SEABED_FADE_START = ${SEABED_FADE_START.toFixed(1)};
+  const float SEABED_FADE_END = ${SEABED_FADE_END.toFixed(1)};
+  const float NO_SEABED_DEPTH = ${NO_SEABED_DEPTH.toFixed(1)};
 
   vec3 waterTransmittance(float pathMetres) {
     return exp(-(WATER_ABSORPTION + WATER_SCATTERING) * max(pathMetres, 0.0));

@@ -192,7 +192,10 @@ void main() {
 in metres at the render scale of `worldScale.ts` (65 m per unit): a ~1:21
 beach face, a 2–15 m shelf about a hex wide, and a drop-off at ~175 m offshore
 to a ~122 m floor. Reef hexes rise to a noisy 1–3 m crest. The land mesh
-(`landMesh.ts`) covers this seabed down to 100 m around islands and reefs.
+(`landMesh.ts`) covers this seabed around islands and reefs down to
+`VISIBLE_SEABED_DEPTH` (~90 m), derived in `waterOptics.ts`: the depth from
+which the seabed's light, through Beer–Lambert along the shortest path (2 ×
+depth) and the shader's 70–95 m fade, is under 1% in every channel.
 Faces above sea level draw in the main pass as before, flat-shaded. Faces
 wholly under water are seabed (coral sand, algal deep seabed and coral
 patches, with albedos in `palette.ts`), drawn only on `SEABED_LAYER`,
@@ -224,11 +227,12 @@ without fog or background. `Ocean.tsx` then, per pixel:
    down and the view path up, and adds deep-water radiance
    `R∞ · downwelling irradiance` as the seabed fades (`waterOptics.ts` holds
    the coefficients and their sources);
-3. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), then the sun glint
-   and shore surf.
+3. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), then the shore
+   surf. (The sun glint is off until step 4's GGX glint.)
 
-Where the prepass has no seabed (deeper than 100 m, or off the mesh) the water
-is deep water. Caustics brighten the seabed term before it is attenuated; they
+Where the prepass has no seabed (below the mesh cut-off, or off the mesh) the
+shader reads `NO_SEABED_DEPTH` (105 m, past the fade), so the water is deep
+water. Caustics brighten the seabed term before it is attenuated; they
 are driven by `causticTime`, a wrapped CPU clock in `causticMotion.ts` that
 stops under `prefers-reduced-motion`.
 

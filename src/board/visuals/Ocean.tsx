@@ -76,14 +76,9 @@ const fragmentShader = `
   uniform vec2 seabedSize;       // prepass size in pixels
   uniform mat4 cameraProjectionInverse;
   uniform mat4 cameraWorld;      // camera.matrixWorld
-  // The seabed mesh stops at 100 m (landMesh.ts); its faint remaining light
-  // fades out above that so the cut never shows.
-  const float SEABED_FADE_START = 70.0; // metres
-  const float SEABED_FADE_END = 95.0;   // metres
-  // World Y given to prepass texels with no seabed: just past the fade, so
-  // interpolating towards it at the mesh's edge stays smooth (a far-off value
-  // made a saw-tooth at half resolution).
-  const float NO_SEABED_Y = -105.0 / METRES_PER_UNIT;
+  // The seabed mesh stops where its light is under 1% (VISIBLE_SEABED_DEPTH,
+  // waterOptics.ts); texels with no seabed read NO_SEABED_DEPTH, past the fade.
+  const float NO_SEABED_Y = -NO_SEABED_DEPTH / METRES_PER_UNIT;
 
   const float PI = 3.14159265358;
   // Finite-difference step for wave normals, in world units. It must stay well

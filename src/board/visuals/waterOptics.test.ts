@@ -8,6 +8,11 @@ import {
   waterBodyRadiance,
   schlickFresnel,
   shallowSaturationBoost,
+  seabedVisibility,
+  SEABED_FADE_START,
+  SEABED_FADE_END,
+  NO_SEABED_DEPTH,
+  VISIBLE_SEABED_DEPTH,
   WATER_OPTICS_GLSL,
 } from "./waterOptics";
 
@@ -115,6 +120,38 @@ describe("waterOptics (#38 step 3)", () => {
         expect(shallowSaturationBoost(d)).toBeLessThanOrEqual(prev);
         prev = shallowSaturationBoost(d);
       }
+    });
+  });
+
+  describe("how deep the seabed stays visible (mesh cut-off)", () => {
+    it("fades the seabed out between the fade start and end", () => {
+      expect(seabedVisibility(SEABED_FADE_START - 1)).toBeGreaterThan(0.01);
+      expect(seabedVisibility(SEABED_FADE_END)).toBe(0);
+    });
+
+    it("takes the strongest channel through the shortest path (2 × depth) times the fade", () => {
+      const d = 50;
+      expect(seabedVisibility(d)).toBeCloseTo(Math.max(...waterTransmittance(2 * d)), 12);
+    });
+
+    it("cuts the mesh where the seabed contributes under 1% in every channel, and no shallower", () => {
+      expect(seabedVisibility(VISIBLE_SEABED_DEPTH)).toBeLessThanOrEqual(0.01);
+      expect(seabedVisibility(VISIBLE_SEABED_DEPTH - 0.5)).toBeGreaterThan(0.01);
+      for (let d = VISIBLE_SEABED_DEPTH; d <= 200; d += 0.25) {
+        expect(seabedVisibility(d)).toBeLessThanOrEqual(0.01);
+      }
+      expect(VISIBLE_SEABED_DEPTH).toBeLessThan(SEABED_FADE_END);
+    });
+
+    it("puts pixels with no seabed past the fade, where they read as deep water", () => {
+      expect(NO_SEABED_DEPTH).toBeGreaterThan(SEABED_FADE_END);
+      expect(seabedVisibility(NO_SEABED_DEPTH)).toBe(0);
+    });
+
+    it("hands the fade and the no-seabed depth to the shader", () => {
+      expect(WATER_OPTICS_GLSL).toContain(`const float SEABED_FADE_START = ${SEABED_FADE_START.toFixed(1)};`);
+      expect(WATER_OPTICS_GLSL).toContain(`const float SEABED_FADE_END = ${SEABED_FADE_END.toFixed(1)};`);
+      expect(WATER_OPTICS_GLSL).toContain(`const float NO_SEABED_DEPTH = ${NO_SEABED_DEPTH.toFixed(1)};`);
     });
   });
 

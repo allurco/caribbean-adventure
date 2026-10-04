@@ -14,15 +14,19 @@
 import { createNoise2D } from "simplex-noise";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { metresToUnits } from "./worldScale";
+import { VISIBLE_SEABED_DEPTH } from "./waterOptics";
+
+export { VISIBLE_SEABED_DEPTH };
 
 /** Lattice edge length in world units (a hex is 2 units across); fine enough to resolve the interior relief. */
 export const LAND_MESH_SPACING = 0.15;
 /**
- * Triangles whose highest vertex is below this depth are dropped: 100 m of
- * clear water hides the seabed (#38), and the ocean shader treats missing
- * seabed as bottomless.
+ * Triangles whose highest vertex is below this depth are dropped: from
+ * VISIBLE_SEABED_DEPTH down the seabed contributes under 1% of the water's
+ * colour (Beer–Lambert and the shader's fade, waterOptics.ts), and the ocean
+ * shader treats missing seabed as deep water (#38).
  */
-export const LAND_MESH_SKIRT_DEPTH = metresToUnits(100);
+export const LAND_MESH_SKIRT_DEPTH = metresToUnits(VISIBLE_SEABED_DEPTH);
 
 /** Underwater: wet sand fades to seabed sand over the first SEABED_SAND_FADE of depth. */
 const SEABED_SAND_FADE = metresToUnits(0.5);
@@ -249,11 +253,18 @@ export function buildLandMesh(
   const rows = Math.ceil((maxZ - minZ) / rowHeight) + 1;
 
   // Lattice vertex (i, j) sits at (minX + i·spacing [+ spacing/2 on odd rows], minZ + j·rowHeight).
-  const vertexX = (v: number) => {
-    const j = Math.floor(v / cols);
-    return minX + (v - j * cols) * spacing + (j % 2 === 1 ? spacing / 2 : 0);
-  };
-  const vertexZ = (v: number) => minZ + Math.floor(v / cols) * rowHeight;
+  // Precomputed: these are read for every output vertex.
+  const latticeX = new Float64Array(cols * rows);
+  const latticeZ = new Float64Array(cols * rows);
+  for (let j = 0; j < rows; j++) {
+    const shift = j % 2 === 1 ? spacing / 2 : 0;
+    for (let i = 0; i < cols; i++) {
+      latticeX[j * cols + i] = minX + i * spacing + shift;
+      latticeZ[j * cols + i] = minZ + j * rowHeight;
+    }
+  }
+  const vertexX = (v: number) => latticeX[v];
+  const vertexZ = (v: number) => latticeZ[v];
 
   // Near-seabed flag per vertex (cheap hex lookup). Over open water the field
   // is deeper than the skirt, so those vertices are never sampled; heights are
