@@ -11,7 +11,34 @@ import {
   VISIBLE_SEABED_DEPTH,
   LAND_MESH_SPACING,
   type LandMeshColors,
+  type LandMeshData,
 } from "./landMesh";
+
+/**
+ * The mesh as one unindexed triangle soup, land first then the (indexed)
+ * seabed expanded, so geometry checks see every triangle the same way.
+ */
+function soup(mesh: LandMeshData) {
+  const { land, seabed, triangleCount, aboveWaterTriangleCount } = mesh;
+  const positions = new Float32Array(triangleCount * 9);
+  const colors = new Float32Array(triangleCount * 9);
+  const normals = new Float32Array(triangleCount * 9);
+  positions.set(land.positions);
+  colors.set(land.colors);
+  normals.set(land.normals);
+  const base = aboveWaterTriangleCount * 9;
+  for (let k = 0; k < seabed.index.length; k++) {
+    const v = seabed.index[k];
+    for (let i = 0; i < 3; i++) {
+      positions[base + k * 3 + i] = seabed.positions[v * 3 + i];
+      colors[base + k * 3 + i] = seabed.colors[v * 3 + i];
+      normals[base + k * 3 + i] = seabed.normals[v * 3 + i];
+    }
+  }
+  return { positions, colors, normals, triangleCount, aboveWaterTriangleCount };
+}
+
+const buildSoup = (...args: Parameters<typeof buildLandMesh>) => soup(buildLandMesh(...args));
 
 function singleIsland(): MapCell[] {
   return hexGrid(4).map((h) =>
@@ -157,23 +184,41 @@ describe("landFaceColor", () => {
 describe("buildLandMesh", () => {
   it("places every vertex on the height field", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
-    const { positions } = buildLandMesh(field);
+    const { positions } = buildSoup(field);
     expect(positions.length).toBeGreaterThan(0);
     for (let i = 0; i < positions.length; i += 3) {
       expect(positions[i + 1]).toBeCloseTo(field.sampleHeight(positions[i], positions[i + 2]), 5);
     }
   });
 
-  it("emits one colour per vertex and whole triangles", () => {
+  it("emits the land as whole flat triangles and the seabed as indexed triangles", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
-    const { positions, colors, triangleCount } = buildLandMesh(field);
-    expect(positions.length).toBe(triangleCount * 9);
-    expect(colors.length).toBe(positions.length);
+    const { land, seabed, triangleCount, aboveWaterTriangleCount } = buildLandMesh(field);
+    expect(land.positions.length).toBe(aboveWaterTriangleCount * 9);
+    expect(land.colors.length).toBe(land.positions.length);
+    expect(land.normals.length).toBe(land.positions.length);
+    expect(seabed.index.length).toBe((triangleCount - aboveWaterTriangleCount) * 3);
+    expect(seabed.colors.length).toBe(seabed.positions.length);
+    expect(seabed.normals.length).toBe(seabed.positions.length);
+  });
+
+  it("shares seabed vertices: every index is valid, every vertex used, and far fewer vertices than corners (#38)", () => {
+    const field = createTerrainHeightField(singleIsland(), 5);
+    const { seabed } = buildLandMesh(field);
+    const vertexCount = seabed.positions.length / 3;
+    const used = new Uint8Array(vertexCount);
+    for (const v of seabed.index) {
+      expect(v).toBeLessThan(vertexCount);
+      used[v] = 1;
+    }
+    expect(used.every((u) => u === 1)).toBe(true);
+    // A triangular lattice shares each vertex between ~6 triangles.
+    expect(vertexCount).toBeLessThan(seabed.index.length / 4);
   });
 
   it("colours a lone beach island with wet and dry sand only", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
-    const { positions, colors, triangleCount } = buildLandMesh(field, { colors: CHANNEL_COLORS });
+    const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     let wet = 0;
     let dry = 0;
     for (let t = 0; t < triangleCount; t++) {
@@ -193,7 +238,7 @@ describe("buildLandMesh", () => {
 
   it("puts mostly wet sand on faces just above the waterline", () => {
     const field = createTerrainHeightField(mountainIsland(), 11);
-    const { positions, colors, triangleCount } = buildLandMesh(field, { colors: CHANNEL_COLORS });
+    const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     let checked = 0;
     for (let t = 0; t < triangleCount; t++) {
       const { height, normalY } = faceGeometry(positions, t);
@@ -209,7 +254,7 @@ describe("buildLandMesh", () => {
   it("puts rock on steep faces even at mid height", () => {
     const cells = generateMap(12, 7);
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
-    const { positions, colors, triangleCount } = buildLandMesh(field, { colors: CHANNEL_COLORS });
+    const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     let checked = 0;
     for (let t = 0; t < triangleCount; t++) {
       const { height, normalY } = faceGeometry(positions, t);
@@ -224,7 +269,7 @@ describe("buildLandMesh", () => {
 
   it("does not paint flat high ground as rock", () => {
     const field = createTerrainHeightField(mountainIsland(), 11);
-    const { positions, colors, triangleCount } = buildLandMesh(field, { colors: CHANNEL_COLORS });
+    const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     let checked = 0;
     for (let t = 0; t < triangleCount; t++) {
       const { height, normalY } = faceGeometry(positions, t);
@@ -241,7 +286,7 @@ describe("buildLandMesh", () => {
   it("breaks the beach/jungle boundary with noise instead of a height contour", () => {
     const cells = generateMap(12, 7);
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
-    const { positions, colors, triangleCount } = buildLandMesh(field, { colors: CHANNEL_COLORS });
+    const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     // Flat faces at (almost) the same height: a contour would give them the
     // same sand/jungle mix; noise spreads it.
     let lo = Infinity;
@@ -259,8 +304,8 @@ describe("buildLandMesh", () => {
 
   it("darkens faces in a hollow", () => {
     const field = createTerrainHeightField(hollowIsland(), 3, { reliefScale: 0 });
-    const lit = buildLandMesh(field, { colors: CHANNEL_COLORS, occlusion: 0 });
-    const shaded = buildLandMesh(field, { colors: CHANNEL_COLORS });
+    const lit = buildSoup(field, { colors: CHANNEL_COLORS, occlusion: 0 });
+    const shaded = buildSoup(field, { colors: CHANNEL_COLORS });
     expect(shaded.positions).toEqual(lit.positions);
     // The face nearest the middle of the ring of mountains.
     let best = -1;
@@ -280,7 +325,7 @@ describe("buildLandMesh", () => {
 
   it("winds every triangle to face up", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
-    const { positions } = buildLandMesh(field);
+    const { positions } = buildSoup(field);
     for (let i = 0; i < positions.length; i += 9) {
       const ux = positions[i + 3] - positions[i];
       const uz = positions[i + 5] - positions[i + 2];
@@ -293,7 +338,7 @@ describe("buildLandMesh", () => {
 
   it("only covers land and the seabed above the cut-off around it", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
-    const { positions } = buildLandMesh(field);
+    const { positions } = buildSoup(field);
     for (let i = 0; i < positions.length; i += 9) {
       const top = Math.max(positions[i + 1], positions[i + 4], positions[i + 7]);
       expect(top).toBeGreaterThan(-LAND_MESH_SKIRT_DEPTH);
@@ -307,7 +352,7 @@ describe("buildLandMesh", () => {
   it("covers the seabed down to the depth where the water hides it (#38)", () => {
     expect(LAND_MESH_SKIRT_DEPTH).toBeCloseTo(m(VISIBLE_SEABED_DEPTH), 9);
     const field = createTerrainHeightField(singleIsland(), 5);
-    const { positions } = buildLandMesh(field);
+    const { positions } = buildSoup(field);
     let deepest = 0;
     for (let i = 1; i < positions.length; i += 3) deepest = Math.min(deepest, positions[i]);
     expect(deepest).toBeLessThan(m(-VISIBLE_SEABED_DEPTH));
@@ -315,7 +360,7 @@ describe("buildLandMesh", () => {
 
   it("puts the triangles above the waterline first, then the seabed", () => {
     const field = createTerrainHeightField(mountainIsland(), 11);
-    const { positions, triangleCount, aboveWaterTriangleCount } = buildLandMesh(field);
+    const { positions, triangleCount, aboveWaterTriangleCount } = buildSoup(field);
     expect(aboveWaterTriangleCount).toBeGreaterThan(0);
     expect(aboveWaterTriangleCount).toBeLessThan(triangleCount);
     for (let t = 0; t < triangleCount; t++) {
@@ -328,7 +373,7 @@ describe("buildLandMesh", () => {
 
   describe("smooth, refined seabed (#38)", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
-    const mesh = buildLandMesh(field);
+    const mesh = buildSoup(field);
     const seabedTriangles = () => {
       const out: number[] = [];
       for (let t = mesh.aboveWaterTriangleCount; t < mesh.triangleCount; t++) out.push(t);
@@ -414,7 +459,7 @@ describe("buildLandMesh", () => {
     const field = createTerrainHeightField(cells, 5);
     // Reef everywhere within one unit of the reef hex centre (x = 4.5, z ≈ 2.6).
     const sampleReef = (x: number, z: number) => (Math.hypot(x - 4.5, z - Math.sqrt(3) * 1.5) < 0.6 ? 1 : 0);
-    const { positions, colors, triangleCount } = buildLandMesh(field, { colors: CHANNEL_COLORS, sampleReef });
+    const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS, sampleReef });
     let reefFaces = 0;
     let darkest = Infinity;
     for (let t = 0; t < triangleCount; t++) {
@@ -435,7 +480,7 @@ describe("buildLandMesh", () => {
       hasPort: false,
       elevation: 0,
     }));
-    const { triangleCount } = buildLandMesh(createTerrainHeightField(cells, 1));
+    const { triangleCount } = buildSoup(createTerrainHeightField(cells, 1));
     expect(triangleCount).toBe(0);
   });
 
@@ -446,8 +491,8 @@ describe("buildLandMesh", () => {
   it("skipping open water yields exactly the full-lattice mesh", () => {
     const cells = generateMap(12, 7);
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
-    const fast = buildLandMesh(field);
-    const full = buildLandMesh(field, { skipOpenWater: false });
+    const fast = buildSoup(field);
+    const full = buildSoup(field, { skipOpenWater: false });
     expect(fast.triangleCount).toBeGreaterThan(0);
     expect(fast.triangleCount).toBe(full.triangleCount);
     expect(fast.positions).toEqual(full.positions);

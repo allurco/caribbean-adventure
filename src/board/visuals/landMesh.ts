@@ -5,8 +5,9 @@
  * sampling the field. Pure (no Three.js) so it can be tested; the renderer
  * wraps the arrays in a BufferGeometry.
  *
- * Triangles are emitted unindexed with one colour per face, for the faceted
- * low-poly look under flat shading. Each face is coloured from its height
+ * Land triangles are emitted unindexed with one colour per face, for the
+ * faceted low-poly look under flat shading; the seabed is indexed and
+ * smooth-shaded (one vertex per point). Each land face is coloured from its height
  * (wet sand → beach → jungle → highland, with noise-shifted boundaries), its
  * slope (rock on steep faces) and a cheap occlusion term (darker where the
  * face sits below its neighbourhood); see `landFaceColor`.
@@ -127,18 +128,27 @@ export interface LandFaceSample {
   coral: number;
 }
 
-export interface LandMeshData {
-  /** xyz per vertex, 3 vertices per triangle. */
+/** Per-vertex attributes: xyz positions, linear rgb colours and unit normals. */
+export interface LandMeshArrays {
   positions: Float32Array;
-  /** rgb per vertex: one colour per face on land, blended per vertex on the seabed. */
   colors: Float32Array;
-  /** Unit normal per vertex: the face normal on land, the field's smooth normal on the seabed. */
   normals: Float32Array;
-  triangleCount: number;
+}
+
+export interface LandMeshData {
   /**
-   * The first this many triangles reach above sea level; the rest lie wholly
-   * under water (seabed only the water shader sees).
+   * Triangles reaching above sea level: unindexed, 3 vertices per triangle,
+   * with one colour and the face normal on all three (flat, low-poly).
    */
+  land: LandMeshArrays;
+  /**
+   * Triangles wholly under water (seabed only the water shader sees): indexed,
+   * one vertex per point with its own colour and the field's smooth normal.
+   */
+  seabed: LandMeshArrays & { index: Uint32Array };
+  /** Land plus seabed triangles. */
+  triangleCount: number;
+  /** Land triangles (`land.positions.length / 9`). */
   aboveWaterTriangleCount: number;
 }
 
@@ -466,10 +476,9 @@ export function buildLandMesh(
   }
 
   const aboveWaterTriangleCount = land.length / 3;
-  const outCount = aboveWaterTriangleCount + seabed.length / 3;
-  const positions = new Float32Array(outCount * 9);
-  const colors = new Float32Array(outCount * 9);
-  const normals = new Float32Array(outCount * 9);
+  const positions = new Float32Array(aboveWaterTriangleCount * 9);
+  const colors = new Float32Array(aboveWaterTriangleCount * 9);
+  const normals = new Float32Array(aboveWaterTriangleCount * 9);
   const writePoint = (o: number, p: number) => {
     positions[o] = pointX(p);
     positions[o + 1] = pointY(p);
@@ -538,11 +547,20 @@ export function buildLandMesh(
     grad[1] += (w * (up - down)) / (2 * rowHeight);
   };
 
-  // Per point: normal xyz and colour rgb, filled on first use.
-  const shading = new Float32Array((latticeSize + midCount) * 6);
-  const shaded = new Uint8Array(latticeSize + midCount);
+  // Seabed vertices: one per point, numbered in first-use order.
+  const vertexOf = new Int32Array(latticeSize + midCount).fill(-1);
+  const index = new Uint32Array(seabed.length);
+  let vertexCount = 0;
+  for (let i = 0; i < seabed.length; i++) {
+    const p = seabed.data[i];
+    if (vertexOf[p] < 0) vertexOf[p] = vertexCount++;
+    index[i] = vertexOf[p];
+  }
+  const seabedPositions = new Float32Array(vertexCount * 3);
+  const seabedColors = new Float32Array(vertexCount * 3);
+  const seabedNormals = new Float32Array(vertexCount * 3);
+
   const shade = (p: number) => {
-    shaded[p] = 1;
     grad[0] = 0;
     grad[1] = 0;
     if (p < latticeSize) addLatticeGradient(p, 1);
@@ -560,27 +578,23 @@ export function buildLandMesh(
     const reef = sampleReef ? sampleReef(x, z) : 0;
     sample.coral = reef > 0 ? reef * coralPatch(x, z) : 0;
     const [r, g, b] = landFaceColor(palette, sample, occlusion);
-    const o = p * 6;
-    shading[o] = -grad[0] / nl;
-    shading[o + 1] = 1 / nl;
-    shading[o + 2] = -grad[1] / nl;
-    shading[o + 3] = r;
-    shading[o + 4] = g;
-    shading[o + 5] = b;
+    const o = vertexOf[p] * 3;
+    seabedPositions[o] = x;
+    seabedPositions[o + 1] = pointY(p);
+    seabedPositions[o + 2] = z;
+    seabedNormals[o] = -grad[0] / nl;
+    seabedNormals[o + 1] = 1 / nl;
+    seabedNormals[o + 2] = -grad[1] / nl;
+    seabedColors[o] = r;
+    seabedColors[o + 1] = g;
+    seabedColors[o + 2] = b;
   };
-  for (let i = 0; i < seabed.length; i++) {
-    const p = seabed.data[i];
-    const o = aboveWaterTriangleCount * 9 + i * 3;
-    writePoint(o, p);
-    if (!shaded[p]) shade(p);
-    const s = p * 6;
-    normals[o] = shading[s];
-    normals[o + 1] = shading[s + 1];
-    normals[o + 2] = shading[s + 2];
-    colors[o] = shading[s + 3];
-    colors[o + 1] = shading[s + 4];
-    colors[o + 2] = shading[s + 5];
-  }
+  for (let p = 0; p < vertexOf.length; p++) if (vertexOf[p] >= 0) shade(p);
 
-  return { positions, colors, normals, triangleCount: outCount, aboveWaterTriangleCount };
+  return {
+    land: { positions, colors, normals },
+    seabed: { positions: seabedPositions, colors: seabedColors, normals: seabedNormals, index },
+    triangleCount: aboveWaterTriangleCount + seabed.length / 3,
+    aboveWaterTriangleCount,
+  };
 }

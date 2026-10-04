@@ -1,9 +1,9 @@
 import { useEffect, useMemo } from "react";
-import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial } from "three";
+import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial, Uint32BufferAttribute } from "three";
 import type { Mesh } from "three";
 import type { MapCell } from "../../game/types";
 import { sharedTerrainField } from "./sharedTerrainField";
-import { buildLandMesh, type LandMeshColors } from "./landMesh";
+import { buildLandMesh, type LandMeshArrays, type LandMeshColors } from "./landMesh";
 import { paletteColor, type PaletteName } from "./palette";
 import { createReefMask } from "./reefMask";
 import { SEABED_LAYER } from "./seabedPrepass";
@@ -38,13 +38,14 @@ const LAND_COLORS: LandMeshColors = {
   deepSeabed: linearRgb("deepSeabed"),
 };
 
-function geometryFrom(positions: Float32Array, colors: Float32Array, normals: Float32Array): BufferGeometry {
+function geometryFrom({ positions, colors, normals }: LandMeshArrays, index?: Uint32Array): BufferGeometry {
   const geo = new BufferGeometry();
   geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
   geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
   // Land: face normals (flatShading lights with screen-space normals anyway,
   // but shadow bias reads these). Seabed: the field's smooth normals.
   geo.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+  if (index) geo.setIndex(new Uint32BufferAttribute(index, 1));
   return geo;
 }
 
@@ -67,19 +68,7 @@ export function LandTerrain({ cells }: LandTerrainProps) {
   const { land, seabed } = useMemo(() => {
     const field = sharedTerrainField(cells);
     const mesh = buildLandMesh(field, { colors: LAND_COLORS, sampleReef: createReefMask(cells) });
-    const split = mesh.aboveWaterTriangleCount * 9;
-    return {
-      land: geometryFrom(
-        mesh.positions.subarray(0, split),
-        mesh.colors.subarray(0, split),
-        mesh.normals.subarray(0, split)
-      ),
-      seabed: geometryFrom(
-        mesh.positions.subarray(split),
-        mesh.colors.subarray(split),
-        mesh.normals.subarray(split)
-      ),
-    };
+    return { land: geometryFrom(mesh.land), seabed: geometryFrom(mesh.seabed, mesh.seabed.index) };
   }, [cells]);
 
   useEffect(
