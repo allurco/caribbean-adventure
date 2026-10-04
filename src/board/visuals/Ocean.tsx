@@ -376,6 +376,11 @@ const fragmentShader = `
     }
     vec3 deep = deepWaterReflectance() * downwelling;
     vec3 body = seabed * t + deep * (1.0 - t);
+    // Stylistic, not physics: lift deep water past the shelf. It is added on
+    // top rather than mixed by (1 − t): the lifted blue is brighter than the
+    // seabed's own, so mixing drew a dark ring wherever the seabed still shows.
+    vec3 lift = liftedDeepWaterReflectance(deepWaterLiftWeight(depth)) - deepWaterReflectance();
+    body += lift * downwelling;
     // Stylistic, not physics: a mild saturation boost in the shallows only.
     float luma = dot(body, vec3(0.2126, 0.7152, 0.0722));
     return max(mix(vec3(luma), body, 1.0 + shallowSaturationBoost(depth)), 0.0);

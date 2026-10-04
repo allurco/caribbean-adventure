@@ -9,6 +9,8 @@ import {
   schlickFresnel,
   shallowSaturationBoost,
   seabedVisibility,
+  deepWaterLiftWeight,
+  liftedDeepWaterReflectance,
   SEABED_FADE_START,
   SEABED_FADE_END,
   NO_SEABED_DEPTH,
@@ -120,6 +122,45 @@ describe("waterOptics (#38 step 3)", () => {
         expect(shallowSaturationBoost(d)).toBeLessThanOrEqual(prev);
         prev = shallowSaturationBoost(d);
       }
+    });
+  });
+
+  describe("deep-water lift (stylistic, not physics)", () => {
+    const lum = (c: Rgb) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+
+    it("leaves the shelf and the shallow boost alone and is full past the drop-off", () => {
+      for (let d = 0; d <= 15; d += 0.5) expect(deepWaterLiftWeight(d)).toBe(0);
+      expect(deepWaterLiftWeight(17.5)).toBeGreaterThan(0);
+      expect(deepWaterLiftWeight(17.5)).toBeLessThan(1);
+      // Full by the top of the drop-off, so the wall is no darker than open water.
+      expect(deepWaterLiftWeight(20)).toBe(1);
+      expect(deepWaterLiftWeight(NO_SEABED_DEPTH)).toBe(1);
+    });
+
+    it("ramps in steadily with depth", () => {
+      let prev = 0;
+      for (let d = 15; d <= 30; d += 0.25) {
+        expect(deepWaterLiftWeight(d)).toBeGreaterThanOrEqual(prev);
+        prev = deepWaterLiftWeight(d);
+      }
+    });
+
+    it("makes deep water a rich blue, not cyan: blue well above green, green above red", () => {
+      const [r, g, b] = liftedDeepWaterReflectance(1);
+      expect(b).toBeGreaterThan(2 * g);
+      expect(g).toBeGreaterThan(r);
+    });
+
+    it("is brighter than the physical R∞ but stays darker than the shelf over sand", () => {
+      expect(lum(liftedDeepWaterReflectance(1))).toBeGreaterThan(2 * lum(deepWaterReflectance()));
+      // Rendered (close view) it is far darker still: sRGB green 56 vs 131 on the shelf.
+      expect(lum(liftedDeepWaterReflectance(1))).toBeLessThan(0.75 * lum(overSand(5)));
+      expect(liftedDeepWaterReflectance(0)).toEqual(deepWaterReflectance());
+    });
+
+    it("is in the shader too", () => {
+      expect(WATER_OPTICS_GLSL).toContain("float deepWaterLiftWeight(float depthMetres)");
+      expect(WATER_OPTICS_GLSL).toContain("vec3 liftedDeepWaterReflectance(float weight)");
     });
   });
 

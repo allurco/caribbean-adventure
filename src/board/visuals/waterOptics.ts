@@ -55,6 +55,20 @@ export const WATER_SCATTERING: Rgb = [0.0014, 0.0019, 0.0045];
 const SHALLOW_SATURATION_BOOST = 0.35;
 const SHALLOW_BOOST_DEPTH = 15; // metres
 const SHALLOW_BOOST_RAMP = 2; // metres
+/**
+ * STYLISTIC, NOT PHYSICS (user decision, #38): extra reflectance added to the
+ * deep-water term past the drop-off. Physical R∞ makes open water near-black
+ * indigo (blue ≈ 0.08); this lifts it to a rich mid-blue (not cyan) that still
+ * stays well darker than the shelf. It is 0 through SHALLOW_BOOST_DEPTH, so
+ * it never touches the shallows or their saturation boost, and ramps to full
+ * by DEEP_LIFT_FULL_DEPTH, the top of the drop-off. The shader adds it on
+ * top of the physical water body (not mixed by 1 − transmittance), so open
+ * water gets R∞ + lift and the wall is never darker than open water.
+ * Tuned so the close view's open water matches step 1e's deep blue (sRGB
+ * about 16 / 59 / 96).
+ */
+const DEEP_WATER_LIFT: Rgb = [0.03, 0.11, 0.25];
+const DEEP_LIFT_FULL_DEPTH = 20; // metres
 /** Share of scattering that goes backwards in pure water (Morel 1974). */
 const BACKSCATTER_RATIO = 0.5;
 
@@ -107,6 +121,17 @@ export function shallowSaturationBoost(depthMetres: number): number {
     smoothstep(0, SHALLOW_BOOST_RAMP, depthMetres) *
     (1 - smoothstep(0, SHALLOW_BOOST_DEPTH, depthMetres))
   );
+}
+
+/** How much of the (stylistic) deep-water lift applies over a seabed `depthMetres` down, 0 … 1. */
+export function deepWaterLiftWeight(depthMetres: number): number {
+  return smoothstep(SHALLOW_BOOST_DEPTH, DEEP_LIFT_FULL_DEPTH, depthMetres);
+}
+
+/** Deep-water reflectance R∞ plus `weight` × the stylistic lift. */
+export function liftedDeepWaterReflectance(weight: number): [number, number, number] {
+  const physical = deepWaterReflectance();
+  return map((i) => physical[i] + weight * DEEP_WATER_LIFT[i]);
 }
 
 /**
@@ -164,6 +189,13 @@ export const WATER_OPTICS_GLSL = `
   }
   vec3 deepWaterReflectance() {
     return 0.33 * ${BACKSCATTER_RATIO.toFixed(2)} * WATER_SCATTERING / WATER_ABSORPTION;
+  }
+  // Stylistic, not physics: see deepWaterLiftWeight in waterOptics.ts.
+  float deepWaterLiftWeight(float depthMetres) {
+    return smoothstep(${SHALLOW_BOOST_DEPTH.toFixed(1)}, ${DEEP_LIFT_FULL_DEPTH.toFixed(1)}, depthMetres);
+  }
+  vec3 liftedDeepWaterReflectance(float weight) {
+    return deepWaterReflectance() + weight * ${vec3(DEEP_WATER_LIFT)};
   }
   float refractedCosine(float cosAir) {
     float sinAir2 = max(0.0, 1.0 - cosAir * cosAir);
