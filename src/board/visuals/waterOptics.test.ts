@@ -128,10 +128,12 @@ describe("waterOptics (#38 step 3)", () => {
   describe("deep-water lift (stylistic, not physics)", () => {
     const lum = (c: Rgb) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 
-    it("leaves the shelf and the shallow boost alone and is full past the drop-off", () => {
-      for (let d = 0; d <= 15; d += 0.5) expect(deepWaterLiftWeight(d)).toBe(0);
-      expect(deepWaterLiftWeight(17.5)).toBeGreaterThan(0);
-      expect(deepWaterLiftWeight(17.5)).toBeLessThan(1);
+    it("leaves the inner shelf alone, eases in from 5 m and is full past the drop-off", () => {
+      for (let d = 0; d <= 5; d += 0.5) expect(deepWaterLiftWeight(d)).toBe(0);
+      // Still faint on the outer shelf (accepted overlap with the shallow boost).
+      expect(deepWaterLiftWeight(8)).toBeLessThan(0.15);
+      expect(deepWaterLiftWeight(15)).toBeGreaterThan(0);
+      expect(deepWaterLiftWeight(15)).toBeLessThan(1);
       // Full by the top of the drop-off, so the wall is no darker than open water.
       expect(deepWaterLiftWeight(20)).toBe(1);
       expect(deepWaterLiftWeight(NO_SEABED_DEPTH)).toBe(1);
@@ -139,7 +141,7 @@ describe("waterOptics (#38 step 3)", () => {
 
     it("ramps in steadily with depth", () => {
       let prev = 0;
-      for (let d = 15; d <= 30; d += 0.25) {
+      for (let d = 5; d <= 30; d += 0.25) {
         expect(deepWaterLiftWeight(d)).toBeGreaterThanOrEqual(prev);
         prev = deepWaterLiftWeight(d);
       }
@@ -156,6 +158,38 @@ describe("waterOptics (#38 step 3)", () => {
       // Rendered (close view) it is far darker still: sRGB green 56 vs 131 on the shelf.
       expect(lum(liftedDeepWaterReflectance(1))).toBeLessThan(0.75 * lum(overSand(5)));
       expect(liftedDeepWaterReflectance(0)).toEqual(deepWaterReflectance());
+    });
+
+    it("darkens steadily from shelf to open water, with no ring darker than open water (#38)", () => {
+      // The shader's water body seen from straight above with the sun overhead,
+      // over the seabed albedos (sand, blending to the deep seabed 10–30 m down),
+      // under warm downwelling light; the lift is added on top.
+      const seabedSand: Rgb = [0.564, 0.456, 0.339];
+      const deepSeabed: Rgb = [0.3515, 0.3625, 0.197];
+      const downwelling: Rgb = [0.75, 0.56, 0.45];
+      const ss = (a: number, b: number, x: number) => {
+        const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+        return t * t * (3 - 2 * t);
+      };
+      const bodyLum = (d: number) => {
+        const k = ss(10, 30, d);
+        const albedo = seabedSand.map((s, i) => s + (deepSeabed[i] - s) * k) as unknown as Rgb;
+        const fade = 1 - ss(SEABED_FADE_START, SEABED_FADE_END, d);
+        const t = waterTransmittance(2 * d).map((v) => v * fade) as unknown as Rgb;
+        const base = waterBodyRadiance(albedo, deepWaterReflectance(), t);
+        const lifted = liftedDeepWaterReflectance(deepWaterLiftWeight(d));
+        const physical = deepWaterReflectance();
+        return lum(base.map((v, i) => (v + lifted[i] - physical[i]) * downwelling[i]) as unknown as Rgb);
+      };
+      const open = bodyLum(NO_SEABED_DEPTH);
+      let runMin = Infinity;
+      for (let d = 0; d <= NO_SEABED_DEPTH; d += 0.25) {
+        const v = bodyLum(d);
+        expect(v).toBeGreaterThanOrEqual(0.98 * open);
+        // Walking out to sea it may only brighten again by a hair (no light ring either).
+        expect(v - runMin).toBeLessThan(0.08 * open);
+        runMin = Math.min(runMin, v);
+      }
     });
 
     it("is in the shader too", () => {
