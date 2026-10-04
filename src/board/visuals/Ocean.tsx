@@ -323,26 +323,54 @@ const fragmentShader = `
     return (cameraWorld * vec4(view.xyz / view.w, 1.0)).y;
   }
 
-  // Seabed world Y under this pixel, bilinear between the four nearest prepass
-  // texels. The seabed's height is smooth where its raw depth is not: across a
-  // half-resolution texel the depth jumps by the slant of the view ray, which
-  // turned into stair-step bands in the water colour.
-  float seabedY(vec2 screenUv) {
+  // The seabed under this pixel: its world Y (returned) and lit colour,
+  // bilinear between the four nearest prepass texels. The seabed's height is
+  // smooth where its raw depth is not: across a half-resolution texel the depth
+  // jumps by the slant of the view ray, which turned into stair-step bands in
+  // the water colour. Texels that hit land above sea level are left out (the
+  // weights renormalised over the rest): next to an island's silhouette a
+  // half-resolution texel can catch the land, and mixing in its depth (≈ 0) and
+  // colour drew a 1–2 px land-coloured fringe on the water (#38).
+  float seabedSample(vec2 screenUv, out vec3 colour) {
     vec2 st = screenUv * seabedSize - 0.5;
     ivec2 maxTexel = ivec2(seabedSize) - 1;
     ivec2 i0 = clamp(ivec2(floor(st)), ivec2(0), maxTexel);
     ivec2 i1 = min(i0 + 1, maxTexel);
     vec2 f = clamp(st - floor(st), 0.0, 1.0);
-    float a = mix(seabedTexelY(i0), seabedTexelY(ivec2(i1.x, i0.y)), f.x);
-    float b = mix(seabedTexelY(ivec2(i0.x, i1.y)), seabedTexelY(i1), f.x);
-    return mix(a, b, f.y);
+    ivec2 texels[4] = ivec2[4](i0, ivec2(i1.x, i0.y), ivec2(i0.x, i1.y), i1);
+    float weights[4] = float[4](
+      (1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y
+    );
+    float y = 0.0;
+    float total = 0.0;
+    float yAll = 0.0;
+    vec3 colourAll = vec3(0.0);
+    colour = vec3(0.0);
+    for (int k = 0; k < 4; k++) {
+      float texelY = seabedTexelY(texels[k]);
+      vec3 texelColour = texelFetch(seabedColor, texels[k], 0).rgb;
+      yAll += weights[k] * texelY;
+      colourAll += weights[k] * texelColour;
+      if (texelY > 0.0) continue; // land above sea level
+      y += weights[k] * texelY;
+      colour += weights[k] * texelColour;
+      total += weights[k];
+    }
+    // Only land around (rare: a sliver at the waterline): use all four.
+    if (total < 1e-4) {
+      colour = colourAll;
+      return yAll;
+    }
+    colour /= total;
+    return y / total;
   }
 
   // Light from the water body: the prepass seabed seen through the water, plus
   // the deep-water glow, for the surface point at this pixel.
   vec3 waterBody() {
     vec2 screenUv = gl_FragCoord.xy / screenSize;
-    vec3 seabed = texture2D(seabedColor, screenUv).rgb;
+    vec3 seabed;
+    float seabedWorldY = seabedSample(screenUv, seabed);
     // Caustic cell size on screen, from the derivative of the noise coordinate
     // (taken here, in uniform control flow).
     vec2 causticUv = vWorld.xz * CAUSTIC_FREQUENCY;
@@ -351,7 +379,7 @@ const fragmentShader = `
 
     // The seabed's depth below the surface, and the path down to it along this
     // pixel's view ray, in metres.
-    float depth = max(-seabedY(screenUv), 0.0) * METRES_PER_UNIT;
+    float depth = max(-seabedWorldY, 0.0) * METRES_PER_UNIT;
     vec3 worldDir = normalize(vWorld - cameraPosition);
     float viewPath = depth / max(-worldDir.y, 0.05);
 
