@@ -61,12 +61,9 @@ const fragmentShader = `
   #include <cube_uv_reflection_fragment>
   // Mirror-like lookup; the wave normals carry the surface detail.
   const float SKY_REFLECTION_ROUGHNESS = 0.05;
-  // Phong exponent of the sun glint (energy-normalised in specular()). A
-  // tight lobe gives sparse, bright, white glitter. The old exponent of 90
-  // spread a dim lobe over the broad procedural wave slopes, and dim warm
-  // sunlight over dark deep water read as brown and mauve blotches (#38).
-  // FFT normals and a GGX glint replace this in step 4.
-  const float SUN_GLINT_EXPONENT = 1500.0;
+  // No sun glint until step 4 (#38), whose FFT normals and GGX glint replace
+  // it. The procedural Phong glint read as brown blotches at exponent 90 and
+  // as scattered white debris at 1500.
 
   // Water colour (#38 step 3): the lit seabed from the prepass, attenuated
   // along its path through the water, plus the glow of deep water; then
@@ -315,11 +312,6 @@ const fragmentShader = `
     return pow(dot(n, l) * 0.4 + 0.6, p);
   }
 
-  float specular(vec3 n, vec3 l, vec3 e, float s) {
-    float nrm = (s + 8.0) / (3.1415 * 8.0);
-    return pow(max(dot(reflect(e, n), l), 0.0), s) * nrm;
-  }
-
   // Sky radiance along e. Rays reflected below the horizon would see the sea
   // itself, so they are held at the horizon.
   vec3 getSkyColor(vec3 e) {
@@ -411,10 +403,9 @@ const fragmentShader = `
     vec4 fieldTexel = texture2D(terrainField, fieldUv);
 
     // Fresnel splits what we see between light from the water body and the
-    // reflected sky; the sun glint uses the same Fresnel.
+    // reflected sky.
     float fresnel = schlickFresnel(dot(n, -dir));
     vec3 seaColor = waterBody() * (1.0 - fresnel) + getSkyColor(reflect(dir, n)) * fresnel;
-    seaColor += sunIrradiance * fresnel * specular(n, light, dir, SUN_GLINT_EXPONENT) * max(dot(n, light), 0.0);
 
     // Surf on top, lightly shaded by the wave normal so it sits on the water.
     float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField));
