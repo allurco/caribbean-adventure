@@ -454,6 +454,31 @@ describe("buildLandMesh", () => {
     });
   });
 
+  describe("on a generated map with reefs and drop-offs (#38)", () => {
+    const cells = generateMap(12, 7);
+    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const { positions, triangleCount } = buildSoup(field);
+
+    it("has no cracks: no triangle corner lies at the ¼, ½ or ¾ point of another triangle's edge", () => {
+      // Positions quantised to 1e-4 units (lattice points are ≥ 0.0375 apart).
+      const key = (x: number, z: number) => (Math.round(x * 1e4) + 1e6) * 4e6 + (Math.round(z * 1e4) + 1e6);
+      const corners = new Set<number>();
+      for (let v = 0; v < triangleCount * 3; v++) corners.add(key(positions[v * 3], positions[v * 3 + 2]));
+      let cracks = 0;
+      for (let t = 0; t < triangleCount; t++) {
+        const o = t * 9;
+        for (const [a, b] of [[0, 3], [3, 6], [6, 0]]) {
+          for (const f of [0.25, 0.5, 0.75]) {
+            const x = positions[o + a] + (positions[o + b] - positions[o + a]) * f;
+            const z = positions[o + a + 2] + (positions[o + b + 2] - positions[o + a + 2]) * f;
+            if (corners.has(key(x, z))) cracks++;
+          }
+        }
+      }
+      expect(cracks).toBe(0);
+    }, 30000);
+  });
+
   it("covers reef seabed with coral", () => {
     const cells = singleIsland().map((c): MapCell => (c.hex.q === 3 && c.hex.r === 0 ? { ...c, terrain: "reef" } : c));
     const field = createTerrainHeightField(cells, 5);
