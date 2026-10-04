@@ -371,7 +371,7 @@ describe("buildLandMesh", () => {
     }
   });
 
-  describe("smooth, refined seabed (#38)", () => {
+  describe("smooth seabed (#38)", () => {
     const field = createTerrainHeightField(singleIsland(), 5);
     const mesh = buildSoup(field);
     const seabedTriangles = () => {
@@ -414,21 +414,6 @@ describe("buildLandMesh", () => {
       }
     });
 
-    it("refines steep seabed: every seabed triangle rising more than ~10 m is a half-size one", () => {
-      const { positions } = mesh;
-      let steep = 0;
-      for (const t of seabedTriangles()) {
-        const o = t * 9;
-        const ys = [positions[o + 1], positions[o + 4], positions[o + 7]];
-        if ((Math.max(...ys) - Math.min(...ys)) * 65 <= 10) continue;
-        steep++;
-        for (const [a, b] of [[0, 3], [3, 6], [6, 0]]) {
-          const edge = Math.hypot(positions[o + a] - positions[o + b], positions[o + a + 2] - positions[o + b + 2]);
-          expect(edge).toBeLessThan(LAND_MESH_SPACING * 0.55);
-        }
-      }
-      expect(steep).toBeGreaterThan(0);
-    });
 
     it("has no cracks: no triangle corner sits at the middle of another triangle's edge", () => {
       const { positions, triangleCount } = mesh;

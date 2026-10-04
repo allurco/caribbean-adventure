@@ -199,8 +199,10 @@ depth) and the shader's 70–95 m fade, is under 1% in every channel.
 Faces above sea level draw in the main pass as before, flat-shaded. Faces
 wholly under water are seabed (coral sand, algal deep seabed and coral
 patches, with albedos in `palette.ts`), drawn only on `SEABED_LAYER`,
-smooth-shaded with per-vertex colours, and split in four where they span
-more than 5 m of height (crack-free: the split is decided per edge).
+indexed and smooth-shaded with per-vertex colours, on the same lattice as
+the land. (A per-edge split of steep seabed triangles was removed: with
+smooth shading and the wide drop-off it was visually redundant, and it cost
+about 380k triangles and ~95 ms on the large map.)
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
