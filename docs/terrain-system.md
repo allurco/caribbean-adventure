@@ -206,7 +206,9 @@ about 380k triangles and ~95 ms on the large map.)
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
-capped at 1152 per side; texel centres sampled, rows from `minZ` up, so
+capped at 1280 per side; the bounds pad the outermost cell centres by the
+coast-distance clamp plus a hex radius, so an outer-ring island keeps its
+whole shelf and drop-off; texel centres sampled, rows from `minZ` up, so
 `uv = (xz - min) / (max - min)` with no flip):
 
 | Channel | Contents |

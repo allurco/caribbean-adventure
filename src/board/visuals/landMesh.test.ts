@@ -273,7 +273,8 @@ describe("buildLandMesh", () => {
     let checked = 0;
     for (let t = 0; t < triangleCount; t++) {
       const { height, normalY } = faceGeometry(positions, t);
-      if (height < 1.4 || normalY < 0.95) continue;
+      // Wide enough a band not to hinge on where the lattice lands on the narrow summit.
+      if (height < 1.3 || normalY < 0.9) continue;
       const [r, g, b] = faceRgb(colors, t);
       expect(b).toBe(0);
       // Highland (r = 2g), not jungle (r = 0).

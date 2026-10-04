@@ -52,6 +52,15 @@ const MAX_COAST_DISTANCE = 4;
  */
 const COAST_INDEX_RADIUS = Math.floor((MAX_COAST_DISTANCE + 2) / 1.5);
 /**
+ * Padding of the field's bounds around the outermost cell centres. An island
+ * can sit on the outer ring: its coast is up to a hex circumradius (1) from its
+ * centre, and the seabed only levels out MAX_COAST_DISTANCE beyond the coast,
+ * so anything less cuts off its shelf and drop-off along a straight line
+ * (the prepass then finds no seabed there). Past this the field is flat, and
+ * nothing samples outside it, so the bounds never assume hard map edges (#36).
+ */
+const BOUNDS_PADDING = MAX_COAST_DISTANCE + 1;
+/**
  * Reef rise (#38): reef hexes rise to a crest REEF_CREST_DEPTH ± REEF_CREST_VARIATION
  * metres below the surface. The rise starts REEF_FOOT outside the reef outline
  * and reaches the crest REEF_TOP inside it (world units), so the steepest
@@ -303,7 +312,12 @@ export function createTerrainHeightField(
   if (!Number.isFinite(minX)) {
     minX = maxX = minZ = maxZ = 0;
   }
-  const bounds: TerrainBounds = { minX: minX - 2, maxX: maxX + 2, minZ: minZ - 2, maxZ: maxZ + 2 };
+  const bounds: TerrainBounds = {
+    minX: minX - BOUNDS_PADDING,
+    maxX: maxX + BOUNDS_PADDING,
+    minZ: minZ - BOUNDS_PADDING,
+    maxZ: maxZ + BOUNDS_PADDING,
+  };
 
   // Coastline segments (shared edge of a land hex and a non-land neighbour),
   // indexed by every hex within COAST_INDEX_RADIUS of the land side, which

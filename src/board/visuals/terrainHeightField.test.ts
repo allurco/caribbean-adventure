@@ -10,6 +10,7 @@ import {
   COAST_NOISE_AMPLITUDE,
 } from "./terrainHeightField";
 import { LAND_MESH_SPACING } from "./landMesh";
+import { VISIBLE_SEABED_DEPTH } from "./waterOptics";
 
 const key = (q: number, r: number) => `${q},${r}`;
 
@@ -472,6 +473,30 @@ describe("terrainHeightField", () => {
         expect(z).toBeGreaterThan(bounds.minZ);
         expect(z).toBeLessThan(bounds.maxZ);
       }
+    });
+
+    /** Height (metres) at every point along the bounds rectangle, `step` apart. */
+    const edgeHeights = (field: ReturnType<typeof createTerrainHeightField>, step = 0.05) => {
+      const { minX, maxX, minZ, maxZ } = field.bounds;
+      const out: number[] = [];
+      for (let x = minX; x <= maxX; x += step) out.push(field.sampleHeight(x, minZ), field.sampleHeight(x, maxZ));
+      for (let z = minZ; z <= maxZ; z += step) out.push(field.sampleHeight(minX, z), field.sampleHeight(maxX, z));
+      return out.map((h) => h * 65);
+    };
+
+    it("reaches past the visible seabed around an island on the outer ring (#38)", () => {
+      // Islands on the map's edge: one at a corner of the ring, one mid-side.
+      const land: Record<string, Elevation> = { [key(4, 0)]: 1, [key(2, -4)]: 2 };
+      const field = createTerrainHeightField(buildMap(4, land), SEED);
+      // Everywhere on the edge of the field the seabed is already deeper than
+      // the mesh cut-off, so the shelf and drop-off are never cut off.
+      for (const h of edgeHeights(field)) expect(h).toBeLessThan(-VISIBLE_SEABED_DEPTH);
+    });
+
+    it("reaches past the visible seabed all round the large map", () => {
+      const cells = generateMap(getMapPreset("large").radius, 31337);
+      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      for (const h of edgeHeights(field, 0.2)) expect(h).toBeLessThan(-VISIBLE_SEABED_DEPTH);
     });
   });
 

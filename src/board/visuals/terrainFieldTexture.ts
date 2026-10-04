@@ -41,10 +41,12 @@ import type { TerrainBounds, TerrainHeightField } from "./terrainHeightField";
  */
 export const TERRAIN_TEXELS_PER_UNIT = 12;
 /**
- * Max texels per side; the large map needs ~1100 at the default density. At
- * 8 bytes per RGBA half-float texel that is under 10 MB.
+ * Max texels per side. The large map needs 1160 at the default density once
+ * the bounds reach past an outer-ring island's drop-off (#38); at 8 bytes per
+ * RGBA half-float texel that is ~11 MB. 1280 leaves headroom and stays well
+ * under the 2048 per side WebGL2 guarantees.
  */
-export const TERRAIN_TEXTURE_MAX_SIZE = 1152;
+export const TERRAIN_TEXTURE_MAX_SIZE = 1280;
 
 export interface BakedTerrainField {
   /** RGBA half floats (raw bits), row-major, `width · height · 4` long. */
