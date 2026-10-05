@@ -6,6 +6,10 @@
  * passes of the Stockham inverse FFT (ping-ponging between two float
  * targets), and one output pass into a half-float target whose mipmaps three
  * regenerates after the draw. For 256² that is 18 small draws.
+ *
+ * On a GPU that cannot render to float or half float (waveCascadeSupport.ts)
+ * the cascade is skipped: the hook returns a flat, zero-slope texture and
+ * warns once, so the sea is calm rather than silently broken.
  */
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
@@ -23,6 +27,7 @@ import {
   RGBAFormat,
   RepeatWrapping,
   Scene,
+  UnsignedByteType,
   ShaderMaterial,
   WebGLRenderTarget,
 } from "three";
@@ -36,6 +41,7 @@ import {
   SLOPE_OUTPUT_FRAGMENT,
   spectrumFragment,
 } from "./waveCascadeShaders";
+import { cascadeTargetTypes, type CascadeTargetTypes } from "./waveCascadeSupport";
 
 /** Before the seabed prepass (0.5) and the composer (1), after the controls. */
 const CASCADE_PRIORITY = 0.25;
@@ -62,13 +68,45 @@ function pass(fragmentShader: string, uniforms: ShaderMaterial["uniforms"]): Sha
   return new ShaderMaterial({ vertexShader: FULLSCREEN_VERTEX, fragmentShader, uniforms, depthTest: false, depthWrite: false });
 }
 
+interface CascadeGpu {
+  texture: Texture;
+  update: (seconds: number) => void;
+  dispose: () => void;
+}
+
+let warnedUnsupported = false;
+
+/** A 1×1 texture of zero slope and zero slope variance: a flat sea. */
+function flatSlopes(): CascadeGpu {
+  const texture = new DataTexture(new Uint8Array(4), 1, 1, RGBAFormat, UnsignedByteType);
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
+  texture.needsUpdate = true;
+  return { texture, update: () => {}, dispose: () => texture.dispose() };
+}
+
 /** GPU resources for one cascade; `dispose` frees them all. */
-function createCascadeGpu(cascade: WaveCascade, gl: WebGLRenderer) {
+function createCascadeGpu(cascade: WaveCascade, gl: WebGLRenderer): CascadeGpu {
+  const types = cascadeTargetTypes({
+    colorBufferFloat: gl.extensions.has("EXT_color_buffer_float"),
+    colorBufferHalfFloat: gl.extensions.has("EXT_color_buffer_half_float"),
+  });
+  if (!types) {
+    if (!warnedUnsupported) {
+      console.warn("Wave cascade skipped: this GPU cannot render to float or half-float targets; the sea is drawn flat.");
+      warnedUnsupported = true;
+    }
+    return flatSlopes();
+  }
+  return createRenderingCascade(cascade, gl, types);
+}
+
+function createRenderingCascade(cascade: WaveCascade, gl: WebGLRenderer, types: CascadeTargetTypes): CascadeGpu {
   const { size } = cascade;
   const stages = fftStageCount(size);
   // Full float keeps the 16 butterfly stages accurate; half float where the
-  // GPU can't render to float.
-  const workType = gl.extensions.has("EXT_color_buffer_float") ? FloatType : HalfFloatType;
+  // GPU can only render to half float.
+  const workType = types.work === "float" ? FloatType : HalfFloatType;
 
   const spectrum = floatTexture(initialSpectrum(cascade), size, size);
   const butterfly = floatTexture(butterflyTable(size), size, stages);
@@ -139,7 +177,7 @@ function createCascadeGpu(cascade: WaveCascade, gl: WebGLRenderer) {
     }
   };
 
-  return { texture: output.texture as Texture, update, dispose };
+  return { texture: output.texture, update, dispose };
 }
 
 /** The cascade's slope texture, updated once per frame; frozen under reduced motion. */

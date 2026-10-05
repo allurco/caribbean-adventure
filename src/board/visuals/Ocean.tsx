@@ -389,15 +389,15 @@ const fragmentShader = `
     // Fresnel splits what we see between light from the water body and the
     // reflected sky.
     float fresnel = schlickFresnel(dot(nShade, -dir));
-    float seabedDepth;
-    vec3 seaColor = waterBody(shiftPixels / screenSize, facetSunlight(nShade, light), seabedDepth) * (1.0 - fresnel)
+    float seabedDepthMetres;
+    vec3 seaColor = waterBody(shiftPixels / screenSize, facetSunlight(nShade, light), seabedDepthMetres) * (1.0 - fresnel)
       + getSkyColor(reflect(dir, nShade), skyRoughness) * fresnel;
     // The sun's own reflection (the sky map has no solar disc): GGX, HDR and
     // unclamped so its brightest sparkles bloom.
     seaColor += sunGlintRadiance(n, -dir, light, alpha2, sunIrradiance);
 
     // Surf on top, lightly shaded by the wave normal so it sits on the water.
-    float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField), seabedDepth);
+    float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField), seabedDepthMetres);
     vec3 foamColor = PALETTE_SURF * (0.8 + 0.2 * diffuse(nShade, light, 1.0));
     seaColor = mix(seaColor, foamColor, foam);
 
