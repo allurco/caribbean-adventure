@@ -21,3 +21,9 @@ export function advanceWaveTime(current: number, deltaSeconds: number, reducedMo
   const next = (current + Math.min(deltaSeconds, WAVE_MAX_FRAME_STEP)) % WAVE_LOOP_SECONDS;
   return next < 0 ? next + WAVE_LOOP_SECONDS : next;
 }
+
+/** Seconds the wave clock advanced from reading `from` to reading `to` (one step at most, across the wrap). */
+export function waveTimeStep(from: number, to: number): number {
+  const step = to - from;
+  return step >= 0 ? step : step + WAVE_LOOP_SECONDS;
+}

@@ -25,7 +25,7 @@ import { useDecorationLayout } from "./visuals/useDecorationLayout";
 import { SunLight } from "./visuals/SunLight";
 import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import { useWaveCascades } from "./visuals/useWaveCascades";
-import { WAVE_CASCADES } from "./visuals/oceanWaves";
+import { WAVE_CASCADES, WHITECAP_CASCADES } from "./visuals/oceanWaves";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import {
   HAZE_COLOR,
@@ -158,7 +158,8 @@ function Scene({
   // reduced motion). The water shades its surface with them and the seabed
   // focuses its sunlight through them (#38 step 6), so they live here.
   const reducedMotion = usePrefersReducedMotion();
-  const waveSlopes = useWaveCascades(WAVE_CASCADES, reducedMotion);
+  const waves = useWaveCascades(WAVE_CASCADES, WHITECAP_CASCADES, reducedMotion);
+  const waveSlopes = waves.slopes;
 
   const cameraBounds = useMemo(
     () => cameraBoundsFromHexes(G.cells.map((c) => c.hex), CAMERA_BOUNDS_PADDING),
@@ -329,6 +330,7 @@ function Scene({
           skyHeight={skyEnvironment.textureHeight}
           skyIntensity={skyEnvironment.intensity}
           waveSlopes={waveSlopes}
+          waveWhitecaps={waves.whitecaps}
         />
       )}
 

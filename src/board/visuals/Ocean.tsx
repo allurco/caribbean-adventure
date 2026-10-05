@@ -36,7 +36,11 @@ import { WATER_OPTICS_GLSL } from "./waterOptics";
 import { METRES_PER_UNIT } from "./worldScale";
 import { GLINT_BASE_ROUGHNESS2 } from "./oceanWaves";
 import { SUN_GLINT_GLSL } from "./sunGlint";
-import { bindWaveSlopeTextures, WAVE_SLOPE_GLSL } from "./waveSlopeGlsl";
+import { bindWaveSlopeTextures, bindWhitecapTextures, WAVE_SLOPE_GLSL } from "./waveSlopeGlsl";
+import { CASCADE_PRIORITY } from "./useWaveCascades";
+
+/** After the cascades have drawn this frame's whitecaps, before the seabed prepass (0.5). */
+const WHITECAP_BIND_PRIORITY = CASCADE_PRIORITY + 0.05;
 
 const vertexShader = `
   varying vec3 vWorld;
@@ -447,6 +451,12 @@ interface OceanProps {
   skyIntensity: number;
   /** The wave cascades' slope textures (useWaveCascades), one per cascade, shared with the seabed caustics. */
   waveSlopes: readonly Texture[];
+  /**
+   * The whitecap foam accumulated per whitecapping cascade (useWaveCascades),
+   * in WHITECAP_CASCADES order. The entries are swapped in place every frame,
+   * so they are rebound each frame, not captured at material creation.
+   */
+  waveWhitecaps: readonly Texture[];
 }
 
 /**
@@ -480,6 +490,7 @@ export function Ocean({
   skyHeight,
   skyIntensity,
   waveSlopes,
+  waveWhitecaps,
 }: OceanProps) {
   const geometry = useMemo(() => {
     const geo = new PlaneGeometry(size, size);
@@ -528,9 +539,16 @@ export function Ocean({
     mat.uniforms.cameraWorld = { value: new Matrix4() };
     mat.uniforms.cameraViewProjection = { value: new Matrix4() };
     bindWaveSlopeTextures(mat.uniforms, waveSlopes);
+    bindWhitecapTextures(mat.uniforms, waveWhitecaps);
     return mat;
-  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field, seabed, waveSlopes, wrap]);
+  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field, seabed, waveSlopes, waveWhitecaps, wrap]);
   useEffect(() => () => material.dispose(), [material]);
+
+  // The whitecap accumulators ping-pong, so the current one is rebound after
+  // the cascades have drawn this frame and before the frame renders.
+  useFrame(() => {
+    bindWhitecapTextures(material.uniforms, waveWhitecaps);
+  }, WHITECAP_BIND_PRIORITY);
 
   const meshRef = useRef<Mesh>(null);
   const controls = useThree((state) => state.controls);

@@ -5,11 +5,15 @@
  * waveCascade.ts and fftButterfly.ts.
  *
  * Working textures hold two complex numbers per texel (RG and BA). RG is the
- * packed slope spectrum (∂h/∂x + i ∂h/∂z); BA is spare, kept for the
- * displacement derivatives the Jacobian needs (step 7), at no extra pass.
+ * packed slope spectrum (∂h/∂x + i ∂h/∂z); BA is the packed stretch spectrum
+ * (∂Du/∂u + i ∂Dv/∂v along and across the wind, #38 step 7), which the
+ * output pass turns into the surface Jacobian for the whitecaps, at no extra
+ * FFT pass (waveCascade.ts, whitecapFoam.ts).
  */
-import type { WaveCascade } from "./waveCascade";
+import { WAVE_CHOPPINESS } from "./oceanWaves";
+import { windInTile, type WaveCascade } from "./waveCascade";
 import { GRAVITY } from "./waveDispersion";
+import { WHITECAP_FOAM_GLSL } from "./whitecapFoam";
 
 const f = (x: number) => x.toFixed(8);
 
@@ -35,11 +39,19 @@ export function spectrumFragment(cascades: readonly WaveCascade[], loopSeconds: 
   const size = cascades[0].size;
   if (cascades.some((c) => c.size !== size)) throw new RangeError("Batched cascades must share one grid size.");
   const tiles = cascades.map((c) => f(c.tileMetres)).join(", ");
+  const winds = cascades
+    .map((c) => {
+      const [x, z] = windInTile(c);
+      return `vec2(${f(x)}, ${f(z)})`;
+    })
+    .join(", ");
   return `
   uniform sampler2D initialSpectrum; // (h0(k), conj(h0(−k))), the cascades side by side
   uniform float cycles;              // wave time / loop, in [0, 1)
   const int SIZE = ${size};
   const float TILE_METRES[${cascades.length}] = float[${cascades.length}](${tiles});
+  const vec2 WIND_IN_TILE[${cascades.length}] = vec2[${cascades.length}](${winds});
+  const float CHOPPINESS = ${f(WAVE_CHOPPINESS)};
   const float LOOP_SECONDS = ${f(loopSeconds)};
   const float GRAVITY = ${f(GRAVITY)};
   const float TAU = 6.283185307;
@@ -57,7 +69,13 @@ export function spectrumFragment(cascades: readonly WaveCascade[], loopSeconds: 
     vec2 e = vec2(cos(phase), sin(phase));
     vec4 h0 = texelFetch(initialSpectrum, p, 0);
     vec2 h = cmul(h0.xy, vec2(e.x, -e.y)) + cmul(h0.zw, e);
-    gl_FragColor = vec4(cmul(h, vec2(-k.y, k.x)), 0.0, 0.0);
+    // The choppy stretch along and across the wind (waveCascade.ts): real
+    // coefficients, so the pair packs like the slopes. The mean (k = 0) is 0.
+    vec2 u = WIND_IN_TILE[cascade];
+    float along = dot(k, u);
+    float across = dot(k, vec2(-u.y, u.x));
+    vec2 stretch = -CHOPPINESS * vec2(along * along, across * across) / max(length(k), 1e-6);
+    gl_FragColor = vec4(cmul(h, vec2(-k.y, k.x)), cmul(h, stretch));
   }
 `;
 }
@@ -88,16 +106,43 @@ export const FFT_STAGE_FRAGMENT = `
 `;
 
 /**
- * The output texture the water samples, mipmapped: (∂h/∂x, ∂h/∂z, |∇h|², spare).
- * Storing |∇h|² lets the mipmaps keep the slope variance (waveNormalFilter.ts).
- * One cascade per draw: `column` is its first column in the atlas.
+ * The output texture the water samples, mipmapped: (∂h/∂x, ∂h/∂z, |∇h|², J).
+ * Storing |∇h|² lets the mipmaps keep the slope variance (waveNormalFilter.ts);
+ * J is the surface Jacobian of the choppy stretch (whitecapFoam.ts), read by
+ * the accumulation pass below. One cascade per draw: `column` is its first
+ * column in the atlas.
  */
 export const SLOPE_OUTPUT_FRAGMENT = `
   uniform sampler2D source;
   uniform int column;
+  ${WHITECAP_FOAM_GLSL}
 
   void main() {
-    vec2 slope = texelFetch(source, ivec2(gl_FragCoord.xy) + ivec2(column, 0), 0).xy;
-    gl_FragColor = vec4(slope, dot(slope, slope), 0.0);
+    vec4 texel = texelFetch(source, ivec2(gl_FragCoord.xy) + ivec2(column, 0), 0);
+    gl_FragColor = vec4(texel.xy, dot(texel.xy, texel.xy), surfaceJacobian(texel.zw));
+  }
+`;
+
+/**
+ * Whitecap accumulation (#38 step 7): one draw per whitecapping cascade into
+ * a tile-space ping-pong target of the cascade's own size, so it tiles with
+ * the cascade and the water samples it with the same tile transform as the
+ * slopes. Each texel keeps the previous frame's foam, decayed, plus this
+ * frame's fold of the cascade's Jacobian (the output texture's A). `decay`
+ * and `injection` are `whitecapDecay` / `whitecapInjection` of the frame's
+ * wave-time step, computed on the CPU, so a frozen clock adds nothing.
+ */
+export const WHITECAP_ACCUMULATE_FRAGMENT = `
+  uniform sampler2D jacobian;
+  uniform sampler2D previous;
+  uniform float decay;
+  uniform float injection;
+  ${WHITECAP_FOAM_GLSL}
+
+  void main() {
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    float j = texelFetch(jacobian, p, 0).a;
+    float foam = texelFetch(previous, p, 0).r;
+    gl_FragColor = vec4(accumulateWhitecap(foam, j, decay, injection), 0.0, 0.0, 1.0);
   }
 `;

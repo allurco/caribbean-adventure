@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { WAVE_LOOP_SECONDS, advanceWaveTime } from "./waveClock";
+import { WAVE_LOOP_SECONDS, advanceWaveTime, waveTimeStep } from "./waveClock";
+
+describe("waveTimeStep", () => {
+  it("is the seconds the clock advanced between two readings", () => {
+    expect(waveTimeStep(1, 1.016)).toBeCloseTo(0.016, 9);
+    expect(waveTimeStep(3, 3)).toBe(0);
+  });
+
+  it("counts across the wrap", () => {
+    expect(waveTimeStep(WAVE_LOOP_SECONDS - 0.01, 0.02)).toBeCloseTo(0.03, 9);
+  });
+});
 
 describe("advanceWaveTime", () => {
   it("advances by the frame time", () => {
