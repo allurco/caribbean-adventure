@@ -1,23 +1,54 @@
-import { hexToWorld } from "./hex";
-
 export type MapSizeId = "small" | "medium" | "large";
 
-export interface MapPreset {
-  id: MapSizeId;
-  label: string;
-  radius: number;
+/**
+ * Size of a rectangular map: flat-top hexes in `columns` vertical columns
+ * (canonical q in [0, columns)), each `rows` hexes tall in odd-q offset rows
+ * (see `hexRect` in hex.ts). `columns` is even so the map can wrap east–west.
+ */
+export interface MapDimensions {
+  columns: number;
+  rows: number;
 }
 
+export interface MapPreset extends MapDimensions {
+  id: MapSizeId;
+  label: string;
+}
+
+/** About the hex counts of the old hexagonal maps of radius 12, 18 and 25. */
 export const MAP_PRESETS: readonly MapPreset[] = [
-  { id: "small", label: "Small", radius: 12 },
-  { id: "medium", label: "Medium", radius: 18 },
-  { id: "large", label: "Large", radius: 25 },
+  { id: "small", label: "Small", columns: 24, rows: 18 },
+  { id: "medium", label: "Medium", columns: 36, rows: 28 },
+  { id: "large", label: "Large", columns: 50, rows: 38 },
 ] as const;
 
 export const DEFAULT_MAP_SIZE: MapSizeId = "small";
 
 export function getMapPreset(size: MapSizeId): MapPreset {
   return MAP_PRESETS.find((p) => p.id === size)!;
+}
+
+const SQRT3 = Math.sqrt(3);
+
+/** World XZ extent of the cell centres of a `columns × rows` map. */
+export interface MapWorldBounds {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+/**
+ * World XZ extent of the map's cell centres. Columns are 1.5 units apart in x;
+ * rows are √3 apart in z, and odd columns sit half a row lower.
+ */
+export function mapWorldBounds({ columns, rows }: MapDimensions): MapWorldBounds {
+  return {
+    minX: 0,
+    maxX: 1.5 * (columns - 1),
+    minZ: 0,
+    maxZ: SQRT3 * (rows - 1 + (columns > 1 ? 0.5 : 0)),
+  };
 }
 
 export interface CameraConfig {
@@ -28,26 +59,33 @@ export interface CameraConfig {
   // Orthographic camera settings
   frustumSize: number;
   isoDistance: number;
+  /** World point the camera looks at to start with: the centre of the map. */
+  target: [number, number, number];
 }
 
 /**
- * Derive camera parameters from grid radius.
- * Uses the world-space diameter of the hex grid to scale the view.
+ * Derive camera parameters from the map size, scaled by the map's larger world
+ * span: 1.5 units per column across, √3 per row down (one hex pitch each way).
  */
-export function computeCameraConfig(radius: number): CameraConfig {
-  // The outermost hex position gives us the world-space extent
-  const [edgeX, , edgeZ] = hexToWorld({ q: radius, r: 0, s: -radius });
-  const worldDiameter = 2 * Math.max(Math.abs(edgeX), Math.abs(edgeZ));
+export function computeCameraConfig(dimensions: MapDimensions): CameraConfig {
+  const worldSpan = Math.max(1.5 * dimensions.columns, SQRT3 * dimensions.rows);
 
-  const height = worldDiameter * 0.9;
-  const offset = worldDiameter * 0.52;
-  const minDistance = worldDiameter * 0.4;
-  const maxDistance = worldDiameter * 1.8;
+  const height = worldSpan * 0.9;
+  const offset = worldSpan * 0.52;
+  const minDistance = worldSpan * 0.4;
+  const maxDistance = worldSpan * 1.8;
 
   // Orthographic frustum size (half-height of view)
-  const frustumSize = worldDiameter * 0.6;
+  const frustumSize = worldSpan * 0.6;
   // Distance for isometric camera position
-  const isoDistance = worldDiameter * 0.8;
+  const isoDistance = worldSpan * 0.8;
 
-  return { height, offset, minDistance, maxDistance, frustumSize, isoDistance };
+  const bounds = mapWorldBounds(dimensions);
+  const target: [number, number, number] = [
+    (bounds.minX + bounds.maxX) / 2,
+    0,
+    (bounds.minZ + bounds.maxZ) / 2,
+  ];
+
+  return { height, offset, minDistance, maxDistance, frustumSize, isoDistance, target };
 }

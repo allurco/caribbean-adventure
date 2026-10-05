@@ -271,7 +271,7 @@ describe("terrainFieldTexture", () => {
 
   it("is fine enough (≥ 12 texels per unit) for a smooth surf outline, even on the large map", () => {
     expect(TERRAIN_TEXELS_PER_UNIT).toBeGreaterThanOrEqual(12);
-    const cells = generateMap(getMapPreset("large").radius, 31337);
+    const cells = generateMap(getMapPreset("large"), 31337);
     const { bounds } = createTerrainHeightField(cells, terrainSeedFromCells(cells));
     const longSide = Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
     // The cap must not lower the density on the largest map.

@@ -2,9 +2,15 @@ import { describe, it, expect } from "vitest";
 import { validMoveTargets } from "./moves";
 import { hex, hexEquals, neighbors, hexDistance, hexRect, offsetToHex, createWrap, NO_WRAP } from "./hex";
 import { generateMap } from "./mapGenerator";
+import { getMapPreset } from "./mapConfig";
+import type { MapDimensions } from "./mapConfig";
 import type { MapCell, Elevation, Biome } from "./types";
 import { SHIP_SPECS } from "./constants";
 import { checkLineOfSight, getHexLine, MOUNTAIN_ELEVATION } from "./combat";
+
+/** Small generated maps that still fit a few islands between the open-sea edges. */
+const SMALL_MAP: MapDimensions = { columns: 12, rows: 12 };
+const MID_MAP: MapDimensions = { columns: 16, rows: 14 };
 
 function cell(
   q: number,
@@ -96,7 +102,7 @@ describe("reef terrain mechanics", () => {
   describe("reef generation in maps", () => {
     it("reefs only spawn adjacent to islands (coastal hexes)", () => {
       // Use a fixed seed for deterministic testing
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
 
       // Find all reef hexes
       const reefCells = map.filter((c) => c.terrain === "reef");
@@ -114,7 +120,7 @@ describe("reef terrain mechanics", () => {
     });
 
     it("reefs are not islands and not water", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const reefCells = map.filter((c) => c.terrain === "reef");
 
       // Should have some reefs
@@ -129,8 +135,8 @@ describe("reef terrain mechanics", () => {
     });
 
     it("same seed produces same reef placement", () => {
-      const map1 = generateMap(5, 123);
-      const map2 = generateMap(5, 123);
+      const map1 = generateMap(SMALL_MAP,123);
+      const map2 = generateMap(SMALL_MAP,123);
 
       const reefs1 = map1
         .filter((c) => c.terrain === "reef")
@@ -149,7 +155,7 @@ describe("reef terrain mechanics", () => {
       const seeds = [42, 123, 456, 789, 999];
 
       for (const seed of seeds) {
-        const map = generateMap(5, seed);
+        const map = generateMap(SMALL_MAP,seed);
         const portCells = map.filter((c) => c.hasPort);
 
         for (const port of portCells) {
@@ -170,7 +176,7 @@ describe("reef terrain mechanics", () => {
     });
 
     it("hexes adjacent to ports are never reefs", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const portCells = map.filter((c) => c.hasPort);
 
       for (const port of portCells) {
@@ -191,7 +197,7 @@ describe("reef terrain mechanics", () => {
 
   describe("decoration generation", () => {
     it("most island hexes have decorations", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const islandCells = map.filter((c) => c.terrain === "island");
 
       // Not all islands have decorations now (beach hexes can have 0)
@@ -212,7 +218,7 @@ describe("reef terrain mechanics", () => {
     });
 
     it("water hexes do not have decorations", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const waterCells = map.filter((c) => c.terrain === "water");
 
       for (const water of waterCells) {
@@ -221,7 +227,7 @@ describe("reef terrain mechanics", () => {
     });
 
     it("reef hexes do not have decorations", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const reefCells = map.filter((c) => c.terrain === "reef");
 
       for (const reef of reefCells) {
@@ -230,7 +236,7 @@ describe("reef terrain mechanics", () => {
     });
 
     it("port hexes have a fort decoration", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const portCells = map.filter((c) => c.hasPort);
 
       for (const port of portCells) {
@@ -241,7 +247,7 @@ describe("reef terrain mechanics", () => {
     });
 
     it("port hexes have a pier decoration", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const portCells = map.filter((c) => c.hasPort);
 
       for (const port of portCells) {
@@ -252,8 +258,8 @@ describe("reef terrain mechanics", () => {
     });
 
     it("decorations are deterministic with same seed", () => {
-      const map1 = generateMap(5, 99);
-      const map2 = generateMap(5, 99);
+      const map1 = generateMap(SMALL_MAP,99);
+      const map2 = generateMap(SMALL_MAP,99);
 
       // Compare decorations on all island hexes
       const islands1 = map1.filter((c) => c.terrain === "island");
@@ -276,7 +282,7 @@ describe("reef terrain mechanics", () => {
     });
 
     it("decorations include trees and rocks", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const islandCells = map.filter((c) => c.terrain === "island");
 
       let hasTree = false;
@@ -316,7 +322,7 @@ describe("reef terrain mechanics", () => {
 describe("terrain elevation and biomes", () => {
   describe("island elevation generation (volcano shape)", () => {
     it("water hexes have elevation 0", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const waterCells = map.filter((c) => c.terrain === "water");
 
       for (const water of waterCells) {
@@ -325,7 +331,7 @@ describe("terrain elevation and biomes", () => {
     });
 
     it("reef hexes have elevation 0", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const reefCells = map.filter((c) => c.terrain === "reef");
 
       for (const reef of reefCells) {
@@ -334,7 +340,7 @@ describe("terrain elevation and biomes", () => {
     });
 
     it("island hexes have elevation 1, 2, or 3", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const islandCells = map.filter((c) => c.terrain === "island");
 
       for (const island of islandCells) {
@@ -345,7 +351,7 @@ describe("terrain elevation and biomes", () => {
     it("ports are always at beach elevation (1)", () => {
       const seeds = [42, 123, 456, 789, 999];
       for (const seed of seeds) {
-        const map = generateMap(5, seed);
+        const map = generateMap(SMALL_MAP,seed);
         const portCells = map.filter((c) => c.hasPort);
 
         for (const port of portCells) {
@@ -356,7 +362,7 @@ describe("terrain elevation and biomes", () => {
 
     it("larger islands have mountains (elevation 3) at center", () => {
       // Use larger radius to get bigger islands
-      const map = generateMap(12, 42);
+      const map = generateMap(getMapPreset("small"),42);
 
       // Find islands with at least 5 hexes (guaranteed to have mountain centers)
       const islandCells = map.filter((c) => c.terrain === "island");
@@ -368,7 +374,7 @@ describe("terrain elevation and biomes", () => {
     });
 
     it("islands have cone-like structure (center higher than edges)", () => {
-      const map = generateMap(8, 42);
+      const map = generateMap(MID_MAP,42);
       const islandCells = map.filter((c) => c.terrain === "island");
 
       // Group cells by their distance from same-island hexes
@@ -397,7 +403,7 @@ describe("terrain elevation and biomes", () => {
 
   describe("biome assignment", () => {
     it("beach hexes (elevation 1) have SAND biome", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const beachCells = map.filter((c) => c.terrain === "island" && c.elevation === 1);
 
       for (const beach of beachCells) {
@@ -406,7 +412,7 @@ describe("terrain elevation and biomes", () => {
     });
 
     it("jungle hexes (elevation 2) have GRASS biome", () => {
-      const map = generateMap(8, 42);
+      const map = generateMap(MID_MAP,42);
       const jungleCells = map.filter((c) => c.terrain === "island" && c.elevation === 2);
 
       for (const jungle of jungleCells) {
@@ -415,7 +421,7 @@ describe("terrain elevation and biomes", () => {
     });
 
     it("mountain hexes (elevation 3) have ROCK biome", () => {
-      const map = generateMap(12, 42);
+      const map = generateMap(getMapPreset("small"),42);
       const mountainCells = map.filter((c) => c.terrain === "island" && c.elevation === 3);
 
       for (const mountain of mountainCells) {
@@ -424,7 +430,7 @@ describe("terrain elevation and biomes", () => {
     });
 
     it("water/reef hexes have no biome", () => {
-      const map = generateMap(5, 42);
+      const map = generateMap(SMALL_MAP,42);
       const nonLandCells = map.filter(
         (c) => c.terrain === "water" || c.terrain === "reef"
       );

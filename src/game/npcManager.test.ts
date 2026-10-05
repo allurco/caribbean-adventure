@@ -4,6 +4,7 @@ import type { Hex } from "./hex";
 import { generateMap } from "./mapGenerator";
 import type { MapCell, CaribbeanState, NPCShip, Nation } from "./types";
 import type { MapSizeId } from "./mapConfig";
+import { getMapPreset } from "./mapConfig";
 import {
   spawnMerchant,
   findPath,
@@ -453,7 +454,7 @@ describe("moveAllNPCs", () => {
 describe("integration: full merchant lifecycle", () => {
   it("spawns, moves, and despawns merchant", () => {
     // Use a real generated map with ports
-    const cells = generateMap(3, 42); // seeded for reproducibility
+    const cells = generateMap(getMapPreset("small"), 42); // seeded for reproducibility
     const G = createTestState(cells);
 
     // Need at least 2 non-Pirate ports for merchant spawning

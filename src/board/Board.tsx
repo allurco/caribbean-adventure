@@ -555,7 +555,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   }
 
   const preset = getMapPreset(G.mapSize);
-  const cam = computeCameraConfig(preset.radius);
+  const cam = computeCameraConfig(preset);
   const maxMoves = currentShipState ? getMaxMoves(currentShipState) : 0;
   const movesRemaining = maxMoves - (ctx.numMoves ?? 0);
 
