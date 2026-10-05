@@ -281,11 +281,26 @@ without fog or background. `Ocean.tsx` then, per pixel:
 1. rebuilds the seabed's world height from the four nearest prepass depth
    texels and interpolates it bilinearly (the raw half-res depth steps and
    banded);
-2. attenuates the lit seabed by Beer–Lambert along the refracted sun path
-   down and the view path up, and adds deep-water radiance
+2. **refracts** (#38 step 6): bends the view ray at the wave facet with
+   Snell's law in vector form (`refract`, n = 1.333, the facet's slopes
+   scaled by `WAVE_SHADING_GAIN`), finds where the bent ray meets the seabed
+   plane at the depth just read, projects that point back into the prepass
+   (`cameraViewProjection`), reads the depth there and traces once more to
+   it, so a ray leaving a shelf for deep water ends on the seabed it would
+   really meet. The look-up falls back to the straight sample when the hit
+   is behind the camera, off screen, on land above sea level or where no
+   seabed was drawn. Instead of a fixed pixel cap, the bend is bounded by
+   physics: the refracted ray's horizontal travel per unit depth is held at
+   the critical angle's (`MAX_REFRACTED_TRAVEL`, tan(asin(1/n)) ≈ 1.135, the
+   most oblique a level sea bends any ray), and the depth it is traced to at
+   `SEABED_FADE_END`, past which the seabed is invisible. The waves wobble
+   the seabed, and the seabed reads shallower than it is, as through real
+   water;
+3. attenuates the lit seabed by Beer–Lambert along the refracted sun path
+   down and the refracted view path up, and adds deep-water radiance
    `R∞ · downwelling irradiance` as the seabed fades (`waterOptics.ts` holds
    the coefficients and their sources);
-3. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), adds the GGX sun
+4. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), adds the GGX sun
    glint, then the shore surf.
 
 **Waves (#38 steps 4–5).** The surface normal comes from three FFT cascades
@@ -302,33 +317,70 @@ frame the GPU evolves each spectrum (frequencies rounded to whole cycles per
 FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float
 texture of (∂h/∂x, ∂h/∂z, |∇h|²). The three are batched side by side in one
 atlas (`waveCascadeAtlas.ts`), so all of them take 20 draws a frame. The
-water shader samples each texture once, sums the filtered mean slopes into
-the normal and the filtered variances into roughness. A cascade fades out
-once its band's longest wave spans under four pixels (gone at two), and all
-of them fade to flat between 45 and 90 units from the camera; faded slope
-goes into the roughness too (`waveNormalFilter.ts`), so the highlight keeps
-its energy instead of shimmering. The glint is GGX with Smith masking and Schlick
-Fresnel (`sunGlint.ts`), HDR so bloom picks up the sparkles. The sky
-reflection, the refracted seabed look-up (`refractedSeabedShift`, a precursor
-of step 6) and the facet-lit in-scatter (`facetSunlight`) see the slopes
-scaled up to Cox–Munk's measured slope (`WAVE_SHADING_GAIN`, ≈ 1.7), so
-the waves read across the whole sea; the glint keeps the drawn slopes so its
-path stays narrow.
+cascades are run by the board (`useWaveCascades`) and their textures handed
+to both the water and the seabed; the look-up that sums them lives in one
+place, `waveSlopeGlsl.ts`. The water shader samples each texture once, sums
+the filtered mean slopes into the normal and the filtered variances into
+roughness. A cascade fades out once its band's longest wave spans under four
+pixels (gone at two), and all of them fade to flat between 45 and 90 units
+from the camera; faded slope goes into the roughness too
+(`waveNormalFilter.ts`), so the highlight keeps its energy instead of
+shimmering. The glint is GGX with Smith masking and Schlick Fresnel
+(`sunGlint.ts`), HDR so bloom picks up the sparkles. The sky reflection, the
+refracted seabed look-up, the facet-lit in-scatter (`facetSunlight`) and the
+caustics see the slopes scaled up to Cox–Munk's measured slope
+(`WAVE_SHADING_GAIN`, ≈ 1.7), so the waves read across the whole sea; the
+glint keeps the drawn slopes so its path stays narrow.
 
-At the coast, the sunlight on the seabed is also scaled by the wave facet
-above it, so the waves continue into the shallows as light and shade on the
-sand (a stopgap that step 6's refraction and caustics replace). The
-shallow-water saturation boost scales with the red the water has absorbed,
-so sand under near-clear water keeps its colour instead of turning orange.
-Wet sand is dry sand at half albedo. Surf is limited to water shallower than
-0.6 m on the drawn seabed, so it stays at the waterline (a stopgap until
-step 7; the outer breaker line is off until then).
+**Caustics (#38 step 6).** Caustics are light, so they are made where the
+seabed is lit: the seabed material (`useLandTerrain.ts`) patches three's
+standard shader (`seabedCaustics.ts`, via `onBeforeCompile`) so that, in the
+prepass, each seabed fragment's *directional* light is scaled by the
+intensity from `causticFocus.ts`; the sky term is not focused, and
+Beer–Lambert stays in the water shader. Per fragment: the surface point the
+sun's refracted ray crosses is the seabed point moved up and back by its
+depth along the level-sea refracted sun (`refractedSunTravel`); the summed
+cascade slope is read there and one footprint step away along each screen
+axis, and the differences give the wave Hessian H
+(`hessianFromSlopeDifferences`); the light that a patch of surface carries
+lands on |det J| of seabed, J = I + depth · G · H, where G
+(`refractionFocusMatrix`) is how the refracted travel per unit depth changes
+with slope, diag(c / cos²φ, c) in the sun's azimuth frame with
+c = 1 − cos θ / (n cos φ) and sin φ = sin θ / n (overhead, (1 − 1/n) · I); the
+intensity is 1 / |det J| with a C¹ knee (`CAUSTIC_KNEE`) that holds a fold
+(det J = 0) at four times the mean light. The maths is mirrored on the CPU
+and tested: a flat sea gives 1, a sinusoid matches the closed form
+1 − d · c · a k² sin(kx), and the mean over the seabed is 1 (energy is only
+moved). Three look-ups per cascade, nine reads per half-res fragment, no
+extra pass, and the lines are per fragment rather than per 2×2 quad as
+`dFdx` of a sampled slope would be.
+
+Level of detail. The look-ups are read `CAUSTIC_LOD_BIAS` mip levels
+coarser than the pixel, with the difference steps widened to match, so waves
+shorter than `CAUSTIC_MIN_WAVE_TEXELS` (6) prepass texels are smoothed out:
+cells of a few texels draw as grain, not dappled light. Each band's share of
+H then fades out where its longest wave spans under 4–8 of those texels
+(`causticLodFade`), and between one and three of its mean wavelengths of
+depth (`causticDepthFade`): a wave focuses sharpest within about its own
+wavelength of depth and folds beyond it, where the single sheet no longer
+describes the light. So the ripple band (0.41–3.2 m) lights the first
+1–3.5 m, the chop band (3.2–23 m) the shelf and the drop-off, and the swell
+never fades (its curvature is slight). At map zoom nothing short enough to
+show a line survives the smoothing, so the shelf is evenly lit; at ship zoom
+the chop's 3–6 m cells dapple the shelf and the ripple's lines show in the
+shallows. The caustics move with the wave textures themselves, so they
+share the wave clock and freeze with the waves under
+`prefers-reduced-motion`.
+
+The shallow-water saturation boost scales with the red the water has
+absorbed, so sand under near-clear water keeps its colour instead of
+turning orange. Wet sand is dry sand at half albedo. Surf is limited to water
+shallower than 0.6 m on the drawn seabed, so it stays at the waterline (a
+stopgap until step 7; the outer breaker line is off until then).
 
 Where the prepass has no seabed (below the mesh cut-off, or off the mesh) the
 shader reads `NO_SEABED_DEPTH` (105 m, past the fade), so the water is deep
-water. Caustics brighten the seabed term before it is attenuated; they
-are driven by `causticTime`, a wrapped CPU clock in `causticMotion.ts` that
-stops under `prefers-reduced-motion`.
+water.
 
 ---
 
@@ -338,7 +390,12 @@ stops under `prefers-reduced-motion`.
 |------|---------|
 | `src/board/visuals/TerrainHeightmap.ts` | SDF-based heightmap generation |
 | `src/board/visuals/UnifiedTerrain.tsx` | Land shader with vertex squashing |
-| `src/board/visuals/Ocean.tsx` | Water with depth/foam effects |
+| `src/board/visuals/Ocean.tsx` | Water: refraction, water colour, waves, glint, surf |
+| `src/board/visuals/waterOptics.ts` | Water optics: absorption, Fresnel, vector Snell, the refraction bound |
+| `src/board/visuals/waveSlopeGlsl.ts` | The cascade slope look-up shared by the water and the seabed |
+| `src/board/visuals/causticFocus.ts` | Caustic maths: focus matrix, Hessian, intensity, depth and LOD fades |
+| `src/board/visuals/seabedCaustics.ts` | Patches the seabed material so its sunlight is focused by the waves |
+| `src/board/visuals/useLandTerrain.ts` | Land and seabed mesh and materials, once per map |
 | `src/board/Board.tsx` | Scene composition |
 | `src/board/HexGrid.tsx` | Click detection (invisible meshes) |
 

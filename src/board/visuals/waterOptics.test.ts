@@ -71,7 +71,7 @@ describe("refractedDirection (vector Snell, air into water)", () => {
   it("refracts about the facet normal, not the vertical: a vertical ray through a tilted facet bends toward the tilt", () => {
     // Facet of slope 0.1 along x, normal (−0.1, 1, 0) normalised. To first
     // order the refracted ray leaves at (1 − 1/n) · slope horizontal per unit
-    // down, the precursor's rule (#38 step 6).
+    // down (the overhead-sun entry of the caustic focus matrix, causticFocus.ts).
     const n = 1 / Math.hypot(0.1, 1);
     const r = refractedDirection([0, -1, 0], [-0.1 * n, n, 0]);
     expect(r[0] / -r[1]).toBeCloseTo((1 - 1 / 1.333) * 0.1, 3);
