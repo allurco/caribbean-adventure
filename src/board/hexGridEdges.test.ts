@@ -8,7 +8,7 @@ import {
   buildHexGridEdges,
   shoreFade,
 } from "./hexGridEdges";
-import { hexGrid, hexToWorld } from "../game/hex";
+import { createWrap, hexGrid, hexRect, hexToWorld, offsetToHex } from "../game/hex";
 import type { Hex } from "../game/hex";
 
 const hex = (q: number, r: number): Hex => ({ q, r, s: -q - r });
@@ -225,5 +225,39 @@ describe("buildEdgeShoreFade", () => {
     expect(fade[0]).toBe(0);
     expect(fade[1]).toBe(1);
     expect(fade[2]).toBe(0);
+  });
+});
+
+describe("buildHexGridEdges on a map that wraps east–west (#36)", () => {
+  const columns = 8;
+  const rows = 5;
+  const wrap = createWrap(columns);
+  const hexes = hexRect(columns, rows);
+  const edges = buildHexGridEdges(hexes, wrap);
+  const indexOf = (h: Hex) => hexes.findIndex((x) => x.q === h.q && x.r === h.r);
+
+  it("draws an edge across the seam once, owned by the hexes either side", () => {
+    const east = offsetToHex(columns - 1, 2);
+    const west = offsetToHex(0, 2);
+    const pairs: number[] = [];
+    for (let e = 0; e < edges.count; e++) {
+      const owners = [edges.owners[e * 2], edges.owners[e * 2 + 1]].sort((a, b) => a - b);
+      if (owners[0] === indexOf(west) && owners[1] === indexOf(east)) pairs.push(e);
+    }
+    expect(pairs).toHaveLength(1);
+  });
+
+  it("leaves only the north and south rows as border, so copies one wrap apart tile", () => {
+    const [, , top] = hexToWorld(offsetToHex(0, 0));
+    const [, , bottom] = hexToWorld(offsetToHex(1, rows - 1));
+    for (let e = 0; e < edges.count; e++) {
+      if (edges.owners[e * 2 + 1] !== NO_HEX) continue;
+      const z = (edges.corners[e * 4 + 1] + edges.corners[e * 4 + 3]) / 2;
+      expect(z < top + 0.1 || z > bottom - 0.1).toBe(true);
+    }
+  });
+
+  it("matches the plain grid without a wrap", () => {
+    expect(buildHexGridEdges(hexes, null)).toEqual(buildHexGridEdges(hexes));
   });
 });

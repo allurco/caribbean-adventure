@@ -128,11 +128,6 @@ export function clampToCameraBounds(bounds: CameraBounds, x: number, z: number):
   return { x: cx, z: cz, dx: cx - x, dz: cz - z };
 }
 
-/** Largest |x| or |z| the clamped focus can reach. */
-export function cameraBoundsExtent({ hull, padding }: CameraBounds): number {
-  return hull.reduce((m, p) => Math.max(m, Math.abs(p.x), Math.abs(p.z)), 0) + padding;
-}
-
 /**
  * Furthest horizontal distance from the camera target to any point of the sea
  * plane inside the view frustum, for a camera `distance` from the target,
@@ -167,9 +162,10 @@ export function groundViewReach(
 }
 
 /**
- * Side of the square ocean plane (centred on the origin) that keeps its edge
- * off screen: from any clamped focus the view reaches at most `reach` further.
+ * Side of the square ocean plane that keeps its edge off screen. The plane is
+ * centred under the camera focus and follows it (#36), and from the focus the
+ * view reaches at most `reach` across the sea.
  */
-export function oceanPlaneSize(bounds: CameraBounds, reach: number): number {
-  return 2 * (cameraBoundsExtent(bounds) + reach);
+export function oceanPlaneSize(reach: number): number {
+  return 2 * reach;
 }

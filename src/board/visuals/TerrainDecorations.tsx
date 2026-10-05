@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect } from "react";
+import { useRef, useEffect } from "react";
 import {
   InstancedMesh,
   Object3D,
@@ -7,20 +7,12 @@ import {
   MeshStandardMaterial,
   Color,
 } from "three";
-import type { MapCell, Decoration } from "../../game/types";
-import { hexToWorld } from "../../game/hex";
 import { paletteColor } from "./palette";
-import { sharedTerrainField } from "./sharedTerrainField";
-import { placeOnGround, type GroundPlacementOptions } from "./groundPlacement";
 import { PalmTrees } from "./PalmTrees";
+import { ROCK_RADIUS, type DecorationLayout } from "./useDecorationLayout";
 
-const ROCK_RADIUS = 0.12;
 // Rock centre above its base, per unit scale; the rest of the rock is buried.
 const ROCK_LIFT = 0.04;
-
-// Ground fit at scale 1. The footprint covers the trunk base plus its lean.
-const TREE_PLACEMENT: GroundPlacementOptions = { footprintRadius: 0.06, sink: 0.03, maxSlope: 0.9 };
-const ROCK_PLACEMENT: GroundPlacementOptions = { footprintRadius: ROCK_RADIUS, sink: 0.02, maxSlope: 1.6 };
 
 const rockGeometry = new SphereGeometry(ROCK_RADIUS, 6, 5);
 const pierGeometry = new BoxGeometry(0.15, 0.05, 0.6);
@@ -33,84 +25,8 @@ const pierMaterial = new MeshStandardMaterial({ color: new Color(0.45, 0.35, 0.2
 
 const tempObject = new Object3D();
 
-interface DecorationData {
-  type: Decoration["type"];
-  worldX: number;
-  worldY: number;
-  worldZ: number;
-  rotation: number;
-  scale: number;
-}
-
-interface TerrainDecorationsProps {
-  cells: MapCell[];
-}
-
-export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
-  // Collect all decorations with their world positions
-  const decorationsByType = useMemo(() => {
-    const trees: DecorationData[] = [];
-    const rocks: DecorationData[] = [];
-    const piers: DecorationData[] = [];
-    const field = sharedTerrainField(cells);
-
-    for (const cell of cells) {
-      if (!cell.decorations || cell.decorations.length === 0) continue;
-
-      const [hexX, , hexZ] = hexToWorld(cell.hex);
-      const anchor = { x: hexX, z: hexZ };
-
-      for (const deco of cell.decorations) {
-        const scale = deco.scale ?? 1;
-        const spot = { x: hexX + deco.position[0], z: hexZ + deco.position[2] };
-
-        // Trees and rocks stand on the height field: nudged off water and
-        // cliffs towards the cell centre, or dropped if nowhere fits.
-        const onGround = (placement: GroundPlacementOptions): DecorationData | null => {
-          const ground = placeOnGround(field, spot, anchor, {
-            ...placement,
-            footprintRadius: placement.footprintRadius * scale,
-          });
-          if (!ground) return null;
-          return {
-            type: deco.type,
-            worldX: ground.x,
-            worldY: ground.y + deco.position[1],
-            worldZ: ground.z,
-            rotation: deco.rotation,
-            scale,
-          };
-        };
-
-        switch (deco.type) {
-          case "tree": {
-            const tree = onGround(TREE_PLACEMENT);
-            if (tree) trees.push(tree);
-            break;
-          }
-          case "rock": {
-            const rock = onGround(ROCK_PLACEMENT);
-            if (rock) rocks.push(rock);
-            break;
-          }
-          // Fort disabled - port marker (octagon) in HexGrid serves this purpose
-          case "pier":
-            // Piers sit at water level, so only their XZ matters
-            piers.push({
-              type: deco.type,
-              worldX: spot.x,
-              worldY: 0,
-              worldZ: spot.z,
-              rotation: deco.rotation,
-              scale,
-            });
-            break;
-        }
-      }
-    }
-
-    return { trees, rocks, piers };
-  }, [cells]);
+/** Trees, rocks and piers for one world copy, from the shared `layout` (`useDecorationLayout`). */
+export function TerrainDecorations({ layout: decorationsByType }: { layout: DecorationLayout }) {
 
   // Refs for instanced meshes
   const rockRef = useRef<InstancedMesh>(null!);
@@ -159,7 +75,7 @@ export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
 
   return (
     <>
-      <PalmTrees palms={decorationsByType.trees} />
+      <PalmTrees resources={decorationsByType.palms} />
 
       {/* Rocks */}
       {decorationsByType.rocks.length > 0 && (

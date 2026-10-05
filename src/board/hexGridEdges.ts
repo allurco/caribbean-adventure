@@ -1,5 +1,5 @@
-import type { Hex } from "../game/hex";
-import { hexToWorld } from "../game/hex";
+import type { Hex, MapWrap } from "../game/hex";
+import { canonicalHex, hexToWorld } from "../game/hex";
 
 /**
  * Pure geometry for the water hex grid lines (issue #32).
@@ -46,8 +46,13 @@ export interface HexGridEdges {
 
 const hexKey = (q: number, r: number) => `${q},${r}`;
 
-/** The unique full-size edges of a set of flat-top hexes (hex size 1). */
-export function buildHexGridEdges(hexes: readonly Hex[]): HexGridEdges {
+/**
+ * The unique full-size edges of a set of flat-top hexes (hex size 1). With a
+ * `wrap`, hexes either side of the seam are neighbours too, so an edge on the
+ * seam is emitted once and copies of the grid one wrap width apart tile
+ * without drawing it twice (#36).
+ */
+export function buildHexGridEdges(hexes: readonly Hex[], wrap: MapWrap = null): HexGridEdges {
   const indexByHex = new Map<string, number>();
   hexes.forEach((h, i) => indexByHex.set(hexKey(h.q, h.r), i));
 
@@ -57,7 +62,8 @@ export function buildHexGridEdges(hexes: readonly Hex[]): HexGridEdges {
     const [cx, , cz] = hexToWorld(h);
     for (let edge = 0; edge < 6; edge++) {
       const [dq, dr] = EDGE_NEIGHBOR_DIRS[edge];
-      const neighbour = indexByHex.get(hexKey(h.q + dq, h.r + dr));
+      const n = canonicalHex({ q: h.q + dq, r: h.r + dr, s: -h.q - dq - h.r - dr }, wrap);
+      const neighbour = indexByHex.get(hexKey(n.q, n.r));
       // A shared edge is emitted once, by the lower-indexed hex.
       if (neighbour !== undefined && neighbour < i) continue;
       const a = CORNER_OFFSETS[edge];

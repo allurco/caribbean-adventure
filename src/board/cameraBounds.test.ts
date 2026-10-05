@@ -4,7 +4,6 @@ import {
   CAMERA_MAX_DISTANCE,
   CAMERA_PITCH,
   cameraBoundsFromHexes,
-  cameraBoundsExtent,
   clampToCameraBounds,
   groundViewReach,
   oceanPlaneSize,
@@ -87,15 +86,6 @@ describe("clampToCameraBounds", () => {
   });
 });
 
-describe("cameraBoundsExtent", () => {
-  it("is the largest |x| or |z| the clamped focus can reach", () => {
-    const radius = 6;
-    const bounds = cameraBoundsFromHexes(hexGrid(radius), 2);
-    // Hexagonal map is pointy along z: corner hexes sit at z = +-sqrt(3) * radius.
-    expect(cameraBoundsExtent(bounds)).toBeCloseTo(Math.sqrt(3) * radius + 2);
-  });
-});
-
 describe("groundViewReach", () => {
   const halfFov = (CAMERA_FOV / 2) * (Math.PI / 180);
 
@@ -132,8 +122,7 @@ describe("groundViewReach", () => {
 });
 
 describe("oceanPlaneSize", () => {
-  it("covers the clamped focus range plus the visible reach on every side", () => {
-    const bounds = cameraBoundsFromHexes(hexGrid(6), 2);
-    expect(oceanPlaneSize(bounds, 30)).toBeCloseTo(2 * (cameraBoundsExtent(bounds) + 30));
+  it("covers the visible reach on every side of a plane centred under the focus", () => {
+    expect(oceanPlaneSize(30)).toBe(60);
   });
 });

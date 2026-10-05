@@ -12,7 +12,7 @@
  * slope (rock on steep faces) and a cheap occlusion term (darker where the
  * face sits below its neighbourhood); see `landFaceColor`.
  */
-import { createNoise2D } from "simplex-noise";
+import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { metresToUnits } from "./worldScale";
 import { VISIBLE_SEABED_DEPTH } from "./waterOptics";
@@ -220,18 +220,19 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-const bandNoise = createNoise2D(mulberry32(BAND_NOISE_SEED));
+/** The fixed band and coral noise of a map that does not wrap (one that does gets a periodic one). */
+const plainBandNoise = createPlaneNoise(mulberry32(BAND_NOISE_SEED), null);
 
 /** Two-octave boundary noise in [-1, 1]. */
-function boundaryNoise(x: number, z: number): number {
+function boundaryNoise(noise: PlaneNoise, x: number, z: number): number {
   const f = BAND_NOISE_FREQUENCY;
-  return 0.7 * bandNoise(x * f, z * f) + 0.3 * bandNoise(x * f * 2.3 + 41.2, z * f * 2.3 - 13.5);
+  return 0.7 * noise(x, z, f) + 0.3 * noise(x, z, f * 2.3, 41.2, -13.5);
 }
 
 /** Coral cover (0 … 1) of a patch at (x, z): reef heads separated by sand channels. */
-function coralPatch(x: number, z: number): number {
+function coralPatch(noise: PlaneNoise, x: number, z: number): number {
   const f = CORAL_FREQUENCY;
-  const n = 0.7 * bandNoise(x * f + 211.3, z * f - 87.1) + 0.3 * bandNoise(x * f * 2.7 - 19.9, z * f * 2.7 + 63.4);
+  const n = 0.7 * noise(x, z, f, 211.3, -87.1) + 0.3 * noise(x, z, f * 2.7, -19.9, 63.4);
   return CORAL_MAX_COVER * smoothstep(CORAL_COVER[0], CORAL_COVER[1], n);
 }
 
@@ -245,16 +246,27 @@ export function buildLandMesh(
   field: TerrainHeightField,
   options: LandMeshOptions = {}
 ): LandMeshData {
-  const spacing = options.spacing ?? LAND_MESH_SPACING;
   const skirtDepth = options.skirtDepth ?? LAND_MESH_SKIRT_DEPTH;
   const skipOpenWater = options.skipOpenWater ?? true;
   const palette = options.colors ?? DEFAULT_COLORS;
   const occlusion = options.occlusion ?? LAND_MESH_OCCLUSION;
   const { sampleReef } = options;
-  const rowHeight = spacing * (Math.sqrt(3) / 2);
   const { minX, maxX, minZ, maxZ } = field.bounds;
-  const cols = Math.ceil((maxX - minX) / spacing) + 1;
+  // On a wrapping map (#36) the field's bounds are one wrap width in x and the
+  // field repeats beyond them. The lattice then fits a whole number of steps
+  // into that width, so copies of the mesh one wrap apart share their edge
+  // vertices, and every look-up across the lattice's east/west edge (relief
+  // occlusion, seabed normals) wraps round to the other side.
+  const period = field.periodX;
+  const periodSteps = period === null ? 0 : Math.max(1, Math.round(period / (options.spacing ?? LAND_MESH_SPACING)));
+  const spacing = period === null ? (options.spacing ?? LAND_MESH_SPACING) : period / periodSteps;
+  const rowHeight = spacing * (Math.sqrt(3) / 2);
+  const cols = period === null ? Math.ceil((maxX - minX) / spacing) + 1 : periodSteps + 1;
   const rows = Math.ceil((maxZ - minZ) / rowHeight) + 1;
+  /** Lattice column i, wrapped round on a periodic lattice, clamped to the edge otherwise. */
+  const column = (i: number): number =>
+    period === null ? Math.max(0, Math.min(cols - 1, i)) : ((i % periodSteps) + periodSteps) % periodSteps;
+  const bandNoise = period === null ? plainBandNoise : createPlaneNoise(mulberry32(BAND_NOISE_SEED), period);
 
   // Lattice vertex (i, j) sits at (minX + i·spacing [+ spacing/2 on odd rows], minZ + j·rowHeight).
   // Precomputed: these are read for every output vertex.
@@ -329,9 +341,8 @@ export function buildLandMesh(
     const j = Math.floor(v / cols);
     const i = v - j * cols;
     const at = (di: number, dj: number) => {
-      const ii = Math.max(0, Math.min(cols - 1, i + di));
       const jj = Math.max(0, Math.min(rows - 1, j + dj));
-      return heightAt(jj * cols + ii);
+      return heightAt(jj * cols + column(i + di));
     };
     const half = ring / 2;
     const mean =
@@ -400,10 +411,10 @@ export function buildLandMesh(
     const cz = az + (uz + wz) / 3;
     sample.height = (pointY(a) + pointY(b) + pointY(c)) / 3;
     sample.normalY = ny / nl;
-    sample.noise = boundaryNoise(cx, cz);
+    sample.noise = boundaryNoise(bandNoise, cx, cz);
     sample.cavity = (pointCavity(a) + pointCavity(b) + pointCavity(c)) / 3;
     const reef = sampleReef && sample.height <= SEA_LEVEL ? sampleReef(cx, cz) : 0;
-    sample.coral = reef > 0 ? reef * coralPatch(cx, cz) : 0;
+    sample.coral = reef > 0 ? reef * coralPatch(bandNoise, cx, cz) : 0;
     const [r, g, bl] = landFaceColor(palette, sample, occlusion);
     const shade = 0.93 + hash(cx, cz) * 0.14;
     for (let k = 0; k < 3; k++) {
@@ -423,8 +434,7 @@ export function buildLandMesh(
   // Height gradient at a lattice vertex by central differences on the lattice
   // (neighbours along the row, and the two-vertex average straight above and
   // below it in the half-offset rows).
-  const at = (ii: number, jj: number) =>
-    heightAt(Math.max(0, Math.min(rows - 1, jj)) * cols + Math.max(0, Math.min(cols - 1, ii)));
+  const at = (ii: number, jj: number) => heightAt(Math.max(0, Math.min(rows - 1, jj)) * cols + column(ii));
   /** The height gradient at lattice vertex v, into grad[0..1]. */
   const grad = new Float64Array(2);
   const latticeGradient = (v: number) => {
@@ -462,7 +472,7 @@ export function buildLandMesh(
     sample.noise = 0; // only the land bands use it
     sample.cavity = pointCavity(p);
     const reef = sampleReef ? sampleReef(x, z) : 0;
-    sample.coral = reef > 0 ? reef * coralPatch(x, z) : 0;
+    sample.coral = reef > 0 ? reef * coralPatch(bandNoise, x, z) : 0;
     const [r, g, b] = landFaceColor(palette, sample, occlusion);
     const o = vertexOf[p] * 3;
     seabedPositions[o] = x;

@@ -1,4 +1,4 @@
-import { useRef, useState, useMemo, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import {
   Shape,
   ExtrudeGeometry,
@@ -8,27 +8,21 @@ import {
 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
-import type { Hex } from "../game/hex";
-import { hexToWorld, hexEquals } from "../game/hex";
+import { hexToWorld } from "../game/hex";
 import type { MapCell } from "../game/types";
 import { WaterHexOutlines } from "./WaterHexOutlines";
-import { sharedTerrainField } from "./visuals/sharedTerrainField";
-import { groundTopY } from "./visuals/groundPlacement";
+import { hoverEnter, hoverLeave } from "./sharedHover";
+import { PORT_MARKER_RADIUS, type HexGridState, type PortSite } from "./useHexGrid";
 
 const TILE_SIZE = 1;
 const HEX_BASE_DEPTH = 0.1;
 const HIGHLIGHT_DEPTH = 0.02;
 
-const PORT_MARKER_RADIUS = 0.35;
 const PORT_MARKER_HEIGHT = 0.3;
 // Gap between the ground and the port marker's base
 const PORT_MARKER_CLEARANCE = 0.01;
 // Port name label baseline above the ground
 const PORT_LABEL_HEIGHT = 0.6;
-// Minimum outline opacity for hexes the player is acting on. These ignore the
-// distance fade, so targets stay crisp anywhere on the map.
-const OUTLINE_OPACITY_TARGET = 0.45;
-const OUTLINE_OPACITY_HOVERED = 0.85;
 
 const COLOR_HOVERED = "#facc15";
 const COLOR_ATTACK_TARGET = "#ef4444";
@@ -68,11 +62,6 @@ const portMarkerGeometry = new CylinderGeometry(
 
 const tempObject = new Object3D();
 
-// A port and the height-field ground Y it stands on
-interface PortSite {
-  cell: MapCell;
-  groundY: number;
-}
 
 // Port marker component with its own hover handling
 function PortMarker({
@@ -129,91 +118,23 @@ function PortLabel({ site: { cell, groundY } }: { site: PortSite }) {
   );
 }
 
-interface HexGridProps {
-  cells: MapCell[];
-  validTargets: Hex[];
-  attackTargets?: Hex[];
-  onHexClick: (hex: Hex) => void;
-  onPortHover?: (cell: MapCell | null) => void;
-  interactive: boolean;
-}
-
-export function HexGrid({
-  cells,
-  validTargets,
-  attackTargets = [],
-  onHexClick,
-  onPortHover,
-  interactive,
-}: HexGridProps) {
+/** The hex grid for one world copy (`copy` counts copies), drawing and hit-testing the shared `grid`. */
+export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
+  const {
+    waterCells,
+    portSites,
+    allWaterInteractive,
+    attackWaterIndices,
+    attackTargetPositions,
+    hoveredPos,
+    isHoveredAttackTarget,
+    lines,
+    setHover,
+    onHexClick,
+    onPortHover,
+    interactive,
+  } = grid;
   const waterRef = useRef<InstancedMesh>(null!);
-  // Hovered water-cell index (land is rendered and hit-tested elsewhere)
-  const [hoveredId, setHoveredId] = useState<number | null>(null);
-
-  // Water cells, the only hexes this grid hit-tests
-  const { waterCells, waterIndexMap } = useMemo(() => {
-    const water: MapCell[] = [];
-    const waterMap = new Map<number, number>(); // original index -> water index
-
-    cells.forEach((cell, i) => {
-      if (cell.terrain === "water" || cell.terrain === "reef") {
-        waterMap.set(i, water.length);
-        water.push(cell);
-      }
-    });
-
-    return { waterCells: water, waterIndexMap: waterMap };
-  }, [cells]);
-
-  // Port cells with the ground Y of the terrain height field under each marker
-  const portSites = useMemo<PortSite[]>(() => {
-    const field = sharedTerrainField(cells);
-    return cells
-      .filter((c) => c.hasPort)
-      .map((cell) => {
-        const [x, , z] = hexToWorld(cell.hex);
-        return { cell, groundY: groundTopY(field, x, z, PORT_MARKER_RADIUS) };
-      });
-  }, [cells]);
-
-  // Build target indices for the water mesh
-  const { targetWaterIndices, attackWaterIndices } = useMemo(() => {
-    const targetWater = new Set<number>();
-    const attackWater = new Set<number>();
-
-    validTargets.forEach((t) => {
-      const idx = cells.findIndex((c) => hexEquals(c.hex, t));
-      if (waterIndexMap.has(idx)) targetWater.add(waterIndexMap.get(idx)!);
-    });
-
-    attackTargets.forEach((t) => {
-      const idx = cells.findIndex((c) => hexEquals(c.hex, t));
-      if (waterIndexMap.has(idx)) attackWater.add(waterIndexMap.get(idx)!);
-    });
-
-    return { targetWaterIndices: targetWater, attackWaterIndices: attackWater };
-  }, [cells, validTargets, attackTargets, waterIndexMap]);
-
-  const allWaterInteractive = useMemo(() => {
-    const set = new Set<number>();
-    targetWaterIndices.forEach((i) => set.add(i));
-    attackWaterIndices.forEach((i) => set.add(i));
-    return set;
-  }, [targetWaterIndices, attackWaterIndices]);
-
-  const hoveredCell = useMemo(() => {
-    if (hoveredId === null || !allWaterInteractive.has(hoveredId)) return null;
-    return waterCells[hoveredId];
-  }, [hoveredId, allWaterInteractive, waterCells]);
-
-  const isHoveredAttackTarget = hoveredId !== null && attackWaterIndices.has(hoveredId);
-
-  const attackTargetPositions = useMemo(() => {
-    return attackTargets.map((t) => {
-      const [x, y, z] = hexToWorld(t);
-      return [x, y + 0.01, z] as [number, number, number];
-    });
-  }, [attackTargets]);
 
   // Set up water mesh (invisible for raycasting)
   useEffect(() => {
@@ -237,20 +158,20 @@ export function HexGrid({
       const id = e.instanceId;
       if (id !== undefined && allWaterInteractive.has(id)) {
         e.stopPropagation();
-        setHoveredId(id);
+        setHover((h) => (h.id === id && h.copy === copy ? h : hoverEnter(h, id, copy)));
         document.body.style.cursor = attackWaterIndices.has(id) ? "crosshair" : "pointer";
       } else {
-        setHoveredId(null);
+        setHover((h) => hoverLeave(h, copy));
         document.body.style.cursor = "auto";
       }
     },
-    [interactive, allWaterInteractive, attackWaterIndices]
+    [interactive, allWaterInteractive, attackWaterIndices, setHover, copy]
   );
 
   const handlePointerOut = useCallback(() => {
-    setHoveredId(null);
+    setHover((h) => hoverLeave(h, copy));
     document.body.style.cursor = "auto";
-  }, []);
+  }, [setHover, copy]);
 
   const handleWaterClick = useCallback(
     (e: ThreeEvent<MouseEvent>) => {
@@ -263,24 +184,6 @@ export function HexGrid({
     },
     [interactive, allWaterInteractive, onHexClick, waterCells]
   );
-
-  const waterHexes = useMemo(() => waterCells.map((c) => c.hex), [waterCells]);
-  const coastDistance = useMemo(() => sharedTerrainField(cells).sampleCoastDistance, [cells]);
-
-  const outlineEmphasis = useMemo(() => {
-    const emphasis = new Map<number, number>();
-    allWaterInteractive.forEach((i) => emphasis.set(i, OUTLINE_OPACITY_TARGET));
-    if (hoveredCell && hoveredId !== null) {
-      emphasis.set(hoveredId, OUTLINE_OPACITY_HOVERED);
-    }
-    return emphasis;
-  }, [allWaterInteractive, hoveredCell, hoveredId]);
-
-  const hoveredPos = useMemo(() => {
-    if (!hoveredCell) return null;
-    const [x, y, z] = hexToWorld(hoveredCell.hex);
-    return [x, y + 0.01, z] as [number, number, number];
-  }, [hoveredCell]);
 
   return (
     <>
@@ -299,13 +202,7 @@ export function HexGrid({
         </instancedMesh>
       )}
 
-      {/* Water hex grid: one line per shared edge, fading with distance from
-          the camera focus and across the shallows; acted-on hexes stay strong */}
-      <WaterHexOutlines
-        hexes={waterHexes}
-        emphasis={outlineEmphasis}
-        coastDistance={coastDistance}
-      />
+      <WaterHexOutlines lines={lines} />
 
       {/* Attack target highlights (red) */}
       {attackTargetPositions.map((pos, i) => (

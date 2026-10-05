@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import {
   Color,
   ShaderMaterial,
@@ -16,8 +16,11 @@ import {
   HalfFloatType,
   LinearFilter,
   ClampToEdgeWrapping,
+  RepeatWrapping,
 } from "three";
 import type { Texture } from "three";
+import type { MapWrap } from "../../game/hex";
+import { controlsTarget } from "../controlsTarget";
 import { cubeUvDefines } from "./skyEnvironment";
 import type { Vec3 } from "./sunDirection";
 import type { MapCell } from "../../game/types";
@@ -408,6 +411,9 @@ const fragmentShader = `
 
 interface OceanProps {
   cells: readonly MapCell[];
+  /** The map's east–west wrap; with one the water's terrain look-ups repeat every wrap width. */
+  wrap: MapWrap;
+  /** Side of the square plane, centred under the camera focus. */
   size?: number;
   /** Unit vector towards the sun (the scene's SUN_DIRECTION). */
   sun: Vec3;
@@ -422,15 +428,21 @@ interface OceanProps {
   skyIntensity: number;
 }
 
-/** The baked terrain field as a GPU texture (layout in terrainFieldTexture.ts). */
-function terrainFieldTexture(cells: readonly MapCell[]): { texture: DataTexture; bounds: TerrainBounds } {
-  const { data, width, height, bounds } = bakeTerrainField(sharedTerrainField(cells), {
-    sampleReef: createReefMask(cells),
+/**
+ * The baked terrain field as a GPU texture (layout in terrainFieldTexture.ts).
+ * On a wrapping map it covers one wrap width and repeats in s (#36).
+ */
+function terrainFieldTexture(
+  cells: readonly MapCell[],
+  wrap: MapWrap
+): { texture: DataTexture; bounds: TerrainBounds } {
+  const { data, width, height, bounds } = bakeTerrainField(sharedTerrainField(cells, wrap), {
+    sampleReef: createReefMask(cells, wrap),
   });
   const texture = new DataTexture(data, width, height, RGBAFormat, HalfFloatType);
   texture.minFilter = LinearFilter;
   texture.magFilter = LinearFilter;
-  texture.wrapS = ClampToEdgeWrapping;
+  texture.wrapS = wrap ? RepeatWrapping : ClampToEdgeWrapping;
   texture.wrapT = ClampToEdgeWrapping;
   texture.needsUpdate = true;
   return { texture, bounds };
@@ -438,6 +450,7 @@ function terrainFieldTexture(cells: readonly MapCell[]): { texture: DataTexture;
 
 export function Ocean({
   cells,
+  wrap,
   size = 1024,
   sun,
   sunColor,
@@ -455,7 +468,7 @@ export function Ocean({
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   // Built once per map.
-  const field = useMemo(() => terrainFieldTexture(cells), [cells]);
+  const field = useMemo(() => terrainFieldTexture(cells, wrap), [cells, wrap]);
   useEffect(() => () => field.texture.dispose(), [field]);
 
   // The seabed under the water, rendered each frame before the main pass.
@@ -482,7 +495,7 @@ export function Ocean({
           mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
         },
       ]),
-      defines: cubeUvDefines(skyHeight),
+      defines: wrap ? { ...cubeUvDefines(skyHeight), TERRAIN_FIELD_WRAP_X: "" } : cubeUvDefines(skyHeight),
       fog: true,
     });
     // UniformsUtils.merge clones uniform values, so textures are attached afterwards.
@@ -496,13 +509,19 @@ export function Ocean({
     mat.uniforms.cameraWorld = { value: new Matrix4() };
     mat.uniforms.waveSlopes = { value: waveSlopes };
     return mat;
-  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field, seabed, waveSlopes]);
+  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field, seabed, waveSlopes, wrap]);
   useEffect(() => () => material.dispose(), [material]);
 
   const meshRef = useRef<Mesh>(null);
+  const controls = useThree((state) => state.controls);
 
   useFrame(({ gl, camera }, delta) => {
     if (meshRef.current) {
+      // The plane is centred under the camera focus, so it covers the view
+      // wherever the camera pans (east–west forever on a wrapping map). All
+      // shading is in world space, so moving the plane changes no pixel.
+      const focus = controlsTarget(controls);
+      if (focus) meshRef.current.position.set(focus.x, 0, focus.z);
       const mat = meshRef.current.material as ShaderMaterial;
       gl.getDrawingBufferSize(mat.uniforms.screenSize.value);
       mat.uniforms.seabedSize.value.set(seabed.width, seabed.height);
@@ -513,12 +532,5 @@ export function Ocean({
     }
   });
 
-  return (
-    <mesh
-      ref={meshRef}
-      geometry={geometry}
-      material={material}
-      position={[0, 0, 0]}
-    />
-  );
+  return <mesh ref={meshRef} geometry={geometry} material={material} frustumCulled={false} />;
 }

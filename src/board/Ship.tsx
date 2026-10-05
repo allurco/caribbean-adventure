@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Vector3, Mesh, MathUtils } from "three";
 import type { ShipClass } from "../game/types";
+import { seamAwareStart } from "./wrapView";
 
 const DURATION = 0.4; // seconds
 const SINK_DURATION = 2.0; // seconds for sinking animation
@@ -26,10 +27,13 @@ export function Ship({
   onPointerEnter,
   onPointerLeave,
   onClick,
+  wrapWidth = Infinity,
 }: {
   position: [number, number, number];
   color: string;
   shipClass?: ShipClass;
+  /** World width of the map's east–west wrap (Infinity if it does not wrap). */
+  wrapWidth?: number;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
   onClick?: () => void;
@@ -69,6 +73,8 @@ export function Ship({
     ) {
       from.copy(ref.current.position);
       to.set(position[0], position[1] + 0.12, position[2]);
+      // Across the seam, sail straight over it rather than back across the map.
+      from.setX(seamAwareStart(from.x, to.x, wrapWidth));
       prevTarget.current = position;
       if (from.distanceTo(to) > 0.001) {
         progressRef.current = 0;

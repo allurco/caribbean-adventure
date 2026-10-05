@@ -1,6 +1,6 @@
 import type { Game } from "boardgame.io";
 import { INVALID_MOVE } from "boardgame.io/core";
-import { hex, hexEquals, canonicalHex, wrappedDistance, wrappedNeighbors } from "./hex";
+import { hex, hexEquals, canonicalHex, createWrap, wrappedDistance, wrappedNeighbors } from "./hex";
 import type { MapWrap } from "./hex";
 import { generateMap } from "./mapGenerator";
 import { getMapPreset } from "./mapConfig";
@@ -145,13 +145,13 @@ export const Caribbean: Game<CaribbeanState> = {
     const mapSize: MapSizeId =
       (setupData as { mapSize?: MapSizeId } | undefined)?.mapSize ??
       mapSizes[Math.floor(random.Number() * mapSizes.length)];
-    // The map is a rectangle that can wrap east–west. The wrap stays off until
-    // the board can draw across the seam (#36); the generator and G share it,
-    // so turning it on is this one line.
-    const wrap: MapWrap = null;
+    // The map is a rectangle that wraps east–west, a cylinder as wide as its
+    // columns (#36); the generator and G share the wrap.
+    const preset = getMapPreset(mapSize);
+    const wrap: MapWrap = createWrap(preset.columns);
     // Use a random seed for map generation
     const mapSeed = Math.floor(random.Number() * 1000000);
-    const cells = generateMap(getMapPreset(mapSize), mapSeed, wrap);
+    const cells = generateMap(preset, mapSeed, wrap);
 
     const numPlayers = 2;
     const deck = createCaptainDeck(Math.random);

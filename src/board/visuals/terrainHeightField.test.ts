@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Elevation, MapCell } from "../../game/types";
-import { createWrap, hex, hexGrid, hexRect, hexToWorld, neighbors, wrapWorldWidth } from "../../game/hex";
+import { createWrap, hex, hexGrid, hexRect, hexToOffset, hexToWorld, neighbors, offsetToHex, wrapWorldWidth } from "../../game/hex";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import {
@@ -522,6 +522,44 @@ describe("terrainHeightField", () => {
       for (let z = 0; z < 30; z += 1.3) {
         const step = Math.abs(field.sampleCoastDistance(0, z) - field.sampleCoastDistance(width - tiny, z));
         expect(step).toBeLessThan(1e-4);
+      }
+    });
+
+    // An island straddling the seam: the two columns either side of it, rows 6–9.
+    const seamIsland: MapCell[] = openSea.map((cell) => {
+      const { col, row } = hexToOffset(cell.hex);
+      const land = (col === 0 || col === columns - 1) && row >= 6 && row <= 9;
+      return land ? { ...cell, terrain: "island", elevation: 2 } : cell;
+    });
+
+    it("covers exactly one wrap width in x, from half a column west of column 0", () => {
+      const field = createTerrainHeightField(seamIsland, 17, { wrap });
+      expect(field.bounds.minX).toBe(-0.75);
+      expect(field.bounds.maxX).toBe(-0.75 + width);
+    });
+
+    it("draws a coast across the seam, not along it: the field is continuous at the strip's edges", () => {
+      const field = createTerrainHeightField(seamIsland, 17, { wrap });
+      const west = field.bounds.minX;
+      const tiny = 1e-6;
+      for (let z = 8; z < 18; z += 0.37) {
+        const step = Math.abs(field.sampleHeight(west + tiny, z) - field.sampleHeight(west + width - tiny, z));
+        expect(step).toBeLessThan(1e-3);
+      }
+      // Halfway across the island, on the seam, is land well above the sea.
+      const [, , zMid] = hexToWorld(offsetToHex(0, 8));
+      expect(field.sampleHeight(west, zMid)).toBeGreaterThan(0.3);
+      expect(field.sampleCoastDistance(west, zMid)).toBeGreaterThan(0.5);
+    });
+
+    it("repeats every wrap width over land too", () => {
+      const field = createTerrainHeightField(seamIsland, 17, { wrap });
+      for (let i = 0; i < 200; i++) {
+        const x = -3 + (i * 0.173) % 6;
+        const z = 9 + (i * 0.377) % 9;
+        expect(field.sampleHeight(x + width, z)).toBeCloseTo(field.sampleHeight(x, z), 9);
+        expect(field.sampleElevation(x - width, z)).toBeCloseTo(field.sampleElevation(x, z), 9);
+        expect(field.isNearSeabed(x + width, z)).toBe(field.isNearSeabed(x, z));
       }
     });
 

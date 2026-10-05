@@ -1,6 +1,18 @@
 import { describe, it, expect } from "vitest";
 import type { MapCell } from "../../game/types";
-import { hex, hexGrid, hexToWorld, neighbors, worldToHex } from "../../game/hex";
+import {
+  createWrap,
+  hex,
+  hexEquals,
+  hexGrid,
+  hexRect,
+  hexToWorld,
+  nearestImage,
+  neighbors,
+  offsetToHex,
+  worldToHex,
+  wrapWorldWidth,
+} from "../../game/hex";
 import { createReefMask, REEF_EDGE_SOFTNESS } from "./reefMask";
 
 const INRADIUS = Math.sqrt(3) / 2;
@@ -91,6 +103,36 @@ describe("reefMask", () => {
   it("keeps the soft rim narrow enough that the reef interior stays fully masked", () => {
     expect(REEF_EDGE_SOFTNESS).toBeGreaterThan(0);
     expect(REEF_EDGE_SOFTNESS).toBeLessThan(INRADIUS / 2);
+  });
+
+  describe("on a map that wraps east–west (#36)", () => {
+    const columns = 8;
+    const wrap = createWrap(columns);
+    const width = wrapWorldWidth(wrap);
+    // Reefs in the last column and the first, either side of the seam.
+    const east = offsetToHex(columns - 1, 2);
+    const west = offsetToHex(0, 2);
+    const cells: MapCell[] = hexRect(columns, 5).map((h) => {
+      const reef = hexEquals(h, east) || hexEquals(h, west);
+      return { hex: h, terrain: reef ? "reef" : "water", hasPort: false, elevation: 0 };
+    });
+
+    it("has no rim where a reef meets a reef across the seam", () => {
+      const mask = createReefMask(cells, wrap);
+      const a = hexToWorld(east);
+      const b = hexToWorld(nearestImage(east, west, wrap));
+      for (let t = 0; t <= 1; t += 0.02) {
+        const [x, z] = between(a, b, t);
+        expect(mask(x, z)).toBe(1);
+      }
+    });
+
+    it("repeats every wrap width", () => {
+      const mask = createReefMask(cells, wrap);
+      for (let x = -3; x <= 3; x += 0.1) {
+        for (let z = 2; z <= 6; z += 0.2) expect(mask(x + width, z)).toBeCloseTo(mask(x, z), 9);
+      }
+    });
   });
 
   it("is 0 everywhere on a map with no reefs", () => {
