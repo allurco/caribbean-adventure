@@ -7,11 +7,12 @@ import { sharedTerrainField } from "./sharedTerrainField";
 import { terrainSeedFromCells } from "./terrainHeightField";
 import { placeOnGround, type GroundPlacementOptions } from "./groundPlacement";
 import { usePalmTrees, type PalmTreesResources } from "./usePalmTrees";
+import { ROCK_UNIT_RADIUS } from "./rockGeometry";
 import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
 import { smallStones } from "./smallStones";
 
-/** Rock radius at scale 1. */
-export const ROCK_RADIUS = 0.12;
+/** Rock radius at scale 1 (the rock mesh's unit radius). */
+export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
 
 // Ground fit at scale 1. The footprint covers the trunk base plus its lean.
 const TREE_PLACEMENT: GroundPlacementOptions = { footprintRadius: 0.06, sink: 0.03, maxSlope: 0.9 };
