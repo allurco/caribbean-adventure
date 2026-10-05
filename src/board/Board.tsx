@@ -53,10 +53,12 @@ import {
   oceanPlaneSize,
 } from "./cameraBounds";
 import {
+  WRAP_BAND_PADDING,
   clampFocusZ,
   groundFootprint,
   mapBand,
   maxViewDistance,
+  paddedBand,
   seamAwareStart,
   wrapCopyRange,
 } from "./wrapView";
@@ -160,15 +162,18 @@ function Scene({
 
   // East–west wrap (#36): the world is drawn in copies one wrap width apart
   // that follow the camera, which pans east or west forever; north and south
-  // the view stops at the top and bottom rows of hexes.
+  // the view stops a margin of sea past the top and bottom rows of hexes.
   const strip = useMemo(() => seamStrip(G.wrap), [G.wrap]);
   const period = wrapWorldWidth(G.wrap);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const footprint = useMemo(() => groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect), [aspect]);
-  const band = useMemo(() => mapBand(getMapPreset(G.mapSize).rows), [G.mapSize]);
+  const hexBand = useMemo(() => mapBand(getMapPreset(G.mapSize).rows), [G.mapSize]);
+  // The focus may roam the band plus the sea margin, so north–south panning
+  // keeps working at full zoom-out.
+  const band = useMemo(() => paddedBand(hexBand, WRAP_BAND_PADDING), [hexBand]);
   // The furthest zoom-out at which the whole view still fits between the top
-  // and bottom rows; recomputed when the window's shape changes.
-  const maxDistance = strip && footprint ? maxViewDistance(footprint, band, CAMERA_MAX_DISTANCE) : CAMERA_MAX_DISTANCE;
+  // and bottom rows (no margin); recomputed when the window's shape changes.
+  const maxDistance = strip && footprint ? maxViewDistance(footprint, hexBand, CAMERA_MAX_DISTANCE) : CAMERA_MAX_DISTANCE;
   const copies = useMemo(
     () => (strip && footprint ? wrapCopyRange(footprint, maxDistance, period, WRAP_COPY_MARGIN) : { from: 0, to: 0 }),
     [strip, footprint, maxDistance, period]

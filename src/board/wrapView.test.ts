@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
+  WRAP_BAND_PADDING,
   clampFocusZ,
   copyShiftToward,
   groundFootprint,
   mapBand,
   maxViewDistance,
+  paddedBand,
   seamAwareStart,
   wrapCopyRange,
   type GroundFootprint,
 } from "./wrapView";
-import { CAMERA_FOV, CAMERA_MAX_DISTANCE, CAMERA_OFFSET } from "./cameraBounds";
+import {
+  CAMERA_FOV,
+  CAMERA_MAX_DISTANCE,
+  CAMERA_OFFSET,
+  CAMERA_PITCH,
+  MAX_VIEW_ASPECT,
+  groundViewReach,
+  oceanPlaneSize,
+} from "./cameraBounds";
 import { MAP_PRESETS } from "../game/mapConfig";
 
 const SQRT3 = Math.sqrt(3);
@@ -45,6 +55,16 @@ describe("groundFootprint", () => {
 describe("mapBand", () => {
   it("is the strip every column covers: from the top of row 0 of the odd columns to the bottom of the last row of the even ones", () => {
     expect(mapBand(18)).toEqual({ minZ: 0, maxZ: SQRT3 * 17.5 });
+  });
+});
+
+describe("paddedBand", () => {
+  it("grows the band by the padding on both sides", () => {
+    expect(paddedBand({ minZ: 0, maxZ: 25 }, 2)).toEqual({ minZ: -2, maxZ: 27 });
+  });
+
+  it("pads the map band by two rows of sea by default", () => {
+    expect(WRAP_BAND_PADDING).toBeCloseTo(2 * SQRT3, 12);
   });
 });
 
@@ -85,17 +105,50 @@ describe("clampFocusZ", () => {
 });
 
 describe("the game's camera on a wrapping map", () => {
+  // As Board.tsx wires it: zoom-out is capped so the view fits the hex rows,
+  // while the focus is clamped to the band padded with sea past the rows.
   for (const aspect of [0.5, 1, 16 / 9, 21 / 9, 4]) {
     for (const preset of MAP_PRESETS) {
-      it(`never shows past the north or south edge of the ${preset.id} map at aspect ${aspect.toFixed(2)}`, () => {
-        const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect)!;
-        const band = mapBand(preset.rows);
-        const d = maxViewDistance(footprint, band, CAMERA_MAX_DISTANCE);
+      const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect)!;
+      const hexBand = mapBand(preset.rows);
+      const band = paddedBand(hexBand, WRAP_BAND_PADDING);
+      const d = maxViewDistance(footprint, hexBand, CAMERA_MAX_DISTANCE);
+      const label = `the ${preset.id} map at aspect ${aspect.toFixed(2)}`;
+
+      it(`never shows past the sea margin north or south of ${label}`, () => {
         for (const focus of [-50, band.minZ, (band.minZ + band.maxZ) / 2, band.maxZ, 200]) {
           const z = clampFocusZ(focus, d, footprint, band);
           expect(z + d * footprint.minZ).toBeGreaterThanOrEqual(band.minZ - 1e-9);
           expect(z + d * footprint.maxZ).toBeLessThanOrEqual(band.maxZ + 1e-9);
         }
+      });
+
+      it(`can still pan north–south at full zoom-out on ${label}`, () => {
+        const north = clampFocusZ(-1000, d, footprint, band);
+        const south = clampFocusZ(1000, d, footprint, band);
+        // The sea margin is the slack: two rows north plus two rows south.
+        expect(south - north).toBeGreaterThanOrEqual(2 * WRAP_BAND_PADDING - 1e-9);
+      });
+
+      it(`still fits every row on screen at full zoom-out on ${label}`, () => {
+        // Unless the general zoom-out limit kicks in first (large map, wide screens).
+        if (d >= CAMERA_MAX_DISTANCE) return;
+        // The focus whose view is centred on the rows is allowed ...
+        const centred = (hexBand.minZ + hexBand.maxZ) / 2 - (d * (footprint.minZ + footprint.maxZ)) / 2;
+        const z = clampFocusZ(centred, d, footprint, band);
+        expect(z).toBeCloseTo(centred, 9);
+        // ... and from it the view reaches the top row and the bottom row.
+        expect(z + d * footprint.minZ).toBeLessThanOrEqual(hexBand.minZ + 1e-9);
+        expect(z + d * footprint.maxZ).toBeGreaterThanOrEqual(hexBand.maxZ - 1e-9);
+      });
+
+      it(`keeps the edge of the ocean plane off screen on ${label}`, () => {
+        // The plane is centred under the focus, so only the zoom matters.
+        const halfSize = oceanPlaneSize(groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)) / 2;
+        const reachX = d * Math.max(Math.abs(footprint.minX), Math.abs(footprint.maxX));
+        const reachZ = d * Math.max(Math.abs(footprint.minZ), Math.abs(footprint.maxZ));
+        expect(reachX).toBeLessThanOrEqual(halfSize);
+        expect(reachZ).toBeLessThanOrEqual(halfSize);
       });
     }
   }

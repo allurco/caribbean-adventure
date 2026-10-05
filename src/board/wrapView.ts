@@ -2,7 +2,7 @@
  * Pure view maths for a map that wraps east–west (#36), Civ style: the camera
  * pans east or west forever (the world is drawn in copies one wrap width
  * apart that follow it), while north and south it never shows anything past
- * the top or bottom row of hexes.
+ * a margin of sea (`WRAP_BAND_PADDING`) beyond the top or bottom row of hexes.
  */
 
 /**
@@ -72,6 +72,21 @@ export function groundFootprint(
  */
 export function mapBand(rows: number): ZBand {
   return { minZ: 0, maxZ: SQRT3 * (rows - 0.5) };
+}
+
+/**
+ * Sea the view may show past the top and bottom rows: two rows' worth. The
+ * zoom-out cap (`maxViewDistance`) uses the bare `mapBand`, so the whole map
+ * still just fits on screen at full zoom-out; the focus clamp (`clampFocusZ`)
+ * uses the band padded by this, so even at full zoom-out the focus can still
+ * travel twice this north–south instead of being pinned (and, as the camera
+ * looks along a diagonal, only ever sliding diagonally on screen).
+ */
+export const WRAP_BAND_PADDING = 2 * SQRT3;
+
+/** `band` grown by `padding` on both sides. */
+export function paddedBand(band: ZBand, padding: number): ZBand {
+  return { minZ: band.minZ - padding, maxZ: band.maxZ + padding };
 }
 
 /** Furthest the camera may zoom out so the whole view fits in `band` (and within `limit`). */

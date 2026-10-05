@@ -245,11 +245,17 @@ copy under the pointer (`PointerCopy`): a very wide view can show the same
 ship twice. The ocean is still **one** plane, centred under the camera
 focus and following it (all its shading is in world space, so moving it
 changes no pixel); the seabed prepass draws the land copies like the main
-pass. North and south, `wrapView.ts` clamps the focus so the view's ground
-footprint stays inside the band every column covers, z ∈ [0, √3·(rows − ½)],
-and caps zoom-out so the view is never taller than that band (recomputed
-when the window's aspect changes). At 16:9 the cap is ~13.9 units of camera
-distance on the small map, ~21.9 on the medium and the old 28 on the large.
+pass. North and south, `wrapView.ts` caps zoom-out so the view is never
+taller than the band every column covers, z ∈ [0, √3·(rows − ½)] (recomputed
+when the window's aspect changes), and clamps the focus so the view's ground
+footprint stays inside that band padded by `WRAP_BAND_PADDING` (two rows,
+2√3) of open sea on each side. The padding is what keeps north–south panning
+alive at full zoom-out: with the clamp on the bare band the view fits it
+exactly, so the focus is pinned in z and, the camera looking along a
+diagonal, every pan slides diagonally on screen. At 16:9 the cap is ~13.9
+units of camera distance on the small map, ~21.9 on the medium and the old 28
+on the large. The sea past the rows needs nothing drawn: the ocean shader
+treats everything outside the field's bounds as open sea.
 A ship whose move crosses the seam starts its animation a wrap width over
 (`seamAwareStart`), so it sails straight across.
 
