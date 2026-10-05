@@ -57,7 +57,6 @@ import {
   clampFocusZ,
   groundFootprint,
   mapBand,
-  maxViewDistance,
   paddedBand,
   seamAwareStart,
   wrapCopyRange,
@@ -162,21 +161,20 @@ function Scene({
 
   // East–west wrap (#36): the world is drawn in copies one wrap width apart
   // that follow the camera, which pans east or west forever; north and south
-  // the view stops a margin of sea past the top and bottom rows of hexes.
+  // the focus stops a margin of sea past the top and bottom rows of hexes.
   const strip = useMemo(() => seamStrip(G.wrap), [G.wrap]);
   const period = wrapWorldWidth(G.wrap);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const footprint = useMemo(() => groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect), [aspect]);
   const hexBand = useMemo(() => mapBand(getMapPreset(G.mapSize).rows), [G.mapSize]);
   // The focus may roam the band plus the sea margin, so north–south panning
-  // keeps working at full zoom-out.
+  // keeps working when the rows just fit on screen. The zoom-out cap is the
+  // same on every map size (Civ style): a view taller than the margin is
+  // centred on it and shows open sea past the rows.
   const band = useMemo(() => paddedBand(hexBand, WRAP_BAND_PADDING), [hexBand]);
-  // The furthest zoom-out at which the whole view still fits between the top
-  // and bottom rows (no margin); recomputed when the window's shape changes.
-  const maxDistance = strip && footprint ? maxViewDistance(footprint, hexBand, CAMERA_MAX_DISTANCE) : CAMERA_MAX_DISTANCE;
   const copies = useMemo(
-    () => (strip && footprint ? wrapCopyRange(footprint, maxDistance, period, WRAP_COPY_MARGIN) : { from: 0, to: 0 }),
-    [strip, footprint, maxDistance, period]
+    () => (strip && footprint ? wrapCopyRange(footprint, CAMERA_MAX_DISTANCE, period, WRAP_COPY_MARGIN) : { from: 0, to: 0 }),
+    [strip, footprint, period]
   );
 
 
@@ -216,12 +214,12 @@ function Scene({
       controls.target.add(correction);
       camera.position.add(correction);
     };
-    // A new zoom limit (window resized) applies on the controls' next update.
+    // Apply any pending controls change (window resized) before clamping.
     controls.update();
     clamp();
     controls.addEventListener("change", clamp);
     return () => controls.removeEventListener("change", clamp);
-  }, [clampFocus, camera, maxDistance]);
+  }, [clampFocus, camera]);
 
   // Animate camera to focus position when it changes
   useEffect(() => {
@@ -443,8 +441,10 @@ function Scene({
         // side, looking back across the map (labels read mirrored).
         target={cam.target}
         enableRotate={false}
-        minDistance={Math.min(cam.isoDistance * 0.15, maxDistance)}
-        maxDistance={maxDistance}
+        minDistance={Math.min(cam.isoDistance * 0.15, CAMERA_MAX_DISTANCE)}
+        // The same on every map size (Civ style); the focus clamp above keeps
+        // the view on the map, with open sea past the rows on a small map.
+        maxDistance={CAMERA_MAX_DISTANCE}
       />
 
       {/* Post-processing effects */}

@@ -5,7 +5,6 @@ import {
   copyShiftToward,
   groundFootprint,
   mapBand,
-  maxViewDistance,
   paddedBand,
   seamAwareStart,
   wrapCopyRange,
@@ -68,18 +67,6 @@ describe("paddedBand", () => {
   });
 });
 
-describe("maxViewDistance", () => {
-  const footprint: GroundFootprint = { minX: -1, maxX: 1, minZ: -2, maxZ: 0.5 };
-
-  it("is the distance at which the view is exactly as tall as the band", () => {
-    expect(maxViewDistance(footprint, { minZ: 0, maxZ: 25 }, 100)).toBe(10);
-  });
-
-  it("never exceeds the zoom-out limit", () => {
-    expect(maxViewDistance(footprint, { minZ: 0, maxZ: 25 }, 8)).toBe(8);
-  });
-});
-
 describe("clampFocusZ", () => {
   const footprint: GroundFootprint = { minX: -1, maxX: 1, minZ: -2, maxZ: 0.5 };
   const band = { minZ: 0, maxZ: 25 };
@@ -105,34 +92,62 @@ describe("clampFocusZ", () => {
 });
 
 describe("the game's camera on a wrapping map", () => {
-  // As Board.tsx wires it: zoom-out is capped so the view fits the hex rows,
-  // while the focus is clamped to the band padded with sea past the rows.
-  for (const aspect of [0.5, 1, 16 / 9, 21 / 9, 4]) {
+  // As Board.tsx wires it: the zoom-out cap is CAMERA_MAX_DISTANCE on every
+  // map (Civ style), while the focus is clamped to the band padded with sea
+  // past the rows.
+  const SMALL_ROWS = 18;
+  const SIXTEEN_NINE = 16 / 9;
+  const zooms = [4, 8, 12, 16, 20, 24, CAMERA_MAX_DISTANCE];
+
+  for (const aspect of [0.5, 1, SIXTEEN_NINE, 21 / 9, 4]) {
     for (const preset of MAP_PRESETS) {
       const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect)!;
+      const viewHeightPerUnit = footprint.maxZ - footprint.minZ;
       const hexBand = mapBand(preset.rows);
       const band = paddedBand(hexBand, WRAP_BAND_PADDING);
-      const d = maxViewDistance(footprint, hexBand, CAMERA_MAX_DISTANCE);
       const label = `the ${preset.id} map at aspect ${aspect.toFixed(2)}`;
 
-      it(`never shows past the sea margin north or south of ${label}`, () => {
-        for (const focus of [-50, band.minZ, (band.minZ + band.maxZ) / 2, band.maxZ, 200]) {
-          const z = clampFocusZ(focus, d, footprint, band);
-          expect(z + d * footprint.minZ).toBeGreaterThanOrEqual(band.minZ - 1e-9);
-          expect(z + d * footprint.maxZ).toBeLessThanOrEqual(band.maxZ + 1e-9);
+      it(`never shows past the sea margin north or south of ${label} at any zoom the view fits in it`, () => {
+        for (const d of zooms) {
+          const viewHeight = d * viewHeightPerUnit;
+          for (const focus of [-50, band.minZ, (band.minZ + band.maxZ) / 2, band.maxZ, 200]) {
+            const z = clampFocusZ(focus, d, footprint, band);
+            const top = z + d * footprint.minZ;
+            const bottom = z + d * footprint.maxZ;
+            if (viewHeight <= band.maxZ - band.minZ) {
+              expect(top).toBeGreaterThanOrEqual(band.minZ - 1e-9);
+              expect(bottom).toBeLessThanOrEqual(band.maxZ + 1e-9);
+            } else {
+              // A view taller than the margin is centred on it: as much open
+              // sea past the margin north as south, whatever the focus asked.
+              expect(band.minZ - top).toBeCloseTo(bottom - band.maxZ, 9);
+            }
+          }
         }
       });
 
-      it(`can still pan north–south at full zoom-out on ${label}`, () => {
+      it(`can pan north–south by the sea margin at the zoom where the rows just fit on ${label}`, () => {
+        const d = Math.min(CAMERA_MAX_DISTANCE, (hexBand.maxZ - hexBand.minZ) / viewHeightPerUnit);
         const north = clampFocusZ(-1000, d, footprint, band);
         const south = clampFocusZ(1000, d, footprint, band);
         // The sea margin is the slack: two rows north plus two rows south.
         expect(south - north).toBeGreaterThanOrEqual(2 * WRAP_BAND_PADDING - 1e-9);
       });
 
-      it(`still fits every row on screen at full zoom-out on ${label}`, () => {
-        // Unless the general zoom-out limit kicks in first (large map, wide screens).
-        if (d >= CAMERA_MAX_DISTANCE) return;
+      it(`lets every row be brought on screen at full zoom-out on ${label}`, () => {
+        const d = CAMERA_MAX_DISTANCE;
+        // Panned as far north as allowed, the view reaches the top row ...
+        const north = clampFocusZ(-1000, d, footprint, band);
+        expect(north + d * footprint.minZ).toBeLessThanOrEqual(hexBand.minZ + 1e-9);
+        // ... and as far south, the bottom row.
+        const south = clampFocusZ(1000, d, footprint, band);
+        expect(south + d * footprint.maxZ).toBeGreaterThanOrEqual(hexBand.maxZ - 1e-9);
+      });
+
+      it(`fits every row on screen at once at full zoom-out on ${label} when the view is tall enough`, () => {
+        const d = CAMERA_MAX_DISTANCE;
+        // The large map is taller than the view at 16:9 and wider.
+        if (d * viewHeightPerUnit < hexBand.maxZ - hexBand.minZ) return;
         // The focus whose view is centred on the rows is allowed ...
         const centred = (hexBand.minZ + hexBand.maxZ) / 2 - (d * (footprint.minZ + footprint.maxZ)) / 2;
         const z = clampFocusZ(centred, d, footprint, band);
@@ -142,7 +157,8 @@ describe("the game's camera on a wrapping map", () => {
         expect(z + d * footprint.maxZ).toBeGreaterThanOrEqual(hexBand.maxZ - 1e-9);
       });
 
-      it(`keeps the edge of the ocean plane off screen on ${label}`, () => {
+      it(`keeps the edge of the ocean plane off screen at full zoom-out on ${label}`, () => {
+        const d = CAMERA_MAX_DISTANCE;
         // The plane is centred under the focus, so only the zoom matters.
         const halfSize = oceanPlaneSize(groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)) / 2;
         const reachX = d * Math.max(Math.abs(footprint.minX), Math.abs(footprint.maxX));
@@ -152,6 +168,32 @@ describe("the game's camera on a wrapping map", () => {
       });
     }
   }
+
+  it("zooms out to the same distance on every map size", () => {
+    // Civ style: the cap does not shrink with the map; a small map shows open
+    // sea past its top and bottom rows at full zoom-out instead.
+    const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, SIXTEEN_NINE)!;
+    const hexBand = mapBand(SMALL_ROWS);
+    const band = paddedBand(hexBand, WRAP_BAND_PADDING);
+    const d = CAMERA_MAX_DISTANCE;
+    const z = clampFocusZ(0, d, footprint, band);
+    // Measured: a 16:9 view at distance 28 is ~61 units tall against 30.3 of rows.
+    expect(hexBand.minZ - (z + d * footprint.minZ)).toBeGreaterThan(10);
+    expect(z + d * footprint.maxZ - hexBand.maxZ).toBeGreaterThan(10);
+  });
+
+  it("draws four copies of the small map at full zoom-out on a 16:9 screen, three of the others", () => {
+    const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, SIXTEEN_NINE)!;
+    const margin = 3; // WRAP_COPY_MARGIN in Board.tsx
+    const ranges = MAP_PRESETS.map((preset) =>
+      wrapCopyRange(footprint, CAMERA_MAX_DISTANCE, 1.5 * preset.columns, margin)
+    );
+    expect(ranges).toEqual([
+      { from: -2, to: 1 },
+      { from: -1, to: 1 },
+      { from: -1, to: 1 },
+    ]);
+  });
 });
 
 describe("wrapCopyRange", () => {

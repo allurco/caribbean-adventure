@@ -234,7 +234,9 @@ one wrap width apart (`WorldCopies.tsx`), moved each frame by whole wrap
 widths to stay around the camera focus; the camera pans east or west
 forever with no teleport, so the world-space waves, caustics and surf noise
 never jump. How many copies: `wrapCopyRange` from the view's ground footprint
-at full zoom-out (three, −1…+1, for every map preset at aspects 0.5 to 4).
+at full zoom-out (`CAMERA_MAX_DISTANCE`): at 16:9, four (−2…+1) on the small
+map and three (−1…+1) on the medium and large; a 4:1 super-ultrawide needs up
+to six on the small map.
 The copies only draw: the land mesh, decoration placement, palm geometry and
 grid lines are built once per map above them (`useLandTerrain`,
 `useDecorationLayout`, `usePalmTrees`, `useHexGrid`/`useWaterGridLines`) and
@@ -245,17 +247,22 @@ copy under the pointer (`PointerCopy`): a very wide view can show the same
 ship twice. The ocean is still **one** plane, centred under the camera
 focus and following it (all its shading is in world space, so moving it
 changes no pixel); the seabed prepass draws the land copies like the main
-pass. North and south, `wrapView.ts` caps zoom-out so the view is never
-taller than the band every column covers, z ∈ [0, √3·(rows − ½)] (recomputed
-when the window's aspect changes), and clamps the focus so the view's ground
-footprint stays inside that band padded by `WRAP_BAND_PADDING` (two rows,
-2√3) of open sea on each side. The padding is what keeps north–south panning
-alive at full zoom-out: with the clamp on the bare band the view fits it
-exactly, so the focus is pinned in z and, the camera looking along a
-diagonal, every pan slides diagonally on screen. At 16:9 the cap is ~13.9
-units of camera distance on the small map, ~21.9 on the medium and the old 28
-on the large. The sea past the rows needs nothing drawn: the ocean shader
-treats everything outside the field's bounds as open sea.
+pass. The zoom-out cap is `CAMERA_MAX_DISTANCE` (28) on every map size, Civ
+style. North and south, `wrapView.ts` clamps the focus so the view's ground
+footprint stays inside the band every column covers, z ∈ [0, √3·(rows − ½)],
+padded by `WRAP_BAND_PADDING` (two rows, 2√3) of open sea on each side; when
+the view is taller than the padded band (at 16:9 a view at distance 28 is ~61
+units tall, against 30 rows' worth on the small map and 48 on the medium) it
+is centred on it, so the player sees open sea past the top and bottom rows
+where Civ shows the void past the poles. The padding is what keeps
+north–south panning alive at the zoom where the rows just fit on screen: with
+the clamp on the bare band the view would fit it exactly, so the focus would
+be pinned in z and, the camera looking along a diagonal, every pan would
+slide diagonally on screen. The sea past the rows needs nothing drawn: the
+ocean shader treats everything outside the field's bounds as open sea (the
+field texture clamps in t but every read is guarded by `terrainFieldInside`;
+the seabed prepass has no mesh there, so the water is deep water), and the
+grid lines are built from the water cells' edges, so they end at the map.
 A ship whose move crosses the seam starts its animation a wrap width over
 (`seamAwareStart`), so it sails straight across.
 

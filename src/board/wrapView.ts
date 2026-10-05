@@ -1,8 +1,11 @@
 /**
  * Pure view maths for a map that wraps east–west (#36), Civ style: the camera
  * pans east or west forever (the world is drawn in copies one wrap width
- * apart that follow it), while north and south it never shows anything past
- * a margin of sea (`WRAP_BAND_PADDING`) beyond the top or bottom row of hexes.
+ * apart that follow it) and zooms out to the same distance on every map size,
+ * while north and south the focus never goes past a margin of sea
+ * (`WRAP_BAND_PADDING`) beyond the top or bottom row of hexes. When the view
+ * is taller than that margin (a small map at full zoom-out) it is centred on
+ * it, with open sea past the rows where Civ shows the void past the poles.
  */
 
 /**
@@ -76,22 +79,18 @@ export function mapBand(rows: number): ZBand {
 
 /**
  * Sea the view may show past the top and bottom rows: two rows' worth. The
- * zoom-out cap (`maxViewDistance`) uses the bare `mapBand`, so the whole map
- * still just fits on screen at full zoom-out; the focus clamp (`clampFocusZ`)
- * uses the band padded by this, so even at full zoom-out the focus can still
- * travel twice this north–south instead of being pinned (and, as the camera
- * looks along a diagonal, only ever sliding diagonally on screen).
+ * focus clamp (`clampFocusZ`) uses the `mapBand` padded by this, so at the
+ * zoom where the rows just fit on screen the focus can still travel twice
+ * this north–south instead of being pinned (and, as the camera looks along a
+ * diagonal, only ever sliding diagonally on screen). The zoom-out cap is the
+ * global `CAMERA_MAX_DISTANCE` on every map, so a view taller than the padded
+ * band is centred on it and shows open sea past the margin too.
  */
 export const WRAP_BAND_PADDING = 2 * SQRT3;
 
 /** `band` grown by `padding` on both sides. */
 export function paddedBand(band: ZBand, padding: number): ZBand {
   return { minZ: band.minZ - padding, maxZ: band.maxZ + padding };
-}
-
-/** Furthest the camera may zoom out so the whole view fits in `band` (and within `limit`). */
-export function maxViewDistance(footprint: GroundFootprint, band: ZBand, limit: number): number {
-  return Math.min(limit, (band.maxZ - band.minZ) / (footprint.maxZ - footprint.minZ));
 }
 
 /**
