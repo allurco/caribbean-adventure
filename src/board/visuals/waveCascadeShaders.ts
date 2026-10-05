@@ -1,5 +1,5 @@
 /**
- * GLSL for the FFT cascade's GPU passes (#38); `useWaveCascade.ts` runs them.
+ * GLSL for the FFT cascade's GPU passes (#38); `useWaveCascades.ts` runs them.
  * Every pass draws one full-screen triangle over a size² target and reads its
  * inputs with texelFetch, so texel (x, z) is grid index z · size + x, as in
  * waveCascade.ts and fftButterfly.ts.

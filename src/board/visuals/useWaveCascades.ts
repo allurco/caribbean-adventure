@@ -1,14 +1,15 @@
 /**
- * Runs one FFT wave cascade on the GPU each frame (#38 step 4) and returns
- * its mipmapped slope texture (layout in waveCascadeShaders.ts).
+ * Runs the FFT wave cascades on the GPU each frame (#38 steps 4–5) and
+ * returns their mipmapped slope textures (layout in waveCascadeShaders.ts).
  *
- * Per frame: one spectrum pass, log2(size) row passes and log2(size) column
- * passes of the Stockham inverse FFT (ping-ponging between two float
- * targets), and one output pass into a half-float target whose mipmaps three
- * regenerates after the draw. For 256² that is 18 small draws.
+ * Per cascade and frame: one spectrum pass, log2(size) row passes and
+ * log2(size) column passes of the Stockham inverse FFT (ping-ponging between
+ * two float targets), and one output pass into a half-float target whose
+ * mipmaps three regenerates after the draw. For 256² that is 18 small draws,
+ * 54 for the three cascades. All cascades run on one wave clock.
  *
  * On a GPU that cannot render to float or half float (waveCascadeSupport.ts)
- * the cascade is skipped: the hook returns a flat, zero-slope texture and
+ * the cascades are skipped: the hook returns flat, zero-slope textures and
  * warns once, so the sea is calm rather than silently broken.
  */
 import { useEffect, useMemo, useRef } from "react";
@@ -85,20 +86,20 @@ function flatSlopes(): CascadeGpu {
   return { texture, update: () => {}, dispose: () => texture.dispose() };
 }
 
-/** GPU resources for one cascade; `dispose` frees them all. */
-function createCascadeGpu(cascade: WaveCascade, gl: WebGLRenderer): CascadeGpu {
+/** GPU resources for each cascade; `dispose` frees them all. */
+function createCascadeGpus(cascades: readonly WaveCascade[], gl: WebGLRenderer): CascadeGpu[] {
   const types = cascadeTargetTypes({
     colorBufferFloat: gl.extensions.has("EXT_color_buffer_float"),
     colorBufferHalfFloat: gl.extensions.has("EXT_color_buffer_half_float"),
   });
   if (!types) {
     if (!warnedUnsupported) {
-      console.warn("Wave cascade skipped: this GPU cannot render to float or half-float targets; the sea is drawn flat.");
+      console.warn("Wave cascades skipped: this GPU cannot render to float or half-float targets; the sea is drawn flat.");
       warnedUnsupported = true;
     }
-    return flatSlopes();
+    return cascades.map(() => flatSlopes());
   }
-  return createRenderingCascade(cascade, gl, types);
+  return cascades.map((cascade) => createRenderingCascade(cascade, gl, types));
 }
 
 function createRenderingCascade(cascade: WaveCascade, gl: WebGLRenderer, types: CascadeTargetTypes): CascadeGpu {
@@ -180,27 +181,32 @@ function createRenderingCascade(cascade: WaveCascade, gl: WebGLRenderer, types: 
   return { texture: output.texture, update, dispose };
 }
 
-/** The cascade's slope texture, updated once per frame; frozen under reduced motion. */
-export function useWaveCascade(cascade: WaveCascade, reducedMotion: boolean): Texture {
+/**
+ * Each cascade's slope texture, in the order given, updated once per frame on
+ * one shared clock; frozen under reduced motion. `cascades` should be a stable
+ * array: a new one rebuilds every cascade.
+ */
+export function useWaveCascades(cascades: readonly WaveCascade[], reducedMotion: boolean): Texture[] {
   const gl = useThree((s) => s.gl);
-  const gpu = useMemo(() => createCascadeGpu(cascade, gl), [cascade, gl]);
-  useEffect(() => () => gpu.dispose(), [gpu]);
+  const gpus = useMemo(() => createCascadeGpus(cascades, gl), [cascades, gl]);
+  useEffect(() => () => gpus.forEach((gpu) => gpu.dispose()), [gpus]);
+  const textures = useMemo(() => gpus.map((gpu) => gpu.texture), [gpus]);
 
   const time = useRef(0);
   const drawn = useRef(false);
 
   useFrame((_, delta) => {
     const next = advanceWaveTime(time.current, delta, reducedMotion);
-    if (drawn.current && next === time.current) return; // frozen: the texture is still current
+    if (drawn.current && next === time.current) return; // frozen: the textures are still current
     time.current = next;
-    gpu.update(next);
+    for (const gpu of gpus) gpu.update(next);
     drawn.current = true;
   }, CASCADE_PRIORITY);
 
-  // A new GPU (new cascade or context) has not been drawn yet.
+  // New GPUs (new cascades or context) have not been drawn yet.
   useEffect(() => {
     drawn.current = false;
-  }, [gpu]);
+  }, [gpus]);
 
-  return gpu.texture;
+  return textures;
 }

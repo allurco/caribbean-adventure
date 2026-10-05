@@ -8,10 +8,11 @@
  * into the glint's roughness α² (LEAN mapping: Olano & Baker 2010, "LEAN
  * mapping"). Nothing is lost, only moved from the normal into the roughness.
  *
- * On top of that, the normal fades toward flat with distance from the camera,
- * past the play area, with the faded slope folded into roughness the same
- * way: the far sea turns into a smooth, rough-specular sheet instead of noise
- * at grazing angles.
+ * On top of that, each cascade fades out once its band is sub-pixel
+ * (cascadeLodFade), and every cascade fades toward flat with distance from
+ * the camera, past the play area. Faded slope is folded into roughness the
+ * same way, so the far sea turns into a smooth, rough-specular sheet instead
+ * of noise at grazing angles.
  */
 
 /** Distance from the camera (world units) where wave normals start to fade. */
@@ -27,17 +28,6 @@ const smoothstep = (e0: number, e1: number, x: number) => {
 /** Share of the wave normal detail kept at `distance` world units from the camera. */
 export function waveDetailFade(distance: number): number {
   return 1 - smoothstep(WAVE_DETAIL_FADE_START, WAVE_DETAIL_FADE_END, distance);
-}
-
-/** Single-layer form, still used by Ocean.tsx until it moves to the cascades. */
-export function fadedWaveSlope(
-  meanSlope: readonly [number, number],
-  meanSquare: number,
-  fade: number
-): { slope: [number, number]; variance: number } {
-  const slope: [number, number] = [meanSlope[0] * fade, meanSlope[1] * fade];
-  const variance = Math.max(0, meanSquare - slope[0] * slope[0] - slope[1] * slope[1]);
-  return { slope, variance };
 }
 
 /**
@@ -119,10 +109,5 @@ export const WAVE_NORMAL_FILTER_GLSL = `
     vec2 m = texel.xy * fade;
     slope += vec2(turn.x * m.x - turn.y * m.y, turn.y * m.x + turn.x * m.y);
     variance += max(0.0, texel.z - dot(m, m));
-  }
-  vec2 fadedWaveSlope(vec2 meanSlope, float meanSquare, float fade, out float variance) {
-    vec2 slope = meanSlope * fade;
-    variance = max(0.0, meanSquare - dot(slope, slope));
-    return slope;
   }
 `;
