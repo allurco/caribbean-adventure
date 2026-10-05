@@ -248,21 +248,22 @@ ship twice. The ocean is still **one** plane, centred under the camera
 focus and following it (all its shading is in world space, so moving it
 changes no pixel); the seabed prepass draws the land copies like the main
 pass. The zoom-out cap is `CAMERA_MAX_DISTANCE` (28) on every map size, Civ
-style. North and south, `wrapView.ts` clamps the focus so the view's ground
-footprint stays inside the band every column covers, z ∈ [0, √3·(rows − ½)],
-padded by `WRAP_BAND_PADDING` (two rows, 2√3) of open sea on each side; when
-the view is taller than the padded band (at 16:9 a view at distance 28 is ~61
-units tall, against 30 rows' worth on the small map and 48 on the medium) it
-is centred on it, so the player sees open sea past the top and bottom rows
-where Civ shows the void past the poles. The padding is what keeps
-north–south panning alive at the zoom where the rows just fit on screen: with
-the clamp on the bare band the view would fit it exactly, so the focus would
-be pinned in z and, the camera looking along a diagonal, every pan would
-slide diagonally on screen. The sea past the rows needs nothing drawn: the
-ocean shader treats everything outside the field's bounds as open sea (the
-field texture clamps in t but every read is guarded by `terrainFieldInside`;
-the seabed prepass has no mesh there, so the water is deep water), and the
-grid lines are built from the water cells' edges, so they end at the map.
+style. North and south, `wrapView.ts` clamps the **focus point** (the centre
+of the view, on the sea plane) to the band every column covers,
+z ∈ [0, √3·(rows − ½)] (`clampFocusToBand`), at every zoom and whatever the
+screen's shape: the player can always pan until the top or bottom row reaches
+the screen centre, and the rest of the view is open sea, where Civ shows the
+void past the poles. Clamping the view instead of the focus (the first cut)
+pinned the focus at any zoom where the view was taller than the rows (a
+small map at distance 28 on a 16:9 screen: ~61 units of view against 30 of
+rows), so only east–west panning worked. The ocean plane is centred under
+the focus and sized for the view's reach at full zoom-out on the widest
+screen, so its edge stays off screen with the focus anywhere in the band.
+The sea past the rows needs nothing drawn: the ocean shader treats
+everything outside the field's bounds as open sea (the field texture clamps
+in t but every read is guarded by `terrainFieldInside`; the seabed prepass
+has no mesh there, so the water is deep water), and the grid lines are built
+from the water cells' edges, so they end at the map.
 A ship whose move crosses the seam starts its animation a wrap width over
 (`seamAwareStart`), so it sails straight across.
 

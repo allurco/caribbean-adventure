@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  WRAP_BAND_PADDING,
-  clampFocusZ,
+  clampFocusToBand,
   copyShiftToward,
   groundFootprint,
   mapBand,
-  paddedBand,
   seamAwareStart,
   wrapCopyRange,
   type GroundFootprint,
@@ -57,44 +55,32 @@ describe("mapBand", () => {
   });
 });
 
-describe("paddedBand", () => {
-  it("grows the band by the padding on both sides", () => {
-    expect(paddedBand({ minZ: 0, maxZ: 25 }, 2)).toEqual({ minZ: -2, maxZ: 27 });
-  });
-
-  it("pads the map band by two rows of sea by default", () => {
-    expect(WRAP_BAND_PADDING).toBeCloseTo(2 * SQRT3, 12);
-  });
-});
-
-describe("clampFocusZ", () => {
-  const footprint: GroundFootprint = { minX: -1, maxX: 1, minZ: -2, maxZ: 0.5 };
+describe("clampFocusToBand", () => {
   const band = { minZ: 0, maxZ: 25 };
 
-  it("leaves a focus whose view is inside the band alone", () => {
-    expect(clampFocusZ(10, 4, footprint, band)).toBe(10);
+  it("leaves a focus inside the band alone", () => {
+    expect(clampFocusToBand(10, band)).toBe(10);
   });
 
-  it("stops the top of the view at the north edge", () => {
-    // At distance 4 the view reaches 8 north of the focus.
-    expect(clampFocusZ(3, 4, footprint, band)).toBe(8);
+  it("stops the focus at the north edge", () => {
+    expect(clampFocusToBand(-3, band)).toBe(0);
   });
 
-  it("stops the bottom of the view at the south edge", () => {
-    // ... and 2 south of it.
-    expect(clampFocusZ(24.5, 4, footprint, band)).toBe(23);
+  it("stops the focus at the south edge", () => {
+    expect(clampFocusToBand(31, band)).toBe(25);
   });
 
-  it("centres the view when it is taller than the band", () => {
-    // At distance 12 the view spans focus − 24 … focus + 6; centred on 12.5, the focus is 21.5.
-    expect(clampFocusZ(3, 12, footprint, band)).toBe(21.5);
+  it("lets the focus sit exactly on either edge", () => {
+    expect(clampFocusToBand(0, band)).toBe(0);
+    expect(clampFocusToBand(25, band)).toBe(25);
   });
 });
 
 describe("the game's camera on a wrapping map", () => {
   // As Board.tsx wires it: the zoom-out cap is CAMERA_MAX_DISTANCE on every
-  // map (Civ style), while the focus is clamped to the band padded with sea
-  // past the rows.
+  // map and the focus itself is clamped to the band of hexes, Civ style: the
+  // view can be pulled until a map edge reaches the screen centre, whatever
+  // the zoom, with open sea filling the rest.
   const SMALL_ROWS = 18;
   const SIXTEEN_NINE = 16 / 9;
   const zooms = [4, 8, 12, 16, 20, 24, CAMERA_MAX_DISTANCE];
@@ -103,68 +89,57 @@ describe("the game's camera on a wrapping map", () => {
     for (const preset of MAP_PRESETS) {
       const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect)!;
       const viewHeightPerUnit = footprint.maxZ - footprint.minZ;
-      const hexBand = mapBand(preset.rows);
-      const band = paddedBand(hexBand, WRAP_BAND_PADDING);
+      const band = mapBand(preset.rows);
       const label = `the ${preset.id} map at aspect ${aspect.toFixed(2)}`;
 
-      it(`never shows past the sea margin north or south of ${label} at any zoom the view fits in it`, () => {
-        for (const d of zooms) {
-          const viewHeight = d * viewHeightPerUnit;
-          for (const focus of [-50, band.minZ, (band.minZ + band.maxZ) / 2, band.maxZ, 200]) {
-            const z = clampFocusZ(focus, d, footprint, band);
-            const top = z + d * footprint.minZ;
-            const bottom = z + d * footprint.maxZ;
-            if (viewHeight <= band.maxZ - band.minZ) {
-              expect(top).toBeGreaterThanOrEqual(band.minZ - 1e-9);
-              expect(bottom).toBeLessThanOrEqual(band.maxZ + 1e-9);
-            } else {
-              // A view taller than the margin is centred on it: as much open
-              // sea past the margin north as south, whatever the focus asked.
-              expect(band.minZ - top).toBeCloseTo(bottom - band.maxZ, 9);
-            }
-          }
+      it(`never lets the focus leave the rows of ${label}`, () => {
+        for (const focus of [-1000, -50, band.minZ, (band.minZ + band.maxZ) / 2, band.maxZ, 200, 1000]) {
+          const z = clampFocusToBand(focus, band);
+          expect(z).toBeGreaterThanOrEqual(band.minZ);
+          expect(z).toBeLessThanOrEqual(band.maxZ);
         }
       });
 
-      it(`can pan north–south by the sea margin at the zoom where the rows just fit on ${label}`, () => {
-        const d = Math.min(CAMERA_MAX_DISTANCE, (hexBand.maxZ - hexBand.minZ) / viewHeightPerUnit);
-        const north = clampFocusZ(-1000, d, footprint, band);
-        const south = clampFocusZ(1000, d, footprint, band);
-        // The sea margin is the slack: two rows north plus two rows south.
-        expect(south - north).toBeGreaterThanOrEqual(2 * WRAP_BAND_PADDING - 1e-9);
-      });
-
-      it(`lets every row be brought on screen at full zoom-out on ${label}`, () => {
-        const d = CAMERA_MAX_DISTANCE;
-        // Panned as far north as allowed, the view reaches the top row ...
-        const north = clampFocusZ(-1000, d, footprint, band);
-        expect(north + d * footprint.minZ).toBeLessThanOrEqual(hexBand.minZ + 1e-9);
-        // ... and as far south, the bottom row.
-        const south = clampFocusZ(1000, d, footprint, band);
-        expect(south + d * footprint.maxZ).toBeGreaterThanOrEqual(hexBand.maxZ - 1e-9);
+      it(`brings the top and bottom rows to the screen centre at every zoom on ${label}`, () => {
+        // The clamp does not depend on the zoom or the view: pulled as far
+        // north as allowed the focus is on the top edge of row 0 ...
+        const north = clampFocusToBand(-1000, band);
+        expect(north).toBe(band.minZ);
+        // ... and as far south, on the bottom edge of the last row, so at
+        // every zoom the view past the focus shows open sea beyond the rows.
+        const south = clampFocusToBand(1000, band);
+        expect(south).toBe(band.maxZ);
+        for (const d of zooms) {
+          expect(north + d * footprint.minZ).toBeLessThan(band.minZ);
+          expect(south + d * footprint.maxZ).toBeGreaterThan(band.maxZ);
+        }
       });
 
       it(`fits every row on screen at once at full zoom-out on ${label} when the view is tall enough`, () => {
         const d = CAMERA_MAX_DISTANCE;
         // The large map is taller than the view at 16:9 and wider.
-        if (d * viewHeightPerUnit < hexBand.maxZ - hexBand.minZ) return;
-        // The focus whose view is centred on the rows is allowed ...
-        const centred = (hexBand.minZ + hexBand.maxZ) / 2 - (d * (footprint.minZ + footprint.maxZ)) / 2;
-        const z = clampFocusZ(centred, d, footprint, band);
-        expect(z).toBeCloseTo(centred, 9);
-        // ... and from it the view reaches the top row and the bottom row.
-        expect(z + d * footprint.minZ).toBeLessThanOrEqual(hexBand.minZ + 1e-9);
-        expect(z + d * footprint.maxZ).toBeGreaterThanOrEqual(hexBand.maxZ - 1e-9);
+        if (d * viewHeightPerUnit < band.maxZ - band.minZ) return;
+        // From the allowed focus nearest the one that centres the rows on
+        // screen (on a very wide screen that one is past the bottom row, as
+        // the camera looks along a diagonal) the view still reaches the top
+        // row and the bottom row.
+        const centred = (band.minZ + band.maxZ) / 2 - (d * (footprint.minZ + footprint.maxZ)) / 2;
+        const z = clampFocusToBand(centred, band);
+        expect(z + d * footprint.minZ).toBeLessThanOrEqual(band.minZ + 1e-9);
+        expect(z + d * footprint.maxZ).toBeGreaterThanOrEqual(band.maxZ - 1e-9);
       });
 
-      it(`keeps the edge of the ocean plane off screen at full zoom-out on ${label}`, () => {
+      it(`keeps the edge of the ocean plane off screen at full zoom-out on ${label} with the focus at either edge of the rows`, () => {
         const d = CAMERA_MAX_DISTANCE;
-        // The plane is centred under the focus, so only the zoom matters.
         const halfSize = oceanPlaneSize(groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)) / 2;
-        const reachX = d * Math.max(Math.abs(footprint.minX), Math.abs(footprint.maxX));
-        const reachZ = d * Math.max(Math.abs(footprint.minZ), Math.abs(footprint.maxZ));
-        expect(reachX).toBeLessThanOrEqual(halfSize);
-        expect(reachZ).toBeLessThanOrEqual(halfSize);
+        for (const focus of [clampFocusToBand(-1000, band), clampFocusToBand(1000, band)]) {
+          // The plane is centred under the focus and follows it.
+          const plane = { minZ: focus - halfSize, maxZ: focus + halfSize, minX: -halfSize, maxX: halfSize };
+          expect(focus + d * footprint.minZ).toBeGreaterThanOrEqual(plane.minZ);
+          expect(focus + d * footprint.maxZ).toBeLessThanOrEqual(plane.maxZ);
+          expect(d * footprint.minX).toBeGreaterThanOrEqual(plane.minX);
+          expect(d * footprint.maxX).toBeLessThanOrEqual(plane.maxX);
+        }
       });
     }
   }
@@ -173,13 +148,13 @@ describe("the game's camera on a wrapping map", () => {
     // Civ style: the cap does not shrink with the map; a small map shows open
     // sea past its top and bottom rows at full zoom-out instead.
     const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, SIXTEEN_NINE)!;
-    const hexBand = mapBand(SMALL_ROWS);
-    const band = paddedBand(hexBand, WRAP_BAND_PADDING);
+    const band = mapBand(SMALL_ROWS);
     const d = CAMERA_MAX_DISTANCE;
-    const z = clampFocusZ(0, d, footprint, band);
+    const z = clampFocusToBand((band.minZ + band.maxZ) / 2, band);
     // Measured: a 16:9 view at distance 28 is ~61 units tall against 30.3 of rows.
-    expect(hexBand.minZ - (z + d * footprint.minZ)).toBeGreaterThan(10);
-    expect(z + d * footprint.maxZ - hexBand.maxZ).toBeGreaterThan(10);
+    expect(z + d * footprint.minZ).toBeLessThan(band.minZ);
+    expect(z + d * footprint.maxZ).toBeGreaterThan(band.maxZ);
+    expect(d * (footprint.maxZ - footprint.minZ)).toBeGreaterThan(2 * (band.maxZ - band.minZ));
   });
 
   it("draws four copies of the small map at full zoom-out on a 16:9 screen, three of the others", () => {

@@ -2,10 +2,10 @@
  * Pure view maths for a map that wraps east–west (#36), Civ style: the camera
  * pans east or west forever (the world is drawn in copies one wrap width
  * apart that follow it) and zooms out to the same distance on every map size,
- * while north and south the focus never goes past a margin of sea
- * (`WRAP_BAND_PADDING`) beyond the top or bottom row of hexes. When the view
- * is taller than that margin (a small map at full zoom-out) it is centred on
- * it, with open sea past the rows where Civ shows the void past the poles.
+ * while north and south the focus point itself (not the view) stays within
+ * the band of hexes (`mapBand`), whatever the zoom. So the player can always
+ * pan until the top or bottom row reaches the screen centre, with open sea
+ * filling the rest of the view where Civ shows the void past the poles.
  */
 
 /**
@@ -78,30 +78,13 @@ export function mapBand(rows: number): ZBand {
 }
 
 /**
- * Sea the view may show past the top and bottom rows: two rows' worth. The
- * focus clamp (`clampFocusZ`) uses the `mapBand` padded by this, so at the
- * zoom where the rows just fit on screen the focus can still travel twice
- * this north–south instead of being pinned (and, as the camera looks along a
- * diagonal, only ever sliding diagonally on screen). The zoom-out cap is the
- * global `CAMERA_MAX_DISTANCE` on every map, so a view taller than the padded
- * band is centred on it and shows open sea past the margin too.
+ * The focus z nearest `z` inside `band`. The focus (the centre of the view)
+ * is what stays over the rows, not the view, so the clamp is the same at
+ * every zoom: the view past the focus shows open sea beyond the top or bottom
+ * row, and the sea plane, centred under the focus, covers it.
  */
-export const WRAP_BAND_PADDING = 2 * SQRT3;
-
-/** `band` grown by `padding` on both sides. */
-export function paddedBand(band: ZBand, padding: number): ZBand {
-  return { minZ: band.minZ - padding, maxZ: band.maxZ + padding };
-}
-
-/**
- * The focus z nearest `z` whose view, at camera distance `distance`, stays in
- * `band`. If the view is taller than the band, the view is centred on it.
- */
-export function clampFocusZ(z: number, distance: number, footprint: GroundFootprint, band: ZBand): number {
-  const lo = band.minZ - distance * footprint.minZ;
-  const hi = band.maxZ - distance * footprint.maxZ;
-  if (lo > hi) return (lo + hi) / 2;
-  return Math.min(hi, Math.max(lo, z));
+export function clampFocusToBand(z: number, band: ZBand): number {
+  return Math.min(band.maxZ, Math.max(band.minZ, z));
 }
 
 /**
