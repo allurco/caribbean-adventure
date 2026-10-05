@@ -16,9 +16,50 @@ import {
   NO_SEABED_DEPTH,
   VISIBLE_SEABED_DEPTH,
   WATER_OPTICS_GLSL,
+  refractedSeabedShift,
+  facetSunlight,
 } from "./waterOptics";
 
 type Rgb = readonly [number, number, number];
+
+describe("facetSunlight", () => {
+  const sun = [0, Math.sin(Math.PI / 4), Math.cos(Math.PI / 4)] as const; // 45° up toward +z
+
+  it("is 1 under a level surface", () => {
+    expect(facetSunlight([0, 1, 0], sun)).toBeCloseTo(1, 12);
+  });
+
+  it("is (n·l) / (n_y · l_y): a facet tilted 10° toward the sun takes more light", () => {
+    const t = (10 * Math.PI) / 180;
+    const n = [0, Math.cos(t), Math.sin(t)] as const;
+    // cos(35°) / (cos 10° · sin 45°) ≈ 1.176
+    expect(facetSunlight(n, sun)).toBeCloseTo(1.176, 3);
+  });
+
+  it("is 0 on a facet turned away from the sun", () => {
+    const n = [0, Math.cos(1), -Math.sin(1)] as const;
+    expect(facetSunlight(n, sun)).toBe(0);
+  });
+});
+
+describe("refractedSeabedShift", () => {
+  it("is zero under a level surface", () => {
+    expect(refractedSeabedShift(10, [0, 0])).toEqual([0, 0]);
+  });
+
+  it("bends a vertical view ray by (1 − 1/n) of the slope, along the slope: a worked value", () => {
+    // Snell, vector form, for a facet of slope 0.1 seen from straight above:
+    // the ray leaves at (1 − 1/1.333) · 0.1 ≈ 0.025 horizontal per unit down,
+    // so over 4 units of water the seabed point moves ≈ 0.1 along +x.
+    const [x, z] = refractedSeabedShift(4, [0.1, 0]);
+    expect(x).toBeCloseTo(0.1, 3);
+    expect(z).toBe(0);
+  });
+
+  it("grows with depth", () => {
+    expect(refractedSeabedShift(8, [0, 0.1])[1]).toBeCloseTo(2 * refractedSeabedShift(4, [0, 0.1])[1], 12);
+  });
+});
 
 /** Clean coral sand bottom reflectance at 650 / 550 / 450 nm (as the palette's seabedSand). */
 const SAND: Rgb = [0.564, 0.456, 0.339];

@@ -104,6 +104,31 @@ export function refractedCosine(cosAir: number): number {
   return Math.sqrt(1 - sinAir2 / (WATER_IOR * WATER_IOR));
 }
 
+/**
+ * Where a near-vertical view ray through a tilted surface facet meets the
+ * seabed, relative to straight below: `depth` × (1 − 1/n) × slope, in the
+ * units of `depth`. From Snell's law in vector form with the facet normal
+ * (−∂h/∂x, 1, −∂h/∂z), to first order in the slope. A precursor of step 6's
+ * refraction (#38): it makes the waves visible as a wobble of the seabed.
+ */
+export function refractedSeabedShift(depth: number, slope: readonly [number, number]): [number, number] {
+  const bend = depth * (1 - 1 / WATER_IOR);
+  return [bend * slope[0], bend * slope[1]];
+}
+
+/**
+ * Direct sunlight entering the water through a facet of unit normal `n`, per
+ * unit of horizontal area, relative to a level surface: (n·l) / (n_y · l_y).
+ * Wave faces turned toward the sun let more light into the water just below
+ * them, which scatters back up; that is why sun-facing wave faces look lighter
+ * across the whole sea, not only in the glint. (Transmission 1 − F is near 1
+ * at the sun's 35° incidence and is left out.)
+ */
+export function facetSunlight(n: readonly [number, number, number], l: readonly [number, number, number]): number {
+  const nDotL = n[0] * l[0] + n[1] * l[1] + n[2] * l[2];
+  return Math.max(nDotL, 0) / Math.max(n[1] * l[1], 1e-3);
+}
+
 /** Schlick's Fresnel reflectance of water for a ray `cosTheta` from the normal. */
 export function schlickFresnel(cosTheta: number): number {
   const c = Math.max(0, Math.min(1, cosTheta));
@@ -205,6 +230,12 @@ export const WATER_OPTICS_GLSL = `
   float refractedCosine(float cosAir) {
     float sinAir2 = max(0.0, 1.0 - cosAir * cosAir);
     return sqrt(1.0 - sinAir2 / (WATER_IOR * WATER_IOR));
+  }
+  float facetSunlight(vec3 n, vec3 l) {
+    return max(dot(n, l), 0.0) / max(n.y * l.y, 1e-3);
+  }
+  vec2 refractedSeabedShift(float depth, vec2 slope) {
+    return depth * (1.0 - 1.0 / WATER_IOR) * slope;
   }
   float schlickFresnel(float cosTheta) {
     float c = clamp(cosTheta, 0.0, 1.0);
