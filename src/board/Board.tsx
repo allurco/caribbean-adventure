@@ -137,16 +137,6 @@ function Scene({
     [G.cells]
   );
 
-  // Look at the middle of the map to start with (the Canvas places the camera
-  // above it). The rectangle's corner, not its centre, is the world origin.
-  const [startX, , startZ] = cam.target;
-  useEffect(() => {
-    const controls = controlsRef.current;
-    if (!controls) return;
-    controls.target.set(startX, 0, startZ);
-    controls.update();
-  }, [startX, startZ]);
-
   // The ocean is a finite square, so its edge must stay off screen. Fog alone
   // can't hide it: at full zoom-out the top corners of the view hit the sea
   // only ~46 units deep, well short of HAZE_FAR (85). So size the plane from
@@ -365,6 +355,14 @@ function Scene({
       <MapControls
         ref={controlsRef}
         makeDefault
+        // Look at the middle of the map from the first frame: the rectangle's
+        // corner, not its centre, is the world origin. It must be a prop, not
+        // set in an effect: the controls' first update runs before effects, and
+        // with the target still at the origin it pulls the camera (placed over
+        // the centre, beyond maxDistance) to within maxDistance of the corner,
+        // so re-aiming at the centre afterwards leaves the camera on the far
+        // side, looking back across the map (labels read mirrored).
+        target={cam.target}
         enableRotate={false}
         minDistance={cam.isoDistance * 0.15}
         maxDistance={CAMERA_MAX_DISTANCE}
