@@ -1,11 +1,14 @@
 /** Where every decoration stands, worked out once per map and shared by every world copy (#36). */
 import { useMemo } from "react";
 import { perMapCache } from "./perMapCache";
-import type { MapCell, Decoration } from "../../game/types";
+import type { Biome, MapCell, Decoration } from "../../game/types";
 import { hexToWorld, type MapWrap } from "../../game/hex";
 import { sharedTerrainField } from "./sharedTerrainField";
+import { terrainSeedFromCells } from "./terrainHeightField";
 import { placeOnGround, type GroundPlacementOptions } from "./groundPlacement";
 import { usePalmTrees, type PalmTreesResources } from "./usePalmTrees";
+import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
+import { smallStones } from "./smallStones";
 
 /** Rock radius at scale 1. */
 export const ROCK_RADIUS = 0.12;
@@ -21,12 +24,17 @@ export interface DecorationData {
   worldZ: number;
   rotation: number;
   scale: number;
+  /** Biome of the decoration's cell (rocks size themselves by it). */
+  biome?: Biome;
 }
 
 /** Where every decoration stands, worked out once per map and shared by every world copy. */
 export interface DecorationLayout {
   trees: DecorationData[];
+  /** The generator's rocks: outcrops sized by their cell's biome. */
   rocks: DecorationData[];
+  /** Derived small stones, one per sand or grass cell without a rock (#49). */
+  stones: DecorationData[];
   piers: DecorationData[];
   palms: PalmTreesResources;
 }
@@ -50,10 +58,10 @@ const decorationsOf = perMapCache((cells, wrap) => {
 
         // Trees and rocks stand on the height field: nudged off water and
         // cliffs towards the cell centre, or dropped if nowhere fits.
-        const onGround = (placement: GroundPlacementOptions): DecorationData | null => {
+        const onGround = (placement: GroundPlacementOptions, footprintScale: number): DecorationData | null => {
           const ground = placeOnGround(field, spot, anchor, {
             ...placement,
-            footprintRadius: placement.footprintRadius * scale,
+            footprintRadius: placement.footprintRadius * footprintScale,
           });
           if (!ground) return null;
           return {
@@ -63,17 +71,19 @@ const decorationsOf = perMapCache((cells, wrap) => {
             worldZ: ground.z,
             rotation: deco.rotation,
             scale,
+            biome: cell.biome,
           };
         };
 
         switch (deco.type) {
           case "tree": {
-            const tree = onGround(TREE_PLACEMENT);
+            const tree = onGround(TREE_PLACEMENT, scale);
             if (tree) trees.push(tree);
             break;
           }
           case "rock": {
-            const rock = onGround(ROCK_PLACEMENT);
+            // The footprint covers the rock at its biome's size class.
+            const rock = onGround(ROCK_PLACEMENT, scale * ROCK_SIZE_CLASS_SCALE[rockSizeClass(cell.biome)]);
             if (rock) rocks.push(rock);
             break;
           }
@@ -93,7 +103,9 @@ const decorationsOf = perMapCache((cells, wrap) => {
       }
     }
 
-    return { trees, rocks, piers };
+    const stones = smallStones(cells, field, terrainSeedFromCells(cells));
+
+    return { trees, rocks, stones, piers };
 });
 
 /** Places every decoration on the height field once per map (and wrap). */
@@ -103,4 +115,3 @@ export function useDecorationLayout(cells: MapCell[], wrap: MapWrap): Decoration
   const palms = usePalmTrees(decorationsByType.trees);
   return useMemo(() => ({ ...decorationsByType, palms }), [decorationsByType, palms]);
 }
-
