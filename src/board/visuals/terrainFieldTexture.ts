@@ -19,7 +19,10 @@
  *   B  reef mask (#11), 0 … 1: 0 off reef, 1 inside a reef hex, ramping over a
  *      soft rim just inside the reef outline (see reefMask.ts). 0 everywhere
  *      when the bake is given no `sampleReef`.
- *   A  reserved; 1.
+ *   A  reef windward weight (#38 step 7), 0 … 1: how much of the reef foam
+ *      this part of a reef gets, 1 on the face that meets the wind
+ *      (shoreFoam.ts `reefWindwardWeight`). 1 everywhere when the bake is
+ *      given no `sampleReefWindward`; only read where B is set.
  *
  * Half float (#38) rather than 8 bits: water colour depends on depth most in
  * the first ~10 m, where the old 8-bit code stepped 0.38 m and banded. A half
@@ -64,6 +67,8 @@ export interface BakeTerrainFieldOptions {
   maxSize?: number;
   /** Reef mask in [0, 1] at world (x, z), baked into B; omitted means no reefs. */
   sampleReef?: (x: number, z: number) => number;
+  /** Reef windward weight in [0, 1] at world (x, z), baked into A; omitted means 1. */
+  sampleReefWindward?: (x: number, z: number) => number;
 }
 
 export function encodeHeight(h: number): number {
@@ -117,6 +122,9 @@ export const TERRAIN_FIELD_GLSL = `
   float terrainFieldReef(vec4 texel) {
     return texel.b;
   }
+  float terrainFieldReefWindward(vec4 texel) {
+    return texel.a;
+  }
 `;
 
 /** World (x, z) at the centre of texel (i, j). */
@@ -146,7 +154,7 @@ export function bakeTerrainField(
   const width = Math.max(1, Math.min(maxSize, Math.ceil(spanX * density)));
   const height = Math.max(1, Math.min(maxSize, Math.ceil(spanZ * density)));
 
-  const { sampleReef } = options;
+  const { sampleReef, sampleReefWindward } = options;
   const data = new Uint16Array(width * height * 4);
   const baked: BakedTerrainField = { data, width, height, bounds };
   const one = DataUtils.toHalfFloat(1);
@@ -158,7 +166,7 @@ export function bakeTerrainField(
       data[k] = encodeHeight(field.sampleHeight(x, z));
       data[k + 1] = encodeCoastDistance(field.sampleCoastDistance(x, z));
       data[k + 2] = sampleReef ? encodeReef(sampleReef(x, z)) : noReef;
-      data[k + 3] = one;
+      data[k + 3] = sampleReefWindward ? encodeReef(sampleReefWindward(x, z)) : one;
     }
   }
   return baked;
