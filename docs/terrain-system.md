@@ -253,6 +253,15 @@ scaled up to Cox–Munk's measured slope (`WAVE_SHADING_GAIN`, ≈ 1.7), so
 the waves read across the whole sea; the glint keeps the drawn slopes so its
 path stays narrow.
 
+At the coast, the sunlight on the seabed is also scaled by the wave facet
+above it, so the waves continue into the shallows as light and shade on the
+sand (a stopgap that step 6's refraction and caustics replace). The
+shallow-water saturation boost scales with the red the water has absorbed,
+so sand under near-clear water keeps its colour instead of turning orange.
+Wet sand is dry sand at half albedo. Surf is limited to water shallower than
+0.6 m on the drawn seabed, so it stays at the waterline (a stopgap until
+step 7; the outer breaker line is off until then).
+
 Where the prepass has no seabed (below the mesh cut-off, or off the mesh) the
 shader reads `NO_SEABED_DEPTH` (105 m, past the fade), so the water is deep
 water. Caustics brighten the seabed term before it is attenuated; they

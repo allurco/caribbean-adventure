@@ -110,21 +110,24 @@ const fragmentShader = `
   const float SURF_EDGE_SOFTNESS = 0.02; // foam fades in over this just offshore, so it meets the land with no gap
   const float SURF_WASH_MIN = 0.12;      // width of the shore wash at the ebb of the pulse
   const float SURF_WASH_MAX = 0.32;      // ... and at the flood
-  const float SURF_BREAKER_NEAR = 0.3;   // the outer breaker line rolls between these distances
-  const float SURF_BREAKER_FAR = 0.55;
-  const float SURF_BREAKER_WIDTH = 0.06; // half-width of the breaker line
-  const float SURF_BREAKER_LAG = 1.2;    // radians the breaker trails the wash in the pulse
-  const float SURF_MAX_REACH = 0.62;     // no foam beyond this (keep >= BREAKER_FAR + BREAKER_WIDTH)
+  const float SURF_MAX_REACH = 0.34;     // no foam beyond this (keep >= SURF_WASH_MAX)
+  // STOPGAP until step 7's surf (#38): foam only where the drawn seabed is
+  // this shallow (metres, from the prepass), so it hugs the real waterline.
+  // The baked coast distance alone left patches out on the water wherever it
+  // disagreed with the land mesh, and the outer breaker line (20–36 m out)
+  // floated detached from the sand; it is gone until step 7.
+  const float SURF_DEPTH_FULL = 0.15;
+  const float SURF_DEPTH_NONE = 0.6;
   const float SURF_PHASE_SCALE = 0.45;   // along-coast phase noise frequency; lower = longer stretches in step
   const float SURF_PHASE_SPREAD = 3.0;   // radians of pulse offset between stretches of coast
   const float SURF_NOISE_SCALE = 6.0;    // frequency of the noise that breaks the foam up
   const float SURF_CHURN_AMOUNT = 0.35;  // radius (noise units) the breakup noise circles each churn cycle
   // Coverage, softness and strength were lowered for #38: over the clear,
   // darker water the old values (0.8, 0.12, 0.9) gave solid white sheets.
-  const float SURF_COVERAGE = 0.62;      // < 1 leaves holes even in the densest foam
-  const float SURF_BREAKUP_SOFTNESS = 0.16; // edge softness of the foam patches
+  const float SURF_COVERAGE = 0.5;      // < 1 leaves holes even in the densest foam
+  const float SURF_BREAKUP_SOFTNESS = 0.22; // edge softness of the foam patches
   const float SURF_LACE_SCALE = 4.3;     // frequency multiplier of the fine octave that turns patches into lace
-  const float SURF_STRENGTH = 0.75;      // max blend of foam over the water colour: thin foam stays translucent
+  const float SURF_STRENGTH = 0.55;      // max blend of foam over the water colour: thin foam stays translucent
 
   // Shallow-water caustics (issue #11): a moving web of light on the seabed,
   // only in the shallows. It redistributes the seabed's direct sunlight before
@@ -176,12 +179,13 @@ const fragmentShader = `
     );
   }
 
-  // Foam amount (0..1) on the water at worldXZ, given the signed coast distance.
+  // Foam amount (0..1) on the water at worldXZ, given the signed coast distance
+  // and the depth of the drawn seabed below, in metres.
   // Time only enters as sin/cos of 2π·surfTime/period (surfTime is wrapped on
   // the CPU), so nothing here loses precision over a long session.
-  float surfFoam(vec2 worldXZ, float coastDist) {
+  float surfFoam(vec2 worldXZ, float coastDist, float depthMetres) {
     float off = -coastDist; // distance offshore; <= 0 on land
-    if (off <= 0.0 || off >= SURF_MAX_REACH) return 0.0;
+    if (off <= 0.0 || off >= SURF_MAX_REACH || depthMetres >= SURF_DEPTH_NONE) return 0.0;
 
     // Each stretch of coast gets its own phase, so the surf doesn't move in step.
     float phase = noise(worldXZ * SURF_PHASE_SCALE) * SURF_PHASE_SPREAD;
@@ -192,12 +196,6 @@ const fragmentShader = `
     float washReach = mix(SURF_WASH_MIN, SURF_WASH_MAX, pulse);
     float wash = 1.0 - smoothstep(washReach * 0.35, washReach, off);
 
-    // Breaker line: trails the wash, rolling in toward the shore and back out,
-    // brightest when it is closest in.
-    float roll = 0.5 + 0.5 * sin(pulseAngle - SURF_BREAKER_LAG);
-    float breakerAt = mix(SURF_BREAKER_FAR, SURF_BREAKER_NEAR, roll);
-    float breaker = (1.0 - smoothstep(0.0, SURF_BREAKER_WIDTH, abs(off - breakerAt))) * mix(0.35, 0.8, roll);
-
     // Break the bands into patches: the breakup noise circles a small loop each
     // churn cycle (bounded offset, so precision-safe), and denser foam lets
     // more of the noise through.
@@ -206,7 +204,8 @@ const fragmentShader = `
     vec2 q = worldXZ * SURF_NOISE_SCALE;
     float n = 0.5 + 0.22 * noise(q + churn) + 0.18 * noise(q * 2.1 - churn.yx)
       + 0.1 * noise(q * SURF_LACE_SCALE + churn * 1.7);
-    float threshold = 1.0 - max(wash, breaker) * SURF_COVERAGE;
+    wash *= 1.0 - smoothstep(SURF_DEPTH_FULL, SURF_DEPTH_NONE, depthMetres);
+    float threshold = 1.0 - wash * SURF_COVERAGE;
     float foam = smoothstep(threshold, threshold + SURF_BREAKUP_SOFTNESS, n);
 
     return foam * smoothstep(0.0, SURF_EDGE_SOFTNESS, off) * SURF_STRENGTH;
@@ -292,7 +291,8 @@ const fragmentShader = `
   // the deep-water glow, for the surface point at this pixel. The seabed is
   // looked up \`refraction\` (screen uv) away, where the refracted ray meets it;
   // \`sunFacet\` is the local facet's share of the direct sun (facetSunlight).
-  vec3 waterBody(vec2 refraction, float sunFacet) {
+  // Returns the colour; \`depth\` gets the seabed's depth in metres.
+  vec3 waterBody(vec2 refraction, float sunFacet, out float depth) {
     vec2 screenUv = gl_FragCoord.xy / screenSize + refraction;
     vec3 seabed;
     float seabedWorldY = seabedSample(screenUv, seabed);
@@ -304,7 +304,7 @@ const fragmentShader = `
 
     // The seabed's depth below the surface, and the path down to it along this
     // pixel's view ray, in metres.
-    float depth = max(-seabedWorldY, 0.0) * METRES_PER_UNIT;
+    depth = max(-seabedWorldY, 0.0) * METRES_PER_UNIT;
     vec3 worldDir = normalize(vWorld - cameraPosition);
     float viewPath = depth / max(-worldDir.y, 0.05);
 
@@ -322,11 +322,14 @@ const fragmentShader = `
 
     // Caustics redistribute only the direct sunlight on the seabed (the
     // prepass lit it with sun and sky together, so scale the sun's share).
+    // STOPGAP until step 6's refraction and caustics (#38): the sunlight that
+    // reaches the seabed also goes through the wave facet above it, which in
+    // shallow water is nearly straight below (shift depth × tan of the
+    // refracted sun), so the waves carry on into the shallows as light and
+    // shade on the sand instead of stopping where the seabed shows.
     float causticContrastHere = causticContrast(depth) * causticLod(causticCellPixels);
-    if (causticContrastHere > 0.0) {
-      float light = causticLight(causticWeb(causticUv), causticContrastHere);
-      seabed *= 1.0 + (sunDirect / max(downwelling, vec3(1e-6))) * (light - 1.0);
-    }
+    float causticGain = causticContrastHere > 0.0 ? causticLight(causticWeb(causticUv), causticContrastHere) : 1.0;
+    seabed *= 1.0 + (sunDirect / max(downwelling, vec3(1e-6))) * (causticGain * sunFacet - 1.0);
     // The water's own glow is scattered from just below the surface, so it is
     // lit through the local wave facet: sun-facing faces look lighter.
     vec3 facetDownwelling = sunDirect * sunFacet + skyDiffuse;
@@ -339,7 +342,7 @@ const fragmentShader = `
     body += lift * facetDownwelling;
     // Stylistic, not physics: a mild saturation boost in the shallows only.
     float luma = dot(body, vec3(0.2126, 0.7152, 0.0722));
-    return max(mix(vec3(luma), body, 1.0 + shallowSaturationBoost(depth)), 0.0);
+    return max(mix(vec3(luma), body, 1.0 + shallowSaturationBoost(depth, t.r)), 0.0);
   }
 
   void main() {
@@ -386,14 +389,15 @@ const fragmentShader = `
     // Fresnel splits what we see between light from the water body and the
     // reflected sky.
     float fresnel = schlickFresnel(dot(nShade, -dir));
-    vec3 seaColor = waterBody(shiftPixels / screenSize, facetSunlight(nShade, light)) * (1.0 - fresnel)
+    float seabedDepth;
+    vec3 seaColor = waterBody(shiftPixels / screenSize, facetSunlight(nShade, light), seabedDepth) * (1.0 - fresnel)
       + getSkyColor(reflect(dir, nShade), skyRoughness) * fresnel;
     // The sun's own reflection (the sky map has no solar disc): GGX, HDR and
     // unclamped so its brightest sparkles bloom.
     seaColor += sunGlintRadiance(n, -dir, light, alpha2, sunIrradiance);
 
     // Surf on top, lightly shaded by the wave normal so it sits on the water.
-    float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField));
+    float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField), seabedDepth);
     vec3 foamColor = PALETTE_SURF * (0.8 + 0.2 * diffuse(nShade, light, 1.0));
     seaColor = mix(seaColor, foamColor, foam);
 
