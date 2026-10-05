@@ -104,7 +104,7 @@ function Scene({
 }: {
   G: CaribbeanState;
   currentPlayer: string;
-  cam: { isoDistance: number };
+  cam: { isoDistance: number; target: [number, number, number] };
   movesRemaining: number;
   attackMode: boolean;
   spyglassMode: boolean;
@@ -136,6 +136,16 @@ function Scene({
     () => cameraBoundsFromHexes(G.cells.map((c) => c.hex), CAMERA_BOUNDS_PADDING),
     [G.cells]
   );
+
+  // Look at the middle of the map to start with (the Canvas places the camera
+  // above it). The rectangle's corner, not its centre, is the world origin.
+  const [startX, , startZ] = cam.target;
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    controls.target.set(startX, 0, startZ);
+    controls.update();
+  }, [startX, startZ]);
 
   // The ocean is a finite square, so its edge must stay off screen. Fog alone
   // can't hide it: at full zoom-out the top corners of the view hit the sea
@@ -608,10 +618,11 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
       <Canvas
         shadows={{ type: PCFSoftShadowMap }}
         camera={{
+          // Start over the middle of the map (the rectangle's corner is the origin)
           position: [
-            cam.isoDistance * CAMERA_OFFSET[0],
-            cam.isoDistance * CAMERA_OFFSET[1],
-            cam.isoDistance * CAMERA_OFFSET[2],
+            cam.target[0] + cam.isoDistance * CAMERA_OFFSET[0],
+            cam.target[1] + cam.isoDistance * CAMERA_OFFSET[1],
+            cam.target[2] + cam.isoDistance * CAMERA_OFFSET[2],
           ],
           fov: CAMERA_FOV,
           near: 0.1,
