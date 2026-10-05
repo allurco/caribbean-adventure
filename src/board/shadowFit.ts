@@ -1,0 +1,99 @@
+import { groundViewReach } from "./cameraBounds";
+
+/**
+ * Pure helpers that fit the sun's orthographic shadow box to the view (#48).
+ *
+ * The shadow box follows the camera target (SunLight.tsx). With a fixed
+ * half-extent sized for full zoom-out, zooming in on a ship left each shadow
+ * texel spanning several screen pixels, so hull and palm shadows showed
+ * stair-stepped edges. Fitting the box to what is on screen gives the same
+ * shadow map a finer texel the closer the camera gets.
+ */
+
+export interface ShadowFit {
+  /** Downward angle of the view direction, radians (CAMERA_PITCH). */
+  pitch: number;
+  /** Vertical field of view, degrees (CAMERA_FOV). */
+  fovDeg: number;
+  /** Sun elevation above the horizon, degrees. */
+  sunElevationDeg: number;
+  /** Tallest thing that casts or receives a shadow, world units above the sea. */
+  casterHeight: number;
+  /** Smallest half-extent, so the box never degenerates. */
+  minExtent: number;
+  /** Largest half-extent: the old fixed size, used at full zoom-out. */
+  maxExtent: number;
+}
+
+const toRadians = (deg: number): number => (deg * Math.PI) / 180;
+
+/**
+ * Half-extent of the shadow box for a camera `distance` from its target on a
+ * viewport of `aspect`.
+ *
+ * The box is square and perpendicular to the sun. A caster and the shadow it
+ * casts lie on the same light ray, so they have the same position across the
+ * box: the box only has to cover the receivers on screen, and the furthest of
+ * those is the sea-plane reach of the view (`groundViewReach`; everything
+ * above the sea plane is hit earlier along the same frustum rays, so it is
+ * nearer the target). A receiver `h` above the sea is displaced across the box
+ * by h·cos(elevation), which is the margin added for hill tops and decks.
+ * Clamped to [minExtent, maxExtent]; Infinity (horizon in view) clamps to max.
+ */
+export function shadowExtentFor(distance: number, aspect: number, fit: ShadowFit): number {
+  const reach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect);
+  const margin = fit.casterHeight * Math.cos(toRadians(fit.sunElevationDeg));
+  return Math.min(fit.maxExtent, Math.max(fit.minExtent, reach + margin));
+}
+
+/** World-unit size of one shadow-map texel for a box of `extent` half-width. */
+export function shadowTexel(extent: number, mapSize: number): number {
+  return (2 * extent) / mapSize;
+}
+
+/**
+ * Whether the box should be rebuilt for a new extent. Each rebuild changes the
+ * texel grid, so the box only follows the view once the extent has moved by
+ * more than `hysteresis` (a fraction of the current extent), not on every
+ * damping step of the zoom. A wheel tick zooms by 5%, so 5% refits on each
+ * deliberate tick and ignores the drift of the easing.
+ */
+export function shadowBoxNeedsRefit(
+  current: number | undefined,
+  next: number,
+  hysteresis: number
+): boolean {
+  if (current === undefined) return true;
+  return Math.abs(next - current) > hysteresis * current;
+}
+
+export interface HeightRange {
+  min: number;
+  max: number;
+}
+
+/**
+ * Depth range, along the sun, of everything that can fall inside a box of
+ * `extent` half-width whose light sits `sunDistance` from the target along a
+ * sun `elevationDeg` above the horizon, with the scene spanning `heights`
+ * (world y, sea level 0).
+ *
+ * Across the box, a point at horizontal offset `a` along the sun's azimuth and
+ * height `y` sits at a·sin(e) − y·cos(e) from the centre; at the box edge its
+ * depth offset a·cos(e) + y·sin(e) works out to ±extent·cot(e) + y/sin(e).
+ * The shadow camera's near and far planes must bracket this range.
+ */
+export function shadowDepthRange(
+  extent: number,
+  sunDistance: number,
+  elevationDeg: number,
+  heights: HeightRange
+): { near: number; far: number } {
+  const e = toRadians(elevationDeg);
+  const tilt = extent / Math.tan(e);
+  const csc = 1 / Math.sin(e);
+  return {
+    near: sunDistance - tilt - heights.max * csc,
+    far: sunDistance + tilt - heights.min * csc,
+  };
+}
