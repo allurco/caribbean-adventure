@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { CAMERA_FOV, CAMERA_MAX_DISTANCE, CAMERA_PITCH, groundViewReach } from "./cameraBounds";
 import {
   shadowBoxNeedsRefit,
+  shadowDepthBias,
   shadowDepthRange,
   shadowExtentFor,
   shadowTexel,
@@ -71,6 +72,20 @@ describe("shadowTexel", () => {
     const metres = (extent: number) => shadowTexel(extent, 4096) * 65;
     expect(metres(shadowExtentFor(CAMERA_MAX_DISTANCE, 16 / 9, fit))).toBeCloseTo(0.79, 1);
     expect(metres(shadowExtentFor(3.5, 16 / 9, fit))).toBeLessThan(0.25);
+  });
+});
+
+describe("shadowDepthBias", () => {
+  it("reproduces today's bias (−0.0001) at the old fixed extent for ~1.2 texels", () => {
+    const texel = shadowTexel(25, 4096);
+    expect(shadowDepthBias(1.2, texel, 0.5, 150)).toBeCloseTo(-0.0001, 5);
+  });
+
+  it("shrinks with the texel so the bias stays the same number of texels deep", () => {
+    const wide = shadowDepthBias(1.2, shadowTexel(25, 4096), 0.5, 150);
+    const tight = shadowDepthBias(1.2, shadowTexel(6.25, 4096), 0.5, 150);
+    expect(tight).toBeCloseTo(wide / 4, 12);
+    expect(tight).toBeLessThan(0);
   });
 });
 

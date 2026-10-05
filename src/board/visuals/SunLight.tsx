@@ -3,15 +3,20 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
 import type { DirectionalLight } from "three";
 import { SEABED_LAYER } from "./seabedPrepass";
+import {
+  shadowBoxNeedsRefit,
+  shadowDepthBias,
+  shadowExtentFor,
+  shadowTexel,
+  type SunShadowSettings,
+} from "../shadowFit";
 
 interface SunLightProps {
   color: string;
   intensity: number;
   /** Light position relative to the point the camera is looking at. */
   offset: [number, number, number];
-  shadowMapSize: number;
-  /** Half-width of the orthographic shadow camera, in world units. */
-  shadowExtent: number;
+  shadow: SunShadowSettings;
 }
 
 const ORIGIN = new Vector3();
@@ -30,26 +35,52 @@ function controlsTarget(controls: unknown): Vector3 {
 }
 
 /**
- * Shadow-casting sun that keeps its shadow box centred on the camera target,
- * so shadows stay sharp wherever the player pans without needing a shadow
- * map large enough to cover the whole map.
+ * Shadow-casting sun that keeps its shadow box centred on the camera target
+ * and fitted to the view (#48): the box only has to cover what is on screen,
+ * so the same shadow map gets a finer texel the closer the camera is. The
+ * box is rebuilt when the fitted extent moves past a hysteresis band, and
+ * the target is snapped to whole texels of the live box so shadow edges do
+ * not shimmer while panning.
  */
-export function SunLight({ color, intensity, offset, shadowMapSize, shadowExtent }: SunLightProps) {
+export function SunLight({ color, intensity, offset, shadow }: SunLightProps) {
   const lightRef = useRef<DirectionalLight>(null);
   const controls = useThree((state) => state.controls);
-
-  // Snap the focus to whole shadow texels to limit edge shimmer while panning.
-  const texel = (shadowExtent * 2) / shadowMapSize;
+  const extentRef = useRef<number | undefined>(undefined);
 
   // Light the seabed prepass too: three only uses lights on the camera's layers.
   useEffect(() => {
     lightRef.current?.layers.enable(SEABED_LAYER);
   }, []);
 
-  useFrame(() => {
+  // A settings change (hot reload, tuning) must refit even if the extent is unchanged.
+  useEffect(() => {
+    extentRef.current = undefined;
+  }, [shadow]);
+
+  useFrame(({ camera, size }) => {
     const light = lightRef.current;
     if (!light) return;
     const target = controlsTarget(controls);
+
+    const distance = camera.position.distanceTo(target);
+    const aspect = size.width / Math.max(1, size.height);
+    const wanted = shadowExtentFor(distance, aspect, shadow.fit);
+    if (shadowBoxNeedsRefit(extentRef.current, wanted, shadow.hysteresis)) {
+      extentRef.current = wanted;
+      const texel = shadowTexel(wanted, shadow.mapSize);
+      const box = light.shadow.camera;
+      box.left = -wanted;
+      box.right = wanted;
+      box.top = wanted;
+      box.bottom = -wanted;
+      box.updateProjectionMatrix();
+      // Both biases cover a texel's worth of slope, so they follow the texel.
+      light.shadow.bias = shadowDepthBias(shadow.biasTexels, texel, shadow.near, shadow.far);
+      light.shadow.normalBias = shadow.normalBiasTexels * texel;
+    }
+
+    // Snap the focus to whole shadow texels of the live box to limit edge shimmer while panning.
+    const texel = shadowTexel(extentRef.current ?? wanted, shadow.mapSize);
     const x = Math.round(target.x / texel) * texel;
     const z = Math.round(target.z / texel) * texel;
     light.position.set(x + offset[0], offset[1], z + offset[2]);
@@ -57,6 +88,7 @@ export function SunLight({ color, intensity, offset, shadowMapSize, shadowExtent
     light.target.updateMatrixWorld();
   });
 
+  const { maxExtent } = shadow.fit;
   return (
     <directionalLight
       ref={lightRef}
@@ -64,14 +96,14 @@ export function SunLight({ color, intensity, offset, shadowMapSize, shadowExtent
       intensity={intensity}
       position={offset}
       castShadow
-      shadow-mapSize={[shadowMapSize, shadowMapSize]}
-      shadow-camera-far={150}
-      shadow-camera-left={-shadowExtent}
-      shadow-camera-right={shadowExtent}
-      shadow-camera-top={shadowExtent}
-      shadow-camera-bottom={-shadowExtent}
-      shadow-bias={-0.0001}
-      shadow-normalBias={0.02}
+      shadow-mapSize={[shadow.mapSize, shadow.mapSize]}
+      shadow-camera-near={shadow.near}
+      shadow-camera-far={shadow.far}
+      shadow-camera-left={-maxExtent}
+      shadow-camera-right={maxExtent}
+      shadow-camera-top={maxExtent}
+      shadow-camera-bottom={-maxExtent}
+      shadow-radius={shadow.radius}
     />
   );
 }

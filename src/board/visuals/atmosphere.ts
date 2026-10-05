@@ -8,9 +8,12 @@
  * they can be tuned without touching the scene graph.
  */
 
-import { CAMERA_OFFSET } from "../cameraBounds";
+import { PCFShadowMap } from "three";
+import { CAMERA_FOV, CAMERA_OFFSET, CAMERA_PITCH } from "../cameraBounds";
+import type { SunShadowSettings } from "../shadowFit";
 import { sunDirection, viewDirectionXZ } from "./sunDirection";
 import { downwardViewFactor, seaBounceAlbedo } from "./skyEnvironment";
+import { ELEVATION_HEIGHTS, RELIEF_AMPLITUDES } from "./terrainHeightField";
 
 /** Pale, slightly warm sky haze. Used for both the fog and the scene background. */
 export const HAZE_COLOR = "#bcd4da";
@@ -65,7 +68,7 @@ export const SUN_DIRECTION = sunDirection(
   SUN_AZIMUTH_DEG
 );
 /** Shadow-casting light position relative to the camera target: along SUN_DIRECTION, at the old ~70-unit distance. */
-const SUN_DISTANCE = 70;
+export const SUN_DISTANCE = 70;
 export const SUN_OFFSET: [number, number, number] = [
   SUN_DIRECTION[0] * SUN_DISTANCE,
   SUN_DIRECTION[1] * SUN_DISTANCE,
@@ -118,13 +121,85 @@ export const SEA_BOUNCE_ALBEDO = seaBounceAlbedo(
 );
 
 /**
+ * Shadow filter. three 0.182 has deprecated `PCFSoftShadowMap` and silently
+ * runs `PCFShadowMap` in its place (with a console warning), so this is what
+ * the scene has been drawn with: five Vogel-disc samples per pixel, each a
+ * hardware 4-tap compare, rotated per pixel by interleaved gradient noise,
+ * within `SHADOW_RADIUS` texels. `VSMShadowMap` (blurs the map itself, so its
+ * penumbra is smooth at any width) is the alternative: it needs every
+ * receiver to cast too and leaks light where casters overlap (palms over
+ * slopes, rigging over hulls), and has not been judged on screen yet (#48).
+ * To try it: `VSMShadowMap`, `SHADOW_RADIUS` 4, `blurSamples` 8, biases 0.
+ */
+export const SHADOW_MAP_TYPE = PCFShadowMap;
+/** PCF sample disc radius, shadow texels. 1 is three's default. */
+export const SHADOW_RADIUS = 1;
+
+/**
  * Shadow map resolution and the half-width of the shadow camera's box.
- * The shadow box follows the camera target, so it only has to cover what is
- * on screen, not the whole map: 50 units across at 4096 texels is ~82 texels
- * per world unit.
+ *
+ * The box follows the camera target and is fitted to the view (#48,
+ * `shadowFit.ts`): its half-extent is the furthest visible sea point plus a
+ * margin for receivers above the sea, clamped to [SHADOW_EXTENT_MIN,
+ * SHADOW_EXTENT]. At full zoom-out (distance 28) the 16:9 view reaches ~43
+ * units, so the box sits at the cap, 50 units across at 4096 texels: ~82
+ * texels per world unit, a 0.8 m texel. At ship zoom (distance ~3.5) it
+ * fits to ~7 units, a 0.2 m texel, 3.7× finer than the fixed box gave. The
+ * cap is where today's resolution comes from, so the map stays at 4096: at
+ * 2048 the map-zoom texel would double.
  */
 export const SHADOW_MAP_SIZE = 4096;
 export const SHADOW_EXTENT = 25;
+/** Floor for the fit, so the box never collapses if the camera gets very close. */
+export const SHADOW_EXTENT_MIN = 4;
+/**
+ * Tallest receiver or caster above the sea: a mountain peak with its relief
+ * (ELEVATION_HEIGHTS[3] + RELIEF_AMPLITUDES[3] = 1.9) plus a tall palm
+ * (trunk 0.46 × 1.25 height variation ≈ 0.6 with fronds) on top. Ship masts
+ * and rocks are lower.
+ */
+export const SHADOW_CASTER_HEIGHT = ELEVATION_HEIGHTS[3] + RELIEF_AMPLITUDES[3] + 0.7;
+/**
+ * Only rebuild the box when the fitted extent has moved by this fraction of
+ * the current one. A wheel tick zooms 5%, so each tick refits and the
+ * damping between ticks (sub-5% drift) does not re-snap the texel grid.
+ */
+export const SHADOW_FIT_HYSTERESIS = 0.05;
+/**
+ * Shadow camera depth planes along the sun, world units. From the sun 70
+ * units out, the scene (seabed floor −1.9 to SHADOW_CASTER_HEIGHT) fills
+ * 49…90 at the 25-unit extent and 64…75 at the minimum (`shadowDepthRange`,
+ * checked in atmosphere.test.ts); three's 24-bit depth makes the slack free.
+ */
+export const SHADOW_CAMERA_NEAR = 0.5;
+export const SHADOW_CAMERA_FAR = 150;
+/**
+ * Biases in shadow texels, so they scale with the fitted box: three's `bias`
+ * is in depth units and `normalBias` in world units, and the self-shadowing
+ * error they cover is a texel's worth of slope. The fixed box ran bias
+ * −0.0001 and normal bias 0.02 at a 0.0122-unit texel: 1.2 and 1.6 texels.
+ * These reproduce that at map zoom and shrink in step with the texel.
+ */
+export const SHADOW_BIAS_TEXELS = 1.2;
+export const SHADOW_NORMAL_BIAS_TEXELS = 1.6;
+
+export const SUN_SHADOW: SunShadowSettings = {
+  mapSize: SHADOW_MAP_SIZE,
+  fit: {
+    pitch: CAMERA_PITCH,
+    fovDeg: CAMERA_FOV,
+    sunElevationDeg: SUN_ELEVATION_DEG,
+    casterHeight: SHADOW_CASTER_HEIGHT,
+    minExtent: SHADOW_EXTENT_MIN,
+    maxExtent: SHADOW_EXTENT,
+  },
+  hysteresis: SHADOW_FIT_HYSTERESIS,
+  biasTexels: SHADOW_BIAS_TEXELS,
+  normalBiasTexels: SHADOW_NORMAL_BIAS_TEXELS,
+  radius: SHADOW_RADIUS,
+  near: SHADOW_CAMERA_NEAR,
+  far: SHADOW_CAMERA_FAR,
+};
 
 /** Post-processing. */
 export const BLOOM_INTENSITY = 0.25;

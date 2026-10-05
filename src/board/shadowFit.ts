@@ -25,6 +25,24 @@ export interface ShadowFit {
   maxExtent: number;
 }
 
+/** Everything SunLight needs to size, place and filter its shadow map. */
+export interface SunShadowSettings {
+  /** Shadow map side, texels. */
+  mapSize: number;
+  fit: ShadowFit;
+  /** Fraction of the current extent the fit must move before the box is rebuilt. */
+  hysteresis: number;
+  /** Depth bias, in shadow texels (converted with the live texel and the depth range). */
+  biasTexels: number;
+  /** Normal bias, in shadow texels (converted with the live texel). */
+  normalBiasTexels: number;
+  /** PCF sample disc radius, texels (three's `shadow.radius`). */
+  radius: number;
+  /** Shadow camera near and far planes along the sun, world units. */
+  near: number;
+  far: number;
+}
+
 const toRadians = (deg: number): number => (deg * Math.PI) / 180;
 
 /**
@@ -49,6 +67,17 @@ export function shadowExtentFor(distance: number, aspect: number, fit: ShadowFit
 /** World-unit size of one shadow-map texel for a box of `extent` half-width. */
 export function shadowTexel(extent: number, mapSize: number): number {
   return (2 * extent) / mapSize;
+}
+
+/**
+ * three's `shadow.bias` is added to the receiver's depth in the shadow map's
+ * [0, 1] range, which an orthographic shadow camera spreads linearly from
+ * near to far: a bias of `texels` shadow texels is that many texels of world
+ * depth over the depth range. Negative: it moves the receiver towards the
+ * light so a surface does not shadow itself.
+ */
+export function shadowDepthBias(texels: number, texel: number, near: number, far: number): number {
+  return -(texels * texel) / (far - near);
 }
 
 /**
