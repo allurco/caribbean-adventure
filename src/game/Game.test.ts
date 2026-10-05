@@ -3,7 +3,7 @@ import { Client } from "boardgame.io/client";
 import { Caribbean, MOVES_PER_TURN, getMaxMoves } from "./Game";
 import type { CaribbeanState } from "./Game";
 import type { Game } from "boardgame.io";
-import { hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
+import { canonicalHex, hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
 import { getMapPreset } from "./mapConfig";
@@ -188,10 +188,24 @@ describe("moveShip across the east–west seam", () => {
 });
 
 describe("Caribbean.setup", () => {
-  it("keeps the wrap off in G until the board draws across the seam", () => {
+  it("wraps the map east–west, as wide as it has columns", () => {
     const client = Client<CaribbeanState>({ game: Caribbean, numPlayers: 2 });
     client.start();
-    expect(client.getState()!.G.wrap).toBeNull();
+    const { G } = client.getState()!;
+    expect(G.wrap).toEqual({ columns: getMapPreset(G.mapSize).columns });
+  });
+
+  it("generates a map whose islands and ports are the same seen across the seam", () => {
+    for (const mapSize of ["small", "medium", "large"] as const) {
+      const client = Client<CaribbeanState>({ game: { ...Caribbean, setup: (ctx) => Caribbean.setup!(ctx, { mapSize }) }, numPlayers: 2 });
+      client.start();
+      const { G } = client.getState()!;
+      // Every position the game stores is canonical under the wrap.
+      for (const cell of G.cells) {
+        expect(hexEquals(canonicalHex(cell.hex, G.wrap), cell.hex)).toBe(true);
+        if (cell.dockingHex) expect(hexEquals(canonicalHex(cell.dockingHex, G.wrap), cell.dockingHex)).toBe(true);
+      }
+    }
   });
 
   it("generates the rectangle of the chosen map size", () => {
