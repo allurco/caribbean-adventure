@@ -1,13 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { hex, hexRect, offsetToHex, createWrap } from "./hex";
-import { generateMap } from "./mapGenerator";
+import { hex, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
 import type { CaribbeanState, ShipState } from "./types";
 import { Caribbean } from "./Game";
 import { createShipState } from "./economy";
+
+/** An all-water hexagon of `radius` around the origin, so combat tests aren't blocked by islands. */
+function waterGrid(radius: number): MapCell[] {
+  return hexGrid(radius).map((h) => ({ hex: h, terrain: "water", hasPort: false, elevation: 0 }));
+}
 
 function createShipWithFullStats(
   q: number,
@@ -25,7 +29,7 @@ function setupCombatGame(options: {
   ship1: ShipState;
   customSetup?: Partial<CaribbeanState>;
 }) {
-  const cells: MapCell[] = generateMap(5, 0).map((c) => ({
+  const cells: MapCell[] = waterGrid(5).map((c) => ({
     ...c,
     terrain: "water" as const, elevation: 0,
     hasPort: false,
@@ -676,7 +680,7 @@ describe("combat outcomes", () => {
 
 describe("bounty and flotilla system", () => {
   it("attacking a merchant NPC adds bounty to the player", () => {
-    const cells: MapCell[] = generateMap(5, 0).map((c) => ({
+    const cells: MapCell[] = waterGrid(5).map((c) => ({
       ...c,
       terrain: "water" as const, elevation: 0,
       hasPort: false,
@@ -745,7 +749,7 @@ describe("bounty and flotilla system", () => {
   });
 
   it("boarding a merchant NPC adds bounty to the player", () => {
-    const cells: MapCell[] = generateMap(5, 0).map((c) => ({
+    const cells: MapCell[] = waterGrid(5).map((c) => ({
       ...c,
       terrain: "water" as const, elevation: 0,
       hasPort: false,
@@ -835,7 +839,7 @@ describe("bounty and flotilla system", () => {
   });
 
   it("attacking a flotilla does NOT add bounty", () => {
-    const cells: MapCell[] = generateMap(5, 0).map((c) => ({
+    const cells: MapCell[] = waterGrid(5).map((c) => ({
       ...c,
       terrain: "water" as const, elevation: 0,
       hasPort: false,
@@ -904,7 +908,7 @@ describe("bounty and flotilla system", () => {
   });
 
   it("flotilla spawns when bounty threshold is reached", () => {
-    const cells: MapCell[] = generateMap(5, 0).map((c, i) => {
+    const cells: MapCell[] = waterGrid(5).map((c, i) => {
       if (i === 0) {
         return {
           ...c,

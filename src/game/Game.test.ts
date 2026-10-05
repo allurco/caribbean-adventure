@@ -3,17 +3,22 @@ import { Client } from "boardgame.io/client";
 import { Caribbean, MOVES_PER_TURN, getMaxMoves } from "./Game";
 import type { CaribbeanState } from "./Game";
 import type { Game } from "boardgame.io";
-import { hex, hexEquals, hexRect, offsetToHex, createWrap } from "./hex";
-import { generateMap } from "./mapGenerator";
+import { hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
+import { getMapPreset } from "./mapConfig";
 import { createShipState } from "./economy";
 import { SHIP_SPECS } from "./constants";
+
+/** An all-water hexagon of `radius` around the origin, so navigation tests aren't blocked by islands. */
+function waterGrid(radius: number): MapCell[] {
+  return hexGrid(radius).map((h) => ({ hex: h, terrain: "water", hasPort: false, elevation: 0 }));
+}
 
 /** Creates a game with an all-water map so navigation tests aren't blocked by random islands.
  *  Skips draft phase by overriding phases to empty. */
 function setup() {
-  const cells: MapCell[] = generateMap(3, 0).map((c) => ({
+  const cells: MapCell[] = waterGrid(3).map((c) => ({
     ...c,
     terrain: "water" as const, elevation: 0,
     hasPort: false,
@@ -47,7 +52,7 @@ function setupAtEdge() {
     ...Caribbean,
     phases: {},
     setup: () => ({
-      cells: generateMap(5),
+      cells: waterGrid(5),
       ships: {
         "0": createShipState(hex(5, 0)),
         "1": createShipState(hex(1, -1)),
@@ -183,10 +188,20 @@ describe("moveShip across the east–west seam", () => {
 });
 
 describe("Caribbean.setup", () => {
-  it("stores the map's wrap in G (none yet for the hexagonal maps)", () => {
+  it("keeps the wrap off in G until the board draws across the seam", () => {
     const client = Client<CaribbeanState>({ game: Caribbean, numPlayers: 2 });
     client.start();
     expect(client.getState()!.G.wrap).toBeNull();
+  });
+
+  it("generates the rectangle of the chosen map size", () => {
+    const client = Client<CaribbeanState>({ game: Caribbean, numPlayers: 2 });
+    client.start();
+    const { G } = client.getState()!;
+    const { columns, rows } = getMapPreset(G.mapSize);
+    const expected = new Set(hexRect(columns, rows).map((h) => `${h.q},${h.r}`));
+    expect(G.cells).toHaveLength(columns * rows);
+    for (const cell of G.cells) expect(expected.has(`${cell.hex.q},${cell.hex.r}`)).toBe(true);
   });
 });
 
@@ -272,7 +287,7 @@ describe("move limit per turn", () => {
 
 /** Creates a 2-player game with an all-water map for hotseat testing. */
 function setupTwoPlayer() {
-  const cells: MapCell[] = generateMap(3, 0).map((c) => ({
+  const cells: MapCell[] = waterGrid(3).map((c) => ({
     ...c,
     terrain: "water" as const, elevation: 0,
     hasPort: false,

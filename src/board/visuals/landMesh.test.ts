@@ -252,7 +252,7 @@ describe("buildLandMesh", () => {
   });
 
   it("puts rock on steep faces even at mid height", () => {
-    const cells = generateMap(12, 7);
+    const cells = generateMap(getMapPreset("small"),7);
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
     const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     let checked = 0;
@@ -285,7 +285,7 @@ describe("buildLandMesh", () => {
   });
 
   it("breaks the beach/jungle boundary with noise instead of a height contour", () => {
-    const cells = generateMap(12, 7);
+    const cells = generateMap(getMapPreset("small"),7);
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
     const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     // Flat faces at (almost) the same height: a contour would give them the
@@ -441,7 +441,7 @@ describe("buildLandMesh", () => {
   });
 
   describe("on a generated map with reefs and drop-offs (#38)", () => {
-    const cells = generateMap(12, 7);
+    const cells = generateMap(getMapPreset("small"),7);
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
     const { positions, triangleCount } = buildSoup(field);
 
@@ -501,7 +501,7 @@ describe("buildLandMesh", () => {
 
   // Builds the whole lattice without skipping open water: ~2 s locally, ~3x that on CI runners.
   it("skipping open water yields exactly the full-lattice mesh", () => {
-    const cells = generateMap(12, 7);
+    const cells = generateMap(getMapPreset("small"),7);
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
     const fast = buildSoup(field);
     const full = buildSoup(field, { skipOpenWater: false });
@@ -512,8 +512,8 @@ describe("buildLandMesh", () => {
   }, 20000);
 
   it("benchmark: builds the land mesh for the largest map quickly", () => {
-    const { radius } = getMapPreset("large");
-    const cells = generateMap(radius, 31337);
+    const { columns, rows } = getMapPreset("large");
+    const cells = generateMap({ columns, rows }, 31337);
     // Best of three, so JIT warm-up and a stray GC pause don't count against the build.
     let best = Infinity;
     let mesh: ReturnType<typeof buildLandMesh> | undefined;
@@ -525,7 +525,7 @@ describe("buildLandMesh", () => {
     }
     const { triangleCount, aboveWaterTriangleCount } = mesh!;
     console.log(
-      `Land mesh, large map (radius ${radius}): ${triangleCount} triangles ` +
+      `Land mesh, large map (${columns}×${rows}): ${triangleCount} triangles ` +
         `(${aboveWaterTriangleCount} above water), best of 3 in ${best.toFixed(1)}ms`
     );
     expect(triangleCount).toBeGreaterThan(0);

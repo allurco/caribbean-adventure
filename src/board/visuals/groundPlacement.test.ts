@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { hexToWorld } from "../../game/hex";
 import { generateMap } from "../../game/mapGenerator";
+import { getMapPreset } from "../../game/mapConfig";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
 import {
   placeOnGround,
@@ -67,7 +68,7 @@ describe("groundTopY", () => {
 });
 
 describe("placement on a generated map's height field", () => {
-  const cells = generateMap(12, 7);
+  const cells = generateMap(getMapPreset("small"), 7);
   const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
 
   it("puts every placed decoration on land, never floating above the ground beneath it", () => {

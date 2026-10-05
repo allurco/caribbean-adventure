@@ -104,7 +104,7 @@ function Scene({
 }: {
   G: CaribbeanState;
   currentPlayer: string;
-  cam: { isoDistance: number };
+  cam: { isoDistance: number; target: [number, number, number] };
   movesRemaining: number;
   attackMode: boolean;
   spyglassMode: boolean;
@@ -355,6 +355,14 @@ function Scene({
       <MapControls
         ref={controlsRef}
         makeDefault
+        // Look at the middle of the map from the first frame: the rectangle's
+        // corner, not its centre, is the world origin. It must be a prop, not
+        // set in an effect: the controls' first update runs before effects, and
+        // with the target still at the origin it pulls the camera (placed over
+        // the centre, beyond maxDistance) to within maxDistance of the corner,
+        // so re-aiming at the centre afterwards leaves the camera on the far
+        // side, looking back across the map (labels read mirrored).
+        target={cam.target}
         enableRotate={false}
         minDistance={cam.isoDistance * 0.15}
         maxDistance={CAMERA_MAX_DISTANCE}
@@ -555,7 +563,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   }
 
   const preset = getMapPreset(G.mapSize);
-  const cam = computeCameraConfig(preset.radius);
+  const cam = computeCameraConfig(preset);
   const maxMoves = currentShipState ? getMaxMoves(currentShipState) : 0;
   const movesRemaining = maxMoves - (ctx.numMoves ?? 0);
 
@@ -608,10 +616,11 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
       <Canvas
         shadows={{ type: PCFSoftShadowMap }}
         camera={{
+          // Start over the middle of the map (the rectangle's corner is the origin)
           position: [
-            cam.isoDistance * CAMERA_OFFSET[0],
-            cam.isoDistance * CAMERA_OFFSET[1],
-            cam.isoDistance * CAMERA_OFFSET[2],
+            cam.target[0] + cam.isoDistance * CAMERA_OFFSET[0],
+            cam.target[1] + cam.isoDistance * CAMERA_OFFSET[1],
+            cam.target[2] + cam.isoDistance * CAMERA_OFFSET[2],
           ],
           fov: CAMERA_FOV,
           near: 0.1,

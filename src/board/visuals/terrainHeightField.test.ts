@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Elevation, MapCell } from "../../game/types";
-import { hex, hexGrid, hexToWorld, neighbors } from "../../game/hex";
+import { createWrap, hex, hexGrid, hexRect, hexToWorld, neighbors, wrapWorldWidth } from "../../game/hex";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import {
@@ -75,9 +75,9 @@ describe("terrainHeightField", () => {
     });
 
     it("derives a stable seed from the cells", () => {
-      const cells = generateMap(12, 99);
-      expect(terrainSeedFromCells(cells)).toBe(terrainSeedFromCells(generateMap(12, 99)));
-      expect(terrainSeedFromCells(cells)).not.toBe(terrainSeedFromCells(generateMap(12, 100)));
+      const cells = generateMap(getMapPreset("small"),99);
+      expect(terrainSeedFromCells(cells)).toBe(terrainSeedFromCells(generateMap(getMapPreset("small"),99)));
+      expect(terrainSeedFromCells(cells)).not.toBe(terrainSeedFromCells(generateMap(getMapPreset("small"),100)));
     });
   });
 
@@ -124,7 +124,7 @@ describe("terrainHeightField", () => {
     });
 
     it("is continuous across every land-land edge of a generated map", () => {
-      const cells = generateMap(12, 7);
+      const cells = generateMap(getMapPreset("small"),7);
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
       const byKey = new Map(cells.map((c) => [key(c.hex.q, c.hex.r), c]));
       let pairs = 0;
@@ -166,7 +166,7 @@ describe("terrainHeightField", () => {
 
     it("orders every cell centre by elevation on generated maps", () => {
       for (const seed of [1, 42, 2024]) {
-        const cells = generateMap(getMapPreset("medium").radius, seed);
+        const cells = generateMap(getMapPreset("medium"), seed);
         const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
         const heights: Record<number, number[]> = { 1: [], 2: [], 3: [] };
         for (const cell of cells) {
@@ -233,7 +233,7 @@ describe("terrainHeightField", () => {
     });
 
     it("is negative at every water cell centre and in open ocean", () => {
-      const cells = generateMap(12, 3);
+      const cells = generateMap(getMapPreset("small"),3);
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
       for (const cell of cells) {
         if (isLand(cell)) continue;
@@ -253,7 +253,7 @@ describe("terrainHeightField", () => {
     });
 
     it("flags open water away from land as not near land", () => {
-      const cells = generateMap(12, 3);
+      const cells = generateMap(getMapPreset("small"),3);
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
       let far = 0;
       for (let x = -20; x <= 20; x += 0.13) {
@@ -366,7 +366,7 @@ describe("terrainHeightField", () => {
     });
 
     it("flags every point shallower than 100 m as near the seabed", () => {
-      const cells = generateMap(12, 3);
+      const cells = generateMap(getMapPreset("small"),3);
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
       let far = 0;
       for (let x = -25; x <= 25; x += 0.11) {
@@ -431,7 +431,7 @@ describe("terrainHeightField", () => {
     });
 
     it("vanishes at the coast, with zero slope", () => {
-      const cells = generateMap(12, 5);
+      const cells = generateMap(getMapPreset("small"),5);
       const seed = terrainSeedFromCells(cells);
       const field = createTerrainHeightField(cells, seed);
       const smooth = createTerrainHeightField(cells, seed, { reliefScale: 0 });
@@ -494,16 +494,48 @@ describe("terrainHeightField", () => {
     });
 
     it("reaches past the visible seabed all round the large map", () => {
-      const cells = generateMap(getMapPreset("large").radius, 31337);
+      const cells = generateMap(getMapPreset("large"), 31337);
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
       for (const h of edgeHeights(field, 0.2)) expect(h).toBeLessThan(-VISIBLE_SEABED_DEPTH);
     });
   });
 
+  describe("east–west wrap noise (#36)", () => {
+    const { columns, rows } = getMapPreset("small");
+    const wrap = createWrap(columns);
+    const width = wrapWorldWidth(wrap);
+    const openSea: MapCell[] = hexRect(columns, rows).map((h) => ({ hex: h, terrain: "water", hasPort: false, elevation: 0 }));
+
+    it("repeats its noise every wrap width", () => {
+      const field = createTerrainHeightField(openSea, 17, { wrap });
+      for (let i = 0; i < 100; i++) {
+        const x = (i * 0.731) % width;
+        const z = (i * 0.377) % 25;
+        expect(field.sampleCoastDistance(x + width, z)).toBeCloseTo(field.sampleCoastDistance(x, z), 9);
+        expect(field.sampleHeight(x - width, z)).toBeCloseTo(field.sampleHeight(x, z), 9);
+      }
+    });
+
+    it("has no seam: the noise just west of the map's east edge meets the noise at its west edge", () => {
+      const field = createTerrainHeightField(openSea, 17, { wrap });
+      const tiny = 1e-6;
+      for (let z = 0; z < 30; z += 1.3) {
+        const step = Math.abs(field.sampleCoastDistance(0, z) - field.sampleCoastDistance(width - tiny, z));
+        expect(step).toBeLessThan(1e-4);
+      }
+    });
+
+    it("leaves the field unchanged without a wrap", () => {
+      const plain = createTerrainHeightField(openSea, 17);
+      const noWrap = createTerrainHeightField(openSea, 17, { wrap: null });
+      for (let i = 0; i < 50; i++) expect(noWrap.sampleHeight(i * 0.7, i * 0.4)).toBe(plain.sampleHeight(i * 0.7, i * 0.4));
+    });
+  });
+
   describe("performance", () => {
     it("benchmark: builds and densely samples the largest map quickly", () => {
-      const { radius } = getMapPreset("large");
-      const cells = generateMap(radius, 31337);
+      const { columns, rows } = getMapPreset("large");
+      const cells = generateMap({ columns, rows }, 31337);
 
       const start = performance.now();
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
@@ -521,7 +553,7 @@ describe("terrainHeightField", () => {
       const elapsed = performance.now() - start;
 
       console.log(
-        `Height field, large map (radius ${radius}, ${cells.length} cells): ` +
+        `Height field, large map (${columns}×${rows}, ${cells.length} cells): ` +
           `build ${(built - start).toFixed(1)}ms, ${samples} samples in ${elapsed.toFixed(1)}ms`
       );
       expect(Number.isFinite(sink)).toBe(true);

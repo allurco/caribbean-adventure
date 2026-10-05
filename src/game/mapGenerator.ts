@@ -1,5 +1,18 @@
-import { hexGrid, hexDistance, neighbors, hexEquals, hexToWorld } from "./hex";
-import type { Hex } from "./hex";
+import {
+  canonicalHex,
+  createWrap,
+  hexDistance,
+  hexEquals,
+  hexRect,
+  hexToOffset,
+  hexToWorld,
+  nearestImage,
+  neighbors,
+  wrappedDistance,
+  wrappedNeighbors,
+} from "./hex";
+import type { Hex, MapWrap } from "./hex";
+import type { MapDimensions } from "./mapConfig";
 import type { Terrain } from "./terrain";
 import type { MapCell, PortNation, Decoration, Elevation, Biome } from "./types";
 import { NATIONS } from "./types";
@@ -14,11 +27,17 @@ const MIN_PORT_ISLAND_SIZE = 3; // Minimum island size to have a port
 const SHIPYARD_CHANCE = 0.5;
 const REEF_CHANCE = 0.2; // 20% of coastal hexes become reefs
 
-/** Get max ports based on map radius */
-function getMaxPorts(radius: number): number {
-  if (radius <= 12) return 5;      // small
-  if (radius <= 18) return 10;     // medium
-  return 15;                        // large
+/**
+ * Rows at the north and south edges kept as open sea: the edge row and the two
+ * next to it never hold an island, port or reef, so the map ends in water.
+ */
+export const OPEN_SEA_EDGE_ROWS = 3;
+
+/** Max ports by map size: 5 small, 10 medium, 15 large (about 1 per 85 hexes, capped). */
+function getMaxPorts(cellCount: number): number {
+  if (cellCount <= 500) return 5;
+  if (cellCount <= 1100) return 10;
+  return 15;
 }
 
 // Fictional Caribbean-style port names
@@ -78,10 +97,13 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
   return arr;
 }
 
-/** Check if a hex is at least minDist away from all hexes in the set */
-function isFarEnough(hex: Hex, existingIslandHexes: Hex[], minDist: number): boolean {
+/** Key of a (canonical) hex for the generator's lookup sets. */
+const hexKey = (h: Hex): string => `${h.q},${h.r}`;
+
+/** Check if a hex is at least minDist away (the short way round the seam) from all hexes in the set */
+function isFarEnough(hex: Hex, existingIslandHexes: Hex[], minDist: number, wrap: MapWrap): boolean {
   for (const existing of existingIslandHexes) {
-    if (hexDistance(hex, existing) < minDist) {
+    if (wrappedDistance(hex, existing, wrap) < minDist) {
       return false;
     }
   }
@@ -93,18 +115,18 @@ function findDockingHex(
   portHex: Hex,
   waterHexes: Set<string>,
   reefHexes: Set<string>,
-  hexKey: (h: Hex) => string
+  wrap: MapWrap
 ): Hex | null {
   // Find an adjacent water hex that has at least one other navigable neighbor
   // (so ships can actually leave the port)
-  const adjacentHexes = neighbors(portHex);
+  const adjacentHexes = wrappedNeighbors(portHex, wrap);
 
   for (const neighbor of adjacentHexes) {
     const key = hexKey(neighbor);
     if (waterHexes.has(key)) {
       // Check if this docking hex has at least one other navigable neighbor
       // (water or reef - somewhere the ship can move to)
-      const dockingNeighbors = neighbors(neighbor);
+      const dockingNeighbors = wrappedNeighbors(neighbor, wrap);
       const hasExit = dockingNeighbors.some((n) => {
         if (hexEquals(n, portHex)) return false; // Don't count the port itself
         const nKey = hexKey(n);
@@ -131,13 +153,14 @@ function findDockingHex(
 /** Calculate pier direction towards the docking hex */
 function calculatePierDirection(
   portHex: Hex,
-  dockingHex: Hex | null
+  dockingHex: Hex | null,
+  wrap: MapWrap
 ): number {
   if (!dockingHex) return 0; // Default rotation if no docking hex
 
-  // Calculate world positions
+  // Calculate world positions (the docking hex's copy next to the port, across the seam if need be)
   const [portX, , portZ] = hexToWorld(portHex);
-  const [waterX, , waterZ] = hexToWorld(dockingHex);
+  const [waterX, , waterZ] = hexToWorld(nearestImage(portHex, dockingHex, wrap));
 
   // Calculate angle from port to water (rotation around Y axis)
   const dx = waterX - portX;
@@ -150,8 +173,7 @@ function generateDecorations(
   terrain: Terrain,
   hasPort: boolean,
   rng: () => number,
-  dockingHex?: Hex | null,
-  portHex?: Hex,
+  pierRotation: number,
   elevation?: Elevation,
   biome?: Biome
 ): Decoration[] {
@@ -159,11 +181,8 @@ function generateDecorations(
 
   const decorations: Decoration[] = [];
 
-  // Port hexes get a fort and a pier (no trees/rocks)
-  if (hasPort && portHex) {
-    // Calculate pier direction towards docking hex
-    const pierRotation = calculatePierDirection(portHex, dockingHex ?? null);
-
+  // Port hexes get a fort and a pier (no trees/rocks); the pier faces the docking hex
+  if (hasPort) {
     decorations.push({
       type: "fort",
       position: [0, 0, 0.3],
@@ -320,29 +339,35 @@ function getBiome(elevation: Elevation): Biome | undefined {
   }
 }
 
-/** Grow an island from a seed hex to target size using BFS on neighbors */
+/**
+ * Grow an island from a seed hex to target size using BFS on neighbors.
+ *
+ * The island comes back as one contiguous patch around the seed: a hex grown
+ * across the seam keeps its unwrapped coordinates (e.g. q = -1 rather than
+ * q = columns - 1), so its centre and distances need no seam handling.
+ * `canGrowInto` and the de-duplication work on canonical hexes.
+ */
 function growIsland(
   seed: Hex,
   targetSize: number,
-  validHexes: Set<string>,
-  usedHexes: Set<string>,
-  rng: () => number
+  canGrowInto: (canonical: Hex) => boolean,
+  rng: () => number,
+  wrap: MapWrap
 ): Hex[] {
   const island: Hex[] = [seed];
-  const hexKey = (h: Hex) => `${h.q},${h.r}`;
-  const localUsed = new Set<string>([hexKey(seed)]);
+  const localUsed = new Set<string>([hexKey(canonicalHex(seed, wrap))]);
 
   while (island.length < targetSize) {
     // Find all candidate hexes adjacent to the current island
     const candidates: Hex[] = [];
+    const candidateKeys = new Set<string>();
     for (const h of island) {
       for (const n of neighbors(h)) {
-        const key = hexKey(n);
-        if (validHexes.has(key) && !usedHexes.has(key) && !localUsed.has(key)) {
-          // Check it's not already in candidates
-          if (!candidates.some((c) => hexEquals(c, n))) {
-            candidates.push(n);
-          }
+        const key = hexKey(canonicalHex(n, wrap));
+        if (localUsed.has(key) || candidateKeys.has(key)) continue;
+        if (canGrowInto(canonicalHex(n, wrap))) {
+          candidateKeys.add(key);
+          candidates.push(n);
         }
       }
     }
@@ -352,33 +377,55 @@ function growIsland(
     // Pick a random candidate
     const pick = candidates[Math.floor(rng() * candidates.length)];
     island.push(pick);
-    localUsed.add(hexKey(pick));
+    localUsed.add(hexKey(canonicalHex(pick, wrap)));
   }
 
   return island;
 }
 
-export function generateMap(radius: number, seed?: number): MapCell[] {
+/**
+ * Generate a rectangular map of `dimensions.columns × dimensions.rows` hexes
+ * (see `hexRect`), every cell stored canonically.
+ *
+ * With a `wrap` the map is generated as a cylinder: islands may grow across
+ * the east–west seam, and spacing, coasts, reefs and docking all use the
+ * wrapped hex maths, so the result has no seam. Without one the east and west
+ * edges are hard and nothing crosses them. The north and south edges are always
+ * open sea (`OPEN_SEA_EDGE_ROWS`).
+ */
+export function generateMap(dimensions: MapDimensions, seed?: number, wrap: MapWrap = null): MapCell[] {
+  const { columns, rows } = dimensions;
+  if (!Number.isInteger(columns) || columns % 2 !== 0) {
+    throw new Error(`Map width must be an even number of columns, got ${columns}`);
+  }
+  if (wrap && wrap.columns !== columns) {
+    throw new Error(`Wrap width ${wrap.columns} does not match the map's ${columns} columns`);
+  }
+  if (wrap) createWrap(wrap.columns); // validates the wrap itself
+
   const rng = seed !== undefined ? mulberry32(seed) : Math.random;
-  const grid = hexGrid(radius);
+  const grid = hexRect(columns, rows);
 
-  const hexKey = (h: Hex) => `${h.q},${h.r}`;
-
-  // Create a set of all valid hexes (excluding center)
+  // Hexes an island may cover: everything but the open-sea rows at the north and south edges
+  const isOpenSeaRow = (h: Hex): boolean => {
+    const { row } = hexToOffset(h);
+    return row < OPEN_SEA_EDGE_ROWS || row >= rows - OPEN_SEA_EDGE_ROWS;
+  };
   const validHexes = new Set<string>();
   for (const h of grid) {
-    if (!(h.q === 0 && h.r === 0)) {
+    if (!isOpenSeaRow(h)) {
       validHexes.add(hexKey(h));
     }
   }
 
-  // Track all used hexes (for island growth) and all island hexes (for distance checks)
+  // Track all used hexes (for island growth) and all island hexes (for distance checks), canonically
   const usedHexes = new Set<string>();
   const allIslandHexes: Hex[] = [];
-  const islands: Hex[][] = [];
+  // Each island as a contiguous patch (see growIsland), for its centre and elevation
+  const islandPatches: Hex[][] = [];
 
   // Get candidate seed positions (shuffled for randomness)
-  const candidateSeeds = grid.filter((h) => !(h.q === 0 && h.r === 0));
+  const candidateSeeds = grid.filter((h) => validHexes.has(hexKey(h)));
   shuffle(candidateSeeds, rng);
 
   // Determine target number of islands based on map size
@@ -387,24 +434,29 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
   const targetIslands = Math.max(3, Math.floor(totalHexes / 40));
 
   // Place island seeds with minimum distance constraint
+  const canGrowInto = (h: Hex): boolean => {
+    const key = hexKey(h);
+    return validHexes.has(key) && !usedHexes.has(key);
+  };
   for (const candidate of candidateSeeds) {
-    if (islands.length >= targetIslands) break;
+    if (islandPatches.length >= targetIslands) break;
 
     // Check if this candidate is far enough from all existing island hexes
-    if (isFarEnough(candidate, allIslandHexes, MIN_ISLAND_DISTANCE)) {
+    if (isFarEnough(candidate, allIslandHexes, MIN_ISLAND_DISTANCE, wrap)) {
       // Random island size between MIN and MAX
       const targetSize = MIN_ISLAND_SIZE + Math.floor(rng() * (MAX_ISLAND_SIZE - MIN_ISLAND_SIZE + 1));
 
       // Grow the island from this seed
-      const island = growIsland(candidate, targetSize, validHexes, usedHexes, rng);
+      const patch = growIsland(candidate, targetSize, canGrowInto, rng, wrap);
+      const island = patch.map((h) => canonicalHex(h, wrap));
 
       // Verify ALL hexes in the grown island are far enough from existing islands
       const allFarEnough = island.every((h) =>
-        isFarEnough(h, allIslandHexes, MIN_ISLAND_DISTANCE)
+        isFarEnough(h, allIslandHexes, MIN_ISLAND_DISTANCE, wrap)
       );
 
       if (allFarEnough) {
-        islands.push(island);
+        islandPatches.push(patch);
         allIslandHexes.push(...island);
         // Commit the used hexes
         for (const h of island) {
@@ -414,11 +466,24 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
     }
   }
 
+  // The islands' cells, canonically
+  const islands = islandPatches.map((patch) => patch.map((h) => canonicalHex(h, wrap)));
+
   // Build a map of hex -> island index for quick lookup
   const hexToIsland = new Map<string, number>();
   for (let i = 0; i < islands.length; i++) {
     for (const h of islands[i]) {
       hexToIsland.set(hexKey(h), i);
+    }
+  }
+
+  // Elevation of every island hex, from its distance to the island's centre
+  // (measured on the contiguous patch, so it is right across the seam)
+  const islandElevations = new Map<string, Elevation>();
+  for (const patch of islandPatches) {
+    const center = findIslandCenter(patch);
+    for (const h of patch) {
+      islandElevations.set(hexKey(canonicalHex(h, wrap)), calculateElevation(h, center, true, patch.length));
     }
   }
 
@@ -439,24 +504,15 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
   // Build set of all grid hex keys for boundary check
   const gridHexKeys = new Set<string>(grid.map(hexKey));
 
-  // Calculate island centers for elevation assignment
-  const islandCenters = new Map<number, Hex>();
-  for (let i = 0; i < islands.length; i++) {
-    islandCenters.set(i, findIslandCenter(islands[i]));
-  }
-
-  const maxPorts = getMaxPorts(radius);
-  for (let islandIdx = 0; islandIdx < islands.length; islandIdx++) {
-    const island = islands[islandIdx];
+  const maxPorts = getMaxPorts(grid.length);
+  for (const island of islands) {
     // Stop if we've reached the maximum number of ports
     if (portKeys.length >= maxPorts) break;
 
     if (island.length >= MIN_PORT_ISLAND_SIZE) {
-      const islandCenter = islandCenters.get(islandIdx)!;
-
       // Filter to hexes that have at least one on-grid water neighbor (coastal)
       const coastalHexes = island.filter((h) =>
-        neighbors(h).some((n) => {
+        wrappedNeighbors(h, wrap).some((n) => {
           const nKey = hexKey(n);
           // Neighbor must be on the grid AND not an island
           return gridHexKeys.has(nKey) && !allIslandKeys.has(nKey);
@@ -465,10 +521,7 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
 
       // Ports must be on beach hexes (elevation 1), which are coastal hexes
       // that are NOT at the center (distance > 1 from center for large islands)
-      const beachHexes = coastalHexes.filter((h) => {
-        const elevation = calculateElevation(h, islandCenter, true, island.length);
-        return elevation === 1; // Beach only
-      });
+      const beachHexes = coastalHexes.filter((h) => islandElevations.get(hexKey(h)) === 1);
 
       // Pick a random beach hex for the port (fallback to coastal, then any hex)
       const candidates =
@@ -535,7 +588,7 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
   for (const portKey of portKeys) {
     const [q, r] = portKey.split(",").map(Number);
     const portHex = { q, r, s: -q - r };
-    for (const neighbor of neighbors(portHex)) {
+    for (const neighbor of wrappedNeighbors(portHex, wrap)) {
       const neighborKey = hexKey(neighbor);
       // Only mark non-island neighbors as port-adjacent
       if (!islandHexSet.has(neighborKey)) {
@@ -547,12 +600,12 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
   const reefHexes = new Set<string>();
   for (const h of grid) {
     const key = hexKey(h);
-    // Only water hexes can become reefs (exclude center hex and port-adjacent hexes)
+    // Only water hexes can become reefs (exclude the open-sea edges and port-adjacent hexes)
     if (islandHexSet.has(key)) continue;
-    if (h.q === 0 && h.r === 0) continue; // Center hex stays water
+    if (isOpenSeaRow(h)) continue; // The north and south edges stay open sea
     if (portAdjacentHexes.has(key)) continue; // Port exits must stay water
     // Check if adjacent to any island
-    const isCoastal = neighbors(h).some((n) => islandHexSet.has(hexKey(n)));
+    const isCoastal = wrappedNeighbors(h, wrap).some((n) => islandHexSet.has(hexKey(n)));
     if (isCoastal && rng() < REEF_CHANCE) {
       reefHexes.add(key);
     }
@@ -572,7 +625,7 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
   for (const portKey of portKeys) {
     const [q, r] = portKey.split(",").map(Number);
     const portHex = { q, r, s: -q - r };
-    const dockingHex = findDockingHex(portHex, waterHexes, reefHexes, hexKey);
+    const dockingHex = findDockingHex(portHex, waterHexes, reefHexes, wrap);
     if (dockingHex) {
       portDockingHexes.set(portKey, dockingHex);
     }
@@ -581,23 +634,13 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
   // Build the final map cells
   return grid.map((h) => {
     const key = hexKey(h);
-    const islandIdx = hexToIsland.get(key);
-    const isIsland = islandIdx !== undefined;
+    const isIsland = hexToIsland.has(key);
     const isReef = reefHexes.has(key);
     const terrain: Terrain = isIsland ? "island" : isReef ? "reef" : "water";
     const hasPort = portHexes.has(key);
 
-    // Calculate elevation based on distance from island center
-    const islandCenter = islandIdx !== undefined ? islandCenters.get(islandIdx) : null;
-    const islandSize = islandIdx !== undefined ? islands[islandIdx].length : 0;
-
     // Ports are always forced to beach elevation (1) for ship access
-    let elevation: Elevation;
-    if (hasPort) {
-      elevation = 1; // Ports must be at beach level
-    } else {
-      elevation = calculateElevation(h, islandCenter ?? null, isIsland, islandSize);
-    }
+    const elevation: Elevation = hasPort ? 1 : (islandElevations.get(key) ?? 0);
 
     const biome = getBiome(elevation);
 
@@ -614,16 +657,8 @@ export function generateMap(radius: number, seed?: number): MapCell[] {
     }
 
     // Generate decorations for island hexes (based on elevation/biome)
-    const dockingHex = hasPort ? portDockingHexes.get(key) : undefined;
-    const decorations = generateDecorations(
-      terrain,
-      hasPort,
-      rng,
-      dockingHex,
-      hasPort ? h : undefined,
-      elevation,
-      biome
-    );
+    const pierRotation = hasPort ? calculatePierDirection(h, portDockingHexes.get(key) ?? null, wrap) : 0;
+    const decorations = generateDecorations(terrain, hasPort, rng, pierRotation, elevation, biome);
     if (decorations.length > 0) {
       cell.decorations = decorations;
     }
