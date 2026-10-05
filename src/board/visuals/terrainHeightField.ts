@@ -53,7 +53,7 @@ const MAX_COAST_DISTANCE = 4;
 const COAST_INDEX_RADIUS = Math.floor((MAX_COAST_DISTANCE + 2) / 1.5);
 /**
  * Padding of the field's bounds around the outermost cell centres. An island
- * can sit on the outer ring: its coast is up to a hex circumradius (1) from its
+ * can sit on the map's edge column: its coast is up to a hex circumradius (1) from its
  * centre, and the seabed only levels out MAX_COAST_DISTANCE beyond the coast,
  * so anything less cuts off its shelf and drop-off along a straight line
  * (the prepass then finds no seabed there). Past this the field is flat, and

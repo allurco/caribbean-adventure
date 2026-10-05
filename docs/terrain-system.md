@@ -204,10 +204,18 @@ the land. (A per-edge split of steep seabed triangles was removed: with
 smooth shading and the wide drop-off it was visually redundant, and it cost
 about 380k triangles and ~95 ms on the large map.)
 
+**Map shape and wrap (#36).** Maps are rectangles of flat-top hexes in
+odd-q offset rows (see `mapConfig.ts`), with the corner cell at the world
+origin, not the centre. They can wrap east–west: given the map's wrap,
+`createTerrainHeightField` draws its coast, relief and reef-crest noise from
+`periodicNoise.ts`, which samples 3D simplex noise on a cylinder whose
+circumference is the wrap's world width, so the noise repeats exactly with
+no seam. The coastline and reef outlines do not wrap yet.
+
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
-coast-distance clamp plus a hex radius, so an outer-ring island keeps its
+coast-distance clamp plus a hex radius, so an island on the map's edge keeps its
 whole shelf and drop-off; texel centres sampled, rows from `minZ` up, so
 `uv = (xz - min) / (max - min)` with no flip):
 
