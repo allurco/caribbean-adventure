@@ -300,7 +300,8 @@ line up within three repeats, so the summed sea does not tile. Each
 frame the GPU evolves each spectrum (frequencies rounded to whole cycles per
 `WAVE_LOOP_SECONDS`, so the clock wraps seamlessly) and runs a Stockham inverse
 FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float
-texture of (∂h/∂x, ∂h/∂z, |∇h|²): 54 small draws a frame for the three. The
+texture of (∂h/∂x, ∂h/∂z, |∇h|²). The three are batched side by side in one
+atlas (`waveCascadeAtlas.ts`), so all of them take 20 draws a frame. The
 water shader samples each texture once, sums the filtered mean slopes into
 the normal and the filtered variances into roughness. A cascade fades out
 once its band's longest wave spans under four pixels (gone at two), and all
