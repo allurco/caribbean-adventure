@@ -291,7 +291,7 @@ function Scene({
 
   // Built once per map (and turn) and drawn by every copy of the world: the
   // copies share these geometries, materials and hover state.
-  const landTerrain = useLandTerrain(G.cells, G.wrap);
+  const landTerrain = useLandTerrain(G.cells, G.wrap, { sun: SUN_DIRECTION, waveSlopes });
   const decorations = useDecorationLayout(G.cells, G.wrap);
   const grid = useHexGrid({
     cells: G.cells,

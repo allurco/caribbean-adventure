@@ -4,7 +4,10 @@ import {
   CAUSTIC_DEPTH_FADE_WAVELENGTHS,
   CAUSTIC_FOCUS_GLSL,
   CAUSTIC_KNEE,
+  CAUSTIC_LOD_BIAS,
   CAUSTIC_LOD_TEXELS,
+  CAUSTIC_MIN_WAVE_TEXELS,
+  CAUSTIC_STEP_SCALE,
   causticDepthFade,
   causticIntensity,
   causticJacobianDeterminant,
@@ -240,30 +243,34 @@ describe("energy", () => {
 
 describe("causticDepthFade (a band's focusing folds out past a depth of order its wavelength)", () => {
   const [, chop, ripple] = WAVE_CASCADES;
-  const longest = (kMin: number) => (2 * Math.PI) / kMin;
+  /** The band's mean wavelength: 2π over the geometric mean of its wavenumber limits. */
+  const meanWavelength = (c: { kMin: number; kMax: number }) => (2 * Math.PI) / Math.sqrt(c.kMin * c.kMax);
 
-  it("keeps the ripple band in full down to its longest wave (~3.2 m) and loses it by three wavelengths", () => {
-    const lambda = longest(ripple.kMin);
-    expect(lambda).toBeCloseTo(3.2, 0);
-    expect(causticDepthFade(0, ripple.kMin)).toBe(1);
-    expect(causticDepthFade(lambda, ripple.kMin)).toBe(1);
-    expect(causticDepthFade(3 * lambda, ripple.kMin)).toBe(0);
-    expect(causticDepthFade(40, ripple.kMin)).toBe(0);
+  it("keeps the ripple band (0.41–3.2 m) in full down to its mean wavelength, ~1.1 m, and loses it by three", () => {
+    const lambda = meanWavelength(ripple);
+    expect(lambda).toBeCloseTo(1.15, 1);
+    expect(causticDepthFade(0, ripple.kMin, ripple.kMax)).toBe(1);
+    expect(causticDepthFade(lambda, ripple.kMin, ripple.kMax)).toBe(1);
+    expect(causticDepthFade(3 * lambda, ripple.kMin, ripple.kMax)).toBe(0);
+    expect(causticDepthFade(40, ripple.kMin, ripple.kMax)).toBe(0);
     expect(CAUSTIC_DEPTH_FADE_WAVELENGTHS).toEqual([1, 3]);
   });
 
-  it("keeps the chop band across the whole shelf (its longest wave is ~23 m)", () => {
-    expect(causticDepthFade(15, chop.kMin)).toBe(1);
+  it("keeps most of the chop band (3.2–23 m, mean ~8.6 m) across the shelf and loses it down the drop-off", () => {
+    expect(meanWavelength(chop)).toBeCloseTo(8.6, 0);
+    expect(causticDepthFade(5, chop.kMin, chop.kMax)).toBe(1);
+    expect(causticDepthFade(15, chop.kMin, chop.kMax)).toBeGreaterThan(0.5);
+    expect(causticDepthFade(30, chop.kMin, chop.kMax)).toBe(0);
   });
 
   it("never fades the swell band, whose wavelengths are unbounded", () => {
-    expect(causticDepthFade(100, 0)).toBe(1);
+    expect(causticDepthFade(100, 0, chop.kMin)).toBe(1);
   });
 
   it("falls steadily with depth", () => {
     let prev = 1;
     for (let d = 0; d <= 12; d += 0.1) {
-      const f = causticDepthFade(d, ripple.kMin);
+      const f = causticDepthFade(d, ripple.kMin, ripple.kMax);
       expect(f).toBeLessThanOrEqual(prev);
       prev = f;
     }
@@ -274,7 +281,7 @@ describe("causticLodFade (a band's lines need texels to draw on)", () => {
   const [, , ripple] = WAVE_CASCADES;
   const lambda = (2 * Math.PI) / ripple.kMin;
 
-  it("shows a band in full once its longest wave spans 8 prepass texels, and not at all under 4", () => {
+  it("shows a band in full once its longest wave spans 8 texels of the smoothed look-up, and not at all under 4", () => {
     expect(CAUSTIC_LOD_TEXELS).toEqual([4, 8]);
     expect(causticLodFade(lambda / 8, ripple.kMin)).toBe(1);
     expect(causticLodFade(lambda / 16, ripple.kMin)).toBe(1);
@@ -285,9 +292,8 @@ describe("causticLodFade (a band's lines need texels to draw on)", () => {
     expect(mid).toBeLessThan(1);
   });
 
-  it("hides the ripple band at map zoom (1.4–1.9 m per pixel, prepass texels twice that) and all but shows it at ship zoom (0.21 m)", () => {
+  it("hides the ripple band at map zoom (1.4–1.9 m per pixel, prepass texels twice that)", () => {
     expect(causticLodFade(2 * 1.4, ripple.kMin)).toBe(0);
-    expect(causticLodFade(2 * 0.21, ripple.kMin)).toBeGreaterThan(0.9);
   });
 
   it("never fades the swell band", () => {
@@ -295,11 +301,26 @@ describe("causticLodFade (a band's lines need texels to draw on)", () => {
   });
 });
 
+describe("the smoothed look-up (CAUSTIC_MIN_WAVE_TEXELS)", () => {
+  it("drops waves shorter than a handful of prepass texels, which could only draw as grain", () => {
+    expect(CAUSTIC_MIN_WAVE_TEXELS).toBeGreaterThanOrEqual(4);
+    expect(CAUSTIC_MIN_WAVE_TEXELS).toBeLessThanOrEqual(12);
+  });
+
+  it("biases the mip look-up so a bilinear sample still resolves that wave, and differences over the same scale", () => {
+    // A mip level L averages 2^L texels and passes waves of 2 · 2^L texels and up.
+    expect(2 ** CAUSTIC_LOD_BIAS * 2).toBeCloseTo(CAUSTIC_MIN_WAVE_TEXELS, 9);
+    expect(CAUSTIC_STEP_SCALE).toBeCloseTo(2 ** CAUSTIC_LOD_BIAS, 9);
+  });
+});
+
 describe("CAUSTIC_FOCUS_GLSL", () => {
-  it("mirrors the knee, the fades and the intensity", () => {
+  it("mirrors the knee, the fades, the smoothing and the intensity", () => {
     expect(CAUSTIC_FOCUS_GLSL).toContain(`const float CAUSTIC_KNEE = ${CAUSTIC_KNEE.toFixed(4)};`);
+    expect(CAUSTIC_FOCUS_GLSL).toContain(`const float CAUSTIC_LOD_BIAS = ${CAUSTIC_LOD_BIAS.toFixed(4)};`);
+    expect(CAUSTIC_FOCUS_GLSL).toContain(`const float CAUSTIC_STEP_SCALE = ${CAUSTIC_STEP_SCALE.toFixed(4)};`);
     expect(CAUSTIC_FOCUS_GLSL).toContain("float causticIntensity(float det)");
-    expect(CAUSTIC_FOCUS_GLSL).toContain("float causticDepthFade(float depthMetres, float kMin)");
+    expect(CAUSTIC_FOCUS_GLSL).toContain("float causticDepthFade(float depthMetres, float kMin, float kMax)");
     expect(CAUSTIC_FOCUS_GLSL).toContain("float causticLodFade(float footprintMetres, float kMin)");
     expect(CAUSTIC_FOCUS_GLSL).toContain("float causticJacobianDeterminant(float depth, mat2 focus, mat2 hessian)");
     expect(CAUSTIC_FOCUS_GLSL).toContain("mat2 hessianFromSlopeDifferences(vec2 dSlopeX, vec2 dSlopeZ, vec2 stepX, vec2 stepZ)");

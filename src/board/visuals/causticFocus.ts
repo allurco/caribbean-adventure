@@ -121,32 +121,56 @@ const smoothstep = (e0: number, e1: number, x: number) => {
 };
 
 /**
- * Depths, in multiples of a band's longest wavelength, between which its
- * share of the Hessian fades out. A band's waves focus sharpest within a
- * depth of about their wavelength; deeper, the surface's map onto the seabed
- * folds over itself (det J < 0) and the single-sheet 1 / |det J| no longer
- * describes the light, which in the real sea has blurred into the sun's
- * finite disc, the sub-texel roughness and the water's scattering. So each
- * band's curvature is counted in full to one wavelength and not at all past
- * three. For the ripple band (to 3.2 m) that is the 1–3 m shallows the old
- * web lit; the chop band (to 23 m) lasts across the shelf; the swell band's
- * longest wave is unbounded, so it never fades (its curvature is slight).
+ * Depths, in multiples of a band's mean wavelength (2π over the geometric
+ * mean of its wavenumber limits), between which its share of the Hessian
+ * fades out. A wave focuses sharpest within a depth of about its wavelength;
+ * deeper, the surface's map onto the seabed folds over itself (det J < 0)
+ * and the single-sheet 1 / |det J| no longer describes the light, which in
+ * the real sea has blurred into the sun's finite disc, the sub-texel
+ * roughness and the water's scattering. So each band's curvature is counted
+ * in full to one mean wavelength and not at all past three. For the ripple
+ * band (0.41–3.2 m, mean 1.15 m) that is the first 1–3.5 m, the shallows the
+ * old web lit; the chop band (3.2–23 m, mean 8.6 m) lasts across the shelf
+ * and goes down the drop-off; the swell band's longest wave is unbounded, so
+ * it never fades (its curvature is slight anyway).
  */
 export const CAUSTIC_DEPTH_FADE_WAVELENGTHS: readonly [number, number] = [1, 3];
 
 /**
- * Prepass texels a band's longest wave must span for its lines to show in
- * full, and below which it is left out. A bright line is a small part of a
- * wavelength, so it needs several texels per wave to draw without aliasing;
- * the texel is the finite-difference step too, so under four texels the
- * Hessian it yields is noise. Stricter than the normal's LOD (waveNormalFilter.ts).
+ * Prepass texels a band's longest wave must span (after the smoothing below)
+ * for its lines to show in full, and below which it is left out: a bright
+ * line is a small part of a wavelength, so it needs several texels per wave
+ * to draw without aliasing. Stricter than the normal's LOD
+ * (waveNormalFilter.ts).
  */
 export const CAUSTIC_LOD_TEXELS: readonly [number, number] = [4, 8];
 
-/** Share of a band's focusing kept at `depthMetres`, for a band of longest wave 2π / `kMin` (0: never fades). */
-export function causticDepthFade(depthMetres: number, kMin: number): number {
+/**
+ * Prepass texels a wave must span to focus light at all: shorter waves are
+ * smoothed out of the caustic look-up. Caustic cells are about a wavelength
+ * across and the lines a fraction of that, so waves of a few texels draw as
+ * grain, not dappled light (the old noise web found cells under ~9 screen
+ * pixels, ~4–5 prepass texels, read as grain). Six texels is 2.5 m at the
+ * closest ship zoom (0.42 m prepass texels), so what focuses there is the
+ * 2.5–3.2 m end of the ripple band and the chop; further out only the chop,
+ * and at map zoom nothing short enough to show a line.
+ */
+export const CAUSTIC_MIN_WAVE_TEXELS = 6;
+/**
+ * Mip bias of the caustic's slope look-ups: level L averages 2^L texels and
+ * a bilinear sample of it resolves waves of 2 · 2^L texels and up.
+ */
+export const CAUSTIC_LOD_BIAS = Math.log2(CAUSTIC_MIN_WAVE_TEXELS / 2);
+/** The finite-difference steps are the footprint scaled to the smoothed look-up, so the Hessian is of what was sampled. */
+export const CAUSTIC_STEP_SCALE = 2 ** CAUSTIC_LOD_BIAS;
+
+/**
+ * Share of a band's focusing kept at `depthMetres`, for a band of wavenumbers
+ * `kMin` … `kMax` (kMin 0: the longest waves, never faded).
+ */
+export function causticDepthFade(depthMetres: number, kMin: number, kMax: number): number {
   if (kMin <= 0) return 1;
-  const wavelength = (2 * Math.PI) / kMin;
+  const wavelength = (2 * Math.PI) / Math.sqrt(kMin * kMax);
   return 1 - smoothstep(CAUSTIC_DEPTH_FADE_WAVELENGTHS[0] * wavelength, CAUSTIC_DEPTH_FADE_WAVELENGTHS[1] * wavelength, depthMetres);
 }
 
@@ -162,6 +186,8 @@ export const CAUSTIC_FOCUS_GLSL = `
   const float CAUSTIC_KNEE = ${CAUSTIC_KNEE.toFixed(4)};
   const vec2 CAUSTIC_DEPTH_FADE_WAVELENGTHS = vec2(${CAUSTIC_DEPTH_FADE_WAVELENGTHS.map((x) => x.toFixed(2)).join(", ")});
   const vec2 CAUSTIC_LOD_TEXELS = vec2(${CAUSTIC_LOD_TEXELS.map((x) => x.toFixed(2)).join(", ")});
+  const float CAUSTIC_LOD_BIAS = ${CAUSTIC_LOD_BIAS.toFixed(4)};
+  const float CAUSTIC_STEP_SCALE = ${CAUSTIC_STEP_SCALE.toFixed(4)};
 
   // H from the slope's change along two footprint steps: H · [stepX stepZ] = [dSlopeX dSlopeZ].
   mat2 hessianFromSlopeDifferences(vec2 dSlopeX, vec2 dSlopeZ, vec2 stepX, vec2 stepZ) {
@@ -178,9 +204,9 @@ export const CAUSTIC_FOCUS_GLSL = `
     float soft = a >= CAUSTIC_KNEE ? a : (a * a + CAUSTIC_KNEE * CAUSTIC_KNEE) / (2.0 * CAUSTIC_KNEE);
     return 1.0 / soft;
   }
-  float causticDepthFade(float depthMetres, float kMin) {
+  float causticDepthFade(float depthMetres, float kMin, float kMax) {
     if (kMin <= 0.0) return 1.0;
-    float wavelength = 6.28318530718 / kMin;
+    float wavelength = 6.28318530718 / sqrt(kMin * kMax);
     return 1.0 - smoothstep(CAUSTIC_DEPTH_FADE_WAVELENGTHS.x * wavelength, CAUSTIC_DEPTH_FADE_WAVELENGTHS.y * wavelength, depthMetres);
   }
   float causticLodFade(float footprintMetres, float kMin) {

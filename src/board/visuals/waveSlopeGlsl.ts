@@ -21,7 +21,8 @@ const CASCADE_DECLARATIONS = WAVE_CASCADES.map(
   uniform sampler2D waveSlopes${i};
   const float WAVE_TILE_UNITS_${i} = ${glslFloat(c.tileMetres / METRES_PER_UNIT)};
   const vec2 WAVE_TURN_${i} = vec2(${glslFloat(Math.cos(c.rotation))}, ${glslFloat(Math.sin(c.rotation))});
-  const float WAVE_K_MIN_${i} = ${glslFloat(c.kMin)};`
+  const float WAVE_K_MIN_${i} = ${glslFloat(c.kMin)};
+  const float WAVE_K_MAX_${i} = ${glslFloat(c.kMax)};`
 ).join("");
 
 /** One cascade's filtered look-up, unrolled so each texture is sampled by name. */
@@ -32,7 +33,7 @@ const CASCADE_SUM = WAVE_CASCADES.map(
       vec2 p = worldXZ / WAVE_TILE_UNITS_${i};
       vec2 uv = vec2(t.x * p.x + t.y * p.y, -t.y * p.x + t.x * p.y); // Rᵀ · p
       float fade = weights[${i}] * distanceFade * cascadeLodFade(footprintMetres, WAVE_K_MIN_${i});
-      addCascadeSlope(texture2D(waveSlopes${i}, uv).xyz, t, fade, slope, slopeVariance);
+      addCascadeSlope(texture2D(waveSlopes${i}, uv, lodBias).xyz, t, fade, slope, slopeVariance);
     }`
 ).join("");
 
@@ -45,9 +46,10 @@ export const WAVE_SLOPE_GLSL = `
 
   // The sea's slope at worldXZ (world axes) and the slope variance the
   // look-ups left out, summed over the cascades: each is filtered to the
-  // caller's footprint, faded by \`distanceFade\`, by its own level of detail
-  // and by the caller's \`weights\`.
-  void sumCascadeSlopes(vec2 worldXZ, float footprintMetres, float distanceFade, float weights[WAVE_CASCADE_COUNT], out vec2 slope, out float slopeVariance) {
+  // caller's footprint (coarser by \`lodBias\` mip levels; 0 for the pixel's
+  // own), faded by \`distanceFade\`, by its own level of detail and by the
+  // caller's \`weights\`.
+  void sumCascadeSlopes(vec2 worldXZ, float footprintMetres, float distanceFade, float weights[WAVE_CASCADE_COUNT], float lodBias, out vec2 slope, out float slopeVariance) {
     slope = vec2(0.0);
     slopeVariance = 0.0;
     ${CASCADE_SUM}

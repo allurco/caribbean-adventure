@@ -10,17 +10,18 @@ describe("WAVE_SLOPE_GLSL (the cascade look-up shared by the water and the seabe
       expect(WAVE_SLOPE_GLSL).toContain(`const float WAVE_TILE_UNITS_${i} = ${(c.tileMetres / METRES_PER_UNIT).toFixed(8)};`);
       expect(WAVE_SLOPE_GLSL).toContain(`const vec2 WAVE_TURN_${i} = vec2(${Math.cos(c.rotation).toFixed(8)}, ${Math.sin(c.rotation).toFixed(8)});`);
       expect(WAVE_SLOPE_GLSL).toContain(`const float WAVE_K_MIN_${i} = ${c.kMin.toFixed(8)};`);
+      expect(WAVE_SLOPE_GLSL).toContain(`const float WAVE_K_MAX_${i} = ${c.kMax.toFixed(8)};`);
     });
     expect(WAVE_SLOPE_GLSL).toContain(`const int WAVE_CASCADE_COUNT = ${WAVE_CASCADES.length};`);
     expect(WAVE_SLOPE_GLSL).toContain(`const float WAVE_SHADING_GAIN = ${WAVE_SHADING_GAIN.toFixed(4)};`);
   });
 
-  it("sums the cascades in one function that samples every texture unconditionally, each weighted by the caller", () => {
+  it("sums the cascades in one function that samples every texture unconditionally, each weighted by the caller, at the caller's mip bias", () => {
     expect(WAVE_SLOPE_GLSL).toContain(
-      "void sumCascadeSlopes(vec2 worldXZ, float footprintMetres, float distanceFade, float weights[WAVE_CASCADE_COUNT], out vec2 slope, out float slopeVariance)"
+      "void sumCascadeSlopes(vec2 worldXZ, float footprintMetres, float distanceFade, float weights[WAVE_CASCADE_COUNT], float lodBias, out vec2 slope, out float slopeVariance)"
     );
     WAVE_CASCADES.forEach((_, i) => {
-      expect(WAVE_SLOPE_GLSL).toContain(`texture2D(waveSlopes${i}, uv)`);
+      expect(WAVE_SLOPE_GLSL).toContain(`texture2D(waveSlopes${i}, uv, lodBias)`);
       expect(WAVE_SLOPE_GLSL).toContain(`weights[${i}]`);
     });
     // The normal filter it builds on (fades and LEAN roughness) comes with it.

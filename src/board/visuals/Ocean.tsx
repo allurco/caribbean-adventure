@@ -280,12 +280,14 @@ const fragmentShader = `
     return total < 1e-4 ? yAll : y / total;
   }
 
-  // Prepass uv of the point where a ray from the surface at vWorld along the
-  // unit refracted direction \`refracted\` reaches \`depthUnits\` below the surface.
-  vec2 refractedHitUv(vec3 refracted, float depthUnits) {
+  // Prepass uv (xy) of the point where a ray from the surface at vWorld along
+  // the unit refracted direction \`refracted\` reaches \`depthUnits\` below the
+  // surface, and (z) its clip w: only a point in front of the camera (w > 0)
+  // has a texel.
+  vec3 refractedHitUv(vec3 refracted, float depthUnits) {
     vec3 hit = vWorld + refracted * (depthUnits / max(-refracted.y, 1e-3));
     vec4 clip = cameraViewProjection * vec4(hit, 1.0);
-    return clip.xy / clip.w * 0.5 + 0.5;
+    return vec3(clip.xy / clip.w * 0.5 + 0.5, clip.w);
   }
 
   // Refraction (#38 step 6). The prepass holds the seabed each pixel sees
@@ -312,12 +314,13 @@ const fragmentShader = `
     refracted = normalize(vec3(travel.x, -1.0, travel.y));
 
     float depth0 = clamp(-straightY, 0.0, REFRACTION_MAX_DEPTH_UNITS);
-    float depth1 = clamp(-seabedHeight(refractedHitUv(refracted, depth0)), 0.0, REFRACTION_MAX_DEPTH_UNITS);
-    vec2 hitUv = refractedHitUv(refracted, depth1);
+    float depth1 = clamp(-seabedHeight(refractedHitUv(refracted, depth0).xy), 0.0, REFRACTION_MAX_DEPTH_UNITS);
+    vec3 hit = refractedHitUv(refracted, depth1);
+    vec2 hitUv = hit.xy;
     vec3 hitColour;
     float hitY = seabedSample(hitUv, hitColour);
 
-    bool onScreen = all(greaterThanEqual(hitUv, vec2(0.0))) && all(lessThanEqual(hitUv, vec2(1.0)));
+    bool onScreen = hit.z > 0.0 && all(greaterThanEqual(hitUv, vec2(0.0))) && all(lessThanEqual(hitUv, vec2(1.0)));
     bool onSeabed = hitY <= 0.0 && hitY > NO_SEABED_Y + 1e-3;
     if (onScreen && onSeabed) {
       seabedWorldY = hitY;
@@ -382,7 +385,7 @@ const fragmentShader = `
     for (int i = 0; i < WAVE_CASCADE_COUNT; i++) cascadeWeights[i] = 1.0;
     vec2 slope;
     float slopeVariance;
-    sumCascadeSlopes(vWorld.xz, footprintMetres, distanceFade, cascadeWeights, slope, slopeVariance);
+    sumCascadeSlopes(vWorld.xz, footprintMetres, distanceFade, cascadeWeights, 0.0, slope, slopeVariance);
     // The glint sees the drawn slopes, so the sun path stays narrow ...
     vec3 n = normalize(vec3(-slope.x, 1.0, -slope.y));
     float alpha2 = GLINT_BASE_ROUGHNESS2 + slopeVariance;
