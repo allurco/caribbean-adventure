@@ -78,7 +78,7 @@ function stagePass(
 function transformLines(data: ComplexArray, n: number, lines: number, lineStep: number, stride: number) {
   const table = butterflyTable(n);
   let src = data;
-  let dst = { re: new Float64Array(data.re.length), im: new Float64Array(data.im.length) };
+  let dst: ComplexArray = { re: new Float64Array(data.re.length), im: new Float64Array(data.im.length) };
   for (let s = 0; s < fftStageCount(n); s++) {
     for (let line = 0; line < lines; line++) stagePass(src, dst, table, s, n, line * lineStep, stride);
     [src, dst] = [dst, src];
