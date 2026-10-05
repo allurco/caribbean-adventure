@@ -118,9 +118,31 @@ export function initialSpectrum(cascade: WaveCascade): Float32Array {
 }
 
 /**
+ * One mode's amplitude h̃(k, t) = h0(k) e^(−iφ) + conj(h0(−k)) e^(+iφ), as
+ * [re, im], from its `initialSpectrum` texel (h0.re, h0.im, conj.re,
+ * conj.im) at wavenumber magnitude `k`. The phase φ = 2π·fract(m·t / loop)
+ * uses the loop-quantised frequency (wavePeriodMultiple), so the mode repeats
+ * exactly after one loop. Pure, for CPU sampling of the sea too.
+ */
+export function evolvedAmplitude(
+  texel: ArrayLike<number>,
+  k: number,
+  seconds: number,
+  loopSeconds: number
+): [number, number] {
+  const m = wavePeriodMultiple(k, loopSeconds);
+  const phase = 2 * Math.PI * ((m * (seconds / loopSeconds)) % 1);
+  const c = Math.cos(phase);
+  const s = Math.sin(phase);
+  return [
+    texel[0] * c + texel[1] * s + texel[2] * c - texel[3] * s,
+    texel[1] * c - texel[0] * s + texel[3] * c + texel[2] * s,
+  ];
+}
+
+/**
  * The packed slope spectrum C(k) at time `seconds`, from `initialSpectrum`
- * texels. Frequencies are whole cycles per `loopSeconds` (wavePeriodMultiple),
- * so the field repeats exactly after one loop.
+ * texels: each mode evolved by `evolvedAmplitude`, times (i·kx − kz).
  */
 export function evolvedSlopeSpectrum(
   initial: Float32Array,
@@ -131,19 +153,12 @@ export function evolvedSlopeSpectrum(
   const { size, tileMetres } = cascade;
   const re = new Float64Array(size * size);
   const im = new Float64Array(size * size);
-  const cycles = seconds / loopSeconds;
   for (let z = 0; z < size; z++) {
     for (let x = 0; x < size; x++) {
       const kx = cascadeWavenumber(x, size, tileMetres);
       const kz = cascadeWavenumber(z, size, tileMetres);
-      const m = wavePeriodMultiple(Math.hypot(kx, kz), loopSeconds);
-      const phase = 2 * Math.PI * ((m * cycles) % 1);
-      const c = Math.cos(phase);
-      const s = Math.sin(phase);
       const t = (z * size + x) * 4;
-      // h̃ = h0 · e^(−iφ) + conj(h0(−k)) · e^(+iφ)
-      const hr = initial[t] * c + initial[t + 1] * s + initial[t + 2] * c - initial[t + 3] * s;
-      const hi = initial[t + 1] * c - initial[t] * s + initial[t + 3] * c + initial[t + 2] * s;
+      const [hr, hi] = evolvedAmplitude(initial.subarray(t, t + 4), Math.hypot(kx, kz), seconds, loopSeconds);
       // C = h̃ · (i·kx − kz)
       const i = z * size + x;
       re[i] = -kx * hi - kz * hr;

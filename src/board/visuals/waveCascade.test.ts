@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   cascadeWavenumber,
+  evolvedAmplitude,
   evolvedSlopeSpectrum,
   inCascadeBand,
   initialSpectrum,
@@ -145,6 +146,23 @@ describe("evolvedSlopeSpectrum", () => {
     const a = slopes(12.3);
     const b = slopes(12.3 + loop);
     for (let i = 0; i < n; i++) expect(a.re[i]).toBeCloseTo(b.re[i], 4);
+  });
+});
+
+describe("evolvedAmplitude", () => {
+  it("is h0 + conj(h0(−k)) at t = 0", () => {
+    expect(evolvedAmplitude([0.3, 0.1, 0.2, -0.4], 0.1, 0, 100)).toEqual([0.5, -0.30000000000000004]);
+  });
+
+  it("turns h0 by −φ and its mirror by +φ: a quarter turn for a quarter period", () => {
+    // k with exactly 10 cycles per 100 s loop: ω = 2π/10, so k = ω²/g.
+    const k = (2 * Math.PI / 10) ** 2 / 9.81;
+    const [re, im] = evolvedAmplitude([1, 0, 0, 0], k, 2.5, 100);
+    expect(re).toBeCloseTo(0, 9);
+    expect(im).toBeCloseTo(-1, 9);
+    const [re2, im2] = evolvedAmplitude([0, 0, 1, 0], k, 2.5, 100);
+    expect(re2).toBeCloseTo(0, 9);
+    expect(im2).toBeCloseTo(1, 9);
   });
 });
 
