@@ -1,6 +1,7 @@
 /** Builds the land and seabed mesh once per map, shared by every world copy (#36). */
 import { useEffect, useMemo } from "react";
 import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial, Uint32BufferAttribute } from "three";
+import type { Texture } from "three";
 import type { MapWrap } from "../../game/hex";
 import type { MapCell } from "../../game/types";
 import { sharedTerrainField } from "./sharedTerrainField";
@@ -8,6 +9,8 @@ import { buildLandMesh, type LandMeshArrays, type LandMeshColors } from "./landM
 import { paletteColor, type PaletteName } from "./palette";
 import { createReefMask } from "./reefMask";
 import { perMapCache } from "./perMapCache";
+import { injectSeabedCaustics } from "./seabedCaustics";
+import type { Vec3 } from "./sunDirection";
 
 /** Palette entry as linear RGB, the space vertex colours are read in. */
 function linearRgb(name: PaletteName): [number, number, number] {
@@ -59,8 +62,34 @@ const landMeshOf = perMapCache((cells, wrap) =>
   buildLandMesh(sharedTerrainField(cells, wrap), { colors: LAND_COLORS, sampleReef: createReefMask(cells, wrap) })
 );
 
-/** Builds the land mesh once per map (and wrap); disposes it when the map changes or the owner unmounts. */
-export function useLandTerrain(cells: MapCell[], wrap: MapWrap): LandTerrainResources {
+/** What the seabed's sunlight is focused through (#38 step 6). */
+export interface SeabedLighting {
+  /** Unit vector toward the sun (the scene's SUN_DIRECTION). */
+  sun: Vec3;
+  /** The wave cascades' slope textures (useWaveCascades), one per cascade. */
+  waveSlopes: readonly Texture[];
+}
+
+/** A standard material whose sunlight the waves focus (seabedCaustics.ts); `name` keys the compiled program. */
+function causticMaterial(
+  parameters: ConstructorParameters<typeof MeshStandardMaterial>[0],
+  name: string,
+  lighting: SeabedLighting
+): MeshStandardMaterial {
+  const material = new MeshStandardMaterial(parameters);
+  material.onBeforeCompile = (shader) => {
+    injectSeabedCaustics(shader, lighting);
+  };
+  material.customProgramCacheKey = () => `${name}-caustics`;
+  return material;
+}
+
+/**
+ * Builds the land mesh once per map (and wrap); disposes it when the map
+ * changes or the owner unmounts. Both materials focus their sunlight
+ * through `lighting`'s waves (caustics, seabedCaustics.ts).
+ */
+export function useLandTerrain(cells: MapCell[], wrap: MapWrap, lighting: SeabedLighting): LandTerrainResources {
   const { land, seabed } = useMemo(() => {
     const mesh = landMeshOf(cells, wrap);
     return { land: geometryFrom(mesh.land), seabed: geometryFrom(mesh.seabed, mesh.seabed.index) };
@@ -74,22 +103,21 @@ export function useLandTerrain(cells: MapCell[], wrap: MapWrap): LandTerrainReso
     [land, seabed]
   );
 
+  // Both materials focus their sunlight through the waves above (caustics,
+  // #38 step 6): the land too, because every triangle with a vertex above sea
+  // level is land, and its submerged part reaches a few metres down along the
+  // shore, where the caustics are sharpest. Above the waterline the factor is 1.
+  const { sun, waveSlopes } = lighting;
   const material = useMemo(
-    () =>
-      new MeshStandardMaterial({
-        vertexColors: true,
-        flatShading: true,
-        roughness: 0.9,
-        metalness: 0,
-      }),
-    []
+    () => causticMaterial({ vertexColors: true, flatShading: true, roughness: 0.9, metalness: 0 }, "land", { sun, waveSlopes }),
+    [sun, waveSlopes]
   );
   useEffect(() => () => material.dispose(), [material]);
 
   // The seabed is smooth-shaded so no facets show through clear water.
   const seabedMaterial = useMemo(
-    () => new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }),
-    []
+    () => causticMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }, "seabed", { sun, waveSlopes }),
+    [sun, waveSlopes]
   );
   useEffect(() => () => seabedMaterial.dispose(), [seabedMaterial]);
 
