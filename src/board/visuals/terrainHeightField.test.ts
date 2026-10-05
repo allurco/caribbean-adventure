@@ -10,6 +10,7 @@ import {
   COAST_NOISE_AMPLITUDE,
 } from "./terrainHeightField";
 import { LAND_MESH_SPACING } from "./landMesh";
+import { VISIBLE_SEABED_DEPTH } from "./waterOptics";
 
 const key = (q: number, r: number) => `${q},${r}`;
 
@@ -274,6 +275,126 @@ describe("terrainHeightField", () => {
     });
   });
 
+  describe("seabed in metres (#38)", () => {
+    /** Depth below sea level in metres at the render scale (65 m per unit). */
+    const depthMetres = (field: ReturnType<typeof createTerrainHeightField>, x: number, z: number) =>
+      -field.sampleHeight(x, z) * 65;
+
+    it("keeps the water next to an island on a 2–15 m shelf", () => {
+      const cells = buildMap(7, volcanoIsland());
+      const field = createTerrainHeightField(cells, SEED, { coastNoiseAmplitude: 0 });
+      // Centres of the first ring of water hexes: half a hex (~56 m) off the coast.
+      for (const [q, r] of [[3, 0], [0, 3], [-3, 3], [-3, 0], [0, -3], [3, -3]]) {
+        const d = depthMetres(field, ...centre(q, r));
+        expect(d).toBeGreaterThanOrEqual(2);
+        expect(d).toBeLessThanOrEqual(15);
+      }
+    });
+
+    it("is deep water (≥ 65 m) three hexes off the coast", () => {
+      const cells = buildMap(7, volcanoIsland());
+      const field = createTerrainHeightField(cells, SEED);
+      for (const [q, r] of [[5, 0], [0, 5], [-5, 5], [-5, 0], [0, -5], [5, -5]]) {
+        expect(depthMetres(field, ...centre(q, r))).toBeGreaterThanOrEqual(65);
+      }
+    });
+
+    it("is deep water in open ocean far from any land", () => {
+      const cells = buildMap(7, volcanoIsland());
+      const field = createTerrainHeightField(cells, SEED);
+      expect(depthMetres(field, 500, -500)).toBeGreaterThanOrEqual(65);
+    });
+
+    it("raises reef hexes in open water to 1–3 m below the surface", () => {
+      const cells = buildMap(8, { [key(0, 0)]: 1 }).map((c) =>
+        c.hex.q === 5 && c.hex.r === 0 ? { ...c, terrain: "reef" as const } : c
+      );
+      const field = createTerrainHeightField(cells, SEED);
+      const [cx, cz] = centre(5, 0);
+      // The middle of the reef hex, sampled across its inner half.
+      for (let dx = -0.3; dx <= 0.3; dx += 0.1) {
+        for (let dz = -0.3; dz <= 0.3; dz += 0.1) {
+          const d = depthMetres(field, cx + dx, cz + dz);
+          expect(d).toBeGreaterThanOrEqual(1);
+          expect(d).toBeLessThanOrEqual(3);
+        }
+      }
+      // Two hexes away from it the sea is deep again.
+      expect(depthMetres(field, ...centre(7, 0))).toBeGreaterThanOrEqual(65);
+    });
+
+    it("rises smoothly onto a reef, with no cliffs between lattice points", () => {
+      const cells = buildMap(8, { [key(0, 0)]: 1 }).map((c) =>
+        c.hex.q === 5 && c.hex.r === 0 ? { ...c, terrain: "reef" as const } : c
+      );
+      const field = createTerrainHeightField(cells, SEED);
+      const [ax, az] = centre(7, 0);
+      const [bx, bz] = centre(5, 0);
+      const steps = 200;
+      const len = Math.hypot(bx - ax, bz - az);
+      let prev = field.sampleHeight(ax, az);
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        const h = field.sampleHeight(ax + (bx - ax) * t, az + (bz - az) * t);
+        // Slope below 3:1 (~72°) everywhere on the reef front.
+        expect(Math.abs(h - prev) / (len / steps)).toBeLessThan(3);
+        prev = h;
+      }
+    });
+
+    it("meets the water softly: the land leaves the waterline at the seabed's gentle slope", () => {
+      const cells = buildMap(7, volcanoIsland());
+      const field = createTerrainHeightField(cells, SEED, { coastNoiseAmplitude: 0, reliefScale: 0 });
+      // From the beach/water hex edge midpoint inland, towards the beach centre.
+      const [ax, az] = centre(3, 0);
+      const [bx, bz] = centre(2, 0);
+      const mx = (ax + bx) / 2;
+      const mz = (az + bz) / 2;
+      const ux = (bx - ax) / Math.sqrt(3);
+      const uz = (bz - az) / Math.sqrt(3);
+      const step = 0.002;
+      const slopeAt = (s: number) =>
+        (field.sampleHeight(mx + ux * (s + step), mz + uz * (s + step)) - field.sampleHeight(mx + ux * s, mz + uz * s)) /
+        step;
+      // At the waterline: no steeper than the seabed's 1:21 beach face.
+      expect(slopeAt(0)).toBeLessThan(0.05);
+      // Through the first 3 m of height it steepens gradually, staying well
+      // below the old 34° (0.67) face at the water's edge.
+      for (let s = 0; field.sampleHeight(mx + ux * s, mz + uz * s) < 3 / 65; s += step) {
+        expect(slopeAt(s)).toBeLessThan(0.45);
+      }
+    });
+
+    it("flags every point shallower than 100 m as near the seabed", () => {
+      const cells = generateMap(12, 3);
+      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      let far = 0;
+      for (let x = -25; x <= 25; x += 0.11) {
+        for (let z = -25; z <= 25; z += 0.11) {
+          if (field.isNearSeabed(x, z)) continue;
+          expect(depthMetres(field, x, z)).toBeGreaterThan(100);
+          far++;
+        }
+      }
+      expect(far).toBeGreaterThan(1000);
+    });
+
+    it("leaves land heights alone: a reef next to land doesn't lift the land", () => {
+      const land = { [key(0, 0)]: 1 as Elevation };
+      const plain = createTerrainHeightField(buildMap(4, land), SEED);
+      const withReef = createTerrainHeightField(
+        buildMap(4, land).map((c) => (c.hex.q === 1 && c.hex.r === 0 ? { ...c, terrain: "reef" as const } : c)),
+        SEED
+      );
+      for (let x = -1; x <= 1; x += 0.05) {
+        for (let z = -1; z <= 1; z += 0.05) {
+          const h = plain.sampleHeight(x, z);
+          if (h > 0) expect(withReef.sampleHeight(x, z)).toBe(h);
+        }
+      }
+    });
+  });
+
   describe("interior relief", () => {
     /** A radius-3 island where every land hex has the same elevation. */
     function flatIsland(elevation: Elevation): MapCell[] {
@@ -352,6 +473,30 @@ describe("terrainHeightField", () => {
         expect(z).toBeGreaterThan(bounds.minZ);
         expect(z).toBeLessThan(bounds.maxZ);
       }
+    });
+
+    /** Height (metres) at every point along the bounds rectangle, `step` apart. */
+    const edgeHeights = (field: ReturnType<typeof createTerrainHeightField>, step = 0.05) => {
+      const { minX, maxX, minZ, maxZ } = field.bounds;
+      const out: number[] = [];
+      for (let x = minX; x <= maxX; x += step) out.push(field.sampleHeight(x, minZ), field.sampleHeight(x, maxZ));
+      for (let z = minZ; z <= maxZ; z += step) out.push(field.sampleHeight(minX, z), field.sampleHeight(maxX, z));
+      return out.map((h) => h * 65);
+    };
+
+    it("reaches past the visible seabed around an island on the outer ring (#38)", () => {
+      // Islands on the map's edge: one at a corner of the ring, one mid-side.
+      const land: Record<string, Elevation> = { [key(4, 0)]: 1, [key(2, -4)]: 2 };
+      const field = createTerrainHeightField(buildMap(4, land), SEED);
+      // Everywhere on the edge of the field the seabed is already deeper than
+      // the mesh cut-off, so the shelf and drop-off are never cut off.
+      for (const h of edgeHeights(field)) expect(h).toBeLessThan(-VISIBLE_SEABED_DEPTH);
+    });
+
+    it("reaches past the visible seabed all round the large map", () => {
+      const cells = generateMap(getMapPreset("large").radius, 31337);
+      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      for (const h of edgeHeights(field, 0.2)) expect(h).toBeLessThan(-VISIBLE_SEABED_DEPTH);
     });
   });
 

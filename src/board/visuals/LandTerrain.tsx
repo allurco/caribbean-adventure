@@ -1,9 +1,12 @@
 import { useEffect, useMemo } from "react";
-import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial } from "three";
+import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial, Uint32BufferAttribute } from "three";
+import type { Mesh } from "three";
 import type { MapCell } from "../../game/types";
 import { sharedTerrainField } from "./sharedTerrainField";
-import { buildLandMesh, type LandMeshColors } from "./landMesh";
+import { buildLandMesh, type LandMeshArrays, type LandMeshColors } from "./landMesh";
 import { paletteColor, type PaletteName } from "./palette";
+import { createReefMask } from "./reefMask";
+import { SEABED_LAYER } from "./seabedPrepass";
 
 interface LandTerrainProps {
   cells: MapCell[];
@@ -30,23 +33,51 @@ const LAND_COLORS: LandMeshColors = {
     JUNGLE[2] + (ROCK[2] - JUNGLE[2]) * HIGHLAND_ROCK_SHARE,
   ],
   rock: ROCK,
+  seabedSand: linearRgb("seabedSand"),
+  coral: linearRgb("coral"),
+  deepSeabed: linearRgb("deepSeabed"),
 };
 
-/** All islands as one continuous, flat-shaded mesh sampled from the terrain height field. */
+function geometryFrom({ positions, colors, normals }: LandMeshArrays, index?: Uint32Array): BufferGeometry {
+  const geo = new BufferGeometry();
+  geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
+  geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
+  // Land: face normals (flatShading lights with screen-space normals anyway,
+  // but shadow bias reads these). Seabed: the field's smooth normals.
+  geo.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+  if (index) geo.setIndex(new Uint32BufferAttribute(index, 1));
+  return geo;
+}
+
+/** Show a mesh in the seabed prepass as well as the main pass. */
+const alsoInPrepass = (mesh: Mesh | null) => {
+  mesh?.layers.enable(SEABED_LAYER);
+};
+/** Show a mesh only in the seabed prepass: the water covers it in the main pass. */
+const onlyInPrepass = (mesh: Mesh | null) => {
+  mesh?.layers.set(SEABED_LAYER);
+};
+
+/**
+ * All islands and the seabed around them as one continuous, flat-shaded
+ * surface sampled from the terrain height field. Faces reaching above sea
+ * level draw in the main pass; the rest is seabed, drawn only into the seabed
+ * prepass that the water shader looks through (#38).
+ */
 export function LandTerrain({ cells }: LandTerrainProps) {
-  const geometry = useMemo(() => {
+  const { land, seabed } = useMemo(() => {
     const field = sharedTerrainField(cells);
-    const { positions, colors } = buildLandMesh(field, { colors: LAND_COLORS });
-    const geo = new BufferGeometry();
-    geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
-    geo.setAttribute("color", new Float32BufferAttribute(colors, 3));
-    // flatShading lights with screen-space face normals, but the shadow-receive
-    // code still reads the normal attribute for its normal bias.
-    geo.computeVertexNormals();
-    return geo;
+    const mesh = buildLandMesh(field, { colors: LAND_COLORS, sampleReef: createReefMask(cells) });
+    return { land: geometryFrom(mesh.land), seabed: geometryFrom(mesh.seabed, mesh.seabed.index) };
   }, [cells]);
 
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(
+    () => () => {
+      land.dispose();
+      seabed.dispose();
+    },
+    [land, seabed]
+  );
 
   const material = useMemo(
     () =>
@@ -61,5 +92,17 @@ export function LandTerrain({ cells }: LandTerrainProps) {
 
   useEffect(() => () => material.dispose(), [material]);
 
-  return <mesh geometry={geometry} material={material} receiveShadow castShadow />;
+  // The seabed is smooth-shaded so no facets show through clear water.
+  const seabedMaterial = useMemo(
+    () => new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }),
+    []
+  );
+  useEffect(() => () => seabedMaterial.dispose(), [seabedMaterial]);
+
+  return (
+    <>
+      <mesh ref={alsoInPrepass} geometry={land} material={material} receiveShadow castShadow />
+      <mesh ref={onlyInPrepass} geometry={seabed} material={seabedMaterial} receiveShadow />
+    </>
+  );
 }

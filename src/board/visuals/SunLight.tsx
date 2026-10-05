@@ -1,7 +1,8 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
 import type { DirectionalLight } from "three";
+import { SEABED_LAYER } from "./seabedPrepass";
 
 interface SunLightProps {
   color: string;
@@ -39,6 +40,11 @@ export function SunLight({ color, intensity, offset, shadowMapSize, shadowExtent
 
   // Snap the focus to whole shadow texels to limit edge shimmer while panning.
   const texel = (shadowExtent * 2) / shadowMapSize;
+
+  // Light the seabed prepass too: three only uses lights on the camera's layers.
+  useEffect(() => {
+    lightRef.current?.layers.enable(SEABED_LAYER);
+  }, []);
 
   useFrame(() => {
     const light = lightRef.current;

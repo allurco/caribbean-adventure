@@ -1,49 +1,56 @@
 /**
  * Bakes the terrain height field (ADR 0001) into texture data for GPU
- * consumers (ocean depth colour, shore foam and reefs).
+ * consumers (water colour, shore foam and reefs).
  *
- * Pure: no Three.js, so the layout is unit-tested. The component wraps `data`
- * in a DataTexture (RGBA, UnsignedByte, linear filtering, clamp to edge).
+ * Pure apart from three's half-float conversion, so the layout is
+ * unit-tested. The component wraps `data` in a DataTexture (RGBA, HalfFloat,
+ * linear filtering, clamp to edge).
  *
  * Layout: `width × height` RGBA texels covering `bounds` (the field's bounds).
- * Texel (i, j) is at byte `(j · width + i) · 4` and holds the field sampled at
- * its centre, `texelCenter(i, j)`: x grows along a row, rows go from minZ up.
- * That is exactly where GL samples it with
+ * Texel (i, j) starts at element `(j · width + i) · 4` and holds the field
+ * sampled at its centre, `texelCenter(i, j)`: x grows along a row, rows go
+ * from minZ up. That is exactly where GL samples it with
  *   uv = ((x − minX) / (maxX − minX), (z − minZ) / (maxZ − minZ)).
  *
- * Channels (8-bit, decode in GLSL with `TERRAIN_FIELD_GLSL`):
- *   R  height (world Y): code 170 is sea level exactly; one step is
- *      HEIGHT_STEP; covers HEIGHT_ENCODE_MIN … HEIGHT_ENCODE_MAX, clamped
- *      (land above +0.5 saturates, which water shaders never need).
- *   G  coast signed distance (+ land, − water), ±COAST_ENCODE_RANGE, for
- *      shore foam (#10).
- *   B  reef mask (#11), 0 … 1 as 0 … 255: 0 off reef, 255 inside a reef hex,
- *      ramping over a soft rim just inside the reef outline (see reefMask.ts).
- *      0 everywhere when the bake is given no `sampleReef`.
- *   A  reserved; 255.
+ * Channels, all IEEE half floats in world units (read in GLSL with
+ * `TERRAIN_FIELD_GLSL`):
+ *   R  height (world Y): 0 is sea level exactly.
+ *   G  coast signed distance (+ land, − water), for shore foam (#10).
+ *   B  reef mask (#11), 0 … 1: 0 off reef, 1 inside a reef hex, ramping over a
+ *      soft rim just inside the reef outline (see reefMask.ts). 0 everywhere
+ *      when the bake is given no `sampleReef`.
+ *   A  reserved; 1.
  *
- * 8-bit RGBA rather than float so linear filtering works on every WebGL
- * device (float textures need OES_texture_float_linear) at a quarter the size.
+ * Half float (#38) rather than 8 bits: water colour depends on depth most in
+ * the first ~10 m, where the old 8-bit code stepped 0.38 m and banded. A half
+ * float keeps 11 significant bits, so depths up to 10 m round to under 1 cm
+ * and every height in the field to within 0.1%. Half-float textures are
+ * linearly filterable in WebGL2 without extensions.
+ *
+ * Nothing here assumes the map has hard east/west edges: the bake samples the
+ * field over its bounds and the GLSL helpers only map world XZ to uv.
  */
+import { DataUtils } from "three";
 import type { TerrainBounds, TerrainHeightField } from "./terrainHeightField";
 
-/** Default texel density: finer than the land mesh lattice (0.15) so the shallows trace the same noisy coast. */
-export const TERRAIN_TEXELS_PER_UNIT = 8;
-/** Max texels per side; the large map needs ~730 at the default density. */
-export const TERRAIN_TEXTURE_MAX_SIZE = 1024;
-
-/** R code for sea level, and the height of one code step. */
-const SEA_LEVEL_CODE = 170;
-const HEIGHT_STEP = 1.5 / 255;
-export const HEIGHT_ENCODE_MIN = -SEA_LEVEL_CODE * HEIGHT_STEP; // −1, the seabed floor
-export const HEIGHT_ENCODE_MAX = (255 - SEA_LEVEL_CODE) * HEIGHT_STEP; // +0.5
-
-/** Coast distance range stored in G (the field clamps it to ±2 before noise). */
-export const COAST_ENCODE_RANGE = 2.25;
+/**
+ * Default texel density, ~5.4 m per texel: finer than the land mesh lattice
+ * (0.15) so the shallows trace the same noisy coast, and fine enough that the
+ * surf outline, drawn from the coast distance, isn't visibly polygonal. The
+ * land mesh has its own lattice spacing and does not follow this.
+ */
+export const TERRAIN_TEXELS_PER_UNIT = 12;
+/**
+ * Max texels per side. The large map needs 1160 at the default density once
+ * the bounds reach past an outer-ring island's drop-off (#38); at 8 bytes per
+ * RGBA half-float texel that is ~11 MB. 1280 leaves headroom and stays well
+ * under the 2048 per side WebGL2 guarantees.
+ */
+export const TERRAIN_TEXTURE_MAX_SIZE = 1280;
 
 export interface BakedTerrainField {
-  /** RGBA bytes, row-major, `width · height · 4` long. */
-  data: Uint8Array;
+  /** RGBA half floats (raw bits), row-major, `width · height · 4` long. */
+  data: Uint16Array;
   width: number;
   height: number;
   /** World XZ extent the texture covers (the field's bounds). */
@@ -57,30 +64,28 @@ export interface BakeTerrainFieldOptions {
   sampleReef?: (x: number, z: number) => number;
 }
 
-const toByte = (v: number): number => Math.max(0, Math.min(255, Math.round(v)));
-
 export function encodeHeight(h: number): number {
-  return toByte(SEA_LEVEL_CODE + h / HEIGHT_STEP);
+  return DataUtils.toHalfFloat(h);
 }
 
 export function decodeHeight(code: number): number {
-  return (code - SEA_LEVEL_CODE) * HEIGHT_STEP;
+  return DataUtils.fromHalfFloat(code);
 }
 
 export function encodeCoastDistance(d: number): number {
-  return toByte(((d + COAST_ENCODE_RANGE) / (2 * COAST_ENCODE_RANGE)) * 255);
+  return DataUtils.toHalfFloat(d);
 }
 
 export function decodeCoastDistance(code: number): number {
-  return (code / 255) * 2 * COAST_ENCODE_RANGE - COAST_ENCODE_RANGE;
+  return DataUtils.fromHalfFloat(code);
 }
 
 export function encodeReef(mask: number): number {
-  return toByte(mask * 255);
+  return DataUtils.toHalfFloat(Math.max(0, Math.min(1, mask)));
 }
 
 export function decodeReef(code: number): number {
-  return code / 255;
+  return DataUtils.fromHalfFloat(code);
 }
 
 /**
@@ -95,10 +100,10 @@ export const TERRAIN_FIELD_GLSL = `
     return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
   }
   float terrainFieldHeight(vec4 texel) {
-    return (texel.r * 255.0 - ${SEA_LEVEL_CODE.toFixed(1)}) * ${HEIGHT_STEP.toFixed(8)};
+    return texel.r;
   }
   float terrainFieldCoastDistance(vec4 texel) {
-    return (texel.g * 2.0 - 1.0) * ${COAST_ENCODE_RANGE.toFixed(4)};
+    return texel.g;
   }
   float terrainFieldReef(vec4 texel) {
     return texel.b;
@@ -133,16 +138,18 @@ export function bakeTerrainField(
   const height = Math.max(1, Math.min(maxSize, Math.ceil(spanZ * density)));
 
   const { sampleReef } = options;
-  const data = new Uint8Array(width * height * 4);
+  const data = new Uint16Array(width * height * 4);
   const baked: BakedTerrainField = { data, width, height, bounds };
+  const one = DataUtils.toHalfFloat(1);
+  const noReef = encodeReef(0);
   for (let j = 0; j < height; j++) {
     for (let i = 0; i < width; i++) {
       const [x, z] = texelCenter(baked, i, j);
       const k = (j * width + i) * 4;
       data[k] = encodeHeight(field.sampleHeight(x, z));
       data[k + 1] = encodeCoastDistance(field.sampleCoastDistance(x, z));
-      data[k + 2] = sampleReef ? encodeReef(sampleReef(x, z)) : 0;
-      data[k + 3] = 255;
+      data[k + 2] = sampleReef ? encodeReef(sampleReef(x, z)) : noReef;
+      data[k + 3] = one;
     }
   }
   return baked;

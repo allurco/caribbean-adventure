@@ -9,7 +9,7 @@ import { Color } from "three";
  *   colour management converts the sRGB hex into the linear working space, so
  *   it can go straight into a material or a `vec3` uniform.
  * - GLSL: shaders paste `PALETTE_GLSL` into their source. It declares one
- *   `const vec3 PALETTE_<NAME>` per entry (e.g. `PALETTE_DEEP_WATER`), holding
+ *   `const vec3 PALETTE_<NAME>` per entry (e.g. `PALETTE_SEABED_SAND`), holding
  *   the same linear values, which is what our pipeline expects: the
  *   EffectComposer renders in linear space and encodes to sRGB at the end.
  *   Injected constants keep shaders free of extra uniforms; switch an entry to
@@ -34,11 +34,22 @@ import { Color } from "three";
  *   so neither needed raising.
  * Measured values are broadband; visible-band canopy reflectance is lower, so
  * the jungle value errs bright.
+ *
+ * Seabed albedos (#38) are bottom reflectances sampled at 650 / 550 / 450 nm
+ * for R / G / B (the same wavelengths as the water in waterOptics.ts), from
+ * the spectra digitised from Fig. 6 of Maritorena, Morel &
+ * Gentili (1994), "Diffuse reflectance of oceanic shallow waters: Influence of
+ * water depth and bottom albedo", Limnology and Oceanography, as
+ * distributed with Hydrolight 5 (coral_sand.txt, brown_algae.txt,
+ * green_algae.txt):
+ * - seabedSand: clean coral sand, 0.564 / 0.456 / 0.339.
+ * - coral: brown algae (Turbinaria and Sargassum), 0.075 / 0.058 / 0.024. We
+ *   could not source a measured live-coral spectrum; this dark brown one
+ *   stands in for it.
+ * - deepSeabed: a design choice for the drop-off, half coral sand and half
+ *   green algae (Boodlea, 0.139 / 0.269 / 0.055).
  */
 export const PALETTE_HEX = {
-  deepWater: 0x0e3a5b, // Open sea
-  reefTeal: 0x1c8c8c, // Reefs, mid-depth water
-  shallows: 0x5fd4c9, // Water next to the shore
   wetSand: 0xb8925e, // Narrow band at the waterline (albedo 0.32)
   drySand: 0xe3cf9c, // Beaches (albedo 0.63)
   jungle: 0x367a43, // Elevation 2: rainforest canopy (albedo 0.15, Culf et al. 1995)
@@ -46,6 +57,9 @@ export const PALETTE_HEX = {
   surf: 0xf2faf7, // Shore foam
   palmFrond: 0x4f8a34, // Palm fronds, a sunlit step up from the jungle floor (issue #14)
   palmTrunk: 0x8a6a45, // Palm trunks and coconuts
+  seabedSand: 0xc6b49d, // Shallow seabed: clean coral sand (Maritorena et al. 1994)
+  coral: 0x4d442b, // Reef coral heads (brown-algae spectrum as a stand-in)
+  deepSeabed: 0xa0a27b, // Seabed down the drop-off: half sand, half green algae
 } as const;
 
 export type PaletteName = keyof typeof PALETTE_HEX;
@@ -63,7 +77,7 @@ export function glslVec3(color: Color): string {
   return `vec3(${f(color.r)}, ${f(color.g)}, ${f(color.b)})`;
 }
 
-/** `deepWater` -> `PALETTE_DEEP_WATER`. */
+/** `seabedSand` -> `PALETTE_SEABED_SAND`. */
 export function glslConstName(name: PaletteName): string {
   return `PALETTE_${name.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase()}`;
 }

@@ -4,14 +4,16 @@ import {
   Color,
   ShaderMaterial,
   PlaneGeometry,
+  Vector2,
   Vector3,
   Vector4,
   Mesh,
+  Matrix4,
   UniformsLib,
   UniformsUtils,
   DataTexture,
   RGBAFormat,
-  UnsignedByteType,
+  HalfFloatType,
   LinearFilter,
   ClampToEdgeWrapping,
 } from "three";
@@ -24,14 +26,17 @@ import { sharedTerrainField } from "./sharedTerrainField";
 import { bakeTerrainField, TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
 import { advanceSurfTime, SURF_TIMING_GLSL } from "./surfMotion";
 import { advanceCausticTime, CAUSTIC_TIMING_GLSL } from "./causticMotion";
+import { CAUSTIC_PATTERN_GLSL } from "./causticPattern";
 import { createReefMask } from "./reefMask";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
 import type { TerrainBounds } from "./terrainHeightField";
+import { useSeabedPrepass } from "./seabedPrepass";
+import { WATER_OPTICS_GLSL } from "./waterOptics";
+import { METRES_PER_UNIT } from "./worldScale";
 
 const vertexShader = `
   varying vec3 eye;
   varying vec3 pos;
-  varying vec2 vUv;
   varying vec3 vWorld;
   #include <fog_pars_vertex>
 
@@ -40,7 +45,6 @@ const vertexShader = `
     pos = position;
     vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
     eye = vec3(mvPosition) * normalMatrix;
-    vUv = uv;
     gl_Position = projectionMatrix * mvPosition;
     #include <fog_vertex>
   }
@@ -57,8 +61,24 @@ const fragmentShader = `
   #include <cube_uv_reflection_fragment>
   // Mirror-like lookup; the wave normals carry the surface detail.
   const float SKY_REFLECTION_ROUGHNESS = 0.05;
-  // Schlick Fresnel reflectance of water at normal incidence: ((1.33 - 1) / (1.33 + 1))^2.
-  const float WATER_F0 = 0.02;
+  // No sun glint until step 4 (#38), whose FFT normals and GGX glint replace
+  // it. The procedural Phong glint read as brown blotches at exponent 90 and
+  // as scattered white debris at 1500.
+
+  // Water colour (#38 step 3): the lit seabed from the prepass, attenuated
+  // along its path through the water, plus the glow of deep water; then
+  // Fresnel against the sky. Coefficients and maths: waterOptics.ts.
+  ${WATER_OPTICS_GLSL}
+  const float METRES_PER_UNIT = ${METRES_PER_UNIT.toFixed(1)};
+  uniform sampler2D seabedColor; // prepass: the lit seabed, linear HDR
+  uniform sampler2D seabedDepth; // prepass depth; 1.0 where there is no seabed
+  uniform vec2 screenSize;       // drawing-buffer size in pixels, for gl_FragCoord → uv
+  uniform vec2 seabedSize;       // prepass size in pixels
+  uniform mat4 cameraProjectionInverse;
+  uniform mat4 cameraWorld;      // camera.matrixWorld
+  // The seabed mesh stops where its light is under 1% (VISIBLE_SEABED_DEPTH,
+  // waterOptics.ts); texels with no seabed read NO_SEABED_DEPTH, past the fade.
+  const float NO_SEABED_Y = -NO_SEABED_DEPTH / METRES_PER_UNIT;
 
   const float PI = 3.14159265358;
   // Finite-difference step for wave normals, in world units. It must stay well
@@ -75,20 +95,8 @@ const fragmentShader = `
   const float SEA_SPEED = 0.6;
   const float SEA_FREQ = 1.8;
   ${PALETTE_GLSL}
-  const vec3 SEA_BASE = PALETTE_DEEP_WATER;
-  // No matching palette entry; kept as-is.
-  const vec3 SEA_WATER_COLOR = vec3(0.08, 0.18, 0.35);
   #define SEA_TIME (iTime * SEA_SPEED)
 
-  // Depth colour bands, in world units below sea level. The field's seabed is
-  // -tanh(0.6 * distance offshore), so open sea sits at ~0.8 and these bands
-  // end roughly 0.1, 0.2, 0.7 and 1.5 world units out from the coast (a hex
-  // is ~1.7 across).
-  const float SEABED_FADE = 0.06;     // seabed shows through up to here
-  const float SHALLOWS_END = 0.12;    // turquoise shallows start turning teal
-  const float TEAL_END = 0.4;         // fully reef teal, starts turning deep
-  const float DEEP_START = 0.7;       // open sea from here on
-  const float OPEN_SEA_DEPTH = 1.0;   // used outside the map bounds
   const float OPEN_SEA_COAST_DISTANCE = 10.0; // offshore distance assumed outside the map bounds
 
   // Shore surf (issue #10). Distances are world units offshore from the
@@ -108,37 +116,25 @@ const fragmentShader = `
   const float SURF_PHASE_SPREAD = 3.0;   // radians of pulse offset between stretches of coast
   const float SURF_NOISE_SCALE = 6.0;    // frequency of the noise that breaks the foam up
   const float SURF_CHURN_AMOUNT = 0.35;  // radius (noise units) the breakup noise circles each churn cycle
-  const float SURF_COVERAGE = 0.8;       // < 1 leaves holes even in the densest foam
-  const float SURF_BREAKUP_SOFTNESS = 0.12; // edge softness of the foam patches
-  const float SURF_STRENGTH = 0.9;       // max blend of foam over the water colour
+  // Coverage, softness and strength were lowered for #38: over the clear,
+  // darker water the old values (0.8, 0.12, 0.9) gave solid white sheets.
+  const float SURF_COVERAGE = 0.62;      // < 1 leaves holes even in the densest foam
+  const float SURF_BREAKUP_SOFTNESS = 0.16; // edge softness of the foam patches
+  const float SURF_LACE_SCALE = 4.3;     // frequency multiplier of the fine octave that turns patches into lace
+  const float SURF_STRENGTH = 0.75;      // max blend of foam over the water colour: thin foam stays translucent
 
-  // Reef patches (issue #11). The reef mask is the field's B channel
-  // (reefMask.ts): 1 inside a reef hex, 0 everywhere else, with a soft rim just
-  // inside the reef outline. Reefs read as dark, mottled coral heads on lighter
-  // reef flats, which open water (a smooth depth gradient) never has.
-  const float REEF_NOISE_SCALE = 2.6;     // coral patch frequency, per world unit (a hex is ~1.7 across)
-  const float REEF_DETAIL_SCALE = 2.3;    // frequency multiplier of the second, finer noise octave
-  const float REEF_CORAL_COVER = 0.5;     // noise threshold for coral: higher leaves fewer, smaller heads
-  const float REEF_CORAL_SOFTNESS = 0.16; // edge softness of each coral head
-  const float REEF_CORAL_DARKEN = 0.45;   // coral colour = reef teal times this, darker than any open water
-  const float REEF_FLAT_TEAL = 0.35;      // reef flats between the coral: shallows mixed this far toward reef teal
-  const float REEF_DEPTH_SHOW = 0.25;     // how much the plain depth colour still shows through the reef
-  const float REEF_STRENGTH = 0.95;       // max blend of the reef over the water at full mask
-
-  // Shallow-water caustics (issue #11): a soft moving web of light on the
-  // seabed, only in the shallows. Time only enters as sin/cos of
+  // Shallow-water caustics (issue #11): a moving web of light on the seabed,
+  // only in the shallows. It redistributes the seabed's direct sunlight before
+  // the water attenuates it; scale, contrast and level of detail are in
+  // causticPattern.ts (#38). Time only enters as sin/cos of
   // 2π·causticTime/period (causticTime is wrapped on the CPU, see
   // causticMotion.ts), so it never jumps or loses precision.
   uniform float causticTime;
   ${CAUSTIC_TIMING_GLSL}
-  const float CAUSTIC_SCALE = 3.2;          // light-web frequency, per world unit
+  ${CAUSTIC_PATTERN_GLSL}
   const float CAUSTIC_LAYER_B_SCALE = 1.37; // second layer's frequency multiplier, so the layers never line up
   const float CAUSTIC_DRIFT = 0.6;          // radius (noise units) each layer circles once per period
   const float CAUSTIC_LINE_WIDTH = 0.12;    // noise distance from a zero crossing that still lights: smaller gives thinner lines
-  const float CAUSTIC_FADE_IN = 0.04;       // depth over which caustics fade in from the waterline
-  const float CAUSTIC_FADE_START = 0.25;    // full strength across the turquoise shallows, to this depth ...
-  const float CAUSTIC_FADE_END = 0.55;      // ... and gone by this depth (open sea is ~0.8 deep)
-  const float CAUSTIC_STRENGTH = 0.35;      // light added at full strength, as a fraction of PALETTE_SURF
 
   mat2 octave_m = mat2(1.7, 1.2, -1.2, 1.4);
 
@@ -148,27 +144,13 @@ const fragmentShader = `
 
   varying vec3 eye;
   varying vec3 pos;
-  varying vec2 vUv;
   varying vec3 vWorld;
   #include <fog_pars_fragment>
-
-  // Depth below sea level from a baked field texel; 0 on land and at the waterline.
-  float seaDepth(vec4 texel, bool inField) {
-    if (!inField) return OPEN_SEA_DEPTH;
-    return max(-terrainFieldHeight(texel), 0.0);
-  }
 
   // Signed distance to the coast (+ land, - water) from a baked field texel.
   float coastDistance(vec4 texel, bool inField) {
     if (!inField) return -OPEN_SEA_COAST_DISTANCE;
     return terrainFieldCoastDistance(texel);
-  }
-
-  // Water body colour: seabed at the waterline, turquoise shallows, reef teal, deep water.
-  vec3 depthColor(float depth) {
-    vec3 c = mix(PALETTE_WET_SAND, PALETTE_SHALLOWS, smoothstep(0.0, SEABED_FADE, depth));
-    c = mix(c, PALETTE_REEF_TEAL, smoothstep(SHALLOWS_END, TEAL_END, depth));
-    return mix(c, PALETTE_DEEP_WATER, smoothstep(TEAL_END, DEEP_START, depth));
   }
 
   // Wrap coordinates to prevent floating-point precision loss at large values
@@ -223,39 +205,26 @@ const fragmentShader = `
     float churnAngle = 2.0 * PI * surfTime / SURF_CHURN_PERIOD;
     vec2 churn = vec2(cos(churnAngle), sin(churnAngle)) * SURF_CHURN_AMOUNT;
     vec2 q = worldXZ * SURF_NOISE_SCALE;
-    float n = 0.5 + 0.25 * noise(q + churn) + 0.25 * noise(q * 2.1 - churn.yx);
+    float n = 0.5 + 0.22 * noise(q + churn) + 0.18 * noise(q * 2.1 - churn.yx)
+      + 0.1 * noise(q * SURF_LACE_SCALE + churn * 1.7);
     float threshold = 1.0 - max(wash, breaker) * SURF_COVERAGE;
     float foam = smoothstep(threshold, threshold + SURF_BREAKUP_SOFTNESS, n);
 
     return foam * smoothstep(0.0, SURF_EDGE_SOFTNESS, off) * SURF_STRENGTH;
   }
 
-  // Water body colour over a reef: dark coral heads on lighter reef flats.
-  vec3 reefBodyColor(vec2 worldXZ, float depth) {
-    vec2 q = worldXZ * REEF_NOISE_SCALE;
-    float n = 0.5 + 0.35 * noise(q) + 0.15 * noise(q * REEF_DETAIL_SCALE + vec2(17.0, -9.0));
-    float coral = smoothstep(REEF_CORAL_COVER, REEF_CORAL_COVER + REEF_CORAL_SOFTNESS, n);
-    vec3 flats = mix(PALETTE_SHALLOWS, PALETTE_REEF_TEAL, REEF_FLAT_TEAL);
-    vec3 body = mix(flats, PALETTE_REEF_TEAL * REEF_CORAL_DARKEN, coral);
-    return mix(body, depthColor(depth), REEF_DEPTH_SHOW);
-  }
-
-  // Caustic light (0..CAUSTIC_STRENGTH) on the seabed at worldXZ; 0 beyond the shallows.
-  float caustics(vec2 worldXZ, float depth) {
-    float fade = smoothstep(0.0, CAUSTIC_FADE_IN, depth) * (1.0 - smoothstep(CAUSTIC_FADE_START, CAUSTIC_FADE_END, depth));
-    if (fade <= 0.0) return 0.0;
+  // The caustic web (0..1) at noise coordinate q: 1 on the light lines.
+  float causticWeb(vec2 q) {
     // Two ridged-noise webs, each circling a small loop on its own period.
     float a = 2.0 * PI * causticTime / CAUSTIC_PERIOD_A;
     float b = 2.0 * PI * causticTime / CAUSTIC_PERIOD_B;
-    vec2 q = worldXZ * CAUSTIC_SCALE;
     // Each layer's light lines are the noise zero crossings: thin contours that
     // wind into a web, rather than a broad lift that the bright shallows hide.
     float n1 = noise(q + vec2(cos(a), sin(a)) * CAUSTIC_DRIFT);
     float n2 = noise(q * CAUSTIC_LAYER_B_SCALE + vec2(sin(b), cos(b)) * CAUSTIC_DRIFT + vec2(31.0, 7.0));
     float r1 = 1.0 - smoothstep(0.0, CAUSTIC_LINE_WIDTH, abs(n1));
     float r2 = 1.0 - smoothstep(0.0, CAUSTIC_LINE_WIDTH, abs(n2));
-    float web = max(r1, r2);
-    return web * fade * CAUSTIC_STRENGTH;
+    return max(r1, r2);
   }
 
   float sea_octave(vec2 uv, float choppy) {
@@ -338,11 +307,6 @@ const fragmentShader = `
     return pow(dot(n, l) * 0.4 + 0.6, p);
   }
 
-  float specular(vec3 n, vec3 l, vec3 e, float s) {
-    float nrm = (s + 8.0) / (3.1415 * 8.0);
-    return pow(max(dot(reflect(e, n), l), 0.0), s) * nrm;
-  }
-
   // Sky radiance along e. Rays reflected below the horizon would see the sea
   // itself, so they are held at the horizon.
   vec3 getSkyColor(vec3 e) {
@@ -350,16 +314,104 @@ const fragmentShader = `
     return textureCubeUV(skyEnv, dir, SKY_REFLECTION_ROUGHNESS).rgb * skyIntensity;
   }
 
-  vec3 getSeaColor(vec3 base, vec3 p, vec3 n, vec3 l, vec3 eye) {
-    float cosTheta = max(dot(n, -eye), 0.0);
-    float fresnel = WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - cosTheta, 5.0);
-    vec3 reflected = getSkyColor(reflect(eye, n));
-    vec3 refracted = base + diffuse(n, l, 80.0) * SEA_WATER_COLOR * 0.27;
-    vec3 color = mix(refracted, reflected, fresnel);
-    color += SEA_WATER_COLOR * (p.y - SEA_HEIGHT) * 0.15;
-    // Sun glint: the same Fresnel as the sky reflection, lit by the scene's sun.
-    color += sunIrradiance * fresnel * specular(n, l, eye, 90.0) * max(dot(n, l), 0.0);
-    return color;
+  // World Y of the seabed seen through prepass texel (i, j).
+  float seabedTexelY(ivec2 texel) {
+    float z = texelFetch(seabedDepth, texel, 0).r;
+    if (z >= 1.0) return NO_SEABED_Y;
+    vec2 uv = (vec2(texel) + 0.5) / seabedSize;
+    vec4 view = cameraProjectionInverse * vec4(vec3(uv, z) * 2.0 - 1.0, 1.0);
+    return (cameraWorld * vec4(view.xyz / view.w, 1.0)).y;
+  }
+
+  // The seabed under this pixel: its world Y (returned) and lit colour,
+  // bilinear between the four nearest prepass texels. The seabed's height is
+  // smooth where its raw depth is not: across a half-resolution texel the depth
+  // jumps by the slant of the view ray, which turned into stair-step bands in
+  // the water colour. Texels that hit land above sea level are left out (the
+  // weights renormalised over the rest): next to an island's silhouette a
+  // half-resolution texel can catch the land, and mixing in its depth (≈ 0) and
+  // colour drew a 1–2 px land-coloured fringe on the water (#38).
+  float seabedSample(vec2 screenUv, out vec3 colour) {
+    vec2 st = screenUv * seabedSize - 0.5;
+    ivec2 maxTexel = ivec2(seabedSize) - 1;
+    ivec2 i0 = clamp(ivec2(floor(st)), ivec2(0), maxTexel);
+    ivec2 i1 = min(i0 + 1, maxTexel);
+    vec2 f = clamp(st - floor(st), 0.0, 1.0);
+    ivec2 texels[4] = ivec2[4](i0, ivec2(i1.x, i0.y), ivec2(i0.x, i1.y), i1);
+    float weights[4] = float[4](
+      (1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y
+    );
+    float y = 0.0;
+    float total = 0.0;
+    float yAll = 0.0;
+    vec3 colourAll = vec3(0.0);
+    colour = vec3(0.0);
+    for (int k = 0; k < 4; k++) {
+      float texelY = seabedTexelY(texels[k]);
+      vec3 texelColour = texelFetch(seabedColor, texels[k], 0).rgb;
+      yAll += weights[k] * texelY;
+      colourAll += weights[k] * texelColour;
+      if (texelY > 0.0) continue; // land above sea level
+      y += weights[k] * texelY;
+      colour += weights[k] * texelColour;
+      total += weights[k];
+    }
+    // Only land around (rare: a sliver at the waterline): use all four.
+    if (total < 1e-4) {
+      colour = colourAll;
+      return yAll;
+    }
+    colour /= total;
+    return y / total;
+  }
+
+  // Light from the water body: the prepass seabed seen through the water, plus
+  // the deep-water glow, for the surface point at this pixel.
+  vec3 waterBody() {
+    vec2 screenUv = gl_FragCoord.xy / screenSize;
+    vec3 seabed;
+    float seabedWorldY = seabedSample(screenUv, seabed);
+    // Caustic cell size on screen, from the derivative of the noise coordinate
+    // (taken here, in uniform control flow).
+    vec2 causticUv = vWorld.xz * CAUSTIC_FREQUENCY;
+    vec2 causticFootprint = fwidth(causticUv);
+    float causticCellPixels = 1.0 / max(max(causticFootprint.x, causticFootprint.y), 1e-6);
+
+    // The seabed's depth below the surface, and the path down to it along this
+    // pixel's view ray, in metres.
+    float depth = max(-seabedWorldY, 0.0) * METRES_PER_UNIT;
+    vec3 worldDir = normalize(vWorld - cameraPosition);
+    float viewPath = depth / max(-worldDir.y, 0.05);
+
+    // Sunlight reaches the seabed along the refracted sun ray, then the light
+    // it reflects comes back up the view ray.
+    float sunCos = max(light.y, 0.0);
+    vec3 t = waterTransmittance(depth / refractedCosine(sunCos) + viewPath);
+    t *= 1.0 - smoothstep(SEABED_FADE_START, SEABED_FADE_END, depth);
+
+    // Downwelling irradiance on a level surface, in the units three lights the
+    // seabed with (Lambert: sun irradiance / π, plus the sky's diffuse term).
+    vec3 sunDirect = sunIrradiance * sunCos / PI;
+    vec3 skyDiffuse = textureCubeUV(skyEnv, vec3(0.0, 1.0, 0.0), 1.0).rgb * skyIntensity;
+    vec3 downwelling = sunDirect + skyDiffuse;
+
+    // Caustics redistribute only the direct sunlight on the seabed (the
+    // prepass lit it with sun and sky together, so scale the sun's share).
+    float causticContrastHere = causticContrast(depth) * causticLod(causticCellPixels);
+    if (causticContrastHere > 0.0) {
+      float light = causticLight(causticWeb(causticUv), causticContrastHere);
+      seabed *= 1.0 + (sunDirect / max(downwelling, vec3(1e-6))) * (light - 1.0);
+    }
+    vec3 deep = deepWaterReflectance() * downwelling;
+    vec3 body = seabed * t + deep * (1.0 - t);
+    // Stylistic, not physics: lift deep water past the shelf. It is added on
+    // top rather than mixed by (1 − t): the lifted blue is brighter than the
+    // seabed's own, so mixing drew a dark ring wherever the seabed still shows.
+    vec3 lift = liftedDeepWaterReflectance(deepWaterLiftWeight(depth)) - deepWaterReflectance();
+    body += lift * downwelling;
+    // Stylistic, not physics: a mild saturation boost in the shallows only.
+    float luma = dot(body, vec3(0.2126, 0.7152, 0.0722));
+    return max(mix(vec3(luma), body, 1.0 + shallowSaturationBoost(depth)), 0.0);
   }
 
   void main() {
@@ -372,34 +424,23 @@ const fragmentShader = `
 
     vec3 n = getNormal(p, NORMAL_STEP);
 
-    // Open sea is the deep base colour; nearer land the palette depth colour
-    // takes over. Both share the same lighting so the blend has no seam.
-    // One field fetch feeds both depth and coast distance; sampled outside the
-    // branch so the texture lookup stays in uniform control flow.
+    // Coast distance for the surf; sampled up front so the texture lookup
+    // stays in uniform control flow.
     vec2 fieldUv = terrainFieldUv(vWorld.xz);
     bool inField = terrainFieldInside(fieldUv);
     vec4 fieldTexel = texture2D(terrainField, fieldUv);
 
-    vec3 openSea = getSeaColor(SEA_BASE, p, n, light, dir);
-    float depth = seaDepth(fieldTexel, inField);
-    vec3 nearShore = getSeaColor(depthColor(depth), p, n, light, dir);
-    vec3 seaColor = mix(nearShore, openSea, smoothstep(TEAL_END, DEEP_START, depth));
-
-    // Reefs over the water body, lit the same way so the rim has no seam.
-    float reef = inField ? terrainFieldReef(fieldTexel) * REEF_STRENGTH : 0.0;
-    if (reef > 0.0) {
-      seaColor = mix(seaColor, getSeaColor(reefBodyColor(vWorld.xz, depth), p, n, light, dir), reef);
-    }
-
-    // Caustic light in the shallows (reefs included), under the surf.
-    seaColor += PALETTE_SURF * caustics(vWorld.xz, depth);
+    // Fresnel splits what we see between light from the water body and the
+    // reflected sky.
+    float fresnel = schlickFresnel(dot(n, -dir));
+    vec3 seaColor = waterBody() * (1.0 - fresnel) + getSkyColor(reflect(dir, n)) * fresnel;
 
     // Surf on top, lightly shaded by the wave normal so it sits on the water.
     float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField));
     vec3 foamColor = PALETTE_SURF * (0.8 + 0.2 * diffuse(n, light, 1.0));
     seaColor = mix(seaColor, foamColor, foam);
 
-    gl_FragColor = vec4(seaColor, 0.98);
+    gl_FragColor = vec4(seaColor, 1.0);
     #include <fog_fragment>
   }
 `;
@@ -425,7 +466,7 @@ function terrainFieldTexture(cells: readonly MapCell[]): { texture: DataTexture;
   const { data, width, height, bounds } = bakeTerrainField(sharedTerrainField(cells), {
     sampleReef: createReefMask(cells),
   });
-  const texture = new DataTexture(data, width, height, RGBAFormat, UnsignedByteType);
+  const texture = new DataTexture(data, width, height, RGBAFormat, HalfFloatType);
   texture.minFilter = LinearFilter;
   texture.magFilter = LinearFilter;
   texture.wrapS = ClampToEdgeWrapping;
@@ -456,6 +497,9 @@ export function Ocean({
   const field = useMemo(() => terrainFieldTexture(cells), [cells]);
   useEffect(() => () => field.texture.dispose(), [field]);
 
+  // The seabed under the water, rendered each frame before the main pass.
+  const seabed = useSeabedPrepass();
+
   const material = useMemo(() => {
     const { minX, maxX, minZ, maxZ } = field.bounds;
     const mat = new ShaderMaterial({
@@ -476,21 +520,30 @@ export function Ocean({
       ]),
       defines: cubeUvDefines(skyHeight),
       fog: true,
-      transparent: true,
     });
     // UniformsUtils.merge clones uniform values, so textures are attached afterwards.
     mat.uniforms.terrainField = { value: field.texture };
     mat.uniforms.skyEnv = { value: sky };
+    mat.uniforms.seabedColor = { value: seabed.texture };
+    mat.uniforms.seabedDepth = { value: seabed.depthTexture };
+    mat.uniforms.screenSize = { value: new Vector2(1, 1) };
+    mat.uniforms.seabedSize = { value: new Vector2(1, 1) };
+    mat.uniforms.cameraProjectionInverse = { value: new Matrix4() };
+    mat.uniforms.cameraWorld = { value: new Matrix4() };
     return mat;
-  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field]);
+  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field, seabed]);
   useEffect(() => () => material.dispose(), [material]);
 
   const meshRef = useRef<Mesh>(null);
   const reducedMotion = usePrefersReducedMotion();
 
-  useFrame((_, delta) => {
+  useFrame(({ gl, camera }, delta) => {
     if (meshRef.current) {
       const mat = meshRef.current.material as ShaderMaterial;
+      gl.getDrawingBufferSize(mat.uniforms.screenSize.value);
+      mat.uniforms.seabedSize.value.set(seabed.width, seabed.height);
+      mat.uniforms.cameraProjectionInverse.value.copy(camera.projectionMatrixInverse);
+      mat.uniforms.cameraWorld.value.copy(camera.matrixWorld);
       mat.uniforms.iTime.value = (performance.now() * 0.001) % 10000;
       mat.uniforms.surfTime.value = advanceSurfTime(mat.uniforms.surfTime.value, delta, reducedMotion);
       mat.uniforms.causticTime.value = advanceCausticTime(mat.uniforms.causticTime.value, delta, reducedMotion);
