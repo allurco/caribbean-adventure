@@ -29,6 +29,7 @@ export const NEAR_CASCADE: WaveCascade = {
   sea: TRADE_WIND_SEA,
   // Toward −x, swung off the axis so crests never line up with the hex rows.
   windAngle: Math.PI + 0.35,
+  rotation: 0,
   tileMetres: NEAR_TILE_METRES,
   size: NEAR_SIZE,
   kMin: 0,

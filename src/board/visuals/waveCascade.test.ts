@@ -19,6 +19,7 @@ const sea = { windSpeed: 10, fetch: 100_000, peakEnhancement: 3.3 };
 const cascade = (overrides: Partial<WaveCascade> = {}): WaveCascade => ({
   sea,
   windAngle: 0,
+  rotation: 0,
   tileMetres: 1000,
   size: 64,
   kMin: 0,
@@ -87,6 +88,14 @@ describe("modeVariance (energy normalisation)", () => {
     // Below the peak s ≈ 2.7 here, so cross-wind is cos(45°)^5.4 ≈ 0.15 of down-wind.
     const c = cascade({ windAngle: Math.PI / 2 }); // toward +z
     expect(modeVariance(0, 0.06, c)).toBeGreaterThan(5 * modeVariance(0.06, 0, c));
+  });
+
+  it("sends the energy toward the world wind in a turned tile", () => {
+    // The tile's +x axis points along world +z, and so does the wind: the
+    // tile's own +x is down-wind.
+    const c = cascade({ windAngle: Math.PI / 2, rotation: Math.PI / 2 });
+    expect(modeVariance(0.06, 0, c)).toBeGreaterThan(5 * modeVariance(0, 0.06, c));
+    expect(modeVariance(0.06, 0, c)).toBeCloseTo(modeVariance(0.06, 0, cascade()), 12);
   });
 });
 
