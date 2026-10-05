@@ -26,6 +26,12 @@ export interface WaveCascade {
   sea: WindSea;
   /** Direction the wind blows toward, radians from +x toward +z (world XZ). */
   windAngle: number;
+  /**
+   * Turn of the tile against the world, radians from +x toward +z: the tile's
+   * own x axis points along this world angle. Cascades turned by different
+   * angles never line their repeats up along the same axes.
+   */
+  rotation: number;
   /** Tile width in metres; the field repeats with this period. */
   tileMetres: number;
   /** Modes per side (a power of two). */
@@ -53,12 +59,13 @@ export function inCascadeBand(k: number, { kMin, kMax }: WaveCascade): boolean {
   return k > 0 && k >= kMin && k < kMax;
 }
 
-/** E|h0(k)|², m², for the mode at wavevector (kx, kz). */
+/** E|h0(k)|², m², for the mode at wavevector (kx, kz) in the tile's own axes. */
 export function modeVariance(kx: number, kz: number, cascade: WaveCascade): number {
   const k = Math.hypot(kx, kz);
   if (!inCascadeBand(k, cascade)) return 0;
   const omega = deepWaterFrequency(k);
-  const theta = Math.atan2(kz, kx) - cascade.windAngle;
+  // The tile's axes are turned by `rotation` against the world's.
+  const theta = Math.atan2(kz, kx) + cascade.rotation - cascade.windAngle;
   const density =
     (jonswapSpectrum(omega, cascade.sea) *
       directionalSpreading(theta, omega, cascade.sea) *

@@ -288,18 +288,26 @@ without fog or background. `Ocean.tsx` then, per pixel:
 3. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), adds the GGX sun
    glint, then the shore surf.
 
-**Waves (#38 step 4).** The surface normal comes from one FFT cascade
-(`useWaveCascade.ts`): a JONSWAP sea (`oceanWaves.ts`: 7 m/s over 100 km,
-Hs ≈ 1.6 m) with Mitsuyasu spreading, 256² modes over a 500 m tile. Each
-frame the GPU evolves the spectrum (frequencies rounded to whole cycles per
+**Waves (#38 steps 4–5).** The surface normal comes from three FFT cascades
+(`useWaveCascades.ts`) of one JONSWAP sea (`oceanWaves.ts`: 7 m/s over
+100 km, Hs ≈ 1.6 m) with Mitsuyasu spreading. Each is 256² modes on its own
+tile, turned against the others: 1468 m (swell, the spectral peak),
+202.5 m (chop) and 26.1 m (ripple). `waveCascadeBands.ts` gives them
+end-to-end bands in k-space, each stopping at half its grid's Nyquist
+(four texels per wave), so every wave from the longest down to 0.41 m is
+carried by exactly one cascade. The tile ratios (~7.25 and ~7.76) do not
+line up within three repeats, so the summed sea does not tile. Each
+frame the GPU evolves each spectrum (frequencies rounded to whole cycles per
 `WAVE_LOOP_SECONDS`, so the clock wraps seamlessly) and runs a Stockham inverse
 FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float
-texture of (∂h/∂x, ∂h/∂z, |∇h|²). The water shader samples it twice: the
-500 m tile, and a stopgap detail look-up 4.37× smaller and turned 0.93 rad
-(`waveDetailLayer.ts`, replaced by step 5's cascades). It turns the
-combined filtered mean slope into the normal and the filtered variance into
-roughness, fading the normal to flat between 45 and 90 units from the camera
-(`waveNormalFilter.ts`). The glint is GGX with Smith masking and Schlick
+texture of (∂h/∂x, ∂h/∂z, |∇h|²). The three are batched side by side in one
+atlas (`waveCascadeAtlas.ts`), so all of them take 20 draws a frame. The
+water shader samples each texture once, sums the filtered mean slopes into
+the normal and the filtered variances into roughness. A cascade fades out
+once its band's longest wave spans under four pixels (gone at two), and all
+of them fade to flat between 45 and 90 units from the camera; faded slope
+goes into the roughness too (`waveNormalFilter.ts`), so the highlight keeps
+its energy instead of shimmering. The glint is GGX with Smith masking and Schlick
 Fresnel (`sunGlint.ts`), HDR so bloom picks up the sparkles. The sky
 reflection, the refracted seabed look-up (`refractedSeabedShift`, a precursor
 of step 6) and the facet-lit in-scatter (`facetSunlight`) see the slopes
