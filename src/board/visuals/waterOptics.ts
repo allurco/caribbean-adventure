@@ -143,13 +143,17 @@ const smoothstep = (e0: number, e1: number, x: number) => {
 /**
  * Saturation boost (stylistic) for water over a seabed `depthMetres` down: it
  * ramps in over the first SHALLOW_BOOST_RAMP (bare sand at the waterline
- * stays sand) and is 0 from SHALLOW_BOOST_DEPTH.
+ * stays sand) and is 0 from SHALLOW_BOOST_DEPTH. It boosts the water's tint
+ * only: it is scaled by 1 − `redTransmittance`, the share of red the water
+ * has taken out of the seabed's light. Saturating sand seen through
+ * near-clear water turned it orange, a warm halo at every waterline (#38).
  */
-export function shallowSaturationBoost(depthMetres: number): number {
+export function shallowSaturationBoost(depthMetres: number, redTransmittance = 0): number {
   return (
     SHALLOW_SATURATION_BOOST *
     smoothstep(0, SHALLOW_BOOST_RAMP, depthMetres) *
-    (1 - smoothstep(0, SHALLOW_BOOST_DEPTH, depthMetres))
+    (1 - smoothstep(0, SHALLOW_BOOST_DEPTH, depthMetres)) *
+    (1 - Math.max(0, Math.min(1, redTransmittance)))
   );
 }
 
@@ -242,8 +246,9 @@ export const WATER_OPTICS_GLSL = `
     return WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - c, 5.0);
   }
   // Stylistic, not physics: see shallowSaturationBoost in waterOptics.ts.
-  float shallowSaturationBoost(float depthMetres) {
+  float shallowSaturationBoost(float depthMetres, float redTransmittance) {
     return ${SHALLOW_SATURATION_BOOST.toFixed(3)} * smoothstep(0.0, ${SHALLOW_BOOST_RAMP.toFixed(1)}, depthMetres)
-      * (1.0 - smoothstep(0.0, ${SHALLOW_BOOST_DEPTH.toFixed(1)}, depthMetres));
+      * (1.0 - smoothstep(0.0, ${SHALLOW_BOOST_DEPTH.toFixed(1)}, depthMetres))
+      * (1.0 - clamp(redTransmittance, 0.0, 1.0));
   }
 `;

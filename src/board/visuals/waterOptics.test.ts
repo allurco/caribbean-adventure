@@ -157,6 +157,15 @@ describe("waterOptics (#38 step 3)", () => {
       expect(shallowSaturationBoost(60)).toBe(0);
     });
 
+    it("boosts only the water's tint, not the sand seen through it (#38)", () => {
+      // Saturating clear water over sand turned the sand orange: a warm halo at
+      // every waterline. The boost scales with the share of red the water has
+      // taken out (1 − red transmittance).
+      expect(shallowSaturationBoost(3, 1)).toBe(0);
+      expect(shallowSaturationBoost(3, 0.5)).toBeCloseTo(0.5 * shallowSaturationBoost(3), 12);
+      expect(shallowSaturationBoost(3, 0)).toBe(shallowSaturationBoost(3));
+    });
+
     it("fades steadily with depth past the first 2 m", () => {
       let prev = shallowSaturationBoost(2);
       for (let d = 2.5; d <= 15; d += 0.5) {
@@ -297,7 +306,7 @@ describe("waterOptics (#38 step 3)", () => {
       expect(WATER_OPTICS_GLSL).toContain("vec3 deepWaterReflectance()");
       expect(WATER_OPTICS_GLSL).toContain("float refractedCosine(float cosAir)");
       expect(WATER_OPTICS_GLSL).toContain("float schlickFresnel(float cosTheta)");
-      expect(WATER_OPTICS_GLSL).toContain("float shallowSaturationBoost(float depthMetres)");
+      expect(WATER_OPTICS_GLSL).toContain("float shallowSaturationBoost(float depthMetres, float redTransmittance)");
     });
   });
 });
