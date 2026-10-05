@@ -16,9 +16,50 @@ import {
   NO_SEABED_DEPTH,
   VISIBLE_SEABED_DEPTH,
   WATER_OPTICS_GLSL,
+  refractedSeabedShift,
+  facetSunlight,
 } from "./waterOptics";
 
 type Rgb = readonly [number, number, number];
+
+describe("facetSunlight", () => {
+  const sun = [0, Math.sin(Math.PI / 4), Math.cos(Math.PI / 4)] as const; // 45° up toward +z
+
+  it("is 1 under a level surface", () => {
+    expect(facetSunlight([0, 1, 0], sun)).toBeCloseTo(1, 12);
+  });
+
+  it("is (n·l) / (n_y · l_y): a facet tilted 10° toward the sun takes more light", () => {
+    const t = (10 * Math.PI) / 180;
+    const n = [0, Math.cos(t), Math.sin(t)] as const;
+    // cos(35°) / (cos 10° · sin 45°) ≈ 1.176
+    expect(facetSunlight(n, sun)).toBeCloseTo(1.176, 3);
+  });
+
+  it("is 0 on a facet turned away from the sun", () => {
+    const n = [0, Math.cos(1), -Math.sin(1)] as const;
+    expect(facetSunlight(n, sun)).toBe(0);
+  });
+});
+
+describe("refractedSeabedShift", () => {
+  it("is zero under a level surface", () => {
+    expect(refractedSeabedShift(10, [0, 0])).toEqual([0, 0]);
+  });
+
+  it("bends a vertical view ray by (1 − 1/n) of the slope, along the slope: a worked value", () => {
+    // Snell, vector form, for a facet of slope 0.1 seen from straight above:
+    // the ray leaves at (1 − 1/1.333) · 0.1 ≈ 0.025 horizontal per unit down,
+    // so over 4 units of water the seabed point moves ≈ 0.1 along +x.
+    const [x, z] = refractedSeabedShift(4, [0.1, 0]);
+    expect(x).toBeCloseTo(0.1, 3);
+    expect(z).toBe(0);
+  });
+
+  it("grows with depth", () => {
+    expect(refractedSeabedShift(8, [0, 0.1])[1]).toBeCloseTo(2 * refractedSeabedShift(4, [0, 0.1])[1], 12);
+  });
+});
 
 /** Clean coral sand bottom reflectance at 650 / 550 / 450 nm (as the palette's seabedSand). */
 const SAND: Rgb = [0.564, 0.456, 0.339];
@@ -114,6 +155,15 @@ describe("waterOptics (#38 step 3)", () => {
       expect(shallowSaturationBoost(3)).toBeLessThanOrEqual(0.5);
       expect(shallowSaturationBoost(15)).toBe(0);
       expect(shallowSaturationBoost(60)).toBe(0);
+    });
+
+    it("boosts only the water's tint, not the sand seen through it (#38)", () => {
+      // Saturating clear water over sand turned the sand orange: a warm halo at
+      // every waterline. The boost scales with the share of red the water has
+      // taken out (1 − red transmittance).
+      expect(shallowSaturationBoost(3, 1)).toBe(0);
+      expect(shallowSaturationBoost(3, 0.5)).toBeCloseTo(0.5 * shallowSaturationBoost(3), 12);
+      expect(shallowSaturationBoost(3, 0)).toBe(shallowSaturationBoost(3));
     });
 
     it("fades steadily with depth past the first 2 m", () => {
@@ -256,7 +306,7 @@ describe("waterOptics (#38 step 3)", () => {
       expect(WATER_OPTICS_GLSL).toContain("vec3 deepWaterReflectance()");
       expect(WATER_OPTICS_GLSL).toContain("float refractedCosine(float cosAir)");
       expect(WATER_OPTICS_GLSL).toContain("float schlickFresnel(float cosTheta)");
-      expect(WATER_OPTICS_GLSL).toContain("float shallowSaturationBoost(float depthMetres)");
+      expect(WATER_OPTICS_GLSL).toContain("float shallowSaturationBoost(float depthMetres, float redTransmittance)");
     });
   });
 });

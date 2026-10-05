@@ -12,7 +12,7 @@ import {
 describe("palette", () => {
   it("defines the issue #8 starting values and the issue #14 palm colours", () => {
     expect(PALETTE_HEX).toEqual({
-      wetSand: 0xb8925e,
+      wetSand: 0xa69772,
       drySand: 0xe3cf9c,
       jungle: 0x367a43,
       highlandRock: 0x9d8d79,
@@ -37,6 +37,16 @@ describe("palette", () => {
       close("coral", [0.075, 0.058, 0.024]));
     it("makes the deep seabed half coral sand, half green algae", () =>
       close("deepSeabed", [0.3515, 0.3625, 0.197]));
+  });
+
+  it("makes wet sand dry sand darkened, not a separate orange (#38)", () => {
+    // Wetting darkens sand with little change of hue; the old orange-brown
+    // read as a warm halo round every island.
+    const wet = paletteColor("wetSand");
+    const dry = paletteColor("drySand");
+    for (const k of ["r", "g", "b"] as const) expect(wet[k] / dry[k]).toBeCloseTo(0.5, 1);
+    const albedo = 0.2126 * wet.r + 0.7152 * wet.g + 0.0722 * wet.b;
+    expect(albedo).toBeCloseTo(0.32, 1);
   });
 
   it("keeps palm fronds brighter than the jungle floor so palms stand out", () => {

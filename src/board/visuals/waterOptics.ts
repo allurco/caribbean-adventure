@@ -104,6 +104,31 @@ export function refractedCosine(cosAir: number): number {
   return Math.sqrt(1 - sinAir2 / (WATER_IOR * WATER_IOR));
 }
 
+/**
+ * Where a near-vertical view ray through a tilted surface facet meets the
+ * seabed, relative to straight below: `depth` × (1 − 1/n) × slope, in the
+ * units of `depth`. From Snell's law in vector form with the facet normal
+ * (−∂h/∂x, 1, −∂h/∂z), to first order in the slope. A precursor of step 6's
+ * refraction (#38): it makes the waves visible as a wobble of the seabed.
+ */
+export function refractedSeabedShift(depth: number, slope: readonly [number, number]): [number, number] {
+  const bend = depth * (1 - 1 / WATER_IOR);
+  return [bend * slope[0], bend * slope[1]];
+}
+
+/**
+ * Direct sunlight entering the water through a facet of unit normal `n`, per
+ * unit of horizontal area, relative to a level surface: (n·l) / (n_y · l_y).
+ * Wave faces turned toward the sun let more light into the water just below
+ * them, which scatters back up; that is why sun-facing wave faces look lighter
+ * across the whole sea, not only in the glint. (Transmission 1 − F is near 1
+ * at the sun's 35° incidence and is left out.)
+ */
+export function facetSunlight(n: readonly [number, number, number], l: readonly [number, number, number]): number {
+  const nDotL = n[0] * l[0] + n[1] * l[1] + n[2] * l[2];
+  return Math.max(nDotL, 0) / Math.max(n[1] * l[1], 1e-3);
+}
+
 /** Schlick's Fresnel reflectance of water for a ray `cosTheta` from the normal. */
 export function schlickFresnel(cosTheta: number): number {
   const c = Math.max(0, Math.min(1, cosTheta));
@@ -118,13 +143,17 @@ const smoothstep = (e0: number, e1: number, x: number) => {
 /**
  * Saturation boost (stylistic) for water over a seabed `depthMetres` down: it
  * ramps in over the first SHALLOW_BOOST_RAMP (bare sand at the waterline
- * stays sand) and is 0 from SHALLOW_BOOST_DEPTH.
+ * stays sand) and is 0 from SHALLOW_BOOST_DEPTH. It boosts the water's tint
+ * only: it is scaled by 1 − `redTransmittance`, the share of red the water
+ * has taken out of the seabed's light. Saturating sand seen through
+ * near-clear water turned it orange, a warm halo at every waterline (#38).
  */
-export function shallowSaturationBoost(depthMetres: number): number {
+export function shallowSaturationBoost(depthMetres: number, redTransmittance = 0): number {
   return (
     SHALLOW_SATURATION_BOOST *
     smoothstep(0, SHALLOW_BOOST_RAMP, depthMetres) *
-    (1 - smoothstep(0, SHALLOW_BOOST_DEPTH, depthMetres))
+    (1 - smoothstep(0, SHALLOW_BOOST_DEPTH, depthMetres)) *
+    (1 - Math.max(0, Math.min(1, redTransmittance)))
   );
 }
 
@@ -206,13 +235,20 @@ export const WATER_OPTICS_GLSL = `
     float sinAir2 = max(0.0, 1.0 - cosAir * cosAir);
     return sqrt(1.0 - sinAir2 / (WATER_IOR * WATER_IOR));
   }
+  float facetSunlight(vec3 n, vec3 l) {
+    return max(dot(n, l), 0.0) / max(n.y * l.y, 1e-3);
+  }
+  vec2 refractedSeabedShift(float depth, vec2 slope) {
+    return depth * (1.0 - 1.0 / WATER_IOR) * slope;
+  }
   float schlickFresnel(float cosTheta) {
     float c = clamp(cosTheta, 0.0, 1.0);
     return WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - c, 5.0);
   }
   // Stylistic, not physics: see shallowSaturationBoost in waterOptics.ts.
-  float shallowSaturationBoost(float depthMetres) {
+  float shallowSaturationBoost(float depthMetres, float redTransmittance) {
     return ${SHALLOW_SATURATION_BOOST.toFixed(3)} * smoothstep(0.0, ${SHALLOW_BOOST_RAMP.toFixed(1)}, depthMetres)
-      * (1.0 - smoothstep(0.0, ${SHALLOW_BOOST_DEPTH.toFixed(1)}, depthMetres));
+      * (1.0 - smoothstep(0.0, ${SHALLOW_BOOST_DEPTH.toFixed(1)}, depthMetres))
+      * (1.0 - clamp(redTransmittance, 0.0, 1.0));
   }
 `;

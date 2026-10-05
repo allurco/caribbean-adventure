@@ -239,8 +239,36 @@ without fog or background. `Ocean.tsx` then, per pixel:
    down and the view path up, and adds deep-water radiance
    `R∞ · downwelling irradiance` as the seabed fades (`waterOptics.ts` holds
    the coefficients and their sources);
-3. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), then the shore
-   surf. (The sun glint is off until step 4's GGX glint.)
+3. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), adds the GGX sun
+   glint, then the shore surf.
+
+**Waves (#38 step 4).** The surface normal comes from one FFT cascade
+(`useWaveCascade.ts`): a JONSWAP sea (`oceanWaves.ts`: 7 m/s over 100 km,
+Hs ≈ 1.6 m) with Mitsuyasu spreading, 256² modes over a 500 m tile. Each
+frame the GPU evolves the spectrum (frequencies rounded to whole cycles per
+`WAVE_LOOP_SECONDS`, so the clock wraps seamlessly) and runs a Stockham inverse
+FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float
+texture of (∂h/∂x, ∂h/∂z, |∇h|²). The water shader samples it twice: the
+500 m tile, and a stopgap detail look-up 4.37× smaller and turned 0.93 rad
+(`waveDetailLayer.ts`, replaced by step 5's cascades). It turns the
+combined filtered mean slope into the normal and the filtered variance into
+roughness, fading the normal to flat between 45 and 90 units from the camera
+(`waveNormalFilter.ts`). The glint is GGX with Smith masking and Schlick
+Fresnel (`sunGlint.ts`), HDR so bloom picks up the sparkles. The sky
+reflection, the refracted seabed look-up (`refractedSeabedShift`, a precursor
+of step 6) and the facet-lit in-scatter (`facetSunlight`) see the slopes
+scaled up to Cox–Munk's measured slope (`WAVE_SHADING_GAIN`, ≈ 1.7), so
+the waves read across the whole sea; the glint keeps the drawn slopes so its
+path stays narrow.
+
+At the coast, the sunlight on the seabed is also scaled by the wave facet
+above it, so the waves continue into the shallows as light and shade on the
+sand (a stopgap that step 6's refraction and caustics replace). The
+shallow-water saturation boost scales with the red the water has absorbed,
+so sand under near-clear water keeps its colour instead of turning orange.
+Wet sand is dry sand at half albedo. Surf is limited to water shallower than
+0.6 m on the drawn seabed, so it stays at the waterline (a stopgap until
+step 7; the outer breaker line is off until then).
 
 Where the prepass has no seabed (below the mesh cut-off, or off the mesh) the
 shader reads `NO_SEABED_DEPTH` (105 m, past the fade), so the water is deep

@@ -30,8 +30,11 @@ import { Color } from "three";
  *   0.28 sits a little above that single carbonate measurement, chosen to
  *   keep shadowed cliff faces readable. Was 0.15 (volcanic); the hue is
  *   unchanged.
- * - wetSand 0.32, drySand 0.63: unchanged. Both are bright for natural sand,
- *   so neither needed raising.
+ * - wetSand 0.32, drySand 0.63: both bright for natural sand, so neither
+ *   needed raising. Wet sand is dry sand at half its albedo, same hue:
+ *   wetting darkens sand with little change of hue. It was a separate
+ *   orange-brown (0xb8925e), which drew a warm halo round every island
+ *   at the waterline (#38).
  * Measured values are broadband; visible-band canopy reflectance is lower, so
  * the jungle value errs bright.
  *
@@ -50,7 +53,7 @@ import { Color } from "three";
  *   green algae (Boodlea, 0.139 / 0.269 / 0.055).
  */
 export const PALETTE_HEX = {
-  wetSand: 0xb8925e, // Narrow band at the waterline (albedo 0.32)
+  wetSand: 0xa69772, // Waterline band: dry sand at half albedo (0.32)
   drySand: 0xe3cf9c, // Beaches (albedo 0.63)
   jungle: 0x367a43, // Elevation 2: rainforest canopy (albedo 0.15, Culf et al. 1995)
   highlandRock: 0x9d8d79, // Elevation 3, steep slopes: weathered limestone (albedo 0.28; chalk measured 0.25, McGreevy et al. 2000)
