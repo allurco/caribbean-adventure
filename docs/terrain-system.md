@@ -416,6 +416,65 @@ water.
 
 ---
 
+## 4. Sun Shadows (SunLight.tsx, shadowFit.ts)
+
+One directional sun (`atmosphere.ts`: 55° up, 48° to screen left, 70 units
+from the camera target) casts every shadow from one 4096² map through an
+orthographic shadow camera. Islands, ships, palms and rocks cast; the land
+and seabed meshes, ships and rocks receive (palms don't: their thin
+double-sided fronds shadow themselves into acne). The seabed receives in the
+prepass too, so hull shadows show through the water.
+
+**Fit (#48).** The shadow box follows the camera target and is sized to the
+view each frame by the pure maths in `shadowFit.ts`. Its half-extent is the
+furthest visible point of the sea plane (`groundViewReach` in
+`cameraBounds.ts`, for the live camera distance and viewport aspect) plus a
+margin for receivers above the sea (`SHADOW_CASTER_HEIGHT` × cos elevation,
+their displacement across the box), clamped to `[SHADOW_EXTENT_MIN,
+SHADOW_EXTENT]` = [4, 25]. A caster and its shadow lie on the same light ray,
+so covering the receivers on screen covers the casters that matter; tall
+things only widen the depth range, which `shadowDepthRange` checks against
+the near and far planes (0.5 and 150) in `atmosphere.test.ts`. At full
+zoom-out (distance 28) the 16:9 view reaches ~43 units, so the box sits at
+the 25-unit cap, as before: 50 units across, a 0.79 m texel. At ship zoom
+(distance 3.5–4.3; 4.3 is as close as the small map's `minDistance` allows)
+it fits to 6.8–8.1 units, a 0.22–0.26 m texel, 3–3.7× finer. From there up
+to distance 16, where the cap takes over, the texel tracks the screen pixel
+at the focus (1.1–1.2 px), so the PCF disc smooths what is left at every
+zoom. The fixed box was sized for the cap at every zoom, which is why hull
+and palm shadows stepped close up. Because the cap sets the map-zoom texel,
+the map stays at 4096: 2048 would double it. One box covers mid zoom too,
+so there are no cascades.
+
+**Refit and snap.** The box is rebuilt (`shadow.camera.left/right/top/bottom`
+and its projection matrix) only when the fitted extent has moved by more than
+`SHADOW_FIT_HYSTERESIS` (5%) of the current one: a wheel tick zooms 5%, so
+each tick refits and the easing between ticks does not re-snap the texel
+grid. The light's target is snapped to whole texels of the live box (texel =
+2 × extent / 4096), as the fixed box was for #13, so edges don't shimmer
+while panning.
+
+**Bias.** three's `shadow.bias` is in the map's [0, 1] depth, spread linearly
+over near…far by the orthographic camera, and `normalBias` is in world units;
+neither follows the box. Both cover a texel's worth of slope, so they are
+given in texels (`SHADOW_BIAS_TEXELS` 1.2, `SHADOW_NORMAL_BIAS_TEXELS` 1.6,
+the old −0.0001 and 0.02 at the 25-unit box) and converted from the live
+texel on each refit, so acne and hull-shadow contact behave the same at every
+zoom.
+
+**Filter.** `SHADOW_MAP_TYPE` is `PCFShadowMap`: five Vogel-disc samples per
+pixel, each a hardware 4-tap compare, rotated per pixel by interleaved
+gradient noise, within `SHADOW_RADIUS` (1) texels. three 0.182 deprecated
+`PCFSoftShadowMap` and substituted this filter with a console warning, so it
+is what the scene was already drawn with; naming it drops the warning.
+`VSMShadowMap` (the map is blurred, so the penumbra is smooth at any width)
+is the alternative, untried on screen: it makes every receiver cast as well
+and leaks light where casters overlap, palms over slopes and rigging over
+hulls. To A/B it: `VSMShadowMap`, `SHADOW_RADIUS` 4, `shadow.blurSamples` 8,
+both biases 0. Keep it only if nothing leaks under the palms and hulls.
+
+---
+
 ## File Locations
 
 | File | Purpose |
@@ -428,6 +487,9 @@ water.
 | `src/board/visuals/causticFocus.ts` | Caustic maths: focus matrix, Hessian, intensity, depth and LOD fades |
 | `src/board/visuals/seabedCaustics.ts` | Patches the seabed material so its sunlight is focused by the waves |
 | `src/board/visuals/useLandTerrain.ts` | Land and seabed mesh and materials, once per map |
+| `src/board/visuals/SunLight.tsx` | The shadow-casting sun: fits, refits and snaps its shadow box to the view |
+| `src/board/shadowFit.ts` | Shadow box maths: extent from the view's reach, texel, biases, refit hysteresis, depth range |
+| `src/board/visuals/atmosphere.ts` | Sun, sky, haze, shadow and post-processing constants |
 | `src/board/Board.tsx` | Scene composition |
 | `src/board/HexGrid.tsx` | Click detection (invisible meshes) |
 
