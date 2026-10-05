@@ -36,11 +36,38 @@ import type { TerrainBounds } from "./terrainHeightField";
 import { useSeabedPrepass } from "./seabedPrepass";
 import { WATER_OPTICS_GLSL } from "./waterOptics";
 import { METRES_PER_UNIT } from "./worldScale";
-import { GLINT_BASE_ROUGHNESS2, NEAR_CASCADE, WAVE_SHADING_GAIN } from "./oceanWaves";
+import { GLINT_BASE_ROUGHNESS2, WAVE_CASCADES, WAVE_SHADING_GAIN } from "./oceanWaves";
 import { SUN_GLINT_GLSL } from "./sunGlint";
-import { useWaveCascade } from "./useWaveCascade";
+import { useWaveCascades } from "./useWaveCascades";
 import { WAVE_NORMAL_FILTER_GLSL } from "./waveNormalFilter";
-import { WAVE_DETAIL_LAYER_GLSL } from "./waveDetailLayer";
+
+const glslFloat = (x: number) => x.toFixed(8);
+
+/** Per-cascade uniforms and constants: tile size in world units, turn (cos, sin), band start. */
+const WAVE_CASCADES_GLSL = WAVE_CASCADES.map(
+  (c, i) => `
+  uniform sampler2D waveSlopes${i};
+  const float WAVE_TILE_UNITS_${i} = ${glslFloat(c.tileMetres / METRES_PER_UNIT)};
+  const vec2 WAVE_TURN_${i} = vec2(${glslFloat(Math.cos(c.rotation))}, ${glslFloat(Math.sin(c.rotation))});
+  const float WAVE_K_MIN_${i} = ${glslFloat(c.kMin)};`
+).join("");
+
+/**
+ * Adds every cascade's filtered look-up to `slope` / `slopeVariance`, each
+ * faded by `distanceFade` and its own level of detail at `footprintMetres`.
+ * Unrolled: one texture per cascade, sampled unconditionally so the
+ * look-ups stay in uniform control flow.
+ */
+const WAVE_CASCADE_SUM_GLSL = WAVE_CASCADES.map(
+  (_, i) => `
+    {
+      vec2 t = WAVE_TURN_${i};
+      vec2 p = vWorld.xz / WAVE_TILE_UNITS_${i};
+      vec2 uv = vec2(t.x * p.x + t.y * p.y, -t.y * p.x + t.x * p.y); // Rᵀ · p
+      float fade = distanceFade * cascadeLodFade(footprintMetres, WAVE_K_MIN_${i});
+      addCascadeSlope(texture2D(waveSlopes${i}, uv).xyz, t, fade, slope, slopeVariance);
+    }`
+).join("");
 
 const vertexShader = `
   varying vec3 vWorld;
@@ -65,17 +92,15 @@ const fragmentShader = `
   // Floor of the sky lookup's roughness; the wave roughness raises it.
   const float SKY_REFLECTION_ROUGHNESS = 0.05;
 
-  // Wave normals (#38 step 4): the FFT cascade's mipmapped slope texture
-  // (useWaveCascade.ts), one tile every WAVE_TILE_UNITS world units. Filtered
-  // lookups give mean slope and mean square slope; what filtering and the
-  // distance fade take out of the normal goes into the glint roughness
-  // (waveNormalFilter.ts). Phase is evolved on the GPU from a wrapped clock,
-  // so nothing here grows with time.
-  uniform sampler2D waveSlopes;
-  const float WAVE_TILE_UNITS = ${(NEAR_CASCADE.tileMetres / METRES_PER_UNIT).toFixed(6)};
+  // Wave normals (#38 steps 4–5): three FFT cascades' mipmapped slope
+  // textures (useWaveCascades.ts, bands in oceanWaves.ts), each on its own
+  // turned tile. Filtered lookups give mean slope and mean square slope; what
+  // filtering, the distance fade and each cascade's level-of-detail fade take
+  // out of the normal goes into the glint roughness (waveNormalFilter.ts).
+  // Phase is evolved on the GPU from a wrapped clock, so nothing here grows
+  // with time.
+  ${WAVE_CASCADES_GLSL}
   ${WAVE_NORMAL_FILTER_GLSL}
-  // A second, smaller look-up for detail at ship zoom (stopgap for step 5).
-  ${WAVE_DETAIL_LAYER_GLSL}
   // Glint roughness α² of the sub-grid waves, and the slope gain the sky
   // reflection and refraction see (oceanWaves.ts).
   const float GLINT_BASE_ROUGHNESS2 = ${GLINT_BASE_ROUGHNESS2.toFixed(6)};
@@ -355,15 +380,15 @@ const fragmentShader = `
     // offset (taken first, in uniform control flow).
     mat2 worldPerPixel = mat2(dFdx(vWorld.xz), dFdy(vWorld.xz));
 
-    // Wave slope from the FFT look-ups, faded with distance; the slope variance
-    // that filtering and fading remove becomes roughness.
-    vec2 waveUv = vWorld.xz / WAVE_TILE_UNITS;
-    vec3 waves = combineSlopeLayers(
-      texture2D(waveSlopes, waveUv).xyz,
-      texture2D(waveSlopes, detailLayerUv(waveUv)).xyz
-    );
-    float slopeVariance;
-    vec2 slope = fadedWaveSlope(waves.xy, waves.z, waveDetailFade(length(toSurface)), slopeVariance);
+    // Wave slope from the FFT look-ups, faded with distance and, per cascade,
+    // once its band is sub-pixel; the slope variance that filtering and
+    // fading remove becomes roughness. The footprint is the pixel's longer
+    // side on the sea, so grazing views fade early rather than shimmer.
+    float footprintMetres = max(length(worldPerPixel[0]), length(worldPerPixel[1])) * METRES_PER_UNIT;
+    float distanceFade = waveDetailFade(length(toSurface));
+    vec2 slope = vec2(0.0);
+    float slopeVariance = 0.0;
+    ${WAVE_CASCADE_SUM_GLSL}
     // The glint sees the drawn slopes, so the sun path stays narrow ...
     vec3 n = normalize(vec3(-slope.x, 1.0, -slope.y));
     float alpha2 = GLINT_BASE_ROUGHNESS2 + slopeVariance;
@@ -475,8 +500,8 @@ export function Ocean({
   const seabed = useSeabedPrepass();
 
   const reducedMotion = usePrefersReducedMotion();
-  // Wave slopes from the FFT cascade, rebuilt once per frame before the main pass.
-  const waveSlopes = useWaveCascade(NEAR_CASCADE, reducedMotion);
+  // Wave slopes from the FFT cascades, rebuilt once per frame before the main pass.
+  const waveSlopes = useWaveCascades(WAVE_CASCADES, reducedMotion);
 
   const material = useMemo(() => {
     const { minX, maxX, minZ, maxZ } = field.bounds;
@@ -507,7 +532,9 @@ export function Ocean({
     mat.uniforms.seabedSize = { value: new Vector2(1, 1) };
     mat.uniforms.cameraProjectionInverse = { value: new Matrix4() };
     mat.uniforms.cameraWorld = { value: new Matrix4() };
-    mat.uniforms.waveSlopes = { value: waveSlopes };
+    waveSlopes.forEach((texture, i) => {
+      mat.uniforms[`waveSlopes${i}`] = { value: texture };
+    });
     return mat;
   }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field, seabed, waveSlopes, wrap]);
   useEffect(() => () => material.dispose(), [material]);
