@@ -21,6 +21,7 @@
 import type { MapCell } from "../../game/types";
 import { hexToWorld, wrapWorldWidth, type MapWrap } from "../../game/hex";
 import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
+import { seamStrip, withSeamImages, wrapIntoStrip } from "./seamStrip";
 import { seabedDepth } from "./seabedProfile";
 import { metresToUnits, unitsToMetres } from "./worldScale";
 
@@ -60,6 +61,13 @@ const COAST_INDEX_RADIUS = Math.floor((MAX_COAST_DISTANCE + 2) / 1.5);
  * nothing samples outside it, so the bounds never assume hard map edges (#36).
  */
 const BOUNDS_PADDING = MAX_COAST_DISTANCE + 1;
+/**
+ * How far past the strip's edges a wrapping field copies cells from the other
+ * side (#36): a point in the strip reads coast edges indexed up to
+ * COAST_INDEX_RADIUS hexes from a land hex, i.e. land up to ~MAX_COAST_DISTANCE
+ * + 2 away; a few units more cover the reef and blend look-ups with room.
+ */
+const SEAM_IMAGE_MARGIN = MAX_COAST_DISTANCE + 4;
 /**
  * Reef rise (#38): reef hexes rise to a crest REEF_CREST_DEPTH ± REEF_CREST_VARIATION
  * metres below the surface. The rise starts REEF_FOOT outside the reef outline
@@ -129,9 +137,9 @@ export interface TerrainHeightFieldOptions {
   /** Scale the interior relief (0 leaves only the smooth blended target, e.g. as a test baseline). */
   reliefScale?: number;
   /**
-   * The map's east–west wrap. With one, every noise term repeats every wrap
-   * width in x, so the noise has no seam (#36). The coastline and reef
-   * outlines do not wrap yet; drawing across the seam is still to come.
+   * The map's east–west wrap. With one, the whole field repeats every wrap
+   * width in x: the noise is periodic, and coasts and reefs are drawn across
+   * the seam from the cells on the other side (#36).
    */
   wrap?: MapWrap;
 }
@@ -154,8 +162,14 @@ export interface TerrainHeightField {
    * that clear water hides it, so seabed geometry can skip it.
    */
   isNearSeabed: (x: number, z: number) => boolean;
-  /** World-space XZ extent of the map cells, padded by one hex. */
+  /**
+   * World-space XZ extent the field is built over. Without a wrap: the cell
+   * centres padded past the seabed drop-off. With one: in x, exactly one wrap
+   * width (`seamStrip.ts`), which the field repeats beyond.
+   */
   bounds: TerrainBounds;
+  /** The world width the field repeats over in x (the wrap width), or null. */
+  periodX: number | null;
 }
 
 /** Seeded PRNG (mulberry32), same as the map generator's. */
@@ -300,6 +314,14 @@ export function createTerrainHeightField(
   // Drawn after the others so adding it left the coast and relief unchanged.
   const reefNoise = createPlaneNoise(rng, noisePeriod);
 
+  // On a wrapping map the field is built over one strip a wrap wide, from the
+  // cells plus their images just past either edge, and every sampler moves its
+  // point into the strip first: so it repeats exactly every wrap width, and
+  // islands, coasts and reefs carry on across the seam (#36).
+  const strip = seamStrip(options.wrap ?? null);
+  const sourceCells = withSeamImages(cells, options.wrap ?? null, SEAM_IMAGE_MARGIN);
+  const inStrip = strip ? (x: number) => wrapIntoStrip(x, strip) : (x: number) => x;
+
   // Land elevation by hex; anything else (water, reef, off-map) is sea.
   const landElevation = new Map<number, number>();
   let minX = Infinity;
@@ -312,6 +334,8 @@ export function createTerrainHeightField(
     maxX = Math.max(maxX, x);
     minZ = Math.min(minZ, z);
     maxZ = Math.max(maxZ, z);
+  }
+  for (const cell of sourceCells) {
     if (cell.terrain === "island") {
       landElevation.set(hexKey(cell.hex.q, cell.hex.r), Math.max(1, Math.min(3, cell.elevation)));
     }
@@ -320,8 +344,8 @@ export function createTerrainHeightField(
     minX = maxX = minZ = maxZ = 0;
   }
   const bounds: TerrainBounds = {
-    minX: minX - BOUNDS_PADDING,
-    maxX: maxX + BOUNDS_PADDING,
+    minX: strip ? strip.minX : minX - BOUNDS_PADDING,
+    maxX: strip ? strip.minX + strip.width : maxX + BOUNDS_PADDING,
     minZ: minZ - BOUNDS_PADDING,
     maxZ: maxZ + BOUNDS_PADDING,
   };
@@ -335,7 +359,7 @@ export function createTerrainHeightField(
   // Land centres (x, z, targetHeight, elevation) for each hex and its neighbours.
   const landNear = new Map<number, number[]>();
 
-  for (const cell of cells) {
+  for (const cell of sourceCells) {
     if (cell.terrain !== "island") continue;
     const { q, r } = cell.hex;
     const [cx, , cz] = hexToWorld(cell.hex);
@@ -374,11 +398,11 @@ export function createTerrainHeightField(
   // indexed by every hex within 1 of the reef hex: a point within REEF_FOOT
   // (< 1) of an outline edge lies in the reef hex or one of its neighbours.
   const reefHexes = new Set<number>();
-  for (const cell of cells) {
+  for (const cell of sourceCells) {
     if (cell.terrain === "reef") reefHexes.add(hexKey(cell.hex.q, cell.hex.r));
   }
   const reefSegmentsNear = new Map<number, number[]>();
-  for (const cell of cells) {
+  for (const cell of sourceCells) {
     if (cell.terrain !== "reef") continue;
     const { q, r } = cell.hex;
     const [cx, , cz] = hexToWorld(cell.hex);
@@ -535,5 +559,13 @@ export function createTerrainHeightField(
   const isNearLand = (x: number, z: number): boolean => landArrays.has(worldToHexKey(x, z));
   const isNearSeabed = (x: number, z: number): boolean => nearSeabed.has(worldToHexKey(x, z));
 
-  return { sampleHeight, sampleCoastDistance, sampleElevation, isNearLand, isNearSeabed, bounds };
+  return {
+    sampleHeight: (x, z) => sampleHeight(inStrip(x), z),
+    sampleCoastDistance: (x, z) => sampleCoastDistance(inStrip(x), z),
+    sampleElevation: (x, z) => sampleElevation(inStrip(x), z),
+    isNearLand: (x, z) => isNearLand(inStrip(x), z),
+    isNearSeabed: (x, z) => isNearSeabed(inStrip(x), z),
+    bounds,
+    periodX: strip ? strip.width : null,
+  };
 }

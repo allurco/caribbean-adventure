@@ -16,7 +16,8 @@
  * reefs block deep-draft ships, so players need to see which hex is reef.
  */
 import type { MapCell } from "../../game/types";
-import { hexToWorld, worldToHex } from "../../game/hex";
+import { hexToWorld, worldToHex, type MapWrap } from "../../game/hex";
+import { seamStrip, withSeamImages, wrapIntoStrip } from "./seamStrip";
 
 /** Width of the soft rim just inside a reef hex's outline, in world units (inradius is √3/2). */
 export const REEF_EDGE_SOFTNESS = 0.2;
@@ -49,10 +50,18 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** A reef mask in [0, 1] at world (x, z) for the map. Build once per map; sampling is O(1). */
-export function createReefMask(cells: readonly MapCell[]): (x: number, z: number) => number {
+/** A point in the strip is at most a hex (2 units) from the rim edges it reads. */
+const SEAM_IMAGE_MARGIN = 3;
+
+/**
+ * A reef mask in [0, 1] at world (x, z) for the map. Build once per map;
+ * sampling is O(1). With a `wrap` it repeats every wrap width and reefs carry
+ * on across the seam (#36).
+ */
+export function createReefMask(cells: readonly MapCell[], wrap: MapWrap = null): (x: number, z: number) => number {
+  const strip = seamStrip(wrap);
   const reefs = new Set<string>();
-  for (const cell of cells) {
+  for (const cell of withSeamImages(cells, wrap, SEAM_IMAGE_MARGIN)) {
     if (cell.terrain === "reef") reefs.add(key(cell.hex.q, cell.hex.r));
   }
 
@@ -76,7 +85,8 @@ export function createReefMask(cells: readonly MapCell[]): (x: number, z: number
     rimEdges.set(k, Float64Array.from(edges));
   }
 
-  return (x: number, z: number): number => {
+  return (worldX: number, z: number): number => {
+    const x = strip ? wrapIntoStrip(worldX, strip) : worldX;
     const h = worldToHex(x, z);
     const edges = rimEdges.get(key(h.q, h.r));
     if (!edges) return 0;

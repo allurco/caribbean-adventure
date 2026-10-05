@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { MapCell } from "../../game/types";
-import { hexGrid } from "../../game/hex";
+import { createWrap, hexGrid, hexRect, hexToOffset, wrapWorldWidth } from "../../game/hex";
+import { createReefMask } from "./reefMask";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
@@ -511,15 +512,80 @@ describe("buildLandMesh", () => {
     expect(fast.colors).toEqual(full.colors);
   }, 20000);
 
+  describe("on a map that wraps east–west (#36)", () => {
+    const columns = 12;
+    const wrap = createWrap(columns);
+    const width = wrapWorldWidth(wrap);
+    // An island and a reef straddling the seam.
+    const cells: MapCell[] = hexRect(columns, 14).map((h) => {
+      const { col, row } = hexToOffset(h);
+      const edge = col === 0 || col === columns - 1;
+      if (edge && row >= 4 && row <= 7) return { hex: h, terrain: "island", hasPort: false, elevation: row === 5 ? 3 : 2 };
+      if (edge && row === 10) return { hex: h, terrain: "reef", hasPort: false, elevation: 0 };
+      return { hex: h, terrain: "water", hasPort: false, elevation: 0 };
+    });
+    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+    const mesh = buildLandMesh(field, { sampleReef: createReefMask(cells, wrap) });
+
+    /** Points grouped by (x mod wrap width, z): copies of one point one wrap apart. */
+    function byWrappedPoint(positions: Float32Array, values: Float32Array) {
+      const groups = new Map<string, number[][]>();
+      for (let v = 0; v < positions.length; v += 3) {
+        const x = (((positions[v] - field.bounds.minX) % width) + width) % width;
+        const key = `${Math.round(x * 1e4) % Math.round(width * 1e4)},${Math.round(positions[v + 2] * 1e4)}`;
+        const list = groups.get(key) ?? [];
+        list.push([positions[v + 1], values[v], values[v + 1], values[v + 2]]);
+        groups.set(key, list);
+      }
+      return groups;
+    }
+
+    it("lies on a lattice that repeats every wrap width, with land on both sides of the seam", () => {
+      const xs = mesh.land.positions.filter((_, i) => i % 3 === 0);
+      const spacing = width / Math.round(width / LAND_MESH_SPACING);
+      for (const x of xs) {
+        const steps = (x - field.bounds.minX) / (spacing / 2);
+        expect(Math.abs(steps - Math.round(steps))).toBeLessThan(1e-3);
+      }
+      expect(Math.min(...xs)).toBeLessThan(field.bounds.minX + 0.5);
+      expect(Math.max(...xs)).toBeGreaterThan(field.bounds.maxX - 0.5);
+    });
+
+    it("gives a point and its copy one wrap width away the same height", () => {
+      let shared = 0;
+      for (const list of byWrappedPoint(mesh.land.positions, mesh.land.normals).values()) {
+        for (const p of list) expect(p[0]).toBeCloseTo(list[0][0], 5);
+        if (list.length > 1) shared++;
+      }
+      expect(shared).toBeGreaterThan(0);
+    });
+
+    it("shades the seabed the same on both sides of the seam (normal and colour)", () => {
+      const { positions, normals, colors } = mesh.seabed;
+      const normalGroups = byWrappedPoint(positions, normals);
+      const colourGroups = byWrappedPoint(positions, colors);
+      let shared = 0;
+      for (const [key, list] of normalGroups) {
+        if (list.length < 2) continue;
+        shared++;
+        for (const p of list) for (let i = 0; i < 4; i++) expect(p[i]).toBeCloseTo(list[0][i], 4);
+        for (const p of colourGroups.get(key)!) for (let i = 1; i < 4; i++) expect(p[i]).toBeCloseTo(colourGroups.get(key)![0][i], 4);
+      }
+      expect(shared).toBeGreaterThan(10);
+    });
+  });
+
   it("benchmark: builds the land mesh for the largest map quickly", () => {
     const { columns, rows } = getMapPreset("large");
-    const cells = generateMap({ columns, rows }, 31337);
+    // Wrapped, as the game builds it (#36).
+    const wrap = createWrap(columns);
+    const cells = generateMap({ columns, rows }, 31337, wrap);
     // Best of three, so JIT warm-up and a stray GC pause don't count against the build.
     let best = Infinity;
     let mesh: ReturnType<typeof buildLandMesh> | undefined;
     for (let run = 0; run < 3; run++) {
       const start = performance.now();
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
       mesh = buildLandMesh(field);
       best = Math.min(best, performance.now() - start);
     }
