@@ -529,9 +529,9 @@ describe("buildLandMesh", () => {
         `(${aboveWaterTriangleCount} above water), best of 3 in ${best.toFixed(1)}ms`
     );
     expect(triangleCount).toBeGreaterThan(0);
-    // One-time build; ~150-170 ms locally with the seabed in metres (#38), and a
-    // single cold build took ~530 ms on a GitHub runner. The limit only guards
+    // One-time build; ~150-170 ms locally with the seabed in metres (#38), and the
+    // best of three still took ~490 ms on a GitHub runner. The limit only guards
     // against gross regressions.
-    expect(best).toBeLessThan(500);
+    expect(best).toBeLessThan(750);
   }, 20000);
 });
