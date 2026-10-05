@@ -115,8 +115,31 @@ export function reefWindwardWeight(
   return (1 + REEF_WINDWARD_BIAS * intoWind) / (1 + REEF_WINDWARD_BIAS);
 }
 
+/**
+ * STYLISTIC, shared by the water and the land: how dense the shore foam is
+ * (< 1 leaves holes even in the densest wash), the breaker and reef bands'
+ * strengths next to the wash, how far the breaker band drops between sets
+ * (the sets lead the wash's pulse by SETS_PHASE_LEAD radians, so a set
+ * breaks before the wash floods), the breakup noise's scale (cycles per
+ * world unit) and the lace's feature size for the detail fade.
+ */
+export const SHORE_FOAM_COVERAGE = 0.6;
+export const BREAKER_STRENGTH = 1;
+export const BREAKER_SET_FLOOR = 0.45;
+export const SETS_PHASE_LEAD = 1.2;
+export const REEF_FOAM_STRENGTH = 0.75;
+export const SHORE_FOAM_NOISE_SCALE = 6;
+export const SHORE_FOAM_LACE_METRES = 2.5;
+
 /** GLSL constants and functions matching the TypeScript above. */
 export const SHORE_FOAM_GLSL = `
+  const float SHORE_FOAM_COVERAGE = ${SHORE_FOAM_COVERAGE.toFixed(4)};
+  const float BREAKER_STRENGTH = ${BREAKER_STRENGTH.toFixed(4)};
+  const float BREAKER_SET_FLOOR = ${BREAKER_SET_FLOOR.toFixed(4)};
+  const float SETS_PHASE_LEAD = ${SETS_PHASE_LEAD.toFixed(4)};
+  const float REEF_FOAM_STRENGTH = ${REEF_FOAM_STRENGTH.toFixed(4)};
+  const float SHORE_FOAM_NOISE_SCALE = ${SHORE_FOAM_NOISE_SCALE.toFixed(4)};
+  const float SHORE_FOAM_LACE_METRES = ${SHORE_FOAM_LACE_METRES.toFixed(4)};
   const float BREAKING_DEPTH_METRES = ${BREAKING_DEPTH_METRES.toFixed(4)};
   const float BREAKER_SEAWARD_FADE = ${BREAKER_SEAWARD_FADE.toFixed(4)};
   const float BREAKER_SHOREWARD_FADE = ${BREAKER_SHOREWARD_FADE.toFixed(4)};
@@ -142,5 +165,13 @@ export const SHORE_FOAM_GLSL = `
   }
   float reefFoamBand(float depthMetres) {
     return 1.0 - smoothstep(REEF_FOAM_DEPTH_FADE.x, REEF_FOAM_DEPTH_FADE.y, depthMetres);
+  }
+  // The water's shore foam coverage over a seabed \`depthMetres\` down, with
+  // the reef mask and windward weight there, at surf \`pulse\` and breaker \`sets\`.
+  float shoreFoamCoverage(float depthMetres, float reef, float windward, float pulse, float sets) {
+    float wash = washBand(depthMetres, pulse);
+    float breaker = breakerBand(depthMetres, BREAKING_DEPTH_METRES) * mix(BREAKER_SET_FLOOR, 1.0, sets) * BREAKER_STRENGTH;
+    float reefLine = reef * windward * reefFoamBand(depthMetres) * REEF_FOAM_STRENGTH;
+    return max(wash, max(breaker, reefLine)) * SHORE_FOAM_COVERAGE;
   }
 `;

@@ -16,7 +16,6 @@ describe("palette", () => {
       drySand: 0xe3cf9c,
       jungle: 0x367a43,
       highlandRock: 0x9d8d79,
-      surf: 0xf2faf7,
       palmFrond: 0x4f8a34,
       palmTrunk: 0x8a6a45,
       seabedSand: 0xc6b49d,
@@ -88,9 +87,9 @@ describe("palette", () => {
   });
 
   it("paletteColor returns a fresh instance each call", () => {
-    const a = paletteColor("surf");
+    const a = paletteColor("drySand");
     a.setRGB(1, 0, 0);
-    expect(paletteColor("surf").getHex()).toBe(PALETTE_HEX.surf);
+    expect(paletteColor("drySand").getHex()).toBe(PALETTE_HEX.drySand);
   });
 
   it("glslVec3 formats linear components as float literals", () => {
@@ -100,7 +99,7 @@ describe("palette", () => {
   it("glslConstName converts camelCase to PALETTE_UPPER_SNAKE", () => {
     expect(glslConstName("seabedSand")).toBe("PALETTE_SEABED_SAND");
     expect(glslConstName("highlandRock")).toBe("PALETTE_HIGHLAND_ROCK");
-    expect(glslConstName("surf")).toBe("PALETTE_SURF");
+    expect(glslConstName("coral")).toBe("PALETTE_CORAL");
   });
 
   it("PALETTE_GLSL declares one linear vec3 constant per entry", () => {

@@ -20,6 +20,9 @@ export const HULL_FOAM_ANCHOR_STRENGTH = 0.35;
 export const HULL_FOAM_FULL_SPEED = 2;
 /** How far the wake trails astern at full speed, in hull lengths. */
 export const HULL_FOAM_WAKE_LENGTHS = 1;
+/** STYLISTIC: the breakup noise's cycles per world unit and the lace's feature size (metres) for the detail fade. */
+export const HULL_FOAM_NOISE_SCALE = 14;
+export const HULL_FOAM_LACE_METRES = 1.2;
 
 const smoothstep = (e0: number, e1: number, x: number) => {
   const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
@@ -54,6 +57,8 @@ export const HULL_FOAM_GLSL = `
   const float HULL_FOAM_ANCHOR_STRENGTH = ${HULL_FOAM_ANCHOR_STRENGTH.toFixed(4)};
   const float HULL_FOAM_FULL_SPEED = ${HULL_FOAM_FULL_SPEED.toFixed(4)};
   const float HULL_FOAM_WAKE_LENGTHS = ${HULL_FOAM_WAKE_LENGTHS.toFixed(4)};
+  const float HULL_FOAM_NOISE_SCALE = ${HULL_FOAM_NOISE_SCALE.toFixed(4)};
+  const float HULL_FOAM_LACE_METRES = ${HULL_FOAM_LACE_METRES.toFixed(4)};
   float hullFoamCoverage(vec2 offset, vec2 heading, float hullLength, float speed) {
     if (hullLength <= 0.0) return 0.0;
     float along = dot(offset, heading);

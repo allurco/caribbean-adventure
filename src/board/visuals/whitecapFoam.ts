@@ -67,9 +67,20 @@ export function accumulateWhitecap(previous: number, jacobian: number, dtSeconds
   return Math.min(1, previous * whitecapDecay(dtSeconds) + whitecapFold(jacobian) * whitecapInjection(dtSeconds));
 }
 
+/**
+ * STYLISTIC: the breakup noise that turns the accumulated coverage into lacy
+ * foam in the water shader: cycles per world unit (65 m), and the lace's
+ * feature size in metres for the detail fade. Whitecaps are a few metres
+ * across with sub-metre lace.
+ */
+export const WHITECAP_NOISE_SCALE = 18;
+export const WHITECAP_LACE_METRES = 1;
+
 /** GLSL for the above. The decay and injection are computed on the CPU per frame and passed in. */
 export const WHITECAP_FOAM_GLSL = `
   const float WHITECAP_FOLD_THRESHOLD = ${WHITECAP_FOLD_THRESHOLD.toFixed(4)};
+  const float WHITECAP_NOISE_SCALE = ${WHITECAP_NOISE_SCALE.toFixed(4)};
+  const float WHITECAP_LACE_METRES = ${WHITECAP_LACE_METRES.toFixed(4)};
   // J of the surface map from the stretch along and across the wind (the shear is dropped).
   float surfaceJacobian(vec2 stretch) {
     return (1.0 + stretch.x) * (1.0 + stretch.y);

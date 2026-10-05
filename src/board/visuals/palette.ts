@@ -57,7 +57,8 @@ export const PALETTE_HEX = {
   drySand: 0xe3cf9c, // Beaches (albedo 0.63)
   jungle: 0x367a43, // Elevation 2: rainforest canopy (albedo 0.15, Culf et al. 1995)
   highlandRock: 0x9d8d79, // Elevation 3, steep slopes: weathered limestone (albedo 0.28; chalk measured 0.25, McGreevy et al. 2000)
-  surf: 0xf2faf7, // Shore foam
+  // (`surf`, the old shore foam colour, is gone: foam has its own measured
+  // albedo in foamShading.ts, #38 step 7.)
   palmFrond: 0x4f8a34, // Palm fronds, a sunlit step up from the jungle floor (issue #14)
   palmTrunk: 0x8a6a45, // Palm trunks and coconuts
   seabedSand: 0xc6b49d, // Shallow seabed: clean coral sand (Maritorena et al. 1994)

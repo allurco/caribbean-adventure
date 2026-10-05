@@ -10,7 +10,9 @@ import { paletteColor, type PaletteName } from "./palette";
 import { createReefMask } from "./reefMask";
 import { perMapCache } from "./perMapCache";
 import { injectSeabedCaustics } from "./seabedCaustics";
+import { injectShoreFoam } from "./shoreFoamLand";
 import type { Vec3 } from "./sunDirection";
+import type { TerrainFieldTexture } from "./useTerrainFieldTexture";
 
 /** Palette entry as linear RGB, the space vertex colours are read in. */
 function linearRgb(name: PaletteName): [number, number, number] {
@@ -62,32 +64,41 @@ const landMeshOf = perMapCache((cells, wrap) =>
   buildLandMesh(sharedTerrainField(cells, wrap), { colors: LAND_COLORS, sampleReef: createReefMask(cells, wrap) })
 );
 
-/** What the seabed's sunlight is focused through (#38 step 6). */
+/** What the seabed's sunlight is focused through (#38 step 6) and what the shore's foam is drawn from (step 7). */
 export interface SeabedLighting {
   /** Unit vector toward the sun (the scene's SUN_DIRECTION). */
   sun: Vec3;
   /** The wave cascades' slope textures (useWaveCascades), one per cascade. */
   waveSlopes: readonly Texture[];
+  /** The map's terrain field texture (useTerrainFieldTexture), for the wash on the sand. */
+  terrainField: TerrainFieldTexture;
 }
 
-/** A standard material whose sunlight the waves focus (seabedCaustics.ts); `name` keys the compiled program. */
+/**
+ * A standard material whose sunlight the waves focus (seabedCaustics.ts)
+ * and, with `shoreFoam`, whose beaches the surf washes (shoreFoamLand.ts);
+ * `name` keys the compiled program.
+ */
 function causticMaterial(
   parameters: ConstructorParameters<typeof MeshStandardMaterial>[0],
   name: string,
-  lighting: SeabedLighting
+  lighting: SeabedLighting,
+  shoreFoam: boolean
 ): MeshStandardMaterial {
   const material = new MeshStandardMaterial(parameters);
   material.onBeforeCompile = (shader) => {
     injectSeabedCaustics(shader, lighting);
+    if (shoreFoam) injectShoreFoam(shader, lighting.terrainField);
   };
-  material.customProgramCacheKey = () => `${name}-caustics`;
+  material.customProgramCacheKey = () => `${name}-caustics${shoreFoam ? `-foam${lighting.terrainField.wrap ? "-wrap" : ""}` : ""}`;
   return material;
 }
 
 /**
  * Builds the land mesh once per map (and wrap); disposes it when the map
  * changes or the owner unmounts. Both materials focus their sunlight
- * through `lighting`'s waves (caustics, seabedCaustics.ts).
+ * through `lighting`'s waves (caustics, seabedCaustics.ts); the land's also
+ * draws the shore wash up its beaches (shoreFoamLand.ts).
  */
 export function useLandTerrain(cells: MapCell[], wrap: MapWrap, lighting: SeabedLighting): LandTerrainResources {
   const { land, seabed } = useMemo(() => {
@@ -107,17 +118,18 @@ export function useLandTerrain(cells: MapCell[], wrap: MapWrap, lighting: Seabed
   // #38 step 6): the land too, because every triangle with a vertex above sea
   // level is land, and its submerged part reaches a few metres down along the
   // shore, where the caustics are sharpest. Above the waterline the factor is 1.
-  const { sun, waveSlopes } = lighting;
+  const { sun, waveSlopes, terrainField } = lighting;
   const material = useMemo(
-    () => causticMaterial({ vertexColors: true, flatShading: true, roughness: 0.9, metalness: 0 }, "land", { sun, waveSlopes }),
-    [sun, waveSlopes]
+    () => causticMaterial({ vertexColors: true, flatShading: true, roughness: 0.9, metalness: 0 }, "land", { sun, waveSlopes, terrainField }, true),
+    [sun, waveSlopes, terrainField]
   );
   useEffect(() => () => material.dispose(), [material]);
 
-  // The seabed is smooth-shaded so no facets show through clear water.
+  // The seabed is smooth-shaded so no facets show through clear water. It
+  // never rises above the waterline, so it carries no shore foam.
   const seabedMaterial = useMemo(
-    () => causticMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }, "seabed", { sun, waveSlopes }),
-    [sun, waveSlopes]
+    () => causticMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }, "seabed", { sun, waveSlopes, terrainField }, false),
+    [sun, waveSlopes, terrainField]
   );
   useEffect(() => () => seabedMaterial.dispose(), [seabedMaterial]);
 

@@ -66,8 +66,69 @@ export function foamRadiance(nDotL: number, sunIrradiance: Rgb, skyDiffuse: Rgb)
   return [0, 1, 2].map((i) => FOAM_ALBEDO[i] * (sunIrradiance[i] * sun + skyDiffuse[i])) as [number, number, number];
 }
 
+/**
+ * Share of the smooth coverage drawn where the lace has faded out (map
+ * zoom): about the lace's mean, so the far shore keeps its brightness as a
+ * thin line.
+ */
+export const FOAM_FAR_SHARE = 0.6;
+
+/**
+ * GLSL for the foam's motion (issue #10, kept from the old surf): the pulse
+ * toward and away from the shore, the churn that circles the breakup noise,
+ * and the breakup noise itself. Needs SURF_TIMING_GLSL (surfMotion.ts) and
+ * PI in scope. Time only enters as sin/cos of 2π·surfTime/period (the clock
+ * is wrapped on the CPU), so nothing here loses precision over a session.
+ */
+export const FOAM_MOTION_GLSL = `
+  const float SURF_PHASE_SCALE = 0.45;   // along-coast phase noise frequency; lower = longer stretches in step
+  const float SURF_PHASE_SPREAD = 3.0;   // radians of pulse offset between stretches of coast
+  const float SURF_CHURN_AMOUNT = 0.35;  // radius (noise units) the breakup noise circles each churn cycle
+  const float FOAM_LACE_SCALE = 4.3;     // frequency multiplier of the fine octave that turns patches into lace
+
+  // Wrap coordinates to prevent floating-point precision loss at large values
+  vec2 foamWrapCoord(vec2 p) {
+    return mod(p, 289.0);
+  }
+  float foamHash(vec2 p) {
+    p = foamWrapCoord(p);
+    float h = dot(p, vec2(127.1, 311.7));
+    return fract(sin(h) * 43758.5453123);
+  }
+  // Value noise in −1 … 1.
+  float foamNoise(in vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    vec2 iw = foamWrapCoord(i);
+    return -1.0 + 2.0 * mix(
+      mix(foamHash(iw + vec2(0.0, 0.0)), foamHash(iw + vec2(1.0, 0.0)), u.x),
+      mix(foamHash(iw + vec2(0.0, 1.0)), foamHash(iw + vec2(1.0, 1.0)), u.x),
+      u.y
+    );
+  }
+  // The surf pulse (0 ebb … 1 flood) at worldXZ: each stretch of coast gets
+  // its own phase, so the surf does not move in step; \`lead\` shifts it.
+  float surfPulse(vec2 worldXZ, float surfTime, float lead) {
+    float phase = foamNoise(worldXZ * SURF_PHASE_SCALE) * SURF_PHASE_SPREAD;
+    return 0.5 + 0.5 * sin(2.0 * PI * surfTime / SURF_PULSE_PERIOD + phase + lead);
+  }
+  // The breakup noise circles a small loop each churn cycle (bounded offset, so precision-safe).
+  vec2 surfChurn(float surfTime) {
+    float angle = 2.0 * PI * surfTime / SURF_CHURN_PERIOD;
+    return vec2(cos(angle), sin(angle)) * SURF_CHURN_AMOUNT;
+  }
+  // Breakup noise in about 0 … 1 at worldXZ, \`scale\` cycles per world unit, churned by \`churn\`.
+  float foamBreakupNoise(vec2 worldXZ, float scale, vec2 churn) {
+    vec2 q = worldXZ * scale;
+    return 0.5 + 0.22 * foamNoise(q + churn) + 0.18 * foamNoise(q * 2.1 - churn.yx)
+      + 0.1 * foamNoise(q * FOAM_LACE_SCALE + churn * 1.7);
+  }
+`;
+
 /** GLSL for the above; needs `PI` and `cascadeLodFade` (waveNormalFilter.ts) in scope. */
 export const FOAM_SHADING_GLSL = `
+  const float FOAM_FAR_SHARE = ${FOAM_FAR_SHARE.toFixed(4)};
   const vec3 FOAM_ALBEDO = vec3(${FOAM_ALBEDO.map((v) => v.toFixed(4)).join(", ")});
   const float FOAM_LACE_SOFTNESS = ${FOAM_LACE_SOFTNESS.toFixed(4)};
   float combineFoam(float a, float b, float c) {

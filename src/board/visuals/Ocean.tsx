@@ -11,26 +11,15 @@ import {
   Matrix4,
   UniformsLib,
   UniformsUtils,
-  DataTexture,
-  RGBAFormat,
-  HalfFloatType,
-  LinearFilter,
-  ClampToEdgeWrapping,
-  RepeatWrapping,
 } from "three";
 import type { Texture } from "three";
-import type { MapWrap } from "../../game/hex";
+import { wrapWorldWidth } from "../../game/hex";
 import { controlsTarget } from "../controlsTarget";
 import { cubeUvDefines } from "./skyEnvironment";
 import type { Vec3 } from "./sunDirection";
-import type { MapCell } from "../../game/types";
-import { PALETTE_GLSL } from "./palette";
-import { sharedTerrainField } from "./sharedTerrainField";
-import { bakeTerrainField, TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
-import { advanceSurfTime, SURF_TIMING_GLSL } from "./surfMotion";
-import { createReefMask } from "./reefMask";
+import { TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
+import { advanceSurfTime, SURF_TIMING_GLSL, surfTimeUniform } from "./surfMotion";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
-import type { TerrainBounds } from "./terrainHeightField";
 import { useSeabedPrepass } from "./seabedPrepass";
 import { WATER_OPTICS_GLSL } from "./waterOptics";
 import { METRES_PER_UNIT } from "./worldScale";
@@ -38,6 +27,12 @@ import { GLINT_BASE_ROUGHNESS2 } from "./oceanWaves";
 import { SUN_GLINT_GLSL } from "./sunGlint";
 import { bindWaveSlopeTextures, bindWhitecapTextures, WAVE_SLOPE_GLSL } from "./waveSlopeGlsl";
 import { CASCADE_PRIORITY } from "./useWaveCascades";
+import type { TerrainFieldTexture } from "./useTerrainFieldTexture";
+import { FOAM_MOTION_GLSL, FOAM_SHADING_GLSL } from "./foamShading";
+import { SHORE_FOAM_GLSL } from "./shoreFoam";
+import { HULL_FOAM_GLSL } from "./hullFoam";
+import { WHITECAP_FOAM_GLSL } from "./whitecapFoam";
+import { SHIP_FOAM_CAP, SHIP_FOAM_FLOATS_A, SHIP_FOAM_FLOATS_B, shipFoamSources } from "../shipFoamSources";
 
 /** After the cascades have drawn this frame's whitecaps, before the seabed prepass (0.5). */
 const WHITECAP_BIND_PRIORITY = CASCADE_PRIORITY + 0.05;
@@ -99,36 +94,29 @@ const fragmentShader = `
 
   const float PI = 3.14159265358;
   ${SUN_GLINT_GLSL}
-  ${PALETTE_GLSL}
 
-  const float OPEN_SEA_COAST_DISTANCE = 10.0; // offshore distance assumed outside the map bounds
-
-  // Shore surf (issue #10). Distances are world units offshore from the
-  // waterline (a hex is ~1.7 across); the foam lives on the ocean plane only
-  // where the baked coast distance is negative, so it never draws on land.
+  // Foam (#38 step 7): whitecaps from the cascades' accumulated folds
+  // (whitecapFoam.ts, sampled by sumCascadeWhitecaps above), the shore and
+  // reef bands from the seabed's depth and the terrain field
+  // (shoreFoam.ts), and contact foam around the ships (hullFoam.ts,
+  // positions from shipFoamSources.ts). Each coverage is broken into lace
+  // by a world-space noise churned on the surf clock, the three are
+  // unioned, and the foam replaces the water under it as a sunlit diffuse
+  // layer (foamShading.ts). The wash on the sand side of the waterline is
+  // drawn by the land itself (shoreFoamLand.ts) on the same clock.
   uniform float surfTime; // seconds, wrapped on the CPU to a whole number of periods
   ${SURF_TIMING_GLSL}
-  const float SURF_EDGE_SOFTNESS = 0.02; // foam fades in over this just offshore, so it meets the land with no gap
-  const float SURF_WASH_MIN = 0.12;      // width of the shore wash at the ebb of the pulse
-  const float SURF_WASH_MAX = 0.32;      // ... and at the flood
-  const float SURF_MAX_REACH = 0.34;     // no foam beyond this (keep >= SURF_WASH_MAX)
-  // STOPGAP until step 7's surf (#38): foam only where the drawn seabed is
-  // this shallow (metres, from the prepass), so it hugs the real waterline.
-  // The baked coast distance alone left patches out on the water wherever it
-  // disagreed with the land mesh, and the outer breaker line (20–36 m out)
-  // floated detached from the sand; it is gone until step 7.
-  const float SURF_DEPTH_FULL = 0.15;
-  const float SURF_DEPTH_NONE = 0.6;
-  const float SURF_PHASE_SCALE = 0.45;   // along-coast phase noise frequency; lower = longer stretches in step
-  const float SURF_PHASE_SPREAD = 3.0;   // radians of pulse offset between stretches of coast
-  const float SURF_NOISE_SCALE = 6.0;    // frequency of the noise that breaks the foam up
-  const float SURF_CHURN_AMOUNT = 0.35;  // radius (noise units) the breakup noise circles each churn cycle
-  // Coverage, softness and strength were lowered for #38: over the clear,
-  // darker water the old values (0.8, 0.12, 0.9) gave solid white sheets.
-  const float SURF_COVERAGE = 0.5;      // < 1 leaves holes even in the densest foam
-  const float SURF_BREAKUP_SOFTNESS = 0.22; // edge softness of the foam patches
-  const float SURF_LACE_SCALE = 4.3;     // frequency multiplier of the fine octave that turns patches into lace
-  const float SURF_STRENGTH = 0.55;      // max blend of foam over the water colour: thin foam stays translucent
+  ${FOAM_MOTION_GLSL}
+  ${FOAM_SHADING_GLSL}
+  ${SHORE_FOAM_GLSL}
+  ${WHITECAP_FOAM_GLSL}
+  ${HULL_FOAM_GLSL}
+
+  const int SHIP_FOAM_CAP = ${SHIP_FOAM_CAP};
+  uniform vec4 shipFoamA[SHIP_FOAM_CAP]; // x, z, heading x, heading z
+  uniform vec2 shipFoamB[SHIP_FOAM_CAP]; // hull length, speed
+  uniform int shipFoamCount;
+  uniform float shipFoamWrap; // the map's wrap width; 0 where it does not wrap
 
   uniform sampler2D terrainField;
   uniform vec4 mapBounds; // minX, maxX, minZ, maxZ
@@ -137,70 +125,25 @@ const fragmentShader = `
   varying vec3 vWorld;
   #include <fog_pars_fragment>
 
-  // Signed distance to the coast (+ land, - water) from a baked field texel.
-  float coastDistance(vec4 texel, bool inField) {
-    if (!inField) return -OPEN_SEA_COAST_DISTANCE;
-    return terrainFieldCoastDistance(texel);
+  // Hull foam coverage at worldXZ: the strongest of the ships' patches,
+  // each measured the short way round on a wrapping map.
+  float shipFoamCoverage(vec2 worldXZ) {
+    float coverage = 0.0;
+    for (int i = 0; i < SHIP_FOAM_CAP; i++) {
+      if (i >= shipFoamCount) break;
+      vec2 d = worldXZ - shipFoamA[i].xy;
+      if (shipFoamWrap > 0.0) d.x -= shipFoamWrap * floor(d.x / shipFoamWrap + 0.5);
+      coverage = max(coverage, hullFoamCoverage(d, shipFoamA[i].zw, shipFoamB[i].x, shipFoamB[i].y));
+    }
+    return coverage;
   }
 
-  // Wrap coordinates to prevent floating-point precision loss at large values
-  vec2 wrapCoord(vec2 p) {
-    return mod(p, 289.0);
-  }
-
-  float hash(vec2 p) {
-    p = wrapCoord(p);
-    float h = dot(p, vec2(127.1, 311.7));
-    return fract(sin(h) * 43758.5453123);
-  }
-
-  float noise(in vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    // Wrap integer coordinates to prevent precision issues
-    vec2 iw = wrapCoord(i);
-    return -1.0 + 2.0 * mix(
-      mix(hash(iw + vec2(0.0, 0.0)), hash(iw + vec2(1.0, 0.0)), u.x),
-      mix(hash(iw + vec2(0.0, 1.0)), hash(iw + vec2(1.0, 1.0)), u.x),
-      u.y
-    );
-  }
-
-  // Foam amount (0..1) on the water at worldXZ, given the signed coast distance
-  // and the depth of the drawn seabed below, in metres.
-  // Time only enters as sin/cos of 2π·surfTime/period (surfTime is wrapped on
-  // the CPU), so nothing here loses precision over a long session.
-  float surfFoam(vec2 worldXZ, float coastDist, float depthMetres) {
-    float off = -coastDist; // distance offshore; <= 0 on land
-    if (off <= 0.0 || off >= SURF_MAX_REACH || depthMetres >= SURF_DEPTH_NONE) return 0.0;
-
-    // Each stretch of coast gets its own phase, so the surf doesn't move in step.
-    float phase = noise(worldXZ * SURF_PHASE_SCALE) * SURF_PHASE_SPREAD;
-    float pulseAngle = 2.0 * PI * surfTime / SURF_PULSE_PERIOD + phase;
-
-    // Shore wash: dense at the waterline, reaching further out at the flood.
-    float pulse = 0.5 + 0.5 * sin(pulseAngle);
-    float washReach = mix(SURF_WASH_MIN, SURF_WASH_MAX, pulse);
-    float wash = 1.0 - smoothstep(washReach * 0.35, washReach, off);
-
-    // Break the bands into patches: the breakup noise circles a small loop each
-    // churn cycle (bounded offset, so precision-safe), and denser foam lets
-    // more of the noise through.
-    float churnAngle = 2.0 * PI * surfTime / SURF_CHURN_PERIOD;
-    vec2 churn = vec2(cos(churnAngle), sin(churnAngle)) * SURF_CHURN_AMOUNT;
-    vec2 q = worldXZ * SURF_NOISE_SCALE;
-    float n = 0.5 + 0.22 * noise(q + churn) + 0.18 * noise(q * 2.1 - churn.yx)
-      + 0.1 * noise(q * SURF_LACE_SCALE + churn * 1.7);
-    wash *= 1.0 - smoothstep(SURF_DEPTH_FULL, SURF_DEPTH_NONE, depthMetres);
-    float threshold = 1.0 - wash * SURF_COVERAGE;
-    float foam = smoothstep(threshold, threshold + SURF_BREAKUP_SOFTNESS, n);
-
-    return foam * smoothstep(0.0, SURF_EDGE_SOFTNESS, off) * SURF_STRENGTH;
-  }
-
-  float diffuse(vec3 n, vec3 l, float p) {
-    return pow(dot(n, l) * 0.4 + 0.6, p);
+  // A coverage turned into lace by the breakup noise at \`scale\` cycles per
+  // unit, falling back to its smooth mean where the lace's \`featureMetres\`
+  // features are under a few pixels.
+  float lacedFoam(float coverage, float scale, float featureMetres, vec2 churn, float footprintMetres) {
+    float lace = foamLace(coverage, foamBreakupNoise(vWorld.xz, scale, churn));
+    return mix(coverage * FOAM_FAR_SHARE, lace, foamDetailFade(footprintMetres, featureMetres));
   }
 
   // Sky radiance along e, blurred to the PMREM roughness. Rays reflected below
@@ -337,9 +280,10 @@ const fragmentShader = `
   // Light from the water body: the prepass seabed (\`seabed\`, at world Y
   // \`seabedWorldY\`) seen through the water along the refracted view ray,
   // plus the deep-water glow, for the surface point at this pixel.
-  // \`sunFacet\` is the local facet's share of the direct sun (facetSunlight).
+  // \`sunFacet\` is the local facet's share of the direct sun (facetSunlight);
+  // \`skyDiffuse\` the sky's downwelling term.
   // Returns the colour; \`depth\` gets the seabed's depth in metres.
-  vec3 waterBody(vec3 seabed, float seabedWorldY, vec3 refracted, float sunFacet, out float depth) {
+  vec3 waterBody(vec3 seabed, float seabedWorldY, vec3 refracted, float sunFacet, vec3 skyDiffuse, out float depth) {
     // The seabed's depth below the surface, and the path down to it along the
     // refracted view ray, in metres.
     depth = max(-seabedWorldY, 0.0) * METRES_PER_UNIT;
@@ -354,7 +298,6 @@ const fragmentShader = `
     // Downwelling irradiance on a level surface, in the units three lights the
     // seabed with (Lambert: sun irradiance / π, plus the sky's diffuse term).
     vec3 sunDirect = sunIrradiance * sunCos / PI;
-    vec3 skyDiffuse = textureCubeUV(skyEnv, vec3(0.0, 1.0, 0.0), 1.0).rgb * skyIntensity;
 
     // The water's own glow is scattered from just below the surface, so it is
     // lit through the local wave facet: sun-facing faces look lighter. (The
@@ -390,6 +333,8 @@ const fragmentShader = `
     vec2 slope;
     float slopeVariance;
     sumCascadeSlopes(vWorld.xz, footprintMetres, distanceFade, cascadeWeights, 0.0, slope, slopeVariance);
+    // The whitecaps, through the same tile transforms and fades.
+    float whitecapCoverage = sumCascadeWhitecaps(vWorld.xz, footprintMetres, distanceFade, cascadeWeights);
     // The glint sees the drawn slopes, so the sun path stays narrow ...
     vec3 n = normalize(vec3(-slope.x, 1.0, -slope.y));
     float alpha2 = GLINT_BASE_ROUGHNESS2 + slopeVariance;
@@ -401,8 +346,8 @@ const fragmentShader = `
     // PMREM roughness is perceptual: α = roughness², α² = roughness⁴.
     float skyRoughness = max(SKY_REFLECTION_ROUGHNESS, sqrt(sqrt(shadeAlpha2)));
 
-    // Terrain field for the surf; sampled up front so the texture lookup
-    // stays in uniform control flow.
+    // Terrain field for the shore and reef foam; sampled up front so the
+    // texture lookup stays in uniform control flow.
     vec2 fieldUv = terrainFieldUv(vWorld.xz);
     bool inField = terrainFieldInside(fieldUv);
     vec4 fieldTexel = texture2D(terrainField, fieldUv);
@@ -414,18 +359,31 @@ const fragmentShader = `
 
     // Fresnel splits what we see between light from the water body and the
     // reflected sky.
+    vec3 skyDiffuse = textureCubeUV(skyEnv, vec3(0.0, 1.0, 0.0), 1.0).rgb * skyIntensity;
     float fresnel = schlickFresnel(dot(nShade, -dir));
     float seabedDepthMetres;
-    vec3 seaColor = waterBody(seabed, seabedWorldY, refracted, facetSunlight(nShade, light), seabedDepthMetres) * (1.0 - fresnel)
+    vec3 seaColor = waterBody(seabed, seabedWorldY, refracted, facetSunlight(nShade, light), skyDiffuse, seabedDepthMetres) * (1.0 - fresnel)
       + getSkyColor(reflect(dir, nShade), skyRoughness) * fresnel;
     // The sun's own reflection (the sky map has no solar disc): GGX, HDR and
     // unclamped so its brightest sparkles bloom.
     seaColor += sunGlintRadiance(n, -dir, light, alpha2, sunIrradiance);
 
-    // Surf on top, lightly shaded by the wave normal so it sits on the water.
-    float foam = surfFoam(vWorld.xz, coastDistance(fieldTexel, inField), seabedDepthMetres);
-    vec3 foamColor = PALETTE_SURF * (0.8 + 0.2 * diffuse(nShade, light, 1.0));
-    seaColor = mix(seaColor, foamColor, foam);
+    // Foam on top. The shore bands pulse on the surf clock (the breaker sets
+    // lead the wash); every coverage is laced by its own breakup noise and
+    // fades with distance like the waves (the whitecaps already have).
+    vec2 churn = surfChurn(surfTime);
+    float pulse = surfPulse(vWorld.xz, surfTime, 0.0);
+    float sets = surfPulse(vWorld.xz, surfTime, SETS_PHASE_LEAD);
+    float reef = inField ? terrainFieldReef(fieldTexel) : 0.0;
+    float shoreCoverage = shoreFoamCoverage(seabedDepthMetres, reef, terrainFieldReefWindward(fieldTexel), pulse, sets) * distanceFade;
+    float hullCoverage = shipFoamCoverage(vWorld.xz) * distanceFade;
+    float shore = lacedFoam(shoreCoverage, SHORE_FOAM_NOISE_SCALE, SHORE_FOAM_LACE_METRES, churn, footprintMetres);
+    float whitecaps = lacedFoam(whitecapCoverage, WHITECAP_NOISE_SCALE, WHITECAP_LACE_METRES, churn, footprintMetres);
+    float hull = lacedFoam(hullCoverage, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres);
+    float foam = combineFoam(shore, whitecaps, hull);
+    // Foam is rough and opaque: it replaces the water, its sky reflection and
+    // its glint, as a diffuse layer lit by the sun and the sky.
+    seaColor = mix(seaColor, foamRadiance(nShade, light, sunIrradiance, skyDiffuse), foam);
 
     gl_FragColor = vec4(seaColor, 1.0);
     #include <fog_fragment>
@@ -433,9 +391,8 @@ const fragmentShader = `
 `;
 
 interface OceanProps {
-  cells: readonly MapCell[];
-  /** The map's east–west wrap; with one the water's terrain look-ups repeat every wrap width. */
-  wrap: MapWrap;
+  /** The map's baked terrain field (useTerrainFieldTexture): depth, coast distance, reefs. */
+  terrainField: TerrainFieldTexture;
   /** Side of the square plane, centred under the camera focus. */
   size?: number;
   /** Unit vector towards the sun (the scene's SUN_DIRECTION). */
@@ -459,29 +416,8 @@ interface OceanProps {
   waveWhitecaps: readonly Texture[];
 }
 
-/**
- * The baked terrain field as a GPU texture (layout in terrainFieldTexture.ts).
- * On a wrapping map it covers one wrap width and repeats in s (#36).
- */
-function terrainFieldTexture(
-  cells: readonly MapCell[],
-  wrap: MapWrap
-): { texture: DataTexture; bounds: TerrainBounds } {
-  const { data, width, height, bounds } = bakeTerrainField(sharedTerrainField(cells, wrap), {
-    sampleReef: createReefMask(cells, wrap),
-  });
-  const texture = new DataTexture(data, width, height, RGBAFormat, HalfFloatType);
-  texture.minFilter = LinearFilter;
-  texture.magFilter = LinearFilter;
-  texture.wrapS = wrap ? RepeatWrapping : ClampToEdgeWrapping;
-  texture.wrapT = ClampToEdgeWrapping;
-  texture.needsUpdate = true;
-  return { texture, bounds };
-}
-
 export function Ocean({
-  cells,
-  wrap,
+  terrainField,
   size = 1024,
   sun,
   sunColor,
@@ -500,17 +436,14 @@ export function Ocean({
 
   useEffect(() => () => geometry.dispose(), [geometry]);
 
-  // Built once per map.
-  const field = useMemo(() => terrainFieldTexture(cells, wrap), [cells, wrap]);
-  useEffect(() => () => field.texture.dispose(), [field]);
-
   // The seabed under the water, rendered each frame before the main pass.
   const seabed = useSeabedPrepass();
 
   const reducedMotion = usePrefersReducedMotion();
 
   const material = useMemo(() => {
-    const { minX, maxX, minZ, maxZ } = field.bounds;
+    const { minX, maxX, minZ, maxZ } = terrainField.bounds;
+    const wrap = terrainField.wrap;
     const mat = new ShaderMaterial({
       vertexShader,
       fragmentShader,
@@ -518,18 +451,21 @@ export function Ocean({
       uniforms: UniformsUtils.merge([
         UniformsLib.fog,
         {
-          surfTime: { value: 0 },
           light: { value: new Vector3(...sun) },
           sunIrradiance: { value: new Color(sunColor).multiplyScalar(sunIntensity) },
           skyIntensity: { value: skyIntensity },
           mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
+          shipFoamCount: { value: 0 },
+          shipFoamWrap: { value: wrap ? wrapWorldWidth(wrap) : 0 },
         },
       ]),
       defines: wrap ? { ...cubeUvDefines(skyHeight), TERRAIN_FIELD_WRAP_X: "" } : cubeUvDefines(skyHeight),
       fog: true,
     });
-    // UniformsUtils.merge clones uniform values, so textures are attached afterwards.
-    mat.uniforms.terrainField = { value: field.texture };
+    // UniformsUtils.merge clones uniform values, so textures, shared uniforms
+    // and the ship arrays are attached afterwards.
+    mat.uniforms.surfTime = surfTimeUniform;
+    mat.uniforms.terrainField = { value: terrainField.texture };
     mat.uniforms.skyEnv = { value: sky };
     mat.uniforms.seabedColor = { value: seabed.texture };
     mat.uniforms.seabedDepth = { value: seabed.depthTexture };
@@ -538,10 +474,12 @@ export function Ocean({
     mat.uniforms.cameraProjectionInverse = { value: new Matrix4() };
     mat.uniforms.cameraWorld = { value: new Matrix4() };
     mat.uniforms.cameraViewProjection = { value: new Matrix4() };
+    mat.uniforms.shipFoamA = { value: new Float32Array(SHIP_FOAM_CAP * SHIP_FOAM_FLOATS_A) };
+    mat.uniforms.shipFoamB = { value: new Float32Array(SHIP_FOAM_CAP * SHIP_FOAM_FLOATS_B) };
     bindWaveSlopeTextures(mat.uniforms, waveSlopes);
     bindWhitecapTextures(mat.uniforms, waveWhitecaps);
     return mat;
-  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, field, seabed, waveSlopes, waveWhitecaps, wrap]);
+  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, terrainField, seabed, waveSlopes, waveWhitecaps]);
   useEffect(() => () => material.dispose(), [material]);
 
   // The whitecap accumulators ping-pong, so the current one is rebound after
@@ -566,7 +504,10 @@ export function Ocean({
       mat.uniforms.cameraProjectionInverse.value.copy(camera.projectionMatrixInverse);
       mat.uniforms.cameraWorld.value.copy(camera.matrixWorld);
       mat.uniforms.cameraViewProjection.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-      mat.uniforms.surfTime.value = advanceSurfTime(mat.uniforms.surfTime.value, delta, reducedMotion);
+      // The one surf clock, shared with the land's shoreline foam.
+      surfTimeUniform.value = advanceSurfTime(surfTimeUniform.value, delta, reducedMotion);
+      // This frame's animated ship positions (written by Ship.tsx) for the hull foam.
+      mat.uniforms.shipFoamCount.value = shipFoamSources.fill(mat.uniforms.shipFoamA.value, mat.uniforms.shipFoamB.value);
     }
   });
 
