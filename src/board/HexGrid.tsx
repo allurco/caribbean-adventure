@@ -104,7 +104,8 @@ function PortLabel({ site: { cell, groundY } }: { site: PortSite }) {
   return (
     <Text
       position={[x, groundY + PORT_LABEL_HEIGHT, z]}
-      rotation={[0, Math.PI / 4, 0]}
+      // Upright and facing +z: square on to the camera, which looks due north (cameraBounds.ts)
+      rotation={[0, 0, 0]}
       fontSize={0.4}
       color="#fef3c7"
       anchorX="center"

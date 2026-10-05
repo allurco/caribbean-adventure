@@ -11,8 +11,17 @@ import { hexToWorld } from "../game/hex";
  * the view angle unchanged.
  */
 
-/** Direction from the camera target to the camera (rotation is disabled). */
-export const CAMERA_OFFSET: [number, number, number] = [0.4, 0.6, 0.4];
+/**
+ * Direction from the camera target to the camera (rotation is disabled): due
+ * south of the target, so the camera looks due north along world −z with row
+ * 0 at the top of the screen. The yaw is aligned with the map axes so that on
+ * a map that wraps east–west (#36) a screen-horizontal drag pans along world
+ * x, the wrap axis, only, and a vertical one along world z only, Civ style;
+ * the old diagonal view ([0.4, 0.6, 0.4]) made every drag move the focus in
+ * both and showed the map's north and south edges as diagonals. Same pitch as
+ * that view: the same height over the same horizontal setback.
+ */
+export const CAMERA_OFFSET: [number, number, number] = [0, 0.6, 0.4 * Math.SQRT2];
 /** Downward angle of the view direction, in radians (~46.7 degrees). */
 export const CAMERA_PITCH = Math.atan2(
   CAMERA_OFFSET[1],

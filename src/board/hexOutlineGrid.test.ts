@@ -7,6 +7,13 @@ import {
   GRID_FADE_ZOOM_DISTANCE,
   GRID_LINE_COLOR,
 } from "./hexOutlineGrid";
+import {
+  CAMERA_FOV,
+  CAMERA_MAX_DISTANCE,
+  CAMERA_PITCH,
+  MAX_VIEW_ASPECT,
+  groundViewReach,
+} from "./cameraBounds";
 
 describe("gridFadeOpacity", () => {
   const params = { fadeStart: 4, fadeEnd: 10, baseOpacity: 0.15 };
@@ -60,29 +67,45 @@ describe("grid line colours", () => {
 describe("gridFadeForCameraDistance", () => {
   it("is unchanged at close zoom", () => {
     expect(gridFadeForCameraDistance(GRID_FADE, 4)).toEqual(GRID_FADE);
+    expect(gridFadeForCameraDistance(GRID_FADE, 10)).toEqual(GRID_FADE);
     expect(gridFadeForCameraDistance(GRID_FADE, GRID_FADE_ZOOM_DISTANCE)).toEqual(GRID_FADE);
   });
 
-  it("widens the fade in proportion to the distance when zoomed out", () => {
-    const wide = gridFadeForCameraDistance(GRID_FADE, GRID_FADE_ZOOM_DISTANCE * 2);
-    expect(wide.fadeStart).toBeCloseTo(GRID_FADE.fadeStart * 2);
-    expect(wide.fadeEnd).toBeCloseTo(GRID_FADE.fadeEnd * 2);
-    expect(wide.baseOpacity).toBe(GRID_FADE.baseOpacity);
+  it("keeps the base opacity when zoomed out", () => {
+    expect(gridFadeForCameraDistance(GRID_FADE, 28).baseOpacity).toBe(GRID_FADE.baseOpacity);
   });
 
-  it("grows continuously and monotonically with distance", () => {
+  it("starts the fade past everything on screen at full zoom-out, on the widest supported screen", () => {
+    // The whole visible map is gridded: nothing on screen is faded.
+    const reach = groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT);
+    const { fadeStart, fadeEnd } = gridFadeForCameraDistance(GRID_FADE, CAMERA_MAX_DISTANCE);
+    expect(fadeStart).toBeGreaterThanOrEqual(reach);
+    expect(fadeEnd).toBeGreaterThan(fadeStart);
+    // And the full grid still ends somewhere, as on the close-up fade.
+    expect(gridFadeOpacity(reach, 0, { fadeStart, fadeEnd, baseOpacity: 1 })).toBe(1);
+    expect(gridFadeOpacity(10 * reach, 0, { fadeStart, fadeEnd, baseOpacity: 1 })).toBe(0);
+  });
+
+  it("grows continuously and monotonically from the close-up fade to full zoom-out", () => {
     const just = gridFadeForCameraDistance(GRID_FADE, GRID_FADE_ZOOM_DISTANCE + 1e-6);
-    expect(just.fadeEnd).toBeCloseTo(GRID_FADE.fadeEnd);
-    let prev = GRID_FADE.fadeEnd;
-    for (let d = GRID_FADE_ZOOM_DISTANCE; d <= 40; d += 2) {
-      const { fadeEnd } = gridFadeForCameraDistance(GRID_FADE, d);
-      expect(fadeEnd).toBeGreaterThanOrEqual(prev);
-      prev = fadeEnd;
+    expect(just.fadeStart).toBeCloseTo(GRID_FADE.fadeStart, 4);
+    expect(just.fadeEnd).toBeCloseTo(GRID_FADE.fadeEnd, 4);
+    let prev = GRID_FADE;
+    for (let d = GRID_FADE_ZOOM_DISTANCE; d <= 40; d += 0.5) {
+      const next = gridFadeForCameraDistance(GRID_FADE, d);
+      expect(next.fadeStart).toBeGreaterThanOrEqual(prev.fadeStart);
+      expect(next.fadeEnd).toBeGreaterThanOrEqual(prev.fadeEnd);
+      // No pop: a half unit of zoom never moves the fade by more than a map's worth.
+      expect(next.fadeStart - prev.fadeStart).toBeLessThan(10);
+      prev = next;
     }
   });
 
-  it("covers a visibly larger area at full zoom-out", () => {
-    const zoomedOut = gridFadeForCameraDistance(GRID_FADE, 28);
-    expect(zoomedOut.fadeEnd).toBeGreaterThan(GRID_FADE.fadeEnd * 1.5);
+  it("keeps the fade ring in proportion to the full grid as it grows", () => {
+    const ratio = GRID_FADE.fadeEnd / GRID_FADE.fadeStart;
+    for (const d of [20, 28]) {
+      const { fadeStart, fadeEnd } = gridFadeForCameraDistance(GRID_FADE, d);
+      expect(fadeEnd / fadeStart).toBeCloseTo(ratio, 9);
+    }
   });
 });

@@ -234,7 +234,22 @@ one wrap width apart (`WorldCopies.tsx`), moved each frame by whole wrap
 widths to stay around the camera focus; the camera pans east or west
 forever with no teleport, so the world-space waves, caustics and surf noise
 never jump. How many copies: `wrapCopyRange` from the view's ground footprint
-at full zoom-out (three, −1…+1, for every map preset at aspects 0.5 to 4).
+at full zoom-out (`CAMERA_MAX_DISTANCE`): at 16:9, five (−2…+2) on the small
+map and three (−1…+1) on the medium and large; a 4:1 super-ultrawide needs up
+to seven on the small map.
+The camera looks **due north** (`CAMERA_OFFSET` in `cameraBounds.ts`: due
+south of its focus, pitched ~46.7° down, no yaw), so screen-horizontal is
+world x, the wrap axis, and screen-vertical is world z: a horizontal drag
+pans along the wrap only and never changes which rows are on screen, a
+vertical drag runs north or south until the focus clamp below stops it, and
+the map's north and south edges are horizontal on screen. The first cut kept
+the old diagonal "iso" view (`[0.4, 0.6, 0.4]`, 45° of yaw), under which a
+horizontal drag moved the focus in both x and z, hit the clamp and slid
+along the edge, and the edges showed as diagonals. Everything placed
+relative to the view turned with the camera: the sun (`atmosphere.ts` keeps
+its elevation and azimuth from the view direction, so the glint and shadows
+sit where they did on screen), the wave wind (`oceanWaves.ts`, 25° to screen
+left of the view direction) and the port labels, which face +z.
 The copies only draw: the land mesh, decoration placement, palm geometry and
 grid lines are built once per map above them (`useLandTerrain`,
 `useDecorationLayout`, `usePalmTrees`, `useHexGrid`/`useWaterGridLines`) and
@@ -245,11 +260,23 @@ copy under the pointer (`PointerCopy`): a very wide view can show the same
 ship twice. The ocean is still **one** plane, centred under the camera
 focus and following it (all its shading is in world space, so moving it
 changes no pixel); the seabed prepass draws the land copies like the main
-pass. North and south, `wrapView.ts` clamps the focus so the view's ground
-footprint stays inside the band every column covers, z ∈ [0, √3·(rows − ½)],
-and caps zoom-out so the view is never taller than that band (recomputed
-when the window's aspect changes). At 16:9 the cap is ~13.9 units of camera
-distance on the small map, ~21.9 on the medium and the old 28 on the large.
+pass. The zoom-out cap is `CAMERA_MAX_DISTANCE` (28) on every map size, Civ
+style. North and south, `wrapView.ts` clamps the **focus point** (the centre
+of the view, on the sea plane) to the band every column covers,
+z ∈ [0, √3·(rows − ½)] (`clampFocusToBand`), at every zoom and whatever the
+screen's shape: the player can always pan until the top or bottom row reaches
+the screen centre, and the rest of the view is open sea, where Civ shows the
+void past the poles. Clamping the view instead of the focus (the first cut)
+pinned the focus at any zoom where the view was taller than the rows (a
+small map at distance 28 on a 16:9 screen: ~61 units of view against 30 of
+rows), so only east–west panning worked. The ocean plane is centred under
+the focus and sized for the view's reach at full zoom-out on the widest
+screen, so its edge stays off screen with the focus anywhere in the band.
+The sea past the rows needs nothing drawn: the ocean shader treats
+everything outside the field's bounds as open sea (the field texture clamps
+in t but every read is guarded by `terrainFieldInside`; the seabed prepass
+has no mesh there, so the water is deep water), and the grid lines are built
+from the water cells' edges, so they end at the map.
 A ship whose move crosses the seam starts its animation a wrap width over
 (`seamAwareStart`), so it sails straight across.
 
@@ -290,7 +317,9 @@ without fog or background. `Ocean.tsx` then, per pixel:
 
 **Waves (#38 steps 4–5).** The surface normal comes from three FFT cascades
 (`useWaveCascades.ts`) of one JONSWAP sea (`oceanWaves.ts`: 7 m/s over
-100 km, Hs ≈ 1.6 m) with Mitsuyasu spreading. Each is 256² modes on its own
+100 km, Hs ≈ 1.6 m, blowing away from the camera and 25° to screen left so
+the crests run across the screen off both hex axes) with Mitsuyasu
+spreading. Each is 256² modes on its own
 tile, turned against the others: 1468 m (swell, the spectral peak),
 202.5 m (chop) and 26.1 m (ripple). `waveCascadeBands.ts` gives them
 end-to-end bands in k-space, each stopping at half its grid's Nyquist

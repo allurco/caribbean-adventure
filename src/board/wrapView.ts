@@ -1,8 +1,11 @@
 /**
  * Pure view maths for a map that wraps east–west (#36), Civ style: the camera
  * pans east or west forever (the world is drawn in copies one wrap width
- * apart that follow it), while north and south it never shows anything past
- * the top or bottom row of hexes.
+ * apart that follow it) and zooms out to the same distance on every map size,
+ * while north and south the focus point itself (not the view) stays within
+ * the band of hexes (`mapBand`), whatever the zoom. So the player can always
+ * pan until the top or bottom row reaches the screen centre, with open sea
+ * filling the rest of the view where Civ shows the void past the poles.
  */
 
 /**
@@ -74,20 +77,14 @@ export function mapBand(rows: number): ZBand {
   return { minZ: 0, maxZ: SQRT3 * (rows - 0.5) };
 }
 
-/** Furthest the camera may zoom out so the whole view fits in `band` (and within `limit`). */
-export function maxViewDistance(footprint: GroundFootprint, band: ZBand, limit: number): number {
-  return Math.min(limit, (band.maxZ - band.minZ) / (footprint.maxZ - footprint.minZ));
-}
-
 /**
- * The focus z nearest `z` whose view, at camera distance `distance`, stays in
- * `band`. If the view is taller than the band, the view is centred on it.
+ * The focus z nearest `z` inside `band`. The focus (the centre of the view)
+ * is what stays over the rows, not the view, so the clamp is the same at
+ * every zoom: the view past the focus shows open sea beyond the top or bottom
+ * row, and the sea plane, centred under the focus, covers it.
  */
-export function clampFocusZ(z: number, distance: number, footprint: GroundFootprint, band: ZBand): number {
-  const lo = band.minZ - distance * footprint.minZ;
-  const hi = band.maxZ - distance * footprint.maxZ;
-  if (lo > hi) return (lo + hi) / 2;
-  return Math.min(hi, Math.max(lo, z));
+export function clampFocusToBand(z: number, band: ZBand): number {
+  return Math.min(band.maxZ, Math.max(band.minZ, z));
 }
 
 /**

@@ -38,11 +38,22 @@ import { coxMunkSlopeVariance } from "./seaSurfaceSlope";
 import { resolvedSlopeVariance, type WaveCascade } from "./waveCascade";
 import { bandedCascades } from "./waveCascadeBands";
 import type { WindSea } from "./jonswap";
+import { viewDirectionXZ } from "./sunDirection";
+import { CAMERA_OFFSET } from "../cameraBounds";
 
 export const TRADE_WIND_SEA: WindSea = { windSpeed: 7, fetch: 100_000, peakEnhancement: 3.3 };
 
-/** Toward −x, swung off the axis so crests never line up with the hex rows. */
-const WIND_ANGLE = Math.PI + 0.35;
+/**
+ * Direction the wind blows toward, radians from +x toward +z. Placed relative
+ * to the camera's view, like the sun (atmosphere.ts), so the sea keeps its
+ * look when the camera turns (#36): away from the camera, swung 25° to
+ * screen left, so the crests run across the screen and line up with neither
+ * the hex rows nor the columns. (Tuned with the old diagonal view as "toward
+ * −x, 0.35 rad off the axis", which is this swing from that view.)
+ */
+const WIND_SWING_FROM_VIEW = (-25 * Math.PI) / 180;
+const [VIEW_X, VIEW_Z] = viewDirectionXZ(CAMERA_OFFSET);
+export const WIND_ANGLE = Math.atan2(VIEW_Z, VIEW_X) + WIND_SWING_FROM_VIEW;
 
 export const WAVE_CASCADES: readonly WaveCascade[] = bandedCascades(TRADE_WIND_SEA, WIND_ANGLE, [
   { tileMetres: 1468, size: 256, rotation: 0.21, seed: 38 },

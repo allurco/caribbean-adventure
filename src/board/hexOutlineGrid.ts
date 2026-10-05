@@ -2,6 +2,13 @@
  * Look and fade tunables for the water hex grid lines. The line geometry
  * itself (unique shared edges) lives in `hexGridEdges.ts`.
  */
+import {
+  CAMERA_FOV,
+  CAMERA_MAX_DISTANCE,
+  CAMERA_PITCH,
+  MAX_VIEW_ASPECT,
+  groundViewReach,
+} from "./cameraBounds";
 
 /**
  * Calm grid line colour: a pale, desaturated sea tint that sits with the
@@ -41,19 +48,42 @@ export const GRID_FADE: GridFadeParams = {
 
 /**
  * Camera-to-focus distance up to which `GRID_FADE` applies unchanged. Further
- * out the fade radii grow in proportion to the distance, so the grid covers
- * the same share of the screen: at full zoom-out (28) that is 2x, i.e. full
- * grid within ~6 hexes and gone by ~14.
+ * out the fade radii grow with the distance until, at full zoom-out
+ * (`CAMERA_MAX_DISTANCE`), the full grid reaches `GRID_FULL_VIEW_REACH` from
+ * the focus: the whole visible map is gridded, with no fade on screen.
  */
 export const GRID_FADE_ZOOM_DISTANCE = 14;
 
-/** Fade params for a camera `cameraDistance` from its focus point. */
+/**
+ * How far across the sea the view reaches from the focus at full zoom-out,
+ * on the widest supported screen (`MAX_VIEW_ASPECT`): the radius the full
+ * grid must cover there. The widest aspect rather than the live one keeps the
+ * fade a function of the zoom alone, the same on every screen; on a narrower
+ * screen the grid simply runs a little further past the edge of the view.
+ */
+export const GRID_FULL_VIEW_REACH = groundViewReach(
+  CAMERA_MAX_DISTANCE,
+  CAMERA_PITCH,
+  CAMERA_FOV,
+  MAX_VIEW_ASPECT
+);
+
+/**
+ * Fade params for a camera `cameraDistance` from its focus point: `params`
+ * as they are up to `GRID_FADE_ZOOM_DISTANCE`, then both radii scaled by a
+ * factor that grows linearly with the distance to reach
+ * `GRID_FULL_VIEW_REACH / fadeStart` at `CAMERA_MAX_DISTANCE` (and keeps
+ * growing beyond it), so the fade ring keeps its proportion to the full grid
+ * and nothing pops as the camera pulls back.
+ */
 export function gridFadeForCameraDistance(
   params: GridFadeParams,
   cameraDistance: number
 ): GridFadeParams {
-  const scale = Math.max(1, cameraDistance / GRID_FADE_ZOOM_DISTANCE);
-  if (scale === 1) return params;
+  const zoomOut = (cameraDistance - GRID_FADE_ZOOM_DISTANCE) / (CAMERA_MAX_DISTANCE - GRID_FADE_ZOOM_DISTANCE);
+  if (zoomOut <= 0) return params;
+  const fullScale = Math.max(1, GRID_FULL_VIEW_REACH / params.fadeStart);
+  const scale = 1 + (fullScale - 1) * zoomOut;
   return {
     ...params,
     fadeStart: params.fadeStart * scale,

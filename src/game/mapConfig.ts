@@ -77,7 +77,8 @@ export function computeCameraConfig(dimensions: MapDimensions): CameraConfig {
 
   // Orthographic frustum size (half-height of view)
   const frustumSize = worldSpan * 0.6;
-  // Distance for isometric camera position
+  // Camera-to-target distance to start at (the board places the camera
+  // along its fixed offset from the target; see cameraBounds.ts)
   const isoDistance = worldSpan * 0.8;
 
   const bounds = mapWorldBounds(dimensions);

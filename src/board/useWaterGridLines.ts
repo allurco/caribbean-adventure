@@ -128,7 +128,8 @@ export function useWaterGridLines({ data, emphasis }: WaterGridLinesOptions): Wa
       focus.set(hit.x, hit.z);
       distance = camera.position.distanceTo(hit);
     }
-    // Widen the fade as the camera pulls back so the grid keeps its screen share.
+    // Widen the fade as the camera pulls back, until at full zoom-out the
+    // whole visible map is gridded.
     setHexOutlineFade(material, gridFadeForCameraDistance(GRID_FADE, distance));
   });
 

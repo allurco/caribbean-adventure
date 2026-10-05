@@ -53,10 +53,9 @@ import {
   oceanPlaneSize,
 } from "./cameraBounds";
 import {
-  clampFocusZ,
+  clampFocusToBand,
   groundFootprint,
   mapBand,
-  maxViewDistance,
   seamAwareStart,
   wrapCopyRange,
 } from "./wrapView";
@@ -160,18 +159,19 @@ function Scene({
 
   // East–west wrap (#36): the world is drawn in copies one wrap width apart
   // that follow the camera, which pans east or west forever; north and south
-  // the view stops at the top and bottom rows of hexes.
+  // the focus itself stays over the rows of hexes (Civ style), at every zoom,
+  // so a map edge can always be panned to the screen centre with open sea
+  // past it. The zoom-out cap is the same on every map size. The camera looks
+  // due north (CAMERA_OFFSET), so a horizontal drag pans along the wrap axis
+  // only and the map's north and south edges are horizontal on screen.
   const strip = useMemo(() => seamStrip(G.wrap), [G.wrap]);
   const period = wrapWorldWidth(G.wrap);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const footprint = useMemo(() => groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect), [aspect]);
   const band = useMemo(() => mapBand(getMapPreset(G.mapSize).rows), [G.mapSize]);
-  // The furthest zoom-out at which the whole view still fits between the top
-  // and bottom rows; recomputed when the window's shape changes.
-  const maxDistance = strip && footprint ? maxViewDistance(footprint, band, CAMERA_MAX_DISTANCE) : CAMERA_MAX_DISTANCE;
   const copies = useMemo(
-    () => (strip && footprint ? wrapCopyRange(footprint, maxDistance, period, WRAP_COPY_MARGIN) : { from: 0, to: 0 }),
-    [strip, footprint, maxDistance, period]
+    () => (strip && footprint ? wrapCopyRange(footprint, CAMERA_MAX_DISTANCE, period, WRAP_COPY_MARGIN) : { from: 0, to: 0 }),
+    [strip, footprint, period]
   );
 
 
@@ -185,14 +185,14 @@ function Scene({
     groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)
   );
 
-  /** The focus nearest (x, z) the camera may have at `distance`: x as is on a wrapping map. */
+  /** The focus nearest (x, z) the camera may have: x as is on a wrapping map. */
   const clampFocus = useCallback(
-    (x: number, z: number, distance: number): { x: number; z: number } => {
-      if (strip && footprint) return { x, z: clampFocusZ(z, distance, footprint, band) };
+    (x: number, z: number): { x: number; z: number } => {
+      if (strip) return { x, z: clampFocusToBand(z, band) };
       const clamped = clampToCameraBounds(cameraBounds, x, z);
       return { x: clamped.x, z: clamped.z };
     },
-    [strip, footprint, band, cameraBounds]
+    [strip, band, cameraBounds]
   );
 
   // Keep the view over the map: after every MapControls update (pan, zoom,
@@ -203,7 +203,7 @@ function Scene({
     if (!controls) return;
     const correction = new Vector3();
     const clamp = () => {
-      const { x, z } = clampFocus(controls.target.x, controls.target.z, camera.position.distanceTo(controls.target));
+      const { x, z } = clampFocus(controls.target.x, controls.target.z);
       const dx = x - controls.target.x;
       const dz = z - controls.target.z;
       if (dx === 0 && dz === 0) return;
@@ -211,12 +211,12 @@ function Scene({
       controls.target.add(correction);
       camera.position.add(correction);
     };
-    // A new zoom limit (window resized) applies on the controls' next update.
+    // Apply any pending controls change (window resized) before clamping.
     controls.update();
     clamp();
     controls.addEventListener("change", clamp);
     return () => controls.removeEventListener("change", clamp);
-  }, [clampFocus, camera, maxDistance]);
+  }, [clampFocus, camera]);
 
   // Animate camera to focus position when it changes
   useEffect(() => {
@@ -235,11 +235,7 @@ function Scene({
       // Aim for the clamped focus so the lerp can actually arrive, going the
       // short way round on a wrapping map
       const goal = targetPosition.current;
-      const { x, z } = clampFocus(
-        seamAwareStart(goal.x, target.x, period),
-        goal.z,
-        camera.position.distanceTo(target)
-      );
+      const { x, z } = clampFocus(seamAwareStart(goal.x, target.x, period), goal.z);
       goal.set(x, 0, z);
 
       // Lerp towards target
@@ -438,8 +434,10 @@ function Scene({
         // side, looking back across the map (labels read mirrored).
         target={cam.target}
         enableRotate={false}
-        minDistance={Math.min(cam.isoDistance * 0.15, maxDistance)}
-        maxDistance={maxDistance}
+        minDistance={Math.min(cam.isoDistance * 0.15, CAMERA_MAX_DISTANCE)}
+        // The same on every map size (Civ style); the focus clamp above keeps
+        // the view on the map, with open sea past the rows on a small map.
+        maxDistance={CAMERA_MAX_DISTANCE}
       />
 
       {/* Post-processing effects */}
@@ -690,7 +688,8 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
       <Canvas
         shadows={{ type: PCFSoftShadowMap }}
         camera={{
-          // Start over the middle of the map (the rectangle's corner is the origin)
+          // Start due south of the middle of the map (the rectangle's corner
+          // is the origin), looking north along CAMERA_OFFSET
           position: [
             cam.target[0] + cam.isoDistance * CAMERA_OFFSET[0],
             cam.target[1] + cam.isoDistance * CAMERA_OFFSET[1],

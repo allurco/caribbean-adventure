@@ -39,6 +39,12 @@ describe("viewDirectionXZ", () => {
     expect(x).toBeCloseTo(-Math.SQRT1_2, 10);
     expect(z).toBeCloseTo(-Math.SQRT1_2, 10);
   });
+
+  it("is due north (world −z) for the game camera", () => {
+    const [x, z] = viewDirectionXZ(CAMERA_OFFSET);
+    expect(x).toBeCloseTo(0, 12);
+    expect(z).toBeCloseTo(-1, 12);
+  });
 });
 
 describe("sunDirection", () => {
@@ -77,6 +83,12 @@ describe("the scene sun", () => {
   it("sits in front of the camera, not behind it", () => {
     const along = SUN_DIRECTION[0] * view[0] + SUN_DIRECTION[2] * view[1];
     expect(along).toBeGreaterThan(0);
+  });
+
+  it("turned with the camera: it is north-west of the focus, ahead and to the left of a view due north", () => {
+    expect(SUN_DIRECTION[0]).toBeLessThan(0);
+    expect(SUN_DIRECTION[2]).toBeLessThan(0);
+    expect(SUN_DIRECTION[1]).toBeCloseTo(Math.sin((SUN_ELEVATION_DEG * Math.PI) / 180), 12);
   });
 
   it("is the configured elevation and azimuth", () => {
