@@ -18,9 +18,9 @@
  * Both branches are 0 at d = 0, so the coast sits at sea level, and land hex
  * edges are never boundary edges, so adjacent land hexes never dip.
  */
-import { createNoise2D, type NoiseFunction2D } from "simplex-noise";
 import type { MapCell } from "../../game/types";
-import { hexToWorld } from "../../game/hex";
+import { hexToWorld, wrapWorldWidth, type MapWrap } from "../../game/hex";
+import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
 import { seabedDepth } from "./seabedProfile";
 import { metresToUnits, unitsToMetres } from "./worldScale";
 
@@ -128,6 +128,12 @@ export interface TerrainHeightFieldOptions {
   coastNoiseAmplitude?: number;
   /** Scale the interior relief (0 leaves only the smooth blended target, e.g. as a test baseline). */
   reliefScale?: number;
+  /**
+   * The map's east–west wrap. With one, every noise term repeats every wrap
+   * width in x, so the noise has no seam (#36). The coastline and reef
+   * outlines do not wrap yet; drawing across the seam is still to come.
+   */
+  wrap?: MapWrap;
 }
 
 export interface TerrainHeightField {
@@ -233,9 +239,9 @@ function elevationHeight(elevation: number): number {
   return ELEVATION_HEIGHTS[1];
 }
 
-/** Two-octave simplex noise in [-1, 1]. */
-function fbm2(noise: NoiseFunction2D, x: number, z: number): number {
-  return 0.67 * noise(x, z) + 0.33 * noise(x * 2.1 + 17.3, z * 2.1 - 5.7);
+/** Two-octave simplex noise in [-1, 1] at world (x, z), base `frequency` in cycles per unit. */
+function fbm2(noise: PlaneNoise, x: number, z: number, frequency: number): number {
+  return 0.67 * noise(x, z, frequency) + 0.33 * noise(x, z, frequency * 2.1, 17.3, -5.7);
 }
 
 /** Peak relief amplitude at a blended elevation (1 … 3). */
@@ -256,14 +262,14 @@ const RELIEF_WEIGHT_SUM = (() => {
  * ridged multifractal (crests where the noise crosses zero) from jungle up to
  * mountain, so mountains get peaks and ridgelines rather than taller humps.
  */
-function reliefShape(noise: NoiseFunction2D, x: number, z: number, elevation: number): number {
+function reliefShape(noise: PlaneNoise, x: number, z: number, elevation: number): number {
   let rolling = 0;
   let ridged = 0;
   let frequency = RELIEF_FREQUENCY;
   let weight = 1;
   for (let i = 0; i < RELIEF_OCTAVES; i++) {
     // Offset each octave so their lattices don't line up.
-    const n = noise(x * frequency + i * 31.7, z * frequency - i * 17.9);
+    const n = noise(x, z, frequency, i * 31.7, -i * 17.9);
     rolling += weight * n;
     const softAbs = (Math.sqrt(n * n + RIDGE_SOFTNESS * RIDGE_SOFTNESS) - RIDGE_SOFTNESS) / RIDGE_SOFT_MAX;
     ridged += weight * Math.pow(1 - softAbs, RIDGE_SHARPNESS);
@@ -288,10 +294,11 @@ export function createTerrainHeightField(
   const coastNoiseAmplitude = options.coastNoiseAmplitude ?? COAST_NOISE_AMPLITUDE;
   const rng = mulberry32(seed);
   const reliefScale = options.reliefScale ?? 1;
-  const coastNoise = createNoise2D(rng);
-  const reliefNoise = createNoise2D(rng);
+  const noisePeriod = options.wrap ? wrapWorldWidth(options.wrap) : null;
+  const coastNoise = createPlaneNoise(rng, noisePeriod);
+  const reliefNoise = createPlaneNoise(rng, noisePeriod);
   // Drawn after the others so adding it left the coast and relief unchanged.
-  const reefNoise = createNoise2D(rng);
+  const reefNoise = createPlaneNoise(rng, noisePeriod);
 
   // Land elevation by hex; anything else (water, reef, off-map) is sea.
   const landElevation = new Map<number, number>();
@@ -458,7 +465,7 @@ export function createTerrainHeightField(
     const dist = Math.sqrt(distSq);
     const signed = landElevation.has(k) ? dist : -dist;
     if (coastNoiseAmplitude === 0) return signed;
-    return signed + coastNoiseAmplitude * fbm2(coastNoise, x * COAST_NOISE_FREQUENCY, z * COAST_NOISE_FREQUENCY);
+    return signed + coastNoiseAmplitude * fbm2(coastNoise, x, z, COAST_NOISE_FREQUENCY);
   };
 
   /** Kernel-weighted blend of nearby land cells: [targetHeight, elevation], or null if none in reach. */
@@ -494,7 +501,7 @@ export function createTerrainHeightField(
       const shelf = -seabedDepth(unitsToMetres(-d));
       const rise = reefRise(x, z);
       if (rise === 0) return SEA_LEVEL + metresToUnits(shelf);
-      const crest = -(REEF_CREST_DEPTH + REEF_CREST_VARIATION * fbm2(reefNoise, x * REEF_CREST_FREQUENCY, z * REEF_CREST_FREQUENCY));
+      const crest = -(REEF_CREST_DEPTH + REEF_CREST_VARIATION * fbm2(reefNoise, x, z, REEF_CREST_FREQUENCY));
       // Polynomial smooth max, so a crest meeting an already shallow shelf leaves no crease.
       const h = Math.max(REEF_BLEND - Math.abs(shelf - crest), 0) / REEF_BLEND;
       const top = Math.max(shelf, crest) + (h * h * REEF_BLEND) / 4;

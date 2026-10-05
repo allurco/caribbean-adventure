@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Elevation, MapCell } from "../../game/types";
-import { hex, hexGrid, hexToWorld, neighbors } from "../../game/hex";
+import { createWrap, hex, hexGrid, hexRect, hexToWorld, neighbors, wrapWorldWidth } from "../../game/hex";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import {
@@ -497,6 +497,38 @@ describe("terrainHeightField", () => {
       const cells = generateMap(getMapPreset("large"), 31337);
       const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
       for (const h of edgeHeights(field, 0.2)) expect(h).toBeLessThan(-VISIBLE_SEABED_DEPTH);
+    });
+  });
+
+  describe("east–west wrap noise (#36)", () => {
+    const { columns, rows } = getMapPreset("small");
+    const wrap = createWrap(columns);
+    const width = wrapWorldWidth(wrap);
+    const openSea: MapCell[] = hexRect(columns, rows).map((h) => ({ hex: h, terrain: "water", hasPort: false, elevation: 0 }));
+
+    it("repeats its noise every wrap width", () => {
+      const field = createTerrainHeightField(openSea, 17, { wrap });
+      for (let i = 0; i < 100; i++) {
+        const x = (i * 0.731) % width;
+        const z = (i * 0.377) % 25;
+        expect(field.sampleCoastDistance(x + width, z)).toBeCloseTo(field.sampleCoastDistance(x, z), 9);
+        expect(field.sampleHeight(x - width, z)).toBeCloseTo(field.sampleHeight(x, z), 9);
+      }
+    });
+
+    it("has no seam: the noise just west of the map's east edge meets the noise at its west edge", () => {
+      const field = createTerrainHeightField(openSea, 17, { wrap });
+      const tiny = 1e-6;
+      for (let z = 0; z < 30; z += 1.3) {
+        const step = Math.abs(field.sampleCoastDistance(0, z) - field.sampleCoastDistance(width - tiny, z));
+        expect(step).toBeLessThan(1e-4);
+      }
+    });
+
+    it("leaves the field unchanged without a wrap", () => {
+      const plain = createTerrainHeightField(openSea, 17);
+      const noWrap = createTerrainHeightField(openSea, 17, { wrap: null });
+      for (let i = 0; i < 50; i++) expect(noWrap.sampleHeight(i * 0.7, i * 0.4)).toBe(plain.sampleHeight(i * 0.7, i * 0.4));
     });
   });
 
