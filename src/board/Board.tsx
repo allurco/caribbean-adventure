@@ -16,9 +16,12 @@ import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat"
 import { getValidScoutTargets } from "../game/scouting";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
 import { HexGrid } from "./HexGrid";
+import { useHexGrid } from "./useHexGrid";
 import { Ocean } from "./visuals/Ocean";
 import { LandTerrain } from "./visuals/LandTerrain";
+import { useLandTerrain } from "./visuals/useLandTerrain";
 import { TerrainDecorations } from "./visuals/TerrainDecorations";
+import { useDecorationLayout } from "./visuals/useDecorationLayout";
 import { SunLight } from "./visuals/SunLight";
 import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import {
@@ -58,7 +61,7 @@ import {
   wrapCopyRange,
 } from "./wrapView";
 import { seamStrip } from "./visuals/seamStrip";
-import { NearestCopy, WorldCopies } from "./WorldCopies";
+import { PointerCopy, WorldCopies } from "./WorldCopies";
 import { Ship, SinkingShip } from "./Ship";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
@@ -170,7 +173,7 @@ function Scene({
     () => (strip && footprint ? wrapCopyRange(footprint, maxDistance, period, WRAP_COPY_MARGIN) : { from: 0, to: 0 }),
     [strip, footprint, maxDistance, period]
   );
-  const viewCentreOffset = footprint ? (footprint.minX + footprint.maxX) / 2 : 0;
+
 
   // The ocean is a finite square centred under the camera focus, so its edge
   // must stay off screen. Fog alone can't hide it: at full zoom-out the top
@@ -278,6 +281,26 @@ function Scene({
     );
   }, [currentShipState, G.cells, G.wrap, otherShipPositions]);
 
+  // Built once per map (and turn) and drawn by every copy of the world: the
+  // copies share these geometries, materials and hover state.
+  const landTerrain = useLandTerrain(G.cells, G.wrap);
+  const decorations = useDecorationLayout(G.cells, G.wrap);
+  const grid = useHexGrid({
+    cells: G.cells,
+    wrap: G.wrap,
+    validTargets: attackMode || spyglassMode ? [] : movesRemaining > 0 ? targets : [],
+    attackTargets: attackMode ? attackTargetHexes : spyglassMode ? spyglassTargetHexes : [],
+    onHexClick: (h) => {
+      if (attackMode || spyglassMode) {
+        onHexClick(h);
+      } else {
+        onMoveShip(h.q, h.r);
+      }
+    },
+    onPortHover,
+    interactive: attackMode || spyglassMode || movesRemaining > 0,
+  });
+
   return (
     <>
       {/* Horizon haze: background matches the fog so the far edge dissolves */}
@@ -312,27 +335,15 @@ function Scene({
 
       {/* Everything on the map, once per copy of the wrapping world */}
       <WorldCopies period={period} stripMinX={strip?.minX ?? 0} from={copies.from} to={copies.to}>
+      {(copy) => (
+      <>
       {/* Islands: one continuous mesh from the terrain height field */}
-      <LandTerrain cells={G.cells} wrap={G.wrap} />
+      <LandTerrain terrain={landTerrain} />
 
       {/* Terrain decorations: trees, rocks, forts, piers */}
-      <TerrainDecorations cells={G.cells} wrap={G.wrap} />
+      <TerrainDecorations layout={decorations} />
 
-      <HexGrid
-        cells={G.cells}
-        wrap={G.wrap}
-        validTargets={attackMode || spyglassMode ? [] : (movesRemaining > 0 ? targets : [])}
-        attackTargets={attackMode ? attackTargetHexes : (spyglassMode ? spyglassTargetHexes : [])}
-        onHexClick={(h) => {
-          if (attackMode || spyglassMode) {
-            onHexClick(h);
-          } else {
-            onMoveShip(h.q, h.r);
-          }
-        }}
-        onPortHover={onPortHover}
-        interactive={attackMode || spyglassMode || movesRemaining > 0}
-      />
+      <HexGrid grid={grid} copy={copy} />
 
       {Object.entries(G.ships).map(([id, ship]) => (
         <Ship
@@ -370,13 +381,15 @@ function Scene({
           onComplete={() => onSinkingComplete(ship.id)}
         />
       ))}
+      </>
+      )}
       </WorldCopies>
 
-      {/* Ship Tooltip, once, in the copy nearest the middle of the view */}
+      {/* Ship Tooltip, once, in the copy under the pointer */}
       {hoveredShipId && (G.ships[hoveredShipId] || npcs[hoveredShipId]) && (() => {
         const position = hexToWorld(G.ships[hoveredShipId]?.position ?? npcs[hoveredShipId]?.position);
         return (
-        <NearestCopy x={position[0]} period={period} viewCentreOffset={viewCentreOffset}>
+        <PointerCopy x={position[0]} period={period}>
         <ShipTooltip
           position={position}
           ship={G.ships[hoveredShipId] ?? npcs[hoveredShipId]}
@@ -395,13 +408,13 @@ function Scene({
             )
           )}
         />
-        </NearestCopy>
+        </PointerCopy>
         );
       })()}
 
       {/* Port Tooltip, likewise */}
       {hoveredPort && !hoveredShipId && G.ships[currentPlayer] && (
-        <NearestCopy x={hexToWorld(hoveredPort.hex)[0]} period={period} viewCentreOffset={viewCentreOffset}>
+        <PointerCopy x={hexToWorld(hoveredPort.hex)[0]} period={period}>
         <PortTooltip
           position={hexToWorld(hoveredPort.hex)}
           nation={hoveredPort.nation}
@@ -410,7 +423,7 @@ function Scene({
           ship={G.ships[currentPlayer]}
           market={hoveredPort.market}
         />
-        </NearestCopy>
+        </PointerCopy>
       )}
 
       <MapControls

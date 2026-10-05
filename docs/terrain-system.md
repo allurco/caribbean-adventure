@@ -235,8 +235,14 @@ widths to stay around the camera focus; the camera pans east or west
 forever with no teleport, so the world-space waves, caustics and surf noise
 never jump. How many copies: `wrapCopyRange` from the view's ground footprint
 at full zoom-out (three, −1…+1, for every map preset at aspects 0.5 to 4).
-Tooltips are drawn once, in the copy nearest the middle of the view
-(`NearestCopy`). The ocean is still **one** plane, centred under the camera
+The copies only draw: the land mesh, decoration placement, palm geometry and
+grid lines are built once per map above them (`useLandTerrain`,
+`useDecorationLayout`, `usePalmTrees`, `useHexGrid`/`useWaterGridLines`) and
+every copy's meshes share those geometries and materials, so a copy costs no
+build time or GPU upload. The hex hover is shared too (`sharedHover.ts`), so
+the hovered hex lights up in every copy. Tooltips are drawn once, in the
+copy under the pointer (`PointerCopy`): a very wide view can show the same
+ship twice. The ocean is still **one** plane, centred under the camera
 focus and following it (all its shading is in world space, so moving it
 changes no pixel); the seabed prepass draws the land copies like the main
 pass. North and south, `wrapView.ts` clamps the focus so the view's ground

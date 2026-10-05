@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clampFocusZ,
+  copyShiftToward,
   groundFootprint,
   mapBand,
   maxViewDistance,
@@ -130,5 +131,21 @@ describe("seamAwareStart", () => {
 
   it("does nothing without a wrap", () => {
     expect(seamAwareStart(34.5, 0, Infinity)).toBe(34.5);
+  });
+});
+
+describe("copyShiftToward", () => {
+  it("is 0 when the anchor's own copy is nearest the pointer", () => {
+    expect(copyShiftToward(10, 12, 75)).toBe(0);
+  });
+
+  it("moves to the copy under the pointer when the view shows two copies", () => {
+    // Ultra-wide view on the large map: the ship at x 10 also shows at 85.
+    expect(copyShiftToward(10, 84, 75)).toBe(75);
+    expect(copyShiftToward(10, -66, 75)).toBe(-75);
+  });
+
+  it("is 0 without a wrap", () => {
+    expect(copyShiftToward(10, 84, Infinity)).toBe(0);
   });
 });

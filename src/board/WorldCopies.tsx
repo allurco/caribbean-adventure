@@ -1,8 +1,8 @@
 import { useMemo, useRef, type ReactNode } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
-import type { Group } from "three";
+import { Plane, Vector3, type Group } from "three";
 import { controlsTarget } from "./controlsTarget";
-import { seamAwareStart } from "./wrapView";
+import { copyShiftToward } from "./wrapView";
 
 interface WorldCopiesProps {
   /** Wrap width in world units; Infinity draws the children once, unmoved. */
@@ -12,7 +12,11 @@ interface WorldCopiesProps {
   /** Copies to draw, counted from the one the camera focus is in (`wrapCopyRange`). */
   from: number;
   to: number;
-  children: ReactNode;
+  /**
+   * One copy's contents, given its number. Build heavy geometry once above
+   * the copies and only draw it here: everything returned is mounted per copy.
+   */
+  children: (copy: number) => ReactNode;
 }
 
 /**
@@ -36,7 +40,7 @@ export function WorldCopies({ period, stripMinX, from, to, children }: WorldCopi
     });
   });
 
-  if (!Number.isFinite(period)) return <>{children}</>;
+  if (!Number.isFinite(period)) return <>{children(0)}</>;
   return (
     <>
       {offsets.map((k, i) => (
@@ -46,36 +50,36 @@ export function WorldCopies({ period, stripMinX, from, to, children }: WorldCopi
             groups.current[i] = group;
           }}
         >
-          {children}
+          {children(k)}
         </group>
       ))}
     </>
   );
 }
 
-interface NearestCopyProps {
+const seaLevel = new Plane(new Vector3(0, 1, 0), 0);
+const pointerOnSea = new Vector3();
+
+interface PointerCopyProps {
   /** World x of the children's anchor in the canonical copy. */
   x: number;
   period: number;
-  /** Centre of the view relative to the focus, per unit camera distance (footprint mid-x). */
-  viewCentreOffset: number;
   children: ReactNode;
 }
 
 /**
- * Draws its children once, in whichever copy of the wrapping world puts
- * their anchor nearest the middle of the view: for overlays such as tooltips
- * that must appear only once.
+ * Draws its children once, in the copy of the wrapping world the pointer is
+ * over: for overlays such as tooltips, which belong next to the ship or port
+ * being hovered even when a very wide view shows it twice.
  */
-export function NearestCopy({ x, period, viewCentreOffset, children }: NearestCopyProps) {
-  const controls = useThree((state) => state.controls);
+export function PointerCopy({ x, period, children }: PointerCopyProps) {
   const group = useRef<Group>(null);
 
-  useFrame(({ camera }) => {
-    const focus = controlsTarget(controls);
-    if (!focus || !group.current) return;
-    const centre = focus.x + camera.position.distanceTo(focus) * viewCentreOffset;
-    group.current.position.x = seamAwareStart(x, centre, period) - x;
+  useFrame(({ camera, pointer, raycaster }) => {
+    if (!group.current) return;
+    raycaster.setFromCamera(pointer, camera);
+    if (!raycaster.ray.intersectPlane(seaLevel, pointerOnSea)) return;
+    group.current.position.x = copyShiftToward(x, pointerOnSea.x, period);
   });
 
   return <group ref={group}>{children}</group>;

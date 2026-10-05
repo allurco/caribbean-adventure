@@ -118,3 +118,13 @@ export function seamAwareStart(from: number, to: number, period: number): number
   if (!Number.isFinite(period)) return from;
   return from + period * Math.round((to - from) / period);
 }
+
+/**
+ * How far to move something anchored at world x `anchor` so it lands in the
+ * copy of the world nearest `pointerX`, in whole wrap widths (`period`).
+ * Used to show a tooltip on the copy the pointer is over: on a very wide view
+ * the same ship can be on screen twice. Infinity (no wrap) gives 0.
+ */
+export function copyShiftToward(anchor: number, pointerX: number, period: number): number {
+  return seamAwareStart(anchor, pointerX, period) - anchor;
+}
