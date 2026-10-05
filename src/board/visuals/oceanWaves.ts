@@ -28,10 +28,11 @@
  * - At map zoom (1.4–1.9 m per pixel) the ripple band's longest wave spans
  *   under two pixels, so it is faded out into roughness (waveNormalFilter.ts).
  *
- * Three 256² grids cost three times the old single cascade: 54 small draws a
- * frame. A 512² swell grid would double its tile for the same texel at ~4.5×
- * that cascade's cost; three 256² grids already keep the swell's repeat off
- * screen, so it was not needed.
+ * Three 256² grids are three times the old single cascade's pixels, batched
+ * into 20 draws a frame (useWaveCascades.ts). A 512² swell grid would double
+ * its tile for the same texel at ~4.5× that cascade's cost, and would need
+ * its own pass sequence; the 256² swell tile already spans the map-zoom
+ * view, so it was not needed.
  */
 import { coxMunkSlopeVariance } from "./seaSurfaceSlope";
 import { resolvedSlopeVariance, type WaveCascade } from "./waveCascade";
