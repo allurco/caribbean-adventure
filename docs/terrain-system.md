@@ -282,7 +282,28 @@ A ship whose move crosses the seam starts its animation a wrap width over
 
 Cost: the copies add ~25 draw calls and roughly double the triangle count
 (palms, rocks, piers and the grid lines are not frustum-culled), with no
-measurable change in frame time on an Apple M4.
+measurable change in frame time on an Apple M4. The faceted rocks (#49)
+added two instanced draws per copy (three rock variants where there was one
+sphere).
+
+**Props: rocks (#49).** Like the palms, rocks are hand-built faceted
+geometry, placed from the existing decoration data; `src/game/` is
+untouched. `rockGeometry.ts` builds three variants (a rounded boulder, a
+long low slab and a tall angular spur: 36, 42 and 40 triangles) as jittered
+polar lattices, non-indexed with face normals; the widest ring sits at the
+origin and the underside is squashed to a shallow buried base, so a rock
+placed on a slope sinks in instead of floating. `rockVariation.ts` derives
+each rock's look from a hash of its placement (the `palmVariation.ts`
+pattern): variant, a tint within ±8% of `highlandRock`, a per-axis stretch,
+a small tilt, a bury depth and a size class by the cell's biome (large
+outcrops on `ROCK`, medium on `GRASS`, small on `SAND`; the ground-placement
+footprint grows with the class). `smallStones.ts` adds one derived stone per
+`SAND`/`GRASS` cell without a rock or port, from a per-cell hash of its
+coordinates and the terrain seed, through `placeOnGround` so it stays on
+land; the densities are named constants. `Rocks.tsx` draws one
+`InstancedMesh` per variant with `instanceColor` for the tint. Instance
+counts (10-seed average, generator rocks + stones): small 26 + 32, medium
+61 + 81, large 124 + 152.
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
