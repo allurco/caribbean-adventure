@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { PerspectiveCamera, Vector3 } from "three";
 import {
   CAMERA_FOV,
   CAMERA_MAX_DISTANCE,
+  CAMERA_OFFSET,
   CAMERA_PITCH,
   cameraBoundsFromHexes,
   clampToCameraBounds,
@@ -12,6 +14,42 @@ import { hexGrid, hexToWorld } from "../game/hex";
 import type { Hex } from "../game/hex";
 
 const hex = (q: number, r: number): Hex => ({ q, r, s: -q - r });
+
+describe("the game camera", () => {
+  // Civ style on a map that wraps east–west (#36): a screen-horizontal drag
+  // must pan along the wrap axis (world x) only, and a vertical one along
+  // world z only, so the camera's yaw is aligned with the map axes.
+  const camera = new PerspectiveCamera(CAMERA_FOV, 16 / 9, 0.1, 1000);
+  camera.position.set(...CAMERA_OFFSET).multiplyScalar(20);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld();
+
+  it("sits due south of its focus", () => {
+    expect(CAMERA_OFFSET[0]).toBe(0);
+    expect(CAMERA_OFFSET[1]).toBeGreaterThan(0);
+    expect(CAMERA_OFFSET[2]).toBeGreaterThan(0);
+  });
+
+  it("keeps the pitch of the old diagonal view (~46.7° down)", () => {
+    expect(CAMERA_PITCH).toBeCloseTo(Math.atan2(0.6, Math.hypot(0.4, 0.4)), 12);
+  });
+
+  it("has screen right along world +x", () => {
+    const right = new Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    expect(right.x).toBeCloseTo(1, 12);
+    expect(right.y).toBeCloseTo(0, 12);
+    expect(right.z).toBeCloseTo(0, 12);
+  });
+
+  it("shows the ground north of the focus (world −z) straight up the screen", () => {
+    const north = new Vector3(0, 0, -5).project(camera);
+    expect(north.x).toBeCloseTo(0, 12);
+    expect(north.y).toBeGreaterThan(0);
+    const east = new Vector3(5, 0, 0).project(camera);
+    expect(east.x).toBeGreaterThan(0);
+    expect(east.y).toBeCloseTo(0, 12);
+  });
+});
 
 describe("cameraBoundsFromHexes", () => {
   it("wraps every cell centre", () => {

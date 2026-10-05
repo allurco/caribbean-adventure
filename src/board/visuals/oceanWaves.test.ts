@@ -5,6 +5,8 @@ import { jonswapPeakFrequency, jonswapSpectrum } from "./jonswap";
 import { nyquistWavenumber, resolvedSlopeVariance } from "./waveCascade";
 import { coxMunkSlopeVariance } from "./seaSurfaceSlope";
 import { GRAVITY } from "./waveDispersion";
+import { viewDirectionXZ } from "./sunDirection";
+import { CAMERA_OFFSET } from "../cameraBounds";
 
 describe("the trade-wind sea", () => {
   it("is a moderate sea of about 1.5 m significant height", () => {
@@ -27,6 +29,26 @@ describe("NEAR_CASCADE", () => {
     expect(NEAR_CASCADE.size).toBe(256);
     expect(NEAR_CASCADE.kMin).toBe(0);
     expect(NEAR_CASCADE.kMax).toBeCloseTo(nyquistWavenumber(256, NEAR_CASCADE.tileMetres), 12);
+  });
+
+  describe("wind", () => {
+    // The look was tuned relative to the view (the sun is in front of the
+    // camera and the crests run across the screen), so the wind turns with
+    // the camera (#36): it blows away from the camera, 25° to the left of the
+    // view direction, as it did with the old diagonal view.
+    const [vx, vz] = viewDirectionXZ(CAMERA_OFFSET);
+    const wind = [Math.cos(NEAR_CASCADE.windAngle), Math.sin(NEAR_CASCADE.windAngle)];
+    const ahead = wind[0] * vx + wind[1] * vz;
+    const right = -wind[0] * vz + wind[1] * vx; // screen right is view × up
+
+    it("blows away from the camera, swung 25° to screen left", () => {
+      expect(Math.atan2(right, ahead)).toBeCloseTo((-25 * Math.PI) / 180, 2);
+    });
+
+    it("lines up with neither the hex rows nor the columns", () => {
+      expect(Math.abs(wind[0])).toBeGreaterThan(0.25);
+      expect(Math.abs(wind[1])).toBeGreaterThan(0.25);
+    });
   });
 });
 

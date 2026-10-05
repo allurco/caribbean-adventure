@@ -47,6 +47,23 @@ describe("groundFootprint", () => {
     expect(wide.maxX).toBeCloseTo(2 * south45.maxX, 6);
     expect(wide.minZ).toBeCloseTo(south45.minZ, 6);
   });
+
+  describe("of the game camera", () => {
+    // Due south of the focus, looking north (#36): the footprint is a
+    // trapezium symmetric about the focus in x, reaching further north (−z,
+    // the far edge of a pitched view) than south.
+    const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, 16 / 9)!;
+
+    it("is symmetric in x about the focus", () => {
+      expect(footprint.minX).toBeCloseTo(-footprint.maxX, 12);
+    });
+
+    it("reaches further north of the focus than south", () => {
+      expect(footprint.maxZ).toBeGreaterThan(0);
+      expect(footprint.minZ).toBeLessThan(0);
+      expect(-footprint.minZ).toBeGreaterThan(footprint.maxZ);
+    });
+  });
 });
 
 describe("mapBand", () => {
@@ -120,9 +137,9 @@ describe("the game's camera on a wrapping map", () => {
         // The large map is taller than the view at 16:9 and wider.
         if (d * viewHeightPerUnit < band.maxZ - band.minZ) return;
         // From the allowed focus nearest the one that centres the rows on
-        // screen (on a very wide screen that one is past the bottom row, as
-        // the camera looks along a diagonal) the view still reaches the top
-        // row and the bottom row.
+        // screen (the view reaches further north of the focus than south, so
+        // on a very wide screen that one is past the bottom row) the view
+        // still reaches the top row and the bottom row.
         const centred = (band.minZ + band.maxZ) / 2 - (d * (footprint.minZ + footprint.maxZ)) / 2;
         const z = clampFocusToBand(centred, band);
         expect(z + d * footprint.minZ).toBeLessThanOrEqual(band.minZ + 1e-9);
@@ -150,21 +167,27 @@ describe("the game's camera on a wrapping map", () => {
     const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, SIXTEEN_NINE)!;
     const band = mapBand(SMALL_ROWS);
     const d = CAMERA_MAX_DISTANCE;
-    const z = clampFocusToBand((band.minZ + band.maxZ) / 2, band);
-    // Measured: a 16:9 view at distance 28 is ~61 units tall against 30.3 of rows.
+    // The focus that centres the rows on screen (the view reaches further
+    // north of the focus than south).
+    const centred = (band.minZ + band.maxZ) / 2 - (d * (footprint.minZ + footprint.maxZ)) / 2;
+    const z = clampFocusToBand(centred, band);
+    // Measured: a 16:9 view at distance 28 is ~37.6 units tall against 30.3 of rows.
     expect(z + d * footprint.minZ).toBeLessThan(band.minZ);
     expect(z + d * footprint.maxZ).toBeGreaterThan(band.maxZ);
-    expect(d * (footprint.maxZ - footprint.minZ)).toBeGreaterThan(2 * (band.maxZ - band.minZ));
+    expect(d * (footprint.maxZ - footprint.minZ)).toBeGreaterThan(band.maxZ - band.minZ);
   });
 
-  it("draws four copies of the small map at full zoom-out on a 16:9 screen, three of the others", () => {
+  it("draws five copies of the small map at full zoom-out on a 16:9 screen, three of the others", () => {
+    // The view is symmetric about the focus (the camera looks due north), so
+    // the copies are too: ~68 units of view plus the margin just exceeds two
+    // widths of the small map (36).
     const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, SIXTEEN_NINE)!;
     const margin = 3; // WRAP_COPY_MARGIN in Board.tsx
     const ranges = MAP_PRESETS.map((preset) =>
       wrapCopyRange(footprint, CAMERA_MAX_DISTANCE, 1.5 * preset.columns, margin)
     );
     expect(ranges).toEqual([
-      { from: -2, to: 1 },
+      { from: -2, to: 2 },
       { from: -1, to: 1 },
       { from: -1, to: 1 },
     ]);

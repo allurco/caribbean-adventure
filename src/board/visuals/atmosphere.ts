@@ -33,7 +33,10 @@ export const SUN_COLOR = "#ffd2a1";
 export const SUN_INTENSITY = 2.5;
 
 /**
- * Sun placement, relative to the camera's view (see sunDirection.ts).
+ * Sun placement, relative to the camera's view (see sunDirection.ts), so it
+ * turns with the camera: the camera looks due north (CAMERA_OFFSET), which
+ * puts the sun north-west of the focus; it was tuned with the old diagonal
+ * view and kept the same elevation and azimuth when the camera turned (#36).
  *
  * The sun sits in front of the camera so its mirror glint on the sea is on
  * screen. A flat sea reflects the sun where the view ray dips below the horizon

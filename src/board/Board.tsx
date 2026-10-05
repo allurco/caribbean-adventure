@@ -161,7 +161,9 @@ function Scene({
   // that follow the camera, which pans east or west forever; north and south
   // the focus itself stays over the rows of hexes (Civ style), at every zoom,
   // so a map edge can always be panned to the screen centre with open sea
-  // past it. The zoom-out cap is the same on every map size.
+  // past it. The zoom-out cap is the same on every map size. The camera looks
+  // due north (CAMERA_OFFSET), so a horizontal drag pans along the wrap axis
+  // only and the map's north and south edges are horizontal on screen.
   const strip = useMemo(() => seamStrip(G.wrap), [G.wrap]);
   const period = wrapWorldWidth(G.wrap);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
@@ -686,7 +688,8 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
       <Canvas
         shadows={{ type: PCFSoftShadowMap }}
         camera={{
-          // Start over the middle of the map (the rectangle's corner is the origin)
+          // Start due south of the middle of the map (the rectangle's corner
+          // is the origin), looking north along CAMERA_OFFSET
           position: [
             cam.target[0] + cam.isoDistance * CAMERA_OFFSET[0],
             cam.target[1] + cam.isoDistance * CAMERA_OFFSET[1],

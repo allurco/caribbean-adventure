@@ -234,9 +234,22 @@ one wrap width apart (`WorldCopies.tsx`), moved each frame by whole wrap
 widths to stay around the camera focus; the camera pans east or west
 forever with no teleport, so the world-space waves, caustics and surf noise
 never jump. How many copies: `wrapCopyRange` from the view's ground footprint
-at full zoom-out (`CAMERA_MAX_DISTANCE`): at 16:9, four (−2…+1) on the small
+at full zoom-out (`CAMERA_MAX_DISTANCE`): at 16:9, five (−2…+2) on the small
 map and three (−1…+1) on the medium and large; a 4:1 super-ultrawide needs up
-to six on the small map.
+to seven on the small map.
+The camera looks **due north** (`CAMERA_OFFSET` in `cameraBounds.ts`: due
+south of its focus, pitched ~46.7° down, no yaw), so screen-horizontal is
+world x, the wrap axis, and screen-vertical is world z: a horizontal drag
+pans along the wrap only and never changes which rows are on screen, a
+vertical drag runs north or south until the focus clamp below stops it, and
+the map's north and south edges are horizontal on screen. The first cut kept
+the old diagonal "iso" view (`[0.4, 0.6, 0.4]`, 45° of yaw), under which a
+horizontal drag moved the focus in both x and z, hit the clamp and slid
+along the edge, and the edges showed as diagonals. Everything placed
+relative to the view turned with the camera: the sun (`atmosphere.ts` keeps
+its elevation and azimuth from the view direction, so the glint and shadows
+sit where they did on screen), the wave wind (`oceanWaves.ts`, 25° to screen
+left of the view direction) and the port labels, which face +z.
 The copies only draw: the land mesh, decoration placement, palm geometry and
 grid lines are built once per map above them (`useLandTerrain`,
 `useDecorationLayout`, `usePalmTrees`, `useHexGrid`/`useWaterGridLines`) and
@@ -304,7 +317,9 @@ without fog or background. `Ocean.tsx` then, per pixel:
 
 **Waves (#38 step 4).** The surface normal comes from one FFT cascade
 (`useWaveCascade.ts`): a JONSWAP sea (`oceanWaves.ts`: 7 m/s over 100 km,
-Hs ≈ 1.6 m) with Mitsuyasu spreading, 256² modes over a 500 m tile. Each
+Hs ≈ 1.6 m, blowing away from the camera and 25° to screen left so the
+crests run across the screen off both hex axes) with Mitsuyasu spreading,
+256² modes over a 500 m tile. Each
 frame the GPU evolves the spectrum (frequencies rounded to whole cycles per
 `WAVE_LOOP_SECONDS`, so the clock wraps seamlessly) and runs a Stockham inverse
 FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float

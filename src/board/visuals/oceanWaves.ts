@@ -19,16 +19,29 @@ import { coxMunkSlopeVariance } from "./seaSurfaceSlope";
 import { nyquistWavenumber, resolvedSlopeVariance, type WaveCascade } from "./waveCascade";
 import type { WindSea } from "./jonswap";
 import { DETAIL_LAYER_GAIN } from "./waveDetailLayer";
+import { viewDirectionXZ } from "./sunDirection";
+import { CAMERA_OFFSET } from "../cameraBounds";
 
 export const TRADE_WIND_SEA: WindSea = { windSpeed: 7, fetch: 100_000, peakEnhancement: 3.3 };
 
 const NEAR_TILE_METRES = 500;
 const NEAR_SIZE = 256;
 
+/**
+ * Direction the wind blows toward, radians from +x toward +z. Placed relative
+ * to the camera's view, like the sun (atmosphere.ts), so the sea keeps its
+ * look when the camera turns (#36): away from the camera, swung 25° to
+ * screen left, so the crests run across the screen and line up with neither
+ * the hex rows nor the columns. (Tuned with the old diagonal view as "toward
+ * −x, 0.35 rad off the axis", which is this swing from that view.)
+ */
+const WIND_SWING_FROM_VIEW = (-25 * Math.PI) / 180;
+const [VIEW_X, VIEW_Z] = viewDirectionXZ(CAMERA_OFFSET);
+export const WIND_ANGLE = Math.atan2(VIEW_Z, VIEW_X) + WIND_SWING_FROM_VIEW;
+
 export const NEAR_CASCADE: WaveCascade = {
   sea: TRADE_WIND_SEA,
-  // Toward −x, swung off the axis so crests never line up with the hex rows.
-  windAngle: Math.PI + 0.35,
+  windAngle: WIND_ANGLE,
   tileMetres: NEAR_TILE_METRES,
   size: NEAR_SIZE,
   kMin: 0,
