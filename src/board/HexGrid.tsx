@@ -8,7 +8,7 @@ import {
 } from "three";
 import type { ThreeEvent } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
-import type { Hex } from "../game/hex";
+import type { Hex, MapWrap } from "../game/hex";
 import { hexToWorld, hexEquals } from "../game/hex";
 import type { MapCell } from "../game/types";
 import { WaterHexOutlines } from "./WaterHexOutlines";
@@ -131,6 +131,7 @@ function PortLabel({ site: { cell, groundY } }: { site: PortSite }) {
 
 interface HexGridProps {
   cells: MapCell[];
+  wrap: MapWrap;
   validTargets: Hex[];
   attackTargets?: Hex[];
   onHexClick: (hex: Hex) => void;
@@ -140,6 +141,7 @@ interface HexGridProps {
 
 export function HexGrid({
   cells,
+  wrap,
   validTargets,
   attackTargets = [],
   onHexClick,
@@ -167,14 +169,14 @@ export function HexGrid({
 
   // Port cells with the ground Y of the terrain height field under each marker
   const portSites = useMemo<PortSite[]>(() => {
-    const field = sharedTerrainField(cells);
+    const field = sharedTerrainField(cells, wrap);
     return cells
       .filter((c) => c.hasPort)
       .map((cell) => {
         const [x, , z] = hexToWorld(cell.hex);
         return { cell, groundY: groundTopY(field, x, z, PORT_MARKER_RADIUS) };
       });
-  }, [cells]);
+  }, [cells, wrap]);
 
   // Build target indices for the water mesh
   const { targetWaterIndices, attackWaterIndices } = useMemo(() => {
@@ -265,7 +267,7 @@ export function HexGrid({
   );
 
   const waterHexes = useMemo(() => waterCells.map((c) => c.hex), [waterCells]);
-  const coastDistance = useMemo(() => sharedTerrainField(cells).sampleCoastDistance, [cells]);
+  const coastDistance = useMemo(() => sharedTerrainField(cells, wrap).sampleCoastDistance, [cells, wrap]);
 
   const outlineEmphasis = useMemo(() => {
     const emphasis = new Map<number, number>();
@@ -303,6 +305,7 @@ export function HexGrid({
           the camera focus and across the shallows; acted-on hexes stay strong */}
       <WaterHexOutlines
         hexes={waterHexes}
+        wrap={wrap}
         emphasis={outlineEmphasis}
         coastDistance={coastDistance}
       />

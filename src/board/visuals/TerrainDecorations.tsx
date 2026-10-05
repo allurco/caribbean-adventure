@@ -8,7 +8,7 @@ import {
   Color,
 } from "three";
 import type { MapCell, Decoration } from "../../game/types";
-import { hexToWorld } from "../../game/hex";
+import { hexToWorld, type MapWrap } from "../../game/hex";
 import { paletteColor } from "./palette";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { placeOnGround, type GroundPlacementOptions } from "./groundPlacement";
@@ -44,15 +44,16 @@ interface DecorationData {
 
 interface TerrainDecorationsProps {
   cells: MapCell[];
+  wrap: MapWrap;
 }
 
-export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
+export function TerrainDecorations({ cells, wrap }: TerrainDecorationsProps) {
   // Collect all decorations with their world positions
   const decorationsByType = useMemo(() => {
     const trees: DecorationData[] = [];
     const rocks: DecorationData[] = [];
     const piers: DecorationData[] = [];
-    const field = sharedTerrainField(cells);
+    const field = sharedTerrainField(cells, wrap);
 
     for (const cell of cells) {
       if (!cell.decorations || cell.decorations.length === 0) continue;
@@ -110,7 +111,7 @@ export function TerrainDecorations({ cells }: TerrainDecorationsProps) {
     }
 
     return { trees, rocks, piers };
-  }, [cells]);
+  }, [cells, wrap]);
 
   // Refs for instanced meshes
   const rockRef = useRef<InstancedMesh>(null!);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { BufferAttribute, BufferGeometry, Plane, Ray, Vector3 } from "three";
 import { useFrame, useThree } from "@react-three/fiber";
-import type { Hex } from "../game/hex";
+import type { Hex, MapWrap } from "../game/hex";
 import {
   GRID_EMPHASIS_COLOR,
   GRID_FADE,
@@ -35,6 +35,8 @@ function hasTarget(controls: unknown): controls is { target: Vector3 } {
 
 interface WaterHexOutlinesProps {
   hexes: readonly Hex[];
+  /** The map's east–west wrap: edges on the seam are drawn once (#36). */
+  wrap: MapWrap;
   /** Hex index -> minimum opacity, for hexes the player is acting on. */
   emphasis: ReadonlyMap<number, number>;
   /** Signed distance to the coast at world (x, z): + land, - water. */
@@ -47,14 +49,14 @@ interface WaterHexOutlinesProps {
  * zoom-scaled fade radii are pushed to the shader as uniforms each frame;
  * no React state per frame.
  */
-export function WaterHexOutlines({ hexes, emphasis, coastDistance }: WaterHexOutlinesProps) {
+export function WaterHexOutlines({ hexes, wrap, emphasis, coastDistance }: WaterHexOutlinesProps) {
   const controls = useThree((s) => s.controls);
   const material = useMemo(
     () => createHexOutlineMaterial(GRID_LINE_COLOR, GRID_EMPHASIS_COLOR, GRID_FADE),
     []
   );
 
-  const edges = useMemo(() => buildHexGridEdges(hexes), [hexes]);
+  const edges = useMemo(() => buildHexGridEdges(hexes, wrap), [hexes, wrap]);
 
   const geometry = useMemo(() => {
     const positions = buildEdgeLinePositions(edges, OUTLINE_Y, EDGE_SUBDIVISIONS);

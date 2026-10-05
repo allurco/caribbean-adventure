@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
 import { Vector3, PCFSoftShadowMap } from "three";
@@ -10,7 +10,7 @@ import type { CaribbeanState } from "../game/Game";
 import { getMaxMoves } from "../game/Game";
 import type { Hex } from "../game/hex";
 import type { ShipState, ShipClass, NPCShip, MapCell } from "../game/types";
-import { hexToWorld, hexEquals } from "../game/hex";
+import { hexToWorld, hexEquals, wrapWorldWidth } from "../game/hex";
 import { validMoveTargets, findAccessiblePort } from "../game/moves";
 import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
 import { getValidScoutTargets } from "../game/scouting";
@@ -49,6 +49,16 @@ import {
   groundViewReach,
   oceanPlaneSize,
 } from "./cameraBounds";
+import {
+  clampFocusZ,
+  groundFootprint,
+  mapBand,
+  maxViewDistance,
+  seamAwareStart,
+  wrapCopyRange,
+} from "./wrapView";
+import { seamStrip } from "./visuals/seamStrip";
+import { NearestCopy, WorldCopies } from "./WorldCopies";
 import { Ship, SinkingShip } from "./Ship";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
@@ -79,6 +89,14 @@ const PLAYER_COLORS: Record<string, string> = {
 
 const NPC_MERCHANT_COLOR = "#d4a574"; // tan/beige for merchant ships
 const NPC_FLOTILLA_COLOR = "#8b0000"; // dark red for military/flotilla ships
+
+/**
+ * World units past the edge of the view that copies of a wrapping world still
+ * cover: things poke out of their strip by up to about a hex (a ship sailing
+ * across the seam starts a column outside it), plus a hex for tall islands
+ * and labels seen at an angle.
+ */
+const WRAP_COPY_MARGIN = 3;
 
 function Scene({
   G,
@@ -137,23 +155,44 @@ function Scene({
     [G.cells]
   );
 
-  // The ocean is a finite square, so its edge must stay off screen. Fog alone
-  // can't hide it: at full zoom-out the top corners of the view hit the sea
-  // only ~46 units deep, well short of HAZE_FAR (85). So size the plane from
-  // the geometry instead: the focus never leaves the padded map hull, and from
-  // any such focus the frustum reaches at most `groundViewReach` further across
-  // the sea (fixed pitch since rotation is off, max zoom, widest aspect). A
-  // plane spanning extent + reach on every side covers everything visible.
-  const oceanSize = useMemo(
-    () =>
-      oceanPlaneSize(
-        cameraBounds,
-        groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)
-      ),
-    [cameraBounds]
+  // East–west wrap (#36): the world is drawn in copies one wrap width apart
+  // that follow the camera, which pans east or west forever; north and south
+  // the view stops at the top and bottom rows of hexes.
+  const strip = useMemo(() => seamStrip(G.wrap), [G.wrap]);
+  const period = wrapWorldWidth(G.wrap);
+  const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
+  const footprint = useMemo(() => groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect), [aspect]);
+  const band = useMemo(() => mapBand(getMapPreset(G.mapSize).rows), [G.mapSize]);
+  // The furthest zoom-out at which the whole view still fits between the top
+  // and bottom rows; recomputed when the window's shape changes.
+  const maxDistance = strip && footprint ? maxViewDistance(footprint, band, CAMERA_MAX_DISTANCE) : CAMERA_MAX_DISTANCE;
+  const copies = useMemo(
+    () => (strip && footprint ? wrapCopyRange(footprint, maxDistance, period, WRAP_COPY_MARGIN) : { from: 0, to: 0 }),
+    [strip, footprint, maxDistance, period]
+  );
+  const viewCentreOffset = footprint ? (footprint.minX + footprint.maxX) / 2 : 0;
+
+  // The ocean is a finite square centred under the camera focus, so its edge
+  // must stay off screen. Fog alone can't hide it: at full zoom-out the top
+  // corners of the view hit the sea only ~46 units deep, well short of
+  // HAZE_FAR (85). From the focus the frustum reaches at most
+  // `groundViewReach` across the sea (fixed pitch since rotation is off, max
+  // zoom, widest aspect), so a plane that far out on every side covers it.
+  const oceanSize = oceanPlaneSize(
+    groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)
   );
 
-  // Keep the focus over the map: after every MapControls update (pan, zoom,
+  /** The focus nearest (x, z) the camera may have at `distance`: x as is on a wrapping map. */
+  const clampFocus = useCallback(
+    (x: number, z: number, distance: number): { x: number; z: number } => {
+      if (strip && footprint) return { x, z: clampFocusZ(z, distance, footprint, band) };
+      const clamped = clampToCameraBounds(cameraBounds, x, z);
+      return { x: clamped.x, z: clamped.z };
+    },
+    [strip, footprint, band, cameraBounds]
+  );
+
+  // Keep the view over the map: after every MapControls update (pan, zoom,
   // damping, focus-lerp) pull the target back inside the bounds and move the
   // camera by the same delta, so the view angle and zoom are unchanged.
   useEffect(() => {
@@ -161,16 +200,20 @@ function Scene({
     if (!controls) return;
     const correction = new Vector3();
     const clamp = () => {
-      const { dx, dz } = clampToCameraBounds(cameraBounds, controls.target.x, controls.target.z);
+      const { x, z } = clampFocus(controls.target.x, controls.target.z, camera.position.distanceTo(controls.target));
+      const dx = x - controls.target.x;
+      const dz = z - controls.target.z;
       if (dx === 0 && dz === 0) return;
       correction.set(dx, 0, dz);
       controls.target.add(correction);
       camera.position.add(correction);
     };
+    // A new zoom limit (window resized) applies on the controls' next update.
+    controls.update();
     clamp();
     controls.addEventListener("change", clamp);
     return () => controls.removeEventListener("change", clamp);
-  }, [cameraBounds, camera]);
+  }, [clampFocus, camera, maxDistance]);
 
   // Animate camera to focus position when it changes
   useEffect(() => {
@@ -186,9 +229,14 @@ function Scene({
       const controls = controlsRef.current;
       const target = controls.target;
 
-      // Aim for the clamped focus so the lerp can actually arrive
+      // Aim for the clamped focus so the lerp can actually arrive, going the
+      // short way round on a wrapping map
       const goal = targetPosition.current;
-      const { x, z } = clampToCameraBounds(cameraBounds, goal.x, goal.z);
+      const { x, z } = clampFocus(
+        seamAwareStart(goal.x, target.x, period),
+        goal.z,
+        camera.position.distanceTo(target)
+      );
       goal.set(x, 0, z);
 
       // Lerp towards target
@@ -245,14 +293,13 @@ function Scene({
         shadowExtent={SHADOW_EXTENT}
       />
 
-      {/* Islands: one continuous mesh from the terrain height field */}
-      <LandTerrain cells={G.cells} />
-
-      {/* Ocean, coloured by depth from the same terrain height field and
-          sized so its edge is never on screen. Waits for the sky it reflects. */}
+      {/* Ocean, coloured by depth from the same terrain height field, under
+          the camera focus and sized so its edge is never on screen. One plane
+          for every copy of the world. Waits for the sky it reflects. */}
       {skyEnvironment && (
         <Ocean
           cells={G.cells}
+          wrap={G.wrap}
           size={oceanSize}
           sun={SUN_DIRECTION}
           sunColor={SUN_COLOR}
@@ -263,11 +310,17 @@ function Scene({
         />
       )}
 
+      {/* Everything on the map, once per copy of the wrapping world */}
+      <WorldCopies period={period} stripMinX={strip?.minX ?? 0} from={copies.from} to={copies.to}>
+      {/* Islands: one continuous mesh from the terrain height field */}
+      <LandTerrain cells={G.cells} wrap={G.wrap} />
+
       {/* Terrain decorations: trees, rocks, forts, piers */}
-      <TerrainDecorations cells={G.cells} />
+      <TerrainDecorations cells={G.cells} wrap={G.wrap} />
 
       <HexGrid
         cells={G.cells}
+        wrap={G.wrap}
         validTargets={attackMode || spyglassMode ? [] : (movesRemaining > 0 ? targets : [])}
         attackTargets={attackMode ? attackTargetHexes : (spyglassMode ? spyglassTargetHexes : [])}
         onHexClick={(h) => {
@@ -287,6 +340,7 @@ function Scene({
           position={hexToWorld(ship.position)}
           color={PLAYER_COLORS[id] ?? "#888888"}
           shipClass={ship.shipClass}
+          wrapWidth={period}
           onPointerEnter={() => onShipHover(id)}
           onPointerLeave={() => onShipHover(null)}
           onClick={() => onShipClick(id)}
@@ -300,6 +354,7 @@ function Scene({
           position={hexToWorld(npc.position)}
           color={npc.role === "FLOTILLA" ? NPC_FLOTILLA_COLOR : NPC_MERCHANT_COLOR}
           shipClass={npc.shipClass}
+          wrapWidth={period}
           onPointerEnter={() => onShipHover(npc.id)}
           onPointerLeave={() => onShipHover(null)}
           onClick={() => onShipClick(npc.id)}
@@ -315,13 +370,15 @@ function Scene({
           onComplete={() => onSinkingComplete(ship.id)}
         />
       ))}
+      </WorldCopies>
 
-      {/* Ship Tooltip */}
-      {hoveredShipId && (G.ships[hoveredShipId] || npcs[hoveredShipId]) && (
+      {/* Ship Tooltip, once, in the copy nearest the middle of the view */}
+      {hoveredShipId && (G.ships[hoveredShipId] || npcs[hoveredShipId]) && (() => {
+        const position = hexToWorld(G.ships[hoveredShipId]?.position ?? npcs[hoveredShipId]?.position);
+        return (
+        <NearestCopy x={position[0]} period={period} viewCentreOffset={viewCentreOffset}>
         <ShipTooltip
-          position={hexToWorld(
-            G.ships[hoveredShipId]?.position ?? npcs[hoveredShipId]?.position
-          )}
+          position={position}
           ship={G.ships[hoveredShipId] ?? npcs[hoveredShipId]}
           isNPC={!!npcs[hoveredShipId]}
           isPlayer={hoveredShipId === currentPlayer}
@@ -338,10 +395,13 @@ function Scene({
             )
           )}
         />
-      )}
+        </NearestCopy>
+        );
+      })()}
 
-      {/* Port Tooltip */}
+      {/* Port Tooltip, likewise */}
       {hoveredPort && !hoveredShipId && G.ships[currentPlayer] && (
+        <NearestCopy x={hexToWorld(hoveredPort.hex)[0]} period={period} viewCentreOffset={viewCentreOffset}>
         <PortTooltip
           position={hexToWorld(hoveredPort.hex)}
           nation={hoveredPort.nation}
@@ -350,6 +410,7 @@ function Scene({
           ship={G.ships[currentPlayer]}
           market={hoveredPort.market}
         />
+        </NearestCopy>
       )}
 
       <MapControls
@@ -364,8 +425,8 @@ function Scene({
         // side, looking back across the map (labels read mirrored).
         target={cam.target}
         enableRotate={false}
-        minDistance={cam.isoDistance * 0.15}
-        maxDistance={CAMERA_MAX_DISTANCE}
+        minDistance={Math.min(cam.isoDistance * 0.15, maxDistance)}
+        maxDistance={maxDistance}
       />
 
       {/* Post-processing effects */}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { BufferGeometry, Float32BufferAttribute, MeshStandardMaterial, Uint32BufferAttribute } from "three";
 import type { Mesh } from "three";
+import type { MapWrap } from "../../game/hex";
 import type { MapCell } from "../../game/types";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { buildLandMesh, type LandMeshArrays, type LandMeshColors } from "./landMesh";
@@ -10,6 +11,7 @@ import { SEABED_LAYER } from "./seabedPrepass";
 
 interface LandTerrainProps {
   cells: MapCell[];
+  wrap: MapWrap;
 }
 
 /** Palette entry as linear RGB, the space vertex colours are read in. */
@@ -64,12 +66,12 @@ const onlyInPrepass = (mesh: Mesh | null) => {
  * level draw in the main pass; the rest is seabed, drawn only into the seabed
  * prepass that the water shader looks through (#38).
  */
-export function LandTerrain({ cells }: LandTerrainProps) {
+export function LandTerrain({ cells, wrap }: LandTerrainProps) {
   const { land, seabed } = useMemo(() => {
-    const field = sharedTerrainField(cells);
-    const mesh = buildLandMesh(field, { colors: LAND_COLORS, sampleReef: createReefMask(cells) });
+    const field = sharedTerrainField(cells, wrap);
+    const mesh = buildLandMesh(field, { colors: LAND_COLORS, sampleReef: createReefMask(cells, wrap) });
     return { land: geometryFrom(mesh.land), seabed: geometryFrom(mesh.seabed, mesh.seabed.index) };
-  }, [cells]);
+  }, [cells, wrap]);
 
   useEffect(
     () => () => {

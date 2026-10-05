@@ -28,7 +28,9 @@
  * linearly filterable in WebGL2 without extensions.
  *
  * Nothing here assumes the map has hard east/west edges: the bake samples the
- * field over its bounds and the GLSL helpers only map world XZ to uv.
+ * field over its bounds and the GLSL helpers only map world XZ to uv. A
+ * wrapping field's bounds are exactly one wrap width in x, so its texel
+ * centres repeat with the field and the texture tiles (#36).
  */
 import { DataUtils } from "three";
 import type { TerrainBounds, TerrainHeightField } from "./terrainHeightField";
@@ -90,14 +92,21 @@ export function decodeReef(code: number): number {
 
 /**
  * GLSL helpers matching the encoding above. Paste into a shader that has a
- * `vec4 mapBounds` (minX, maxX, minZ, maxZ) uniform in scope.
+ * `vec4 mapBounds` (minX, maxX, minZ, maxZ) uniform in scope. On a wrapping
+ * map (#36) the bake covers exactly one wrap width, so define
+ * `TERRAIN_FIELD_WRAP_X` and give the texture repeat wrapping in s: every x is
+ * then inside the field.
  */
 export const TERRAIN_FIELD_GLSL = `
   vec2 terrainFieldUv(vec2 worldXZ) {
     return (worldXZ - mapBounds.xz) / (mapBounds.yw - mapBounds.xz);
   }
   bool terrainFieldInside(vec2 uv) {
+  #ifdef TERRAIN_FIELD_WRAP_X
+    return uv.y >= 0.0 && uv.y <= 1.0;
+  #else
     return all(greaterThanEqual(uv, vec2(0.0))) && all(lessThanEqual(uv, vec2(1.0)));
+  #endif
   }
   float terrainFieldHeight(vec4 texel) {
     return texel.r;
