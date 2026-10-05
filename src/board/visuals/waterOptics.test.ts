@@ -16,7 +16,8 @@ import {
   NO_SEABED_DEPTH,
   VISIBLE_SEABED_DEPTH,
   WATER_OPTICS_GLSL,
-  refractedSeabedShift,
+  refractedDirection,
+  MAX_REFRACTED_TRAVEL,
   facetSunlight,
 } from "./waterOptics";
 
@@ -42,22 +43,49 @@ describe("facetSunlight", () => {
   });
 });
 
-describe("refractedSeabedShift", () => {
-  it("is zero under a level surface", () => {
-    expect(refractedSeabedShift(10, [0, 0])).toEqual([0, 0]);
+describe("refractedDirection (vector Snell, air into water)", () => {
+  const UP = [0, 1, 0] as const;
+
+  it("leaves a vertical ray vertical", () => {
+    const r = refractedDirection([0, -1, 0], UP);
+    expect(r[0]).toBeCloseTo(0, 12);
+    expect(r[1]).toBeCloseTo(-1, 12);
+    expect(r[2]).toBeCloseTo(0, 12);
   });
 
-  it("bends a vertical view ray by (1 − 1/n) of the slope, along the slope: a worked value", () => {
-    // Snell, vector form, for a facet of slope 0.1 seen from straight above:
-    // the ray leaves at (1 − 1/1.333) · 0.1 ≈ 0.025 horizontal per unit down,
-    // so over 4 units of water the seabed point moves ≈ 0.1 along +x.
-    const [x, z] = refractedSeabedShift(4, [0.1, 0]);
-    expect(x).toBeCloseTo(0.1, 3);
-    expect(z).toBe(0);
+  it("bends a ray 35° from vertical to 25.5° (sin 35° / 1.333), staying in its plane", () => {
+    const t = (35 * Math.PI) / 180;
+    const r = refractedDirection([Math.sin(t), -Math.cos(t), 0], UP);
+    const refracted = Math.asin(Math.sin(t) / 1.333);
+    expect(Math.hypot(...r)).toBeCloseTo(1, 12);
+    expect(r[0]).toBeCloseTo(Math.sin(refracted), 6);
+    expect(r[1]).toBeCloseTo(-Math.cos(refracted), 6);
+    expect(r[2]).toBe(0);
   });
 
-  it("grows with depth", () => {
-    expect(refractedSeabedShift(8, [0, 0.1])[1]).toBeCloseTo(2 * refractedSeabedShift(4, [0, 0.1])[1], 12);
+  it("bends a grazing ray to the critical angle, 48.6° from vertical", () => {
+    const r = refractedDirection([1, -1e-9, 0], UP);
+    expect(Math.atan2(r[0], -r[1])).toBeCloseTo(Math.asin(1 / 1.333), 4);
+  });
+
+  it("refracts about the facet normal, not the vertical: a vertical ray through a tilted facet bends toward the tilt", () => {
+    // Facet of slope 0.1 along x, normal (−0.1, 1, 0) normalised. To first
+    // order the refracted ray leaves at (1 − 1/n) · slope horizontal per unit
+    // down, the precursor's rule (#38 step 6).
+    const n = 1 / Math.hypot(0.1, 1);
+    const r = refractedDirection([0, -1, 0], [-0.1 * n, n, 0]);
+    expect(r[0] / -r[1]).toBeCloseTo((1 - 1 / 1.333) * 0.1, 3);
+  });
+});
+
+describe("MAX_REFRACTED_TRAVEL", () => {
+  it("is the horizontal travel per unit depth of a ray at the critical angle, tan(asin(1/n)) ≈ 1.135", () => {
+    expect(MAX_REFRACTED_TRAVEL).toBeCloseTo(Math.tan(Math.asin(1 / 1.333)), 9);
+    expect(MAX_REFRACTED_TRAVEL).toBeCloseTo(1.135, 3);
+  });
+
+  it("is in the shader", () => {
+    expect(WATER_OPTICS_GLSL).toContain(`const float MAX_REFRACTED_TRAVEL = ${MAX_REFRACTED_TRAVEL.toFixed(6)};`);
   });
 });
 

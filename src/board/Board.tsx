@@ -24,6 +24,9 @@ import { TerrainDecorations } from "./visuals/TerrainDecorations";
 import { useDecorationLayout } from "./visuals/useDecorationLayout";
 import { SunLight } from "./visuals/SunLight";
 import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
+import { useWaveCascades } from "./visuals/useWaveCascades";
+import { WAVE_CASCADES } from "./visuals/oceanWaves";
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import {
   HAZE_COLOR,
   HAZE_NEAR,
@@ -152,6 +155,11 @@ function Scene({
   // Physical sky as image-based lighting for the whole scene (replaces the old
   // hemisphere and fill lights) and as the sea's reflection.
   const skyEnvironment = useSkyEnvironment(SUN_DIRECTION);
+  // The sea's wave slopes, rebuilt on the GPU each frame (frozen under
+  // reduced motion). The water shades its surface with them and the seabed
+  // focuses its sunlight through them (#38 step 6), so they live here.
+  const reducedMotion = usePrefersReducedMotion();
+  const waveSlopes = useWaveCascades(WAVE_CASCADES, reducedMotion);
 
   const cameraBounds = useMemo(
     () => cameraBoundsFromHexes(G.cells.map((c) => c.hex), CAMERA_BOUNDS_PADDING),
@@ -330,6 +338,7 @@ function Scene({
           sky={skyEnvironment.texture}
           skyHeight={skyEnvironment.textureHeight}
           skyIntensity={skyEnvironment.intensity}
+          waveSlopes={waveSlopes}
         />
       )}
 

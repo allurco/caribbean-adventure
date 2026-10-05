@@ -105,16 +105,32 @@ export function refractedCosine(cosAir: number): number {
 }
 
 /**
- * Where a near-vertical view ray through a tilted surface facet meets the
- * seabed, relative to straight below: `depth` × (1 − 1/n) × slope, in the
- * units of `depth`. From Snell's law in vector form with the facet normal
- * (−∂h/∂x, 1, −∂h/∂z), to first order in the slope. A precursor of step 6's
- * refraction (#38): it makes the waves visible as a wobble of the seabed.
+ * Snell's law in vector form, air into water (GLSL `refract(i, n, 1/n_w)`):
+ * the unit direction of a ray travelling along unit `incident` (into the
+ * surface, downward) after it crosses a facet of unit normal `normal` (up,
+ * toward the air). Used for the view ray's bend at the wave facet and for the
+ * sun's path to the seabed (#38 step 6).
  */
-export function refractedSeabedShift(depth: number, slope: readonly [number, number]): [number, number] {
-  const bend = depth * (1 - 1 / WATER_IOR);
-  return [bend * slope[0], bend * slope[1]];
+export function refractedDirection(
+  incident: readonly [number, number, number],
+  normal: readonly [number, number, number]
+): [number, number, number] {
+  const eta = 1 / WATER_IOR;
+  const cos = -(incident[0] * normal[0] + incident[1] * normal[1] + incident[2] * normal[2]);
+  const k = Math.sqrt(Math.max(0, 1 - eta * eta * (1 - cos * cos)));
+  const along = eta * cos - k;
+  return [eta * incident[0] + along * normal[0], eta * incident[1] + along * normal[1], eta * incident[2] + along * normal[2]];
 }
+
+/**
+ * Horizontal travel per unit depth of a refracted ray at the critical angle,
+ * tan(asin(1/n)) ≈ 1.135: the most oblique a level sea ever bends a ray. The
+ * water shader caps the refracted view ray's travel here (replacing a fixed
+ * pixel cap): only the tails of the gained wave slopes at grazing views reach
+ * past it, and a ray that oblique would cross a hex of seabed, on which the
+ * one-depth look-up (the seabed as a plane at the depth seen) says nothing.
+ */
+export const MAX_REFRACTED_TRAVEL = 1 / Math.sqrt(WATER_IOR * WATER_IOR - 1);
 
 /**
  * Direct sunlight entering the water through a facet of unit normal `n`, per
@@ -217,6 +233,7 @@ export const WATER_OPTICS_GLSL = `
   const float SEABED_FADE_START = ${SEABED_FADE_START.toFixed(1)};
   const float SEABED_FADE_END = ${SEABED_FADE_END.toFixed(1)};
   const float NO_SEABED_DEPTH = ${NO_SEABED_DEPTH.toFixed(1)};
+  const float MAX_REFRACTED_TRAVEL = ${MAX_REFRACTED_TRAVEL.toFixed(6)};
 
   vec3 waterTransmittance(float pathMetres) {
     return exp(-(WATER_ABSORPTION + WATER_SCATTERING) * max(pathMetres, 0.0));
@@ -237,9 +254,6 @@ export const WATER_OPTICS_GLSL = `
   }
   float facetSunlight(vec3 n, vec3 l) {
     return max(dot(n, l), 0.0) / max(n.y * l.y, 1e-3);
-  }
-  vec2 refractedSeabedShift(float depth, vec2 slope) {
-    return depth * (1.0 - 1.0 / WATER_IOR) * slope;
   }
   float schlickFresnel(float cosTheta) {
     float c = clamp(cosTheta, 0.0, 1.0);
