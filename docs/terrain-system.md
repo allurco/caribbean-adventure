@@ -231,8 +231,20 @@ without fog or background. `Ocean.tsx` then, per pixel:
    down and the view path up, and adds deep-water radiance
    `R∞ · downwelling irradiance` as the seabed fades (`waterOptics.ts` holds
    the coefficients and their sources);
-3. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), then the shore
-   surf. (The sun glint is off until step 4's GGX glint.)
+3. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), adds the GGX sun
+   glint, then the shore surf.
+
+**Waves (#38 step 4).** The surface normal comes from one FFT cascade
+(`useWaveCascade.ts`): a JONSWAP sea (`oceanWaves.ts`: 7 m/s over 100 km,
+Hs ≈ 1.6 m) with Mitsuyasu spreading, 256² modes over a 500 m tile. Each
+frame the GPU evolves the spectrum (frequencies rounded to whole cycles per
+`WAVE_LOOP_SECONDS`, so the clock wraps seamlessly) and runs a Stockham inverse
+FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float
+texture of (∂h/∂x, ∂h/∂z, |∇h|²). The water shader turns the filtered mean
+slope into the normal and the filtered variance into glint roughness, fading
+the normal to flat between 45 and 90 units from the camera
+(`waveNormalFilter.ts`). The glint is GGX with Smith masking and Schlick
+Fresnel (`sunGlint.ts`), HDR so bloom picks up the sparkles.
 
 Where the prepass has no seabed (below the mesh cut-off, or off the mesh) the
 shader reads `NO_SEABED_DEPTH` (105 m, past the fade), so the water is deep
