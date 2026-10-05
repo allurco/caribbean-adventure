@@ -206,17 +206,57 @@ about 380k triangles and ~95 ms on the large map.)
 
 **Map shape and wrap (#36).** Maps are rectangles of flat-top hexes in
 odd-q offset rows (see `mapConfig.ts`), with the corner cell at the world
-origin, not the centre. They can wrap east–west: given the map's wrap,
-`createTerrainHeightField` draws its coast, relief and reef-crest noise from
-`periodicNoise.ts`, which samples 3D simplex noise on a cylinder whose
-circumference is the wrap's world width, so the noise repeats exactly with
-no seam. The coastline and reef outlines do not wrap yet.
+origin, not the centre. The game's maps wrap east–west (`G.wrap`, a cylinder
+as wide as the map's columns). Given the wrap, the whole terrain field
+repeats exactly every wrap width `W` (1.5 units per column):
+
+- its coast, relief and reef-crest noise come from `periodicNoise.ts`, which
+  samples 3D simplex noise on a cylinder of circumference `W`;
+- it is built over one **seam strip** (`seamStrip.ts`): x from −0.75 (half a
+  column west of column 0) to −0.75 + W, from the cells plus copies of the
+  cells within a few units of either edge, shifted one wrap across
+  (`withSeamImages`), so coasts, reefs and the elevation blend carry on across
+  the seam; every sampler first moves its x into the strip (`wrapIntoStrip`);
+- `field.bounds` is that strip in x (no padding needed), and `field.periodX`
+  is `W`. The reef mask (`createReefMask(cells, wrap)`) works the same way.
+
+**Drawing the wrap.** The land mesh lattice fits a whole number of steps into
+`W` (0.15 units divides 1.5 exactly), so copies of the mesh one wrap apart
+share their edge vertices; its occlusion ring, seabed normals and the
+band/coral colour noise also wrap round (the noise is periodic). The field
+texture covers exactly the strip, so it tiles: `Ocean.tsx` gives it repeat
+wrapping in s and defines `TERRAIN_FIELD_WRAP_X`, which makes every x count
+as inside the field. Grid edges on the seam are emitted once
+(`buildHexGridEdges(hexes, wrap)`), so copies don't draw them twice.
+
+The board draws land, decorations, the grid, ports and ships in **copies**,
+one wrap width apart (`WorldCopies.tsx`), moved each frame by whole wrap
+widths to stay around the camera focus; the camera pans east or west
+forever with no teleport, so the world-space waves, caustics and surf noise
+never jump. How many copies: `wrapCopyRange` from the view's ground footprint
+at full zoom-out (three, −1…+1, for every map preset at aspects 0.5 to 4).
+Tooltips are drawn once, in the copy nearest the middle of the view
+(`NearestCopy`). The ocean is still **one** plane, centred under the camera
+focus and following it (all its shading is in world space, so moving it
+changes no pixel); the seabed prepass draws the land copies like the main
+pass. North and south, `wrapView.ts` clamps the focus so the view's ground
+footprint stays inside the band every column covers, z ∈ [0, √3·(rows − ½)],
+and caps zoom-out so the view is never taller than that band (recomputed
+when the window's aspect changes). At 16:9 the cap is ~13.9 units of camera
+distance on the small map, ~21.9 on the medium and the old 28 on the large.
+A ship whose move crosses the seam starts its animation a wrap width over
+(`seamAwareStart`), so it sails straight across.
+
+Cost: the copies add ~25 draw calls and roughly double the triangle count
+(palms, rocks, piers and the grid lines are not frustum-culled), with no
+measurable change in frame time on an Apple M4.
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
 coast-distance clamp plus a hex radius, so an island on the map's edge keeps its
-whole shelf and drop-off; texel centres sampled, rows from `minZ` up, so
+whole shelf and drop-off (in z; in x a wrapping field covers exactly the seam
+strip); texel centres sampled, rows from `minZ` up, so
 `uv = (xz - min) / (max - min)` with no flip):
 
 | Channel | Contents |
