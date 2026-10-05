@@ -1,8 +1,10 @@
 /**
- * Caustics on the seabed (#38 step 6): the seabed material's sunlight is
- * focused through the wave surface above it, in the seabed prepass, with no
- * extra pass. The maths is in causticFocus.ts; this file is the GLSL that
- * applies it and the patch that puts it into three's standard material.
+ * Caustics on the seabed (#38 step 6): the seabed's sunlight is focused
+ * through the wave surface above it, in the seabed prepass, with no extra
+ * pass. The maths is in causticFocus.ts; this file is the GLSL that applies
+ * it and the patch that puts it into three's standard material. Both the
+ * seabed and the land material carry it (useLandTerrain.ts): the land mesh's
+ * shoreline triangles reach below the waterline, and above it the factor is 1.
  *
  * Per seabed fragment: find the surface point the sun's refracted ray
  * crosses to reach it (the seabed point moved up and back along the

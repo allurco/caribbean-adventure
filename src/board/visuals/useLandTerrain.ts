@@ -70,9 +70,23 @@ export interface SeabedLighting {
   waveSlopes: readonly Texture[];
 }
 
+/** A standard material whose sunlight the waves focus (seabedCaustics.ts); `name` keys the compiled program. */
+function causticMaterial(
+  parameters: ConstructorParameters<typeof MeshStandardMaterial>[0],
+  name: string,
+  lighting: SeabedLighting
+): MeshStandardMaterial {
+  const material = new MeshStandardMaterial(parameters);
+  material.onBeforeCompile = (shader) => {
+    injectSeabedCaustics(shader, lighting);
+  };
+  material.customProgramCacheKey = () => `${name}-caustics`;
+  return material;
+}
+
 /**
  * Builds the land mesh once per map (and wrap); disposes it when the map
- * changes or the owner unmounts. The seabed material focuses its sunlight
+ * changes or the owner unmounts. Both materials focus their sunlight
  * through `lighting`'s waves (caustics, seabedCaustics.ts).
  */
 export function useLandTerrain(cells: MapCell[], wrap: MapWrap, lighting: SeabedLighting): LandTerrainResources {
@@ -89,29 +103,22 @@ export function useLandTerrain(cells: MapCell[], wrap: MapWrap, lighting: Seabed
     [land, seabed]
   );
 
+  // Both materials focus their sunlight through the waves above (caustics,
+  // #38 step 6): the land too, because every triangle with a vertex above sea
+  // level is land, and its submerged part reaches a few metres down along the
+  // shore, where the caustics are sharpest. Above the waterline the factor is 1.
+  const { sun, waveSlopes } = lighting;
   const material = useMemo(
-    () =>
-      new MeshStandardMaterial({
-        vertexColors: true,
-        flatShading: true,
-        roughness: 0.9,
-        metalness: 0,
-      }),
-    []
+    () => causticMaterial({ vertexColors: true, flatShading: true, roughness: 0.9, metalness: 0 }, "land", { sun, waveSlopes }),
+    [sun, waveSlopes]
   );
   useEffect(() => () => material.dispose(), [material]);
 
-  // The seabed is smooth-shaded so no facets show through clear water, and
-  // its sunlight is focused by the waves above it (#38 step 6).
-  const { sun, waveSlopes } = lighting;
-  const seabedMaterial = useMemo(() => {
-    const material = new MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 });
-    material.onBeforeCompile = (shader) => {
-      injectSeabedCaustics(shader, { sun, waveSlopes });
-    };
-    material.customProgramCacheKey = () => "seabed-caustics";
-    return material;
-  }, [sun, waveSlopes]);
+  // The seabed is smooth-shaded so no facets show through clear water.
+  const seabedMaterial = useMemo(
+    () => causticMaterial({ vertexColors: true, roughness: 0.9, metalness: 0 }, "seabed", { sun, waveSlopes }),
+    [sun, waveSlopes]
+  );
   useEffect(() => () => seabedMaterial.dispose(), [seabedMaterial]);
 
   return useMemo(() => ({ land, seabed, material, seabedMaterial }), [land, seabed, material, seabedMaterial]);

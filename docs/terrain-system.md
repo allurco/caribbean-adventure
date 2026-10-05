@@ -333,11 +333,14 @@ caustics see the slopes scaled up to Cox–Munk's measured slope
 glint keeps the drawn slopes so its path stays narrow.
 
 **Caustics (#38 step 6).** Caustics are light, so they are made where the
-seabed is lit: the seabed material (`useLandTerrain.ts`) patches three's
-standard shader (`seabedCaustics.ts`, via `onBeforeCompile`) so that, in the
-prepass, each seabed fragment's *directional* light is scaled by the
+seabed is lit: the seabed and land materials (`useLandTerrain.ts`) patch
+three's standard shader (`seabedCaustics.ts`, via `onBeforeCompile`) so
+that, in the prepass, each fragment's *directional* light is scaled by the
 intensity from `causticFocus.ts`; the sky term is not focused, and
-Beer–Lambert stays in the water shader. Per fragment: the surface point the
+Beer–Lambert stays in the water shader. The land material carries the patch
+because the shoreline triangles (any vertex above sea level) reach a few
+metres below the waterline, where the caustics are sharpest; above the
+waterline the factor is 1. Per fragment: the surface point the
 sun's refracted ray crosses is the seabed point moved up and back by its
 depth along the level-sea refracted sun (`refractedSunTravel`); the summed
 cascade slope is read there and one footprint step away along each screen
