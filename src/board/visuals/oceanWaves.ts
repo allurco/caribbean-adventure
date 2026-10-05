@@ -18,6 +18,7 @@
 import { coxMunkSlopeVariance } from "./seaSurfaceSlope";
 import { nyquistWavenumber, resolvedSlopeVariance, type WaveCascade } from "./waveCascade";
 import type { WindSea } from "./jonswap";
+import { DETAIL_LAYER_GAIN } from "./waveDetailLayer";
 
 export const TRADE_WIND_SEA: WindSea = { windSpeed: 7, fetch: 100_000, peakEnhancement: 3.3 };
 
@@ -35,18 +36,33 @@ export const NEAR_CASCADE: WaveCascade = {
   seed: 38,
 };
 
+/** Mean square slope the shader draws: the cascade plus its detail look-up (waveDetailLayer.ts). */
+const SHOWN_SLOPE_VARIANCE = resolvedSlopeVariance(NEAR_CASCADE) * (1 + DETAIL_LAYER_GAIN ** 2);
+const MEASURED_SLOPE_VARIANCE = coxMunkSlopeVariance(TRADE_WIND_SEA.windSpeed);
+
 /**
- * STYLISTIC, NOT PHYSICS (#38): the share of the sub-grid slope variance
- * (Cox–Munk's total minus what the cascade resolves) that goes into the
- * glint's roughness. All of it (α² ≈ 0.03) spreads the sun into a broad, dim
- * sheen with peaks of about 0.15 in scene units, under the bloom threshold
- * and barely brighter than the water. A camera exposed for the water sees
- * the glitter of sub-pixel facets as a path of saturated sparkles; keeping a
- * quarter of it gives sparkles from the resolved waves bright enough to bloom.
+ * STYLISTIC, physically motivated (#38): gain on the wave slopes that the sky
+ * reflection and the refracted seabed see (not the glint). The two look-ups
+ * draw only about a third of the mean square slope Cox–Munk measured for this
+ * wind; the rest is in waves shorter than a texel. Scaling the drawn slopes
+ * by √(measured / drawn) ≈ 1.7 gives the visible pattern the real sea's slope
+ * statistics, so the waves read in the sky reflection away from the sun, where
+ * Fresnel at F0 = 0.02 otherwise leaves them at ~1% contrast.
  */
-const GLINT_UNRESOLVED_SHARE = 0.25;
+export const WAVE_SHADING_GAIN = Math.sqrt(MEASURED_SLOPE_VARIANCE / SHOWN_SLOPE_VARIANCE);
+
+/**
+ * STYLISTIC, NOT PHYSICS (#38): the share of the slope variance the two
+ * look-ups do not draw (Cox–Munk's total minus theirs) that goes into the
+ * glint's roughness. All of it (α² ≈ 0.026) spreads the sun into a broad, dim
+ * sheen with peaks of about 0.15 in scene units, under the bloom threshold.
+ * A camera exposed for the water sees the glitter of sub-pixel facets as a
+ * narrow path of saturated sparkles; keeping a tenth gives a defined path
+ * whose sparkles bloom. The glint uses the drawn slopes without
+ * WAVE_SHADING_GAIN, which keeps the path narrow.
+ */
+const GLINT_UNRESOLVED_SHARE = 0.1;
 
 /** Glint roughness α² before the filtered wave variance is added. */
 export const GLINT_BASE_ROUGHNESS2 =
-  GLINT_UNRESOLVED_SHARE *
-  Math.max(0, coxMunkSlopeVariance(TRADE_WIND_SEA.windSpeed) - resolvedSlopeVariance(NEAR_CASCADE));
+  GLINT_UNRESOLVED_SHARE * Math.max(0, MEASURED_SLOPE_VARIANCE - SHOWN_SLOPE_VARIANCE);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { GLINT_BASE_ROUGHNESS2, NEAR_CASCADE, TRADE_WIND_SEA } from "./oceanWaves";
+import { GLINT_BASE_ROUGHNESS2, NEAR_CASCADE, TRADE_WIND_SEA, WAVE_SHADING_GAIN } from "./oceanWaves";
+import { DETAIL_LAYER_GAIN } from "./waveDetailLayer";
 import { jonswapPeakFrequency, jonswapSpectrum } from "./jonswap";
 import { nyquistWavenumber, resolvedSlopeVariance } from "./waveCascade";
 import { coxMunkSlopeVariance } from "./seaSurfaceSlope";
@@ -29,9 +30,22 @@ describe("NEAR_CASCADE", () => {
   });
 });
 
+describe("WAVE_SHADING_GAIN", () => {
+  it("scales the shown slopes up to Cox–Munk's measured mean square slope", () => {
+    const shown = resolvedSlopeVariance(NEAR_CASCADE) * (1 + DETAIL_LAYER_GAIN ** 2);
+    expect(WAVE_SHADING_GAIN ** 2 * shown).toBeCloseTo(coxMunkSlopeVariance(TRADE_WIND_SEA.windSpeed), 9);
+  });
+
+  it("is a moderate boost, not a distortion", () => {
+    expect(WAVE_SHADING_GAIN).toBeGreaterThan(1);
+    expect(WAVE_SHADING_GAIN).toBeLessThan(2.5);
+  });
+});
+
 describe("GLINT_BASE_ROUGHNESS2", () => {
-  it("is positive and below the sub-grid slope variance Cox–Munk leaves over", () => {
-    const leftOver = coxMunkSlopeVariance(TRADE_WIND_SEA.windSpeed) - resolvedSlopeVariance(NEAR_CASCADE);
+  it("is positive and below the slope variance Cox–Munk leaves over after both layers", () => {
+    const shown = resolvedSlopeVariance(NEAR_CASCADE) * (1 + DETAIL_LAYER_GAIN ** 2);
+    const leftOver = coxMunkSlopeVariance(TRADE_WIND_SEA.windSpeed) - shown;
     expect(GLINT_BASE_ROUGHNESS2).toBeGreaterThan(0);
     expect(GLINT_BASE_ROUGHNESS2).toBeLessThanOrEqual(leftOver);
   });
