@@ -54,12 +54,15 @@ export const SHRUB_ATTEMPTS = 5;
  */
 export const SHRUB_GROUND_FOOTPRINT = 0.04;
 /**
- * Deepest a shrub's base may sit below the ground at its centre: half a
- * tuft's height (0.1), and under a bush's foliage blobs (its stem is 0.06
- * tall). The base rests on the lowest ground probe under it, and since #53
- * probes the whole rim, so on ridged relief one probe can find a dip the
- * ±x/±z slope check does not see; a spot that would bury the shrub past this
- * is nudged towards the cell centre or given up instead.
+ * Deepest a shrub's base may sit below the ground at its centre, bounding
+ * how much of a shrub a slope can hide: half a tuft's height (0.1), and
+ * under a bush's foliage blobs (its stem is 0.06 tall). The base rests on
+ * the lowest ground probe under it, so on an even hillside it sinks by slope
+ * × probe radius plus the sink, and this rejects spots above roughly slope
+ * 1.0 at scale 1 down to 0.77 at scale 1.3: tighter than `maxSlope`, on
+ * purpose. It also catches a dip under one rim probe (probed all round since
+ * #53) that the ±x/±z slope check misses. A spot that would bury the shrub
+ * past this is nudged towards the cell centre or given up instead.
  */
 export const SHRUB_MAX_BURY = 0.05;
 
@@ -69,6 +72,7 @@ const PIER_OFFSET = 0.7;
 const PIER_LENGTH = 0.6;
 const PIER_HALF_WIDTH = 0.075;
 
+// `maxSlope` is only a coarse first gate for shrubs; `maxBury` is the binding one.
 const SHRUB_PLACEMENT: Omit<GroundPlacementOptions, "footprintRadius"> = {
   sink: 0.01,
   maxSlope: 1.2,
