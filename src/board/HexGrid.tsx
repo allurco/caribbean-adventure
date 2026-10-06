@@ -12,15 +12,18 @@ import { hexToWorld } from "../game/hex";
 import type { MapCell } from "../game/types";
 import { WaterHexOutlines } from "./WaterHexOutlines";
 import { hoverEnter, hoverLeave } from "./sharedHover";
-import { PORT_MARKER_RADIUS, type HexGridState, type PortSite } from "./useHexGrid";
+import type { HexGridState, PortSite } from "./useHexGrid";
+import { BUILDING_MAX_HEIGHT } from "./visuals/buildingGeometry";
 
 const TILE_SIZE = 1;
 const HEX_BASE_DEPTH = 0.1;
 const HIGHLIGHT_DEPTH = 0.02;
 
-const PORT_MARKER_HEIGHT = 0.3;
-// Gap between the ground and the port marker's base
-const PORT_MARKER_CLEARANCE = 0.01;
+// The port's hover volume (#59): invisible, covering the settlement, so a
+// pointer over the buildings or the ground between them shows the tooltip.
+// The buildings themselves are the port's visual (portSettlement.ts).
+const PORT_HOVER_RADIUS = 0.5;
+const PORT_HOVER_HEIGHT = BUILDING_MAX_HEIGHT;
 // Port name label baseline above the ground
 const PORT_LABEL_HEIGHT = 0.6;
 
@@ -52,18 +55,15 @@ const highlightGeometry = new ExtrudeGeometry(hexShape, {
   bevelEnabled: false,
 });
 
-// Cylinder geometry for port markers - easier to hover
-const portMarkerGeometry = new CylinderGeometry(
-  PORT_MARKER_RADIUS,
-  PORT_MARKER_RADIUS,
-  PORT_MARKER_HEIGHT,
-  8
-);
+// Hover volume for a port: never drawn, raycast only
+const portHoverGeometry = new CylinderGeometry(PORT_HOVER_RADIUS, PORT_HOVER_RADIUS, PORT_HOVER_HEIGHT, 8);
 
 const tempObject = new Object3D();
 
 
-// Port marker component with its own hover handling
+// Port hover volume: an invisible cylinder over the settlement (`visible`
+// false keeps it out of the draw and shadow passes; R3F still raycasts it,
+// as with the water hexes below).
 function PortMarker({
   site: { cell, groundY },
   onHover,
@@ -75,9 +75,9 @@ function PortMarker({
 
   return (
     <mesh
-      position={[x, groundY + PORT_MARKER_HEIGHT / 2 + PORT_MARKER_CLEARANCE, z]}
-      geometry={portMarkerGeometry}
-      castShadow
+      position={[x, groundY + PORT_HOVER_HEIGHT / 2, z]}
+      geometry={portHoverGeometry}
+      visible={false}
       onPointerEnter={(e) => {
         e.stopPropagation();
         onHover(cell);
@@ -86,11 +86,7 @@ function PortMarker({
         onHover(null);
       }}
     >
-      <meshStandardMaterial
-        color="#ffffff"
-        emissive="#fbbf24"
-        emissiveIntensity={0.6}
-      />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
     </mesh>
   );
 }
