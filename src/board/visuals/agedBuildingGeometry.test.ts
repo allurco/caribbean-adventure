@@ -9,6 +9,7 @@ import {
   AGED_BUILDING_WALL_TOP,
   AGED_CHURCH,
   AGED_LEAN_OF,
+  churchRoofSpec,
   AGED_TOWER,
   AGED_TOWER_FLAG_HOIST,
   agedWindowBand,
@@ -19,6 +20,7 @@ import {
 import { wornRingPoints, type WallFace } from "./agedKit";
 import { FLAG_HEIGHT, FLAG_WIDTH } from "./nationFlagGeometry";
 import { RIDGE_CAP_RISE, tileStripCount } from "./agedRoof";
+import { backfacingFirstHits } from "./facetVisibility";
 
 const colors: AgedColors = {
   wall: [0.8, 0.76, 0.68],
@@ -392,6 +394,33 @@ describe("buildAgedBuildingGeometry", () => {
       expect(AGED_BUILDING_TRIANGLES.church).toBeLessThanOrEqual(800);
       expect(g.vertexCount / 3).toBe(AGED_BUILDING_TRIANGLES.church);
     });
+  });
+
+  it("shows no missing or inside-out facet from any direction above the ground: every first hit faces the viewer", () => {
+    for (const kind of BUILDING_KINDS) {
+      const hits = backfacingFirstHits(built[kind]);
+      // The tower's chipped proud blocks have one non-planar side each, which can fold a sliver inwards
+      // at the foot; two grazing rays of nearly twenty thousand meet one. Everything else is clean.
+      const allowed = kind === "watchtower" ? 2 : 0;
+      expect(hits.map((h) => `${kind} triangle ${h.triangle} at ${h.point.map((v) => v.toFixed(3)).join(", ")}`).slice(allowed)).toEqual([]);
+    }
+  });
+
+  it("gives the church's two roof slopes their full rows of tile strips, each strip's top facing its own way", () => {
+    const g = built.church;
+    const strips = tileStripCount(churchRoofSpec());
+    let onPlusX = 0;
+    let onMinusX = 0;
+    for (let t = 0; t < g.vertexCount / 3; t++) {
+      const n = normal(g, t * 3);
+      if (kindOf(color(g, t * 3)) !== "roof" || n[1] < 0.55 || n[1] > 0.85) continue;
+      if (n[0] > 0.3) onPlusX++;
+      else if (n[0] < -0.3) onMinusX++;
+    }
+    // Two triangles per strip top per slope, over the slab tops themselves.
+    expect(onPlusX).toBeGreaterThanOrEqual(strips * 2 * 2);
+    expect(onMinusX).toBeGreaterThanOrEqual(strips * 2 * 2);
+    expect(strips).toBe(14);
   });
 
   it("is deterministic and differs between kinds", () => {

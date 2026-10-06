@@ -153,17 +153,23 @@ const roofSpec = (s: AgedGabledSpec): AgedRoofSpec => ({
 });
 
 /**
- * The church's roof: the usual overhang at the back, but at the front it
- * ends inside the bell gable's wall (half the screen's thickness behind
- * the front face), so the roof is built shorter and shifted back by
- * `churchRoofShift`.
+ * How far behind the front wall's face the church's roof ends: just inside
+ * the bell gable's back plane, so the eaves' end faces sit flush with it
+ * (a hair in front, never on it) and nothing of the roof shows through
+ * the screen.
  */
-const churchRoofSpec = (): AgedRoofSpec => {
+const CHURCH_ROOF_INSET = AGED_CHURCH.facade.thickness - 0.002;
+/**
+ * The church's roof: the usual overhang at the back, but at the front it
+ * ends `CHURCH_ROOF_INSET` behind the front face, inside the bell gable's
+ * wall, so the roof is built shorter and shifted back by `churchRoofShift`.
+ */
+export const churchRoofSpec = (): AgedRoofSpec => {
   const c = AGED_CHURCH;
-  const length = c.d + AGED_ROOF_OVERHANG - c.facade.thickness / 2;
+  const length = c.d + AGED_ROOF_OVERHANG - CHURCH_ROOF_INSET;
   return { halfU: c.w / 2, halfV: length / 2 - AGED_ROOF_OVERHANG, eave: c.eave, ridge: c.ridge, ridgeAlong: "z" };
 };
-const churchRoofShift = () => -(AGED_ROOF_OVERHANG + AGED_CHURCH.facade.thickness / 2) / 2;
+const churchRoofShift = () => -(AGED_ROOF_OVERHANG + CHURCH_ROOF_INSET) / 2;
 
 /** Top of each kind at scale 1 (the ridge cap or the pole tip). */
 export const AGED_BUILDING_HEIGHT: Readonly<Record<BuildingKind, number>> = {
@@ -225,7 +231,7 @@ export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
  * 10 and plinth course 10, walls 80, back gable 3, eave streaks 8, the
  * bell-gable facade 100 (base 18, shoulders 8, screen foot 4, piers,
  * reveals and sills 24, arch spandrels 32, band 4, sides 4, pediment 6),
- * the roof 352, cross 22, two bells 48, door 50 with its recess 2 and
+ * the roof 332, cross 22, two bells 48, door 50 with its recess 2 and
  * stone surround 50, six slit windows 24 and twenty quoin blocks 40.
  */
 export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
@@ -233,7 +239,7 @@ export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
   tavern: 610,
   house: 458,
   watchtower: 572,
-  church: 799,
+  church: 779,
 };
 
 const FOOTING_SHADE = 0.85;
@@ -593,8 +599,9 @@ function addChurchBellGable(b: FacetBuilder, wallTop: number, cl: number, cr: nu
   }
   // The band over the arches, the screen's sides, and the pediment.
   extrudedPolygon(b, [[-xs, f.crown], [xs, f.crown], [xs, f.bandTop], [-xs, f.bandTop]], z0, z1, wall, { edges: [false, false, false, false] });
-  b.quad([xs, f.screenFoot, z0], [xs, f.screenFoot, z1], [xs, f.bandTop, z1], [xs, f.bandTop, z0], wall);
-  b.quad([-xs, f.screenFoot, z1], [-xs, f.screenFoot, z0], [-xs, f.bandTop, z0], [-xs, f.bandTop, z1], wall);
+  // (Wound to face ±x: a quad on a plane of constant x faces +x when its first edge runs −z.)
+  b.quad([xs, f.screenFoot, z1], [xs, f.screenFoot, z0], [xs, f.bandTop, z0], [xs, f.bandTop, z1], wall);
+  b.quad([-xs, f.screenFoot, z0], [-xs, f.screenFoot, z1], [-xs, f.bandTop, z1], [-xs, f.bandTop, z0], wall);
   extrudedPolygon(b, [[-xs, f.bandTop], [xs, f.bandTop], [0, f.pedimentTop]], z0, z1, wall, { edges: [false, true, true] });
 }
 
@@ -604,12 +611,13 @@ function addChurchBells(b: FacetBuilder, colors: AgedColors) {
   const zc = c.d / 2 - c.facade.thickness / 2;
   for (const side of [-1, 1] as const) {
     const from = b.vertexCount();
+    // The profile runs bottom to top, as `lathe` wants it (outward is to the right of the direction of travel).
     b.lathe(
       [
-        [0, c.bell.top],
-        [c.bell.radius * 0.6, c.bell.top - 0.004],
-        [c.bell.radius, c.bell.bottom],
         [0, c.bell.bottom],
+        [c.bell.radius, c.bell.bottom],
+        [c.bell.radius * 0.6, c.bell.top - 0.004],
+        [0, c.bell.top],
       ],
       6,
       colors.bronze
