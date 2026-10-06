@@ -10,6 +10,7 @@ import { buildRockGeometryV2 } from "./visuals/rockGeometryV2";
 import { ROCK_BASE_COLOR, ROCK_SIZE_CLASS_SCALE } from "./visuals/rockVariation";
 import { buildBuildingGeometry, type BuildingColors } from "./visuals/buildingGeometry";
 import { buildHouseGeometryV2 } from "./visuals/buildingGeometryV2";
+import { buildQuayGeometry, type QuayColors } from "./visuals/quayGeometry";
 
 /** Any prop builder's output; `colors` is optional (the faceted rock has none and draws white). */
 export interface PropGeometryData {
@@ -36,6 +37,16 @@ const rgb = (name: PaletteName): Rgb => {
 /** The house's palette, as `PortBuildings.tsx` picks it. */
 const HOUSE_COLORS: BuildingColors = { wall: rgb("whitewash"), roof: rgb("timber"), timber: rgb("timber"), stone: rgb("masonry") };
 
+/** The quay's palette, as `Quays.tsx` picks it: masonry, the coping a sun-bleached shade of it, timber bollards. */
+const QUAY_COLORS: QuayColors = (() => {
+  const masonry = rgb("masonry");
+  return {
+    stone: [masonry[0] * 0.95, masonry[1] * 0.95, masonry[2] * 0.95],
+    coping: [masonry[0] * 1.15, masonry[1] * 1.15, masonry[2] * 1.15],
+    bollard: rgb("timber"),
+  };
+})();
+
 /** A medium (grass) rock, the commonest size class; the boulder variant. */
 const ROCK_SCALE = ROCK_SIZE_CLASS_SCALE.medium;
 const ROCK_VARIANT = 0;
@@ -45,4 +56,5 @@ export const PROP_ENTRIES: readonly PropEntry[] = [
   { label: "rock, notch up", build: () => buildRockGeometryV2(ROCK_VARIANT), color: ROCK_BASE_COLOR.SAND, scale: ROCK_SCALE, roughness: 0.95 },
   { label: "house, faceted", build: () => buildBuildingGeometry("house", HOUSE_COLORS), color: 0xffffff, roughness: 0.9 },
   { label: "house, notch up", build: () => buildHouseGeometryV2(HOUSE_COLORS), color: 0xffffff, roughness: 0.9 },
+  { label: "quay, notch up", build: () => buildQuayGeometry(QUAY_COLORS), color: 0xffffff, roughness: 0.95 },
 ];
