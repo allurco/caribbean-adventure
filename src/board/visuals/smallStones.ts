@@ -20,8 +20,12 @@ export const STONES_PER_SAND_CELL = 1;
 export const STONES_PER_GRASS_CELL = 1;
 /** Farthest a stone sits from its cell centre (world units; a hex is 1 unit in radius). */
 export const STONE_SPREAD = 0.55;
-/** Decoration scale of a stone (the rock mesh is ROCK_UNIT_RADIUS across at 1). */
-export const STONE_SCALE_RANGE: readonly [number, number] = [0.3, 0.5];
+/**
+ * Decoration scale of a stone (the rock mesh is ROCK_UNIT_RADIUS in radius at
+ * 1, and stones take the small size class on top). Knee-to-waist-high rocks;
+ * the earlier [0.3, 0.5] pebbles vanished into the beach at ship zoom.
+ */
+export const STONE_SCALE_RANGE: readonly [number, number] = [0.6, 1];
 
 const STONE_PLACEMENT: GroundPlacementOptions = { footprintRadius: ROCK_UNIT_RADIUS, sink: 0.01, maxSlope: 1.6 };
 const STONE_SALT = 0x5d7a3c91;

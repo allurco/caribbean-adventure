@@ -3,9 +3,16 @@
  *
  * A rock's look is derived deterministically from its decoration data and
  * its cell's biome, so the same map draws the same rocks on every client:
- * which of the faceted variants it uses, a tint within ±8% of the palette
- * colour, a non-uniform stretch, a small tilt, how deep it is buried, and a
- * size class (large outcrops on ROCK cells, medium on GRASS, small on SAND).
+ * which of the faceted variants it uses, a base colour by biome with a tint
+ * within ±15% of it, a non-uniform stretch, a small tilt, how deep it is
+ * buried, and a size class (large outcrops on ROCK cells, medium on GRASS,
+ * small on SAND).
+ *
+ * Colour and size were retuned after an A/B at ship zoom (camera 3.5-4.3
+ * units off, 65 m per unit) where the rocks could not be found: a rock
+ * painted with the ground's own `highlandRock` vanishes on a summit, and a
+ * light pebble vanishes on sand. The base colours are darker and less warm
+ * than the ground they sit on, and the sizes are roughly doubled.
  */
 import type { Biome } from "../../game/types";
 import { ROCK_VARIANT_COUNT } from "./rockGeometry";
@@ -28,7 +35,9 @@ export type RockSizeClass = "large" | "medium" | "small";
 export interface RockVariation {
   /** Which faceted variant to draw, in [0, ROCK_VARIANT_COUNT). */
   variant: number;
-  /** Multiplier on the palette colour, within 1 ± ROCK_TINT_SPREAD. */
+  /** The biome's base colour, an sRGB hex (`ROCK_BASE_COLOR`). */
+  baseColor: number;
+  /** Multiplier on the base colour, within 1 ± ROCK_TINT_SPREAD. */
   tint: number;
   /** Full scale per axis: decoration scale × size class × stretch. */
   scale: readonly [number, number, number];
@@ -41,17 +50,35 @@ export interface RockVariation {
   sizeClass: RockSizeClass;
 }
 
-export const ROCK_TINT_SPREAD = 0.08;
+/**
+ * Base colour per biome, sRGB hex: each is clearly darker and less warm than
+ * the ground it stands on (`palette.ts`), so a rock reads against it at ship
+ * zoom. Grey-brown on sand (dry sand is 0xe3cf9c), a mid-dark neutral grey on
+ * the jungle green, and a dark slate on the summits (highland rock is
+ * 0x9d8d79, which the rocks themselves used to be painted with).
+ */
+export const ROCK_BASE_COLOR: Readonly<Record<Biome, number>> = {
+  SAND: 0x665f55,
+  GRASS: 0x5a5c5a,
+  // Darker slates (0x3d4248) read as holes next to the summit's own shaded faces.
+  ROCK: 0x565c64,
+};
+export const ROCK_TINT_SPREAD = 0.15;
 /** Per-axis stretch on top of the decoration and class scale. */
 export const ROCK_STRETCH_RANGE: readonly [number, number] = [0.75, 1.3];
 export const ROCK_TILT_RANGE: readonly [number, number] = [-0.18, 0.18];
 /** Extra bury depth, world units at scale 1 (scaled by the rock's height). */
 export const ROCK_BURY_RANGE: readonly [number, number] = [0, 0.025];
-/** Scale multiplier per size class. */
+/**
+ * Scale multiplier per size class. With the generator's decoration scales
+ * (0.8-1.6 on summits, 0.8-1.4 on grass, 0.6-1 on beaches) a large outcrop
+ * is a boulder about a palm canopy across, and a small one a knee-to-waist
+ * high rock rather than a pebble.
+ */
 export const ROCK_SIZE_CLASS_SCALE: Readonly<Record<RockSizeClass, number>> = {
-  large: 1.5,
-  medium: 1,
-  small: 0.65,
+  large: 2.2,
+  medium: 1.5,
+  small: 1,
 };
 
 const SIZE_CLASS_BY_BIOME: Readonly<Record<Biome, RockSizeClass>> = {
@@ -71,6 +98,7 @@ export function rockVariation(p: RockPlacement, sizeClass: RockSizeClass = rockS
   const base = p.scale * ROCK_SIZE_CLASS_SCALE[sizeClass];
   return {
     variant: Math.min(ROCK_VARIANT_COUNT - 1, Math.floor(next() * ROCK_VARIANT_COUNT)),
+    baseColor: ROCK_BASE_COLOR[p.biome ?? "GRASS"],
     tint: 1 + (next() * 2 - 1) * ROCK_TINT_SPREAD,
     scale: [
       base * lerpRange(ROCK_STRETCH_RANGE, next()),

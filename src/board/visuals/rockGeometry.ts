@@ -22,8 +22,12 @@ export interface RockGeometryData {
 
 type Vec3 = [number, number, number];
 
-/** Rock radius in world units at scale 1 (matches `ROCK_RADIUS` in the layout). */
-export const ROCK_UNIT_RADIUS = 0.12;
+/**
+ * Rock radius in world units at scale 1 (matches `ROCK_RADIUS` in the layout).
+ * 0.22 is about a palm canopy's radius; at the old 0.12 the rocks could not
+ * be found at ship zoom.
+ */
+export const ROCK_UNIT_RADIUS = 0.22;
 export const ROCK_VARIANT_COUNT = 3;
 /** Triangles per variant, at most. */
 export const ROCK_TRIANGLE_BUDGET = 80;

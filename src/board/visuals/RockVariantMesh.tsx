@@ -35,7 +35,8 @@ export function RockVariantMesh({ geometry, material, rocks }: RockVariantMeshPr
       tempObject.scale.set(v.scale[0], v.scale[1], v.scale[2]);
       tempObject.updateMatrix();
       mesh.setMatrixAt(i, tempObject.matrix);
-      mesh.setColorAt(i, tempColor.setScalar(v.tint));
+      // setHex reads sRGB and converts to the linear working space; the tint scales it there.
+      mesh.setColorAt(i, tempColor.setHex(v.baseColor).multiplyScalar(v.tint));
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;

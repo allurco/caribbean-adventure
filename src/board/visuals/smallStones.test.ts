@@ -75,7 +75,12 @@ describe("smallStones", () => {
       expect(stone.rotation).toBeGreaterThanOrEqual(0);
       expect(stone.rotation).toBeLessThan(Math.PI * 2);
     }
-    expect(STONE_SCALE_RANGE[1]).toBeLessThan(0.7);
+  });
+
+  it("scales stones between 0.6 and 1 of a small rock: knee-to-waist high, not the [0.3, 0.5] pebbles", () => {
+    expect(STONE_SCALE_RANGE[0]).toBeGreaterThanOrEqual(0.6);
+    expect(STONE_SCALE_RANGE[1]).toBeLessThanOrEqual(1);
+    expect(STONE_SCALE_RANGE[0]).toBeLessThan(STONE_SCALE_RANGE[1]);
   });
 
   it("places nothing on a map with no eligible cells", () => {

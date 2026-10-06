@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import { BufferAttribute, BufferGeometry, MeshStandardMaterial } from "three";
-import { paletteColor } from "./palette";
 import { buildRockGeometry, ROCK_VARIANT_COUNT } from "./rockGeometry";
 import { rockVariation } from "./rockVariation";
 import { RockVariantMesh, type RockInstance } from "./RockVariantMesh";
@@ -15,9 +14,9 @@ const ROCK_GEOMETRIES: readonly BufferGeometry[] = Array.from({ length: ROCK_VAR
   return geometry;
 });
 
-// The palette colour is the base; `instanceColor` multiplies in each rock's tint.
+// White, so `instanceColor` (the biome's base colour times the rock's tint) is the whole colour.
 const ROCK_MATERIAL = new MeshStandardMaterial({
-  color: paletteColor("highlandRock"),
+  color: 0xffffff,
   roughness: 0.95,
   metalness: 0,
 });

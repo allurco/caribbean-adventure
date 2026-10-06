@@ -18,6 +18,12 @@ describe("buildRockGeometry", () => {
     expect(ROCK_VARIANT_COUNT).toBe(3);
   });
 
+  it("has a unit radius of at least 0.2, so a scale-1 rock is visible at ship zoom (0.12 was not)", () => {
+    expect(ROCK_UNIT_RADIUS).toBeGreaterThanOrEqual(0.2);
+    // Below half a palm canopy's radius (~0.24 at tree scale 1) is still a stone, not a boulder.
+    expect(ROCK_UNIT_RADIUS).toBeLessThanOrEqual(0.25);
+  });
+
   it("builds flat-shaded non-degenerate triangles with unit normals", () => {
     for (const g of variants) {
       expect(g.vertexCount % 3).toBe(0);
