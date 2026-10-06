@@ -9,8 +9,9 @@
  * catch the light: `bevelledBox` chamfers edges, `lathe` and `dome` share
  * normals across their facets so a curve shades smoothly, `smoothNormals`
  * does the same to shapes already collected, `bakeAmbientOcclusion` darkens
- * ground contacts, concavities and the band under an overhang, and
- * `jitterColors` breaks up a flat colour. Passes act on a vertex range
+ * ground contacts, concavities and the band under an overhang,
+ * `jitterColors` breaks up a flat colour and `tintColors` grades colours
+ * by position. Passes act on a vertex range
  * `[from, to)` of what has been collected so far (`vertexCount()`), so a
  * piece can be smoothed or shaded part by part before `build()`.
  */
@@ -385,6 +386,19 @@ export function createFacetBuilder() {
     }
   };
 
+  /**
+   * Multiplies each vertex colour in `[from, to)` by the per-channel factor
+   * `tint` gives for its position, clamped to [0, 1]: a colour gradient
+   * over existing geometry (a wet band, a sun-bleached top) with no new
+   * faces.
+   */
+  const tintColors = (from: number, to: number, tint: (p: Vec3) => Rgb) => {
+    for (let i = from; i < to; i++) {
+      const f = tint([positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]]);
+      for (let k = 0; k < 3; k++) colors[i * 3 + k] = clamp01(colors[i * 3 + k] * f[k]);
+    }
+  };
+
   /** Turns the vertices in `[from, to)` (and their normals) about a world axis through the origin. */
   const rotate = (from: number, to: number, axis: Axis, angle: number) => {
     const cos = Math.cos(angle);
@@ -426,6 +440,7 @@ export function createFacetBuilder() {
     smoothNormals,
     bakeAmbientOcclusion,
     jitterColors,
+    tintColors,
     rotate,
     translate,
     vertexCount,
