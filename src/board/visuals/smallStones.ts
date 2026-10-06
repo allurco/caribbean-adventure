@@ -60,8 +60,15 @@ export function smallStones(cells: readonly MapCell[], field: GroundField, seed:
       const rotation = next() * TAU;
       const scale = lerpRange(STONE_SCALE_RANGE, next());
       const spot = { x: hexX + Math.cos(angle) * distance, z: hexZ + Math.sin(angle) * distance };
-      // Stands on the centre height, probed out to the stone's drawn radius (#53).
-      const ground = placeRock(field, spot, anchor, { scale, rotation, biome: cell.biome, sink: STONE_SINK });
+      // Stands on the centre height, probed out to the stone's drawn radius (#53):
+      // the small class Rocks.tsx draws it at, not the biome's.
+      const ground = placeRock(field, spot, anchor, {
+        scale,
+        rotation,
+        biome: cell.biome,
+        sink: STONE_SINK,
+        sizeClass: "small",
+      });
       if (!ground) continue;
       stones.push({
         type: "rock",

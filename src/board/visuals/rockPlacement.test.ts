@@ -31,7 +31,7 @@ const request = (scale: number, biome: Biome, rotation = 0): RockRequest => ({ s
 function drawnAt(spot: { x: number; y: number; z: number }, rock: RockRequest): RockVariation {
   return rockVariation(
     { worldX: spot.x, worldY: spot.y, worldZ: spot.z, rotation: rock.rotation, scale: rock.scale, biome: rock.biome },
-    rockSizeClass(rock.biome)
+    rock.sizeClass ?? rockSizeClass(rock.biome)
   );
 }
 
@@ -141,5 +141,24 @@ describe("placeRock", () => {
   it("lets stones sink by their own amount", () => {
     const spot = placeRock(tilted(0.6, 0.5), ORIGIN, ORIGIN, { ...request(0.8, "SAND"), sink: 0.01 });
     expect(spot!.y).toBeCloseTo(0.6 - 0.01);
+  });
+
+  it("probes a stone at the small radius it is drawn at, not its biome's size class", () => {
+    // Rocks.tsx draws every stone "small". A grass stone probed at the biome's
+    // medium class (×1.5) overhung the probe but not the screen, and was nudged
+    // back from a coast or cliff edge it fitted on.
+    const requested = { x: 0.4, z: 0 };
+    for (let i = 0; i < 20; i++) {
+      const stone: RockRequest = { ...request(1, "GRASS", i * 0.37), sizeClass: "small", sink: 0.01 };
+      const drawn = rockDrawnRadius(drawnAt({ ...requested, y: 0 }, stone));
+      const asMedium = rockDrawnRadius(drawnAt({ ...requested, y: 0 }, { ...stone, sizeClass: "medium" }));
+      // Land ends just past the drawn rim: the stone fits as drawn, not as a medium rock.
+      const coastX = requested.x + drawn + 0.02;
+      expect(requested.x + asMedium).toBeGreaterThan(coastX);
+      const spot = placeRock(coast(coastX), requested, ORIGIN, stone);
+      expect(spot).not.toBeNull();
+      expect(spot!.x).toBeCloseTo(requested.x, 9);
+      expect(spot!.z).toBeCloseTo(requested.z, 9);
+    }
   });
 });

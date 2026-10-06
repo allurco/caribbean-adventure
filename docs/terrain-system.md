@@ -320,7 +320,9 @@ to a smaller rock may fit where the requested one would not) and probes the
 ground out to `rockDrawnRadius` (per-axis scale × the variant's ellipsoid
 radii × the unit radius), at the centre and 16 points round the rim, so a
 slab can neither hang over the water nor over a lower neighbour the probe
-missed. `ROCK_MAX_EXTENT` (0.85, just inside the hex inradius of 0.87) caps
+missed. Stones ask for the small class they are drawn at (`sizeClass` on
+the request), not their cell's; a grass stone probed at the medium class
+was pushed back from edges it fitted on. `ROCK_MAX_EXTENT` (0.85, just inside the hex inradius of 0.87) caps
 that radius: a rock that would reach further is shrunk uniformly in
 `rockVariation`, which only touches the biggest slabs (a large slab at the
 generator's top scale would otherwise reach 1.31 units). Probe over small-map

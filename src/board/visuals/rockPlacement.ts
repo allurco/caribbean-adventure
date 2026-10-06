@@ -18,7 +18,7 @@
  */
 import type { Biome } from "../../game/types";
 import { nudgedTowards, standOnGround, type GroundField, type GroundSpot } from "./groundPlacement";
-import { rockDrawnRadius, rockSizeClass, rockVariation } from "./rockVariation";
+import { rockDrawnRadius, rockSizeClass, rockVariation, type RockSizeClass } from "./rockVariation";
 
 /** How far below the ground at its centre a rock's origin (its widest ring) sits. */
 export const ROCK_SINK = 0.02;
@@ -32,6 +32,12 @@ export interface RockRequest {
   biome: Biome | undefined;
   /** Sink below the centre ground; `ROCK_SINK` unless given (stones sink a little less). */
   sink?: number;
+  /**
+   * Size class the rock is drawn at; the biome's (`rockSizeClass`) unless
+   * given. Stones pass `"small"`, as `Rocks.tsx` draws them, so the probed
+   * footprint is the drawn one and not the biome's medium class on grass.
+   */
+  sizeClass?: RockSizeClass;
 }
 
 /**
@@ -45,7 +51,7 @@ export function placeRock(
   anchor: { x: number; z: number },
   rock: RockRequest
 ): GroundSpot | null {
-  const sizeClass = rockSizeClass(rock.biome);
+  const sizeClass = rock.sizeClass ?? rockSizeClass(rock.biome);
   for (const candidate of nudgedTowards(spot, anchor)) {
     const variation = rockVariation(
       { worldX: candidate.x, worldY: 0, worldZ: candidate.z, rotation: rock.rotation, scale: rock.scale, biome: rock.biome },

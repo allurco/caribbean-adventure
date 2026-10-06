@@ -5,6 +5,7 @@ import { hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
 import { MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
+import { rockDrawnRadius, rockVariation } from "./rockVariation";
 import {
   smallStones,
   STONE_SCALE_RANGE,
@@ -101,6 +102,27 @@ describe("smallStones", () => {
     for (const stone of onSlope) {
       expect(stone.worldY).toBeCloseTo(slope.sampleHeight(stone.worldX, stone.worldZ) - 0.01, 5);
     }
+  });
+
+  it("probes each stone's ground out to the small radius Rocks.tsx draws it at (#53)", () => {
+    // On flat land every stone stands at its first candidate, so the probes come
+    // in equal runs per stone, in stone order: the centre first, then the rim.
+    const probes: { x: number; z: number }[] = [];
+    const recording: GroundField = {
+      sampleHeight: (x, z) => {
+        probes.push({ x, z });
+        return 0.5;
+      },
+    };
+    const placed = smallStones(cells, recording, seed);
+    expect(placed.length).toBeGreaterThan(0);
+    const perStone = probes.length / placed.length;
+    expect(Number.isInteger(perStone)).toBe(true);
+    placed.forEach((stone, k) => {
+      const rim = probes[k * perStone + 1];
+      const probed = Math.hypot(rim.x - stone.worldX, rim.z - stone.worldZ);
+      expect(probed).toBeCloseTo(rockDrawnRadius(rockVariation(stone, "small")), 9);
+    });
   });
 
   it("places nothing on a map with no eligible cells", () => {
