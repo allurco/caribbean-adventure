@@ -47,6 +47,14 @@ export interface GroundPlacementOptions {
   maxSlope: number;
   /** Which probe the base rests on; `lowest` unless given. */
   standOn?: StandOn;
+  /**
+   * Deepest the base may sit below the ground at the footprint's centre
+   * (the sink included); a spot that would bury it further is rejected, so
+   * `placeOnGround` nudges towards the anchor, then drops it. Unbounded
+   * unless given. Bounds what the `lowest` rule can do on relief the slope
+   * check does not see, such as a dip under one rim probe.
+   */
+  maxBury?: number;
 }
 
 export interface GroundSpot {
@@ -75,24 +83,28 @@ export function nudgedTowards(spot: { x: number; z: number }, anchor: { x: numbe
 
 /**
  * Whether an object can stand at exactly (x, z), and where. Null if any of
- * the ground under its footprint is too low (at or under the sea) or the
- * ground across it is too steep. The Y is the probe it stands on (see
- * `StandOn`) minus `sink`.
+ * the ground under its footprint is too low (at or under the sea), the
+ * ground across it is too steep, or (with `maxBury`) resting on it would sink
+ * the base too far under the ground at its centre. The Y is the probe it
+ * stands on (see `StandOn`) minus `sink`.
  */
 export function standOnGround(field: GroundField, x: number, z: number, options: GroundPlacementOptions): GroundSpot | null {
-  const { footprintRadius: radius, sink, maxSlope, standOn = "lowest" } = options;
+  const { footprintRadius: radius, sink, maxSlope, standOn = "lowest", maxBury } = options;
   const heights = footprintHeights(field, x, z, radius);
   const lowest = Math.min(...heights);
   if (lowest < MIN_GROUND_HEIGHT) return null;
   const slope = Math.hypot(heights[PLUS_X] - heights[MINUS_X], heights[PLUS_Z] - heights[MINUS_Z]) / (2 * radius);
   if (slope > maxSlope) return null;
-  return { x, y: (standOn === "centre" ? heights[0] : lowest) - sink, z };
+  const y = (standOn === "centre" ? heights[0] : lowest) - sink;
+  if (maxBury !== undefined && heights[0] - y > maxBury) return null;
+  return { x, y, z };
 }
 
 /**
  * Where an object asked for at `spot` actually stands. If the ground there is
- * too low (at or under the sea) or too steep, the spot is nudged back towards
- * `anchor` (its cell centre); if no point on the way works it is dropped (null).
+ * too low (at or under the sea), too steep, or would bury the base deeper
+ * than `maxBury`, the spot is nudged back towards `anchor` (its cell centre);
+ * if no point on the way works it is dropped (null).
  */
 export function placeOnGround(
   field: GroundField,
