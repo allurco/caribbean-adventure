@@ -19,6 +19,8 @@ import {
   CHURCH_SCALE_RANGE,
   PORT_CHURCH_SLOT_INDEX,
   pierRootReserve,
+  planFootprint,
+  planProbePoints,
   portBuildings,
   scaleRangeOf,
   settlementGround,
@@ -27,6 +29,7 @@ import {
   BUILDING_SINK,
   PIER_MOUTH_RESERVE,
   PIER_ROOT_RESERVE,
+  PLAN_FOOTPRINT_MARGIN,
   PORT_BUILDING_GAP,
   PORT_BUILDING_MAX_RADIUS,
   PORT_SETTLEMENT_RADIUS,
@@ -274,9 +277,9 @@ describe("portBuildings", () => {
       const kinds = mine.map((b) => b.kind);
       expect(new Set(kinds).size).toBe(kinds.length);
     }
-    // The tower, the church and one or two more: the church's 0.23 footprint in the middle of the arc
-    // leaves room for about one small building (3.5 per port before the church, 2.4 to 2.8 since).
-    expect(buildings.length).toBeGreaterThanOrEqual(ports.length * 2.2);
+    // The tower, the church and one or two more: about three per port (2.97 to 3.08 over eight seeds of
+    // each size) now the ground is probed under the walls rather than over the whole plan circle.
+    expect(buildings.length).toBeGreaterThanOrEqual(ports.length * 2.6);
   });
 
   it("puts no building on a cell without a port, but a watchtower on every port, fort decoration or not", () => {
@@ -368,13 +371,13 @@ describe("portBuildings", () => {
       }
     }
     expect(portsSeen).toBeGreaterThan(50);
-    // A church is dropped only where no ground on the hex takes its footprint: about one port in eight
-    // (87.8 % of 300 ports over these nine maps; 86–90 % by size over ten seeds each).
-    expect(churches / portsSeen).toBeGreaterThanOrEqual(0.85);
+    // A church is dropped only where no ground on the hex takes its walls' plan: 97–100 % of ports get
+    // one over eight seeds of each size (60–68 % when the whole plan circle had to fit the footing's spread).
+    expect(churches / portsSeen).toBeGreaterThanOrEqual(0.95);
     // Everything stays under the label; the tower sets the minimum (0.027 here, as before the church),
-    // the church's cross never comes within 0.1 of it.
+    // the church's cross never comes within 0.05 of it (0.077 at the closest, a church standing high on a slope).
     expect(slack).toBeGreaterThan(0);
-    expect(churchSlack).toBeGreaterThan(0.1);
+    expect(churchSlack).toBeGreaterThan(0.05);
   });
 
   it("never drops the tower: on a beach too small for any footprint it stands at the hex centre on the highest ground there", () => {
@@ -442,10 +445,10 @@ describe("portBuildings", () => {
     for (const b of buildings) {
       const settlement = settlementGround(portOf(b), surface, seed);
       expect(settlement.sampleHeight(b.worldX, b.worldZ)).toBeGreaterThan(MIN_GROUND_HEIGHT);
-      const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
       const footing = BUILDING_FOOTING * b.scale;
-      // Probed far denser than the placement does (48 rim points and two inner rings), on the surface as drawn.
-      const probes = footprintPoints(b.worldX, b.worldZ, reach, 48);
+      // The ground under the walls (their plan rectangle with the margin, at the building's yaw), probed far
+      // denser than the placement does (25 × 37 against 9 × 13), on the surface as drawn.
+      const probes = planProbePoints(b.worldX, b.worldZ, planFootprint(b.kind, b.scale, b.yaw), 25, 37);
       const heights = probes.map((p) => settlement.sampleHeight(p.x, p.z));
       // Wholly on the quay or wholly off it: a wall never steps down the quay's edge.
       const onQuay = probes.filter((p) => settlement.onQuay(p.x, p.z)).length;
@@ -462,6 +465,41 @@ describe("portBuildings", () => {
     // The drawn surface against the field: the placement probes the same lattice surface, so the two never disagree by more than the slack.
     for (const b of buildings) expect(Math.abs(landSurfaceHeight(field, b.worldX, b.worldZ) - surface.sampleHeight(b.worldX, b.worldZ))).toBeLessThan(1e-9);
     expect(worstAbove).toBeLessThanOrEqual(OVER_TERRAIN_SLACK);
+  });
+
+  it("probes the ground under the walls' plan, not the plan circle: a long nave across a ramp stands where its circle would not", () => {
+    const noQuay = { ...quayPort, decorations: [] };
+    const [hx, , hz] = hexToWorld(quayPort.hex);
+    const pierRoot = { x: hx + 5, z: hz + 5 };
+    const scale = 1;
+    const reach = AGED_BUILDING_HALF_DIAGONAL.church * scale;
+    const footing = BUILDING_FOOTING * scale;
+    // The plan with its margin stays well inside the circle, and the margin is a fraction of the eave's overhang.
+    for (const kind of BUILDING_KINDS) {
+      const plan = planFootprint(kind, scale, 0);
+      expect(Math.hypot(plan.halfW - PLAN_FOOTPRINT_MARGIN, plan.halfD - PLAN_FOOTPRINT_MARGIN)).toBeLessThanOrEqual(AGED_BUILDING_HALF_DIAGONAL[kind] * scale + 1e-9);
+      expect(plan.halfW).toBeGreaterThan(PLAN_FOOTPRINT_MARGIN);
+      expect(plan.halfD).toBeGreaterThan(PLAN_FOOTPRINT_MARGIN);
+    }
+    expect(PLAN_FOOTPRINT_MARGIN).toBeLessThanOrEqual(0.025);
+    expect(planFootprint("church", scale, 0)).toEqual({ halfW: 0.1 + PLAN_FOOTPRINT_MARGIN, halfD: 0.15 + PLAN_FOOTPRINT_MARGIN, yaw: 0 });
+    // A ramp rising along x: the plan circle spans 0.46, the nave across the ramp (front to +z, yaw 0) only 0.24.
+    const grade = 0.5;
+    const ramp: GroundField = { sampleHeight: (x) => 0.1 + grade * (x - hx) };
+    const ground = settlementGround(noQuay, ramp, 0);
+    const circle = standBuilding(ground, { x: hx, z: hz }, reach, footing, pierRoot, []);
+    expect(circle).toBeNull();
+    const across = standBuilding(ground, { x: hx, z: hz }, reach, footing, pierRoot, [], planFootprint("church", scale, 0));
+    expect(across).not.toBeNull();
+    expect(across!.y).toBeCloseTo(buildingGroundY(0.1 + grade * (0.1 + PLAN_FOOTPRINT_MARGIN)), 9);
+    // Turned a quarter, the nave runs up the ramp and spans 0.34: too much for the footing.
+    expect(0.34 * grade).toBeGreaterThan(buildingMaxSpread(footing));
+    expect(standBuilding(ground, { x: hx, z: hz }, reach, footing, pierRoot, [], planFootprint("church", scale, Math.PI / 2))).toBeNull();
+    // The grid covers the rectangle's corners and edges, turned with the plan.
+    const pts = planProbePoints(hx, hz, { halfW: 0.1, halfD: 0.2, yaw: Math.PI / 2 }, 3, 3);
+    expect(pts).toHaveLength(9);
+    expect(Math.max(...pts.map((p) => Math.abs(p.x - hx)))).toBeCloseTo(0.2, 9);
+    expect(Math.max(...pts.map((p) => Math.abs(p.z - hz)))).toBeCloseTo(0.1, 9);
   });
 
   it("stands a sloped footprint with its contact at the top of the slope and refuses a slope the footing cannot cover", () => {

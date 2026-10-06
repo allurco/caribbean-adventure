@@ -560,15 +560,34 @@ the smallest tower's pole (0.466). Placement: a fifth slot straight
 landward of the square is the church's (under the Laws of the Indies
 the church fronts the plaza); it is placed second, after the tower and
 before the shuffled others, looks round the whole hex if the landward
-arc has no room, and is dropped only where no ground takes its 0.23
-footprint (about one port in eight: 86–90 % of ports get one over ten
-seeds of each size). The slots either side of it moved from ±0.45 to
-±0.8 so a house beside the church clears it on flat ground; the ring
-search makes the exact value immaterial to how many buildings fit. The
-church's footprint in the middle of the arc leaves room for about one
-more small building: 2.4–2.8 buildings per port (3.5 before), so the
-warehouse, the next-largest piece, is now rare. Triangles: 769 (budget
-1000), the roof's 332 the largest share. `facetVisibility.ts` guards
+arc has no room, and is dropped only where no ground takes its walls'
+plan. The slots either side of it moved from ±0.45 to ±0.8 so a house
+beside the church clears it on flat ground; the ring search makes the
+exact value immaterial to how many buildings fit.
+
+The church is also why the ground is probed under the walls and not
+over the plan circle. Under the stand-on-top rule a spot is taken only
+if the ground under the footprint spans less than the footing covers
+(about 0.14); the church's plan circle is 0.23 (the roof's rear eave
+corner), spans 0.46 and on a 0.33 beach ramp alone takes up the whole
+allowance, so with the circle as the footprint only 60–68 % of ports
+got a church (8 seeds of each size) and settlements stood at
+2.42 / 2.64 / 2.67 buildings per port. `planFootprint(kind, scale, yaw)`
+is the walls' rectangle (`AGED_BUILDING_PLAN`: 0.1 × 0.15 for the church,
+the gabled kinds' and the tower's half-widths otherwise) with
+`PLAN_FOOTPRINT_MARGIN` (0.02, over the plinth course and the lean,
+under the eave's 0.025 overhang) round it, turned to the building's yaw;
+`footprintGround` probes it on a 9 × 13 grid plus the drawn surface's
+creases inside it, and the same rectangle decides the quay stance. The
+plan circle still keeps buildings apart, off the pier root and inside
+the hex, and still drives `placeOnGround`'s wet/steep check. With it,
+97–100 % of ports get a church and settlements stand at
+3.08 / 3.00 / 2.97 buildings per port (small / medium / large, 8 seeds
+each), above the 2.42 / 2.58 / 2.64 the rule gave before the church
+existed; every tower stays on its arc. The church's cross comes no
+nearer than 0.077 to the label (a church standing high on a slope).
+Triangles: 779 (budget 1000), the roof's 332 the largest share, the
+plinth's 20 included. `facetVisibility.ts` guards
 the whole aged kit against inside-out or missing facets by casting rays
 from forty-nine directions and requiring every first hit to face the
 viewer; it caught the screen's side strips and the bells wound inside
@@ -680,7 +699,8 @@ settlements fell from 2.65 / 2.65 / 2.76 buildings per port
 (small / medium / large, 8 seeds each) to 1.85 / 1.78 / 1.88 even with the
 finer search, warehouses all but vanished and one tower fell back to its
 hex centre; at 0.16 they stand at 2.45 / 2.54 / 2.65 with every tower on
-its arc. (Before this rule the contact sat half a footing above the lowest
+its arc, and at about 3.0 once the footprint probed is the walls' plan
+rather than the plan circle (see the church, above). (Before this rule the contact sat half a footing above the lowest
 probe and the high side was buried up to 0.1, which cut the back walls of
 houses into rising sand; 320 of those 328 buildings had ground above their
 contact, by up to 0.12.)

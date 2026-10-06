@@ -218,6 +218,20 @@ export const AGED_BUILDING_HALF_DIAGONAL: Readonly<Record<BuildingKind, number>>
     Math.ceil((Math.hypot(AGED_TOWER.halfBase, AGED_TOWER.halfBase) + Math.hypot(...AGED_LEAN_OF.watchtower) * AGED_TOWER.ledge.top) * 200) / 200,
 };
 
+/**
+ * Half-extents of the walls in plan at scale 1 (x across the front, z front
+ * to back): the ground a building actually stands on, as against the plan
+ * circle above, which circumscribes the eaves and the lean as well and is
+ * what keeps buildings apart.
+ */
+export const AGED_BUILDING_PLAN: Readonly<Record<BuildingKind, { halfW: number; halfD: number }>> = {
+  warehouse: { halfW: GABLED.warehouse.w / 2, halfD: GABLED.warehouse.d / 2 },
+  tavern: { halfW: GABLED.tavern.w / 2, halfD: GABLED.tavern.d / 2 },
+  house: { halfW: GABLED.house.w / 2, halfD: GABLED.house.d / 2 },
+  church: { halfW: AGED_CHURCH.w / 2, halfD: AGED_CHURCH.d / 2 },
+  watchtower: { halfW: AGED_TOWER.halfBase, halfD: AGED_TOWER.halfBase },
+};
+
 export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
 /**
  * What the builds below come to. A gabled piece is its footing 10 and
