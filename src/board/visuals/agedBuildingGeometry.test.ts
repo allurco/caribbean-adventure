@@ -12,8 +12,10 @@ import {
   AGED_TOWER_FLAG_HOIST,
   agedWindowBand,
   buildAgedBuildingGeometry,
+  faceCutIndices,
   type AgedColors,
 } from "./agedBuildingGeometry";
+import { wornRingPoints, type WallFace } from "./agedKit";
 import { FLAG_HEIGHT, FLAG_WIDTH } from "./nationFlagGeometry";
 import { tileStripCount } from "./agedRoof";
 
@@ -136,6 +138,24 @@ describe("buildAgedBuildingGeometry", () => {
         if (Math.abs(y) < 1e-6) groundMinX = Math.min(groundMinX, x);
       }
       expect(groundMinX - bottomMinX).toBeCloseTo(lx * BUILDING_FOOTING, 6);
+    }
+  });
+
+  it("bounds each face by the worn ring's own corners: faceCutIndices agrees with wornRingPoints for every face", () => {
+    // Distinct cuts, so each ring point tells which corner it came from. Box order: left 0–1, front 2–3, right 4–5, back 6–7.
+    const cuts: [number, number, number, number] = [0.011, 0.023, 0.037, 0.041];
+    const p = wornRingPoints({ hw: 1, hd: 1, y: 0, cuts });
+    const atFace: Record<WallFace, [number, number]> = {
+      // Left and right ends of each face seen from outside, as the cut each end's point was moved in by.
+      front: [p[2][0] + 1, 1 - p[3][0]],
+      right: [1 - p[4][2], p[5][2] + 1],
+      back: [1 - p[6][0], p[7][0] + 1],
+      left: [p[0][2] + 1, 1 - p[1][2]],
+    };
+    for (const face of ["front", "right", "back", "left"] as const) {
+      const [l, r] = faceCutIndices(face);
+      expect(cuts[l]).toBeCloseTo(atFace[face][0], 12);
+      expect(cuts[r]).toBeCloseTo(atFace[face][1], 12);
     }
   });
 

@@ -157,7 +157,7 @@ export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
   warehouse: 458,
   tavern: 610,
   house: 458,
-  watchtower: 570,
+  watchtower: 572,
 };
 
 const FOOTING_SHADE = 0.85;
@@ -211,18 +211,28 @@ function gable(b: FacetBuilder, frame: FaceFrame, width: number, cutLeft: number
   b.triangle(bl, top, tl, color);
 }
 
-/** The top-ring cuts at a face's left and right ends, seen from outside, in `wornRingPoints` corner order. */
-function faceCuts(face: WallFace, cuts: readonly [number, number, number, number]): [number, number] {
+/**
+ * Which of a worn ring's four corner cuts bound a face at its left and right
+ * ends, seen from outside, in `wornRingPoints` corner order: c0 is the
+ * back-left corner (−x, −z), c1 front-left, c2 front-right, c3 back-right.
+ */
+export function faceCutIndices(face: WallFace): [number, number] {
   switch (face) {
     case "front":
-      return [cuts[1], cuts[2]];
+      return [1, 2];
     case "back":
-      return [cuts[3], cuts[0]];
+      return [3, 0];
     case "right":
-      return [cuts[2], cuts[3]];
+      return [2, 3];
     case "left":
-      return [cuts[0], cuts[1]];
+      return [0, 1];
   }
+}
+
+/** The top-ring cuts at a face's left and right ends, seen from outside, in `wornRingPoints` corner order. */
+function faceCuts(face: WallFace, cuts: readonly [number, number, number, number]): [number, number] {
+  const [l, r] = faceCutIndices(face);
+  return [cuts[l], cuts[r]];
 }
 
 function addAgedGabled(b: FacetBuilder, kind: Exclude<BuildingKind, "watchtower">, s: AgedGabledSpec, colors: AgedColors) {
@@ -326,7 +336,8 @@ function addAgedTower(b: FacetBuilder, colors: AgedColors) {
   };
   faces.forEach((face, i) => {
     const frame = taperedFace(face, halfAt, 0, t.bodyTop);
-    const [cl, cr] = [[0, 1], [2, 3], [3, 0], [1, 2]][i].map((k) => (y: number) => cutAt(k, y));
+    // The blocks run between the face's worn corner widths, in the ring's corner order (as the gabled walls' gables do).
+    const [cl, cr] = faceCutIndices(face).map((k) => (y: number) => cutAt(k, y));
     const openings = [
       ...(face === "front" ? [door] : []),
       ...slits[face].map((o) => ({ s0: halfAt((o.y0 + o.y1) / 2) - SLIT.halfWidth - 0.006, s1: halfAt((o.y0 + o.y1) / 2) + SLIT.halfWidth + 0.006, ...o })),
