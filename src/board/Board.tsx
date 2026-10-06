@@ -129,6 +129,7 @@ function Scene({
 }: {
   G: CaribbeanState;
   currentPlayer: string;
+  /** The map's iso distance (sets the zoom floor) and the first target. */
   cam: { isoDistance: number; target: [number, number, number] };
   movesRemaining: number;
   attackMode: boolean;
@@ -468,8 +469,15 @@ function Scene({
   );
 }
 
-export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
-  const { G, ctx } = props;
+export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
+  /** Where the camera looks on the first frame instead of the map's middle (dev, #74). */
+  cameraTarget?: [number, number, number];
+  /** How far from its target the camera starts instead of the map's iso distance (dev, #74). */
+  cameraDistance?: number;
+}
+
+export function CaribbeanBoard(props: CaribbeanBoardProps) {
+  const { G, ctx, cameraTarget, cameraDistance } = props;
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
   const [sinkingShips, setSinkingShips] = useState<SinkingShipData[]>([]);
@@ -650,6 +658,14 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
 
   const preset = getMapPreset(G.mapSize);
   const cam = computeCameraConfig(preset);
+  // The first view: the map's middle from its iso distance unless pinned.
+  // Only the start changes; the zoom floor (minDistance, from cam.isoDistance)
+  // and the focus clamp stay as they are, so a pinned view off the map is
+  // pulled back onto it like any other.
+  const start = {
+    target: cameraTarget ?? cam.target,
+    distance: cameraDistance ?? cam.isoDistance,
+  };
   const maxMoves = currentShipState ? getMaxMoves(currentShipState) : 0;
   const movesRemaining = maxMoves - (ctx.numMoves ?? 0);
 
@@ -705,9 +721,9 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
           // Start due south of the middle of the map (the rectangle's corner
           // is the origin), looking north along CAMERA_OFFSET
           position: [
-            cam.target[0] + cam.isoDistance * CAMERA_OFFSET[0],
-            cam.target[1] + cam.isoDistance * CAMERA_OFFSET[1],
-            cam.target[2] + cam.isoDistance * CAMERA_OFFSET[2],
+            start.target[0] + start.distance * CAMERA_OFFSET[0],
+            start.target[1] + start.distance * CAMERA_OFFSET[1],
+            start.target[2] + start.distance * CAMERA_OFFSET[2],
           ],
           fov: CAMERA_FOV,
           near: 0.1,
@@ -718,7 +734,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
         <Scene
           G={G}
           currentPlayer={currentPlayer}
-          cam={cam}
+          cam={{ isoDistance: cam.isoDistance, target: start.target }}
           movesRemaining={movesRemaining}
           attackMode={attackMode}
           spyglassMode={spyglassMode}
