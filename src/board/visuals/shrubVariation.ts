@@ -4,8 +4,9 @@
  * A shrub's look is derived deterministically from its placement (the
  * `palmVariation.ts` pattern), so a map draws the same vegetation on every
  * client: a width and a height stretch, a tint of the kind's colours and a
- * sway phase. The placement itself (shrubs.ts) comes from a hash of the whole
- * terrain seed and the cell, so the seed reaches everything here through it.
+ * sway phase. The placement itself (shrubPlacement.ts) comes from a hash of
+ * the whole terrain seed and the cell, so the seed reaches everything here
+ * through it.
  */
 import { PALETTE_HEX } from "./palette";
 import type { ShrubKind } from "./shrubGeometry";
