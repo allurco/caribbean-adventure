@@ -372,8 +372,15 @@ stone platform at the pier root in the pier's local frame (749 triangles,
 budget 1000; one per port, so cheap), in the port kit's art direction: an
 old Spanish-Caribbean port that has stood a century in salt air, still
 in the stylised mid-poly register (faceted, vertex colour only, no
-textures), with nothing on a perfect grid. A footing as deep as the pier
-posts; above the waterline two tall battered courses (each 0.0075
+textures), with nothing on a perfect grid. The mesh is shared by every
+port but `quayAt` lifts each instance by its own amount (0 on a low
+beach, 0.085 at the cap, a median of 0.055 over generated maps), so the
+mesh's waterline is modelled `QUAY_TYPICAL_LIFT` (0.055) below the sea
+and the lift lands the tide mark, the course line and the stair foot at
+the water on a typical port, a little under it on a low beach and at
+most 0.03 above it at the cap (`quayPlacement.test.ts` pins the lift to
+the maps). A footing from as deep as the pier posts up to that waterline;
+above it two tall battered courses (each 0.0075
 further out than the one above, the foot flush with the base's edge, an
 up-facing ledge at the course line) whose sea face and seaward sides are
 a near-black mortar plane set with rough-cut blocks laid out once from
@@ -382,8 +389,8 @@ the variation stream (`QUAY_WALL_BLOCKS`): unequal widths, joints of
 course so it stays under the base's edge), beds that wobble, a few
 chipped corners, two blocks missing to show the rubble behind, tones
 ±15 % with an ochre drift, and the blocks under the bollards and the
-mooring ring stained dark. A green-black wet band over 90 % of the lower
-course (a `tintColors` gradient to the waterline). The deck is a
+mooring ring stained dark. A green-black wet band over three quarters of
+the lower course (a `tintColors` gradient to the waterline). The deck is a
 square-edged stone base 0.018 thick overhanging the wall by 0.015, its
 top the mortar the paving's joints show, carrying twelve unbevelled
 paving stones in three rows of 4/3/5 (`QUAY_PAVING`): unequal widths,
