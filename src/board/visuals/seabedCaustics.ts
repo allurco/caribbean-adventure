@@ -73,8 +73,20 @@ export const SEABED_CAUSTIC_GLSL = `
 const VERTEX_DECLARATIONS = `
   varying vec3 vCausticWorld;`;
 
+/**
+ * Three's `transformed` is the vertex in mesh-local space: only its own
+ * project_vertex / worldpos_vertex apply `instanceMatrix`, so on an
+ * InstancedMesh (the shore boulders, ShoreBoulderMeshes.tsx) the instance
+ * transform is applied here too, or every instance would read the depth and
+ * surface point of its rock-local vertex. Without USE_INSTANCING (the land
+ * and seabed meshes) this is the plain model transform.
+ */
 const VERTEX_BODY = `
-  vCausticWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;`;
+  vec4 causticLocal = vec4(transformed, 1.0);
+  #ifdef USE_INSTANCING
+  causticLocal = instanceMatrix * causticLocal;
+  #endif
+  vCausticWorld = (modelMatrix * causticLocal).xyz;`;
 
 /** Three's lights chunk with the directional light's colour scaled by the caustic as it is read. */
 const LIGHTS_WITH_CAUSTIC = ShaderChunk.lights_fragment_begin.replace(

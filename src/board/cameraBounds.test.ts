@@ -8,7 +8,6 @@ import {
   cameraBoundsFromHexes,
   clampToCameraBounds,
   groundViewReach,
-  oceanPlaneSize,
 } from "./cameraBounds";
 import { hexGrid, hexToWorld } from "../game/hex";
 import type { Hex } from "../game/hex";
@@ -196,11 +195,5 @@ describe("groundViewReach", () => {
     it("is still infinite when the top of the view reaches the horizon", () => {
       expect(groundViewReach(10, (10 * Math.PI) / 180, CAMERA_FOV, 1, 2)).toBe(Infinity);
     });
-  });
-});
-
-describe("oceanPlaneSize", () => {
-  it("covers the visible reach on every side of a plane centred under the focus", () => {
-    expect(oceanPlaneSize(30)).toBe(60);
   });
 });

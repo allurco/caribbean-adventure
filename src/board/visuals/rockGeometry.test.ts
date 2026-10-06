@@ -4,6 +4,7 @@ import {
   ROCK_TRIANGLE_BUDGET,
   ROCK_UNIT_RADIUS,
   ROCK_VARIANT_COUNT,
+  ROCK_VARIANT_REACH,
   type RockGeometryData,
 } from "./rockGeometry";
 
@@ -130,5 +131,24 @@ describe("buildRockGeometry", () => {
 
   it("wraps an out-of-range variant index round", () => {
     expect(buildRockGeometry(ROCK_VARIANT_COUNT).positions).toEqual(buildRockGeometry(0).positions);
+  });
+
+  it("bounds every variant's drawn extent with ROCK_VARIANT_REACH, and not loosely", () => {
+    expect(ROCK_VARIANT_REACH).toHaveLength(ROCK_VARIANT_COUNT);
+    variants.forEach((g, variant) => {
+      let widest = 0;
+      let highest = 0;
+      for (let i = 0; i < g.vertexCount; i++) {
+        const [x, y, z] = vertex(g, i);
+        widest = Math.max(widest, Math.hypot(x, z));
+        highest = Math.max(highest, y);
+      }
+      const reach = ROCK_VARIANT_REACH[variant];
+      expect(widest).toBeLessThanOrEqual(reach.horizontal);
+      expect(highest).toBeLessThanOrEqual(reach.top);
+      // A bound, not a blanket: within a third of the drawn extent.
+      expect(widest).toBeGreaterThan(reach.horizontal * 0.67);
+      expect(highest).toBeGreaterThan(reach.top * 0.67);
+    });
   });
 });

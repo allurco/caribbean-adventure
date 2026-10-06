@@ -6,7 +6,7 @@ import { hexToWorld, hexEquals } from "../game/hex";
 import type { MapCell } from "../game/types";
 import { sharedTerrainField } from "./visuals/sharedTerrainField";
 import { groundTopY } from "./visuals/groundPlacement";
-import { gridLineData, useWaterGridLines, type WaterGridLines } from "./useWaterGridLines";
+import { gridLineData, useWaterGridLines, type WaterGridLines, type WaterGridLinesOptions } from "./useWaterGridLines";
 import { NO_HOVER, type SharedHover } from "./sharedHover";
 import { perMapCache } from "./visuals/perMapCache";
 
@@ -40,6 +40,8 @@ export interface HexGridProps {
   onHexClick: (hex: Hex) => void;
   onPortHover?: (cell: MapCell | null) => void;
   interactive: boolean;
+  /** The displaced sea the grid lines float on (#38 step 8). */
+  surface: WaterGridLinesOptions["surface"];
 }
 
 /**
@@ -70,6 +72,7 @@ export function useHexGrid({
   onHexClick,
   onPortHover,
   interactive,
+  surface,
 }: HexGridProps): HexGridState {
   // Hovered water-cell index and the copy it is hovered in (land is rendered and hit-tested elsewhere)
   const [hover, setHover] = useState<SharedHover>(NO_HOVER);
@@ -140,8 +143,8 @@ export function useHexGrid({
   }, [allWaterInteractive, hoveredCell, hoveredId]);
 
   // Water hex grid: one line per shared edge, fading with distance from the
-  // camera focus and across the shallows; acted-on hexes stay strong
-  const lines = useWaterGridLines({ data: lineData, emphasis: outlineEmphasis });
+  // camera focus and across the shallows, riding the waves; acted-on hexes stay strong
+  const lines = useWaterGridLines({ data: lineData, emphasis: outlineEmphasis, surface });
 
   const hoveredPos = useMemo(() => {
     if (!hoveredCell) return null;

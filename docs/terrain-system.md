@@ -257,10 +257,10 @@ every copy's meshes share those geometries and materials, so a copy costs no
 build time or GPU upload. The hex hover is shared too (`sharedHover.ts`), so
 the hovered hex lights up in every copy. Tooltips are drawn once, in the
 copy under the pointer (`PointerCopy`): a very wide view can show the same
-ship twice. The ocean is still **one** plane, centred under the camera
-focus and following it (all its shading is in world space, so moving it
-changes no pixel); the seabed prepass draws the land copies like the main
-pass. The zoom-out cap is `CAMERA_MAX_DISTANCE` (28) on every map size, Civ
+ship twice. The ocean is still **one** mesh, the ring grid of
+`oceanGrid.ts` (see *Geometry* below), centred under the camera focus and
+following it (all its shading is in world space, so moving it changes no
+pixel); the seabed prepass draws the land copies like the main pass. The zoom-out cap is `CAMERA_MAX_DISTANCE` (28) on every map size, Civ
 style. North and south, `wrapView.ts` clamps the **focus point** (the centre
 of the view, on the sea plane) to the band every column covers,
 z ∈ [0, √3·(rows − ½)] (`clampFocusToBand`), at every zoom and whatever the
@@ -269,8 +269,8 @@ the screen centre, and the rest of the view is open sea, where Civ shows the
 void past the poles. Clamping the view instead of the focus (the first cut)
 pinned the focus at any zoom where the view was taller than the rows (a
 small map at distance 28 on a 16:9 screen: ~61 units of view against 30 of
-rows), so only east–west panning worked. The ocean plane is centred under
-the focus and sized for the view's reach at full zoom-out on the widest
+rows), so only east–west panning worked. The ocean grid is centred under
+the focus and reaches past the view's reach at full zoom-out on the widest
 screen, so its edge stays off screen with the focus anywhere in the band.
 The sea past the rows needs nothing drawn: the ocean shader treats
 everything outside the field's bounds as open sea (the field texture clamps
@@ -296,15 +296,44 @@ placed on a slope sinks in instead of floating. `rockVariation.ts` derives
 each rock's look from a hash of its placement (the `palmVariation.ts`
 pattern): variant, a base colour by biome with a tint within ±15% of it, a
 per-axis stretch, a small tilt, a bury depth and a size class by the cell's
-biome (large outcrops on `ROCK`, medium on `GRASS`, small on `SAND`; the
-ground-placement footprint grows with the class). `smallStones.ts` adds one
-derived stone per `SAND`/`GRASS` cell without a rock or port, from a
-per-cell hash of its coordinates and the terrain seed, through
-`placeOnGround` so it stays on land; the densities are named constants.
-`Rocks.tsx` draws one `InstancedMesh` per variant on a white material, with
-`instanceColor` carrying the base colour times the tint. Instance counts
-(10-seed average, generator rocks + stones): small 26 + 32, medium 61 + 81,
-large 124 + 152.
+biome (large outcrops on `ROCK`, medium on `GRASS`, small on `SAND`). The
+hash covers the rock's X, Z, rotation and scale but never its Y, so the
+placement can derive the same variation before it knows the ground height.
+`smallStones.ts` adds one derived stone per `SAND`/`GRASS` cell without a
+rock or port, from a per-cell hash of its coordinates and the terrain seed;
+the densities are named constants. `Rocks.tsx` draws one `InstancedMesh`
+per variant on a white material, with `instanceColor` carrying the base
+colour times the tint. Instance counts (10-seed average, generator rocks +
+stones): small 26 + 32, medium 61 + 81, large 124 + 152.
+
+**Rock placement (#53).** Rocks and stones go through `rockPlacement.ts`,
+not straight through `placeOnGround`, and differ from trees in two ways.
+They stand on the ground at their own **centre** (`standOn: "centre"` in
+`groundPlacement.ts`; trees and port markers keep the default lowest-probe
+rule, since a trunk must not float): a boulder's base is wide, and on a
+summit the lowest probe under it was so far below the middle that most
+large outcrops, and about half the grass rocks, ended up fully below the
+surface. The squashed underside and the bury depth cover the downhill side
+instead. And the probed footprint is the rock's **drawn radius**: `placeRock`
+derives the variation at each nudge candidate (so a candidate that re-hashes
+to a smaller rock may fit where the requested one would not) and probes the
+ground out to `rockDrawnRadius` (per-axis scale × the variant's ellipsoid
+radii × the unit radius), at the centre and 16 points round the rim, so a
+slab can neither hang over the water nor over a lower neighbour the probe
+missed. Stones ask for the small class they are drawn at (`sizeClass` on
+the request), not their cell's; a grass stone probed at the medium class
+was pushed back from edges it fitted on. `ROCK_MAX_EXTENT` (0.85, just inside the hex inradius of 0.87) caps
+that radius: a rock that would reach further is shrunk uniformly in
+`rockVariation`, which only touches the biggest slabs (a large slab at the
+generator's top scale would otherwise reach 1.31 units). Probe over small-map
+seeds 11-13: fully buried rocks went from 30/33 on `ROCK`, 27/44 on `GRASS`,
+1/15 on `SAND` and 43/101 stones to 0 everywhere; rims over water from 9 to
+1 (`ROCK`) and 2 to 0 (`GRASS`). The cost of the centre rule is on ridges:
+`ROCK` summits are knife-edged (the ground falls about a unit on both flanks
+within a large rock's radius while the rock is about half a unit tall), so a
+rock perched on the crest shows air under its flanks. The cross-probe slope
+check is blind to that symmetric drop, and sinking the rock halfway back only
+trades the gap for the burial, so it is left as it is for the visual review.
 
 Size and colour were retuned after an A/B at ship zoom where the rocks could
 not be found. `ROCK_UNIT_RADIUS` is 0.22 (was 0.12; a palm canopy is ~0.24),
@@ -314,17 +343,111 @@ painted with `highlandRock`, the summit's own colour, so outcrops vanished on
 the ground they sat on; `ROCK_BASE_COLOR` now gives each biome a colour
 darker and less warm than its ground: grey-brown 0x665f55 on sand, a neutral
 grey 0x5a5c5a on grass and a slate 0x565c64 on `ROCK` (a darker slate read
-as a hole beside the summit's shaded faces). Known follow-up: `placeOnGround`
-puts a rock's origin at the lowest ground under its footprint, and with the
-bigger footprints most large outcrops on steep summits (and about half the
-grass rocks) now end up fully below the surface. The same fit fails the
-other way on coasts: the probed footprint is the unit radius times the size
-class and decoration scale (at most about 0.77 units), but the drawn rock is
-that times the per-axis stretch (up to 1.3) times the variant's own
-ellipsoid radii, so a large slab reaches ~1.3-1.5 units from its origin and
-can overhang a lower neighbour or the water on a coastal `ROCK` cell. Both
-halves are one placement problem (the probed footprint is not the drawn
-extent) and are tracked as a follow-up.
+as a hole beside the summit's shaded faces).
+
+**Props: vegetation (#49).** Between the palms the islands grow two kinds of
+derived ground cover, hand-built and faceted like the palms and placed on
+the board, with `src/game/` untouched. `shrubGeometry.ts` builds a **bush**
+for `GRASS` cells (four overlapping jittered polar-lattice blobs on a short
+square stem, 0.18 units tall, 88 triangles) and a dry **tuft** for `SAND`
+cells (nine folded blades splaying out of a low mound of dry earth, 0.1
+units tall, 32 triangles). Both carry the palms' `palm` vec2 attribute, so
+`injectPalmSway` displaces them unchanged: the sway weight rises with height
+from 0 at the base to `SHRUB_MAX_SWAY` (0.5 for a bush, 0.65 for a tuft;
+the shader bends by weight², so a bush top moves about 5% of its height and
+a blade tip about 15%, against a frond tip's weight of 1), and the crown
+mask is 0 throughout, so the palm's crown twist and frond flutter leave
+shrubs alone. `shrubPlacement.ts` derives one to three shrubs per `SAND`/`GRASS`
+cell (`SHRUBS_PER_GRASS_CELL`, `SHRUBS_PER_SAND_CELL`, both `[1, 3]`) from a
+per-cell hash of the cell's coordinates and the whole terrain seed, as the
+stones do, within `SHRUB_SPREAD` (0.68) of the centre: wider than the
+stones' 0.55 because the generator keeps its trees and rocks within ±0.35
+of the centre, so the outer ring is where a grass cell has room left.
+Each shrub goes through `placeOnGround` with a probe the size of its stem
+or mound (`SHRUB_GROUND_FOOTPRINT`, 0.04), not its foliage, since the
+placement buries a prop to the lowest ground under the probe and probing
+the foliage radius sank bushes past their leaves on slopes. It must then
+clear the cell's trees, rocks, stones and pier deck by its foliage radius
+plus `SHRUB_CLEARANCE` (0.05), stay `SHRUB_PORT_CLEARANCE` (0.45, the port
+marker's 0.35 plus a margin) from a port cell's centre, and not overlap the
+cell's other shrubs; `SHRUB_ATTEMPTS` (5) spots are tried per shrub before
+it is given up. Rock clearance uses the rock's nominal radius, not its
+stretched one, so foliage may brush a long slab but is never rooted inside
+one. `shrubVariation.ts` hashes each placement into a width and a height
+stretch, a per-channel tint (±12% luminance with a ±5% green-against-red
+hue nudge) and a sway phase; the colours are chosen against the ground
+each kind stands on (a warm light green 0x6aa23f for bush leaves on the
+jungle floor, a dry olive straw 0xa89f58 for blades on the beach). The sway
+clock is shared: `useSwayClock` owns the angle uniform, advances it once per
+frame and holds it still under `prefers-reduced-motion`, and `usePalmTrees`
+and `useShrubs` both bind their materials to it, so one setting stops every
+plant. `Shrubs.tsx` draws one `InstancedMesh` per kind on a vertex-coloured
+material with `instanceColor` carrying the tint, casting shadows and not
+frustum-culled, as the palms are: two more instanced draws per world copy.
+Instance counts (10-seed average, bushes + tufts): small 42 + 52 (94),
+medium 103 + 117 (220), large 188 + 241 (428).
+
+**Props: shore boulders (#49).** `shoreBoulders.ts` derives rocks along the
+waterline and just below it, so the wash and the breaker line (above) and
+the shallows have something to break against; nothing is stored in G and
+`src/game/` is untouched. Only the coasts of `SHORE_BOULDER_BIOMES` land
+cells (`ROCK` and `GRASS`) get boulders: a sandy beach meets the sea clean,
+emergent and submerged alike (the generator's land rocks and small stones on
+`SAND` cells are unchanged). The gate is per cell, before any sampling, and
+each edge hashes on its own, so skipping the sand coasts leaves the boulders
+on the others exactly where they were. For every allowed coastal edge (a
+land cell's edge onto a water neighbour, the wrap respected so a seam edge
+onto land across it is not a coast) it samples `BOULDER_SAMPLES_PER_EDGE` (3)
+points along the edge,
+each offset `BOULDER_OFFSET_RANGE` (−0.45 inland … +0.2 offshore) from it,
+tries `BOULDER_KEEP_SHARE` (0.22) of them by a hash of the cell, edge and the
+whole terrain seed (`variationStream.ts`, the seed through the salt), and
+keeps those whose signed coast distance in the field is within `SHORE_BAND`
+(−0.3 … +0.4), so they follow the noisy coastline, not the hex edge; the
+edge a pier faces (its rotation points at the docking hex) is left clear.
+That is `BOULDERS_PER_COAST_EDGE` ≈ 0.6 per allowed edge. Ports sit on
+beach cells, so no port coast has them. About 45% of the coast edges are
+rock or grass (10-seed averages: 93 of 206 on the small map, 240 of 515 on
+the medium, 448 of 992 on the large), giving 10-seed averages of 55 boulders
+on the small map (45 emergent, 10 submerged), 145 on the medium (123 / 22)
+and 269 on the large (223 / 46), about 17–18% of them submerged; before the
+sand rule the same seeds gave 122 / 301 / 583 (101 / 250 / 484 emergent,
+21 / 51 / 99 submerged). Each boulder takes the shared rock look (`rockVariation`, the
+small size class at scale 0.55–1.2, its cell's biome colour) darkened by up
+to `WET_DARKENING` (35%) within `WET_BAND` (0.2) of the water.
+
+*Sea lanes.* A ship sits at a water hex's centre, ~0.87 units from the land
+hex's edge, with a hull ~0.4 units from its centre, so a boulder's drawn rim
+(`boulderReach`: the variant's widest ring from `ROCK_VARIANT_REACH` times
+its scale, plus the lean of its top under the tilt) may pass the edge by at
+most `MAX_OFFSHORE_REACH` (0.3) and must keep `SHIP_HULL_CLEARANCE` (0.55)
+from every water hex centre within two hexes, which covers the corners where
+two water hexes meet. A boulder that would break either is shrunk to fit
+(dropped under `MIN_BOULDER_REACH`, which never happens within the offset
+range).
+
+*Layers.* Emergent boulders stand on the ground at their centre and draw in
+the main pass and the seabed prepass (`prepass="also"` on `RockVariantMesh`),
+since their feet reach under the waterline. The beach face is ~1:21
+(`seabedProfile.ts`) whatever the land cell's biome (the seabed is a function
+of coast distance alone; only the land side steepens from beach to jungle),
+so within the offshore cap the water is under a metre deep on rock and grass
+coasts too (10-seed mean 0.9 m at the cap past an edge's midpoint, 0.35 m
+under the offshore boulders themselves) and any boulder readable at ship
+zoom (≥ 4 m tall) would stand clear of it; `SUBMERGED_SHARE` (half) of the
+boulders whose centre is in the water
+are therefore sunk into the seabed until their crown is
+`SUBMERGED_CROWN_DEPTH_METRES` (0.4–1.2 m) under the surface, like
+half-buried reef rocks, and draw in the prepass only (`prepass="only"`,
+`SEABED_LAYER`), where the water tints them by depth, the wash foams over
+their crowns and nothing shows through the surface. A boulder whose crown
+breaks the surface is emergent whatever its centre. Both sets share one
+material per set of wave textures (`ShoreBoulderMeshes.tsx`): the rocks' white
+with `injectSeabedCaustics`, as the land material has it, so the sun on the
+submerged boulders and on the emergent ones' feet is focused by the waves
+(the factor is 1 above the waterline). The layout is built once per map in
+`useDecorationLayout` (`DecorationLayout.shoreBoulders`) and drawn per world
+copy: up to three emergent and three submerged instanced draws per copy.
 
 **Props: port buildings and pier (#49).** A port is identified at map zoom
 by a small faceted settlement, all derived on the board from the existing
@@ -597,8 +720,10 @@ frame the GPU evolves each spectrum (frequencies rounded to whole cycles per
 FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float
 texture of (∂h/∂x, ∂h/∂z, |∇h|², J), J being the whitecaps' Jacobian
 (below). The three are batched side by side in one atlas
-(`waveCascadeAtlas.ts`), so all of them take 20 draws a frame (22 with the
-two whitecap accumulators). The
+(`waveCascadeAtlas.ts`), with one more block per displacing cascade for the
+height and choppy pull (*Geometry* below), so all of them take 24 draws a
+frame: one spectrum, 16 FFT stages, three slope and two displacement
+outputs, two whitecap accumulators. The
 cascades are run by the board (`useWaveCascades`) and their textures handed
 to both the water and the seabed; the look-up that sums them lives in one
 place, `waveSlopeGlsl.ts`. The water shader samples each texture once, sums
@@ -678,8 +803,8 @@ bright as dry sand). `PALETTE_SURF` is gone.
 
 - *Whitecaps* (`whitecapFoam.ts`). The spectrum pass fills the working
   textures' spare BA pair with the choppy displacement's stretch along and
-  across the wind (λ = `WAVE_CHOPPINESS`, 1.2; the displacement itself is
-  not drawn until step 8), riding the same FFT as the slopes; the output
+  across the wind (λ = `WAVE_CHOPPINESS`, 1.2, the same pull that moves
+  the geometry in step 8), riding the same FFT as the slopes; the output
   pass writes the surface Jacobian J = (1 + ∂Du/∂u)(1 + ∂Dv/∂v) into the
   slope texture's A channel. The shear ∂Du/∂v, which would need a third
   real signal, is dropped: measured in the wind frame it enters J only
@@ -733,6 +858,84 @@ as the fragment's diffuse albedo so three's own lighting shades it like the
 sand. No extra pass and no change to the water's depth test. The field
 texture is built once per map (`useTerrainFieldTexture.ts`) and handed to
 both.
+
+**Geometry (#38 step 8).** Until this step the sea was a flat plane whose
+waves were all in the normals. It is now a mesh that the large cascades
+displace.
+
+- *Grid* (`oceanGrid.ts`). Five concentric level-of-detail rings under the
+  camera focus: a square of 0.1-unit cells (6.5 m, about one texel of the
+  swell cascade) out to 8 units, then annuli to 16 / 32 / 64 / 96 units with
+  0.2 / 0.4 / 0.8 / 1.6-unit cells; 25.9k + 20k + 20k + 20k + 8.7k = 94.6k
+  vertices, 184k triangles, one mesh per ring on one material so the rings
+  off screen at ship zoom are frustum-culled. The outer ring reaches 95.2
+  units from the focus after snapping, against the 80.5 the camera can see
+  at full zoom-out on a 4:1 screen (`oceanGridReach`); the inner ring 7.2
+  against the 6.6 of the closest ship zoom at 16:9. Where a ring meets the
+  finer ring inside it, its edge cells are split into fans through the finer
+  ring's boundary vertices, so there are no T-junctions and the displaced
+  mesh cannot crack (the test counts every inner edge in two triangles and
+  every boundary edge in one). Every vertex is an integer number of base
+  cells converted once, so a shared vertex is the same float in both rings.
+- *Snapping.* The grid moves only in whole multiples of the coarsest cell
+  (1.6 units, `snapToCell`); every finer cell divides it, so after a pan each
+  ring's vertices land on the same world lattice they left and sample the
+  same displacement: nothing swims. Each ring is built half a coarse cell
+  larger than it needs. On a wrapping map the one grid serves every copy of
+  the world, as the plane did.
+- *Displacement* (`waveDisplacement.ts`). The swell and the chop
+  (`DISPLACEMENT_CASCADES`, 83% and 16% of the height variance) move the
+  mesh; the ripple (0.3%, waves under 3.2 m and a few centimetres high)
+  keeps contributing normals only. Each displacing cascade's FFT carries two
+  more packed spectra in its own blocks of the working atlas, P = h̃ (1 −
+  λ kx/|k|) and Q = i λ kz/|k| h̃ (`waveCascade.ts`), and a second output
+  pass writes (h, Dx, Dz) in metres into a mipmapped tile texture: the
+  height and Tessendorf's choppy pull toward the crests with the whitecaps'
+  λ, so the sharpened crests and the foam on them agree. A vertex reads each
+  texture with `textureLod` at log2(cell / texel) + 0.5 (`displacementLod`),
+  so waves the mesh cannot carry are averaged away rather than aliased; a
+  band whose longest wave spans under four cells fades out as it does for
+  the normals, and everything fades to flat with distance like the normals.
+  Vertices two rings share carry the finer ring's cell in the `gridCell`
+  attribute, so both sample them alike. The height is drawn as it is
+  (`WAVE_HEIGHT_GAIN` = 1): the displaced bands' significant height is 1.56 m
+  (`DISPLACED_SIGNIFICANT_HEIGHT_METRES`), 0.024 units
+  (`WAVE_CREST_BOUND_UNITS`), which pads the rings' culling bounds. At the
+  closest ship zoom (~0.003 units per pixel) typical crests move the surface
+  2–4 pixels: the water laps a static hull as it would round a ship that is
+  not yet heaving (step 11).
+- *Shallows.* The displacement is scaled by `shallowDisplacementDamping` of
+  the seabed's depth from the terrain field: a smoothstep from nothing at the
+  waterline (and on land) to full at twice the breaking depth
+  (`DISPLACEMENT_FULL_DEPTH_METRES`, ≈ 4 m). Shoreward of the breaker line
+  the real sea is a broken bore whose height is bounded by the depth; the
+  test keeps the damped significant height under the depth all the way in
+  (0.07 m at 0.5 m, 0.24 m at 1 m, 0.78 m at 2 m), so a trough never reaches
+  the sand and the surface never lifts over the beach.
+- *Fragment side.* `vWorld` is the displaced point: the view ray, the
+  refraction trace and the Beer–Lambert path measure the water's depth from
+  it (a crest looks through more water than a trough). The wave slope and
+  whitecap look-ups keep the rest point (`vRestXZ`), so the slope and foam
+  textures stay attached to the surface the displacement moved. The shore
+  bands keep the seabed's depth below sea level: the breaker line and the
+  wash are contours of the bathymetry and hold still while the surface
+  heaves over them, and the damping is zero at the waterline, so they still
+  meet the land's wash there.
+- *Grid lines.* The water hex grid sits 0.01 units (0.65 m) above sea level,
+  lower than most swell crests, so its lines ride the same displacement
+  (`hexOutlineMaterial.ts`; edges went from 4 to 8 segments, so a line
+  follows the swell between its vertices). Each line vertex reads it at the
+  level of detail of the sea ring under it (`oceanGridCellAt`, from the
+  rings' snapped origin), not of its own 8 m segment: a coarse ring averages
+  away the swell its cell cannot carry (the 0.8-unit ring keeps about a
+  quarter of a 48 m wave's height, an 8 m segment nine tenths), so a line
+  read at its own segment rode a swell the water there
+  did not draw, dipped under the opaque surface in the troughs and floated
+  above it on the crests at map zoom. Reduced motion freezes the wave clock,
+  which freezes the cascade textures, and with them the displacement.
+- *Shadows.* The sea neither casts nor receives, and the crest bound is
+  under a tenth of the shadow box's caster and receiver margins
+  (`atmosphere.test.ts`), so `shadowFit.ts` is unchanged.
 
 ---
 
@@ -819,10 +1022,15 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 |------|---------|
 | `src/board/visuals/TerrainHeightmap.ts` | SDF-based heightmap generation |
 | `src/board/visuals/UnifiedTerrain.tsx` | Land shader with vertex squashing |
-| `src/board/visuals/Ocean.tsx` | Water: refraction, water colour, waves, glint, foam |
+| `src/board/visuals/Ocean.tsx` | Water: the displaced ring grid, refraction, water colour, waves, glint, foam |
+| `src/board/visuals/oceanGrid.ts` | The sea's mesh: stitched level-of-detail rings, snapping, coverage |
+| `src/board/visuals/waveDisplacement.ts` | Which cascades displace, the height gain, shallow damping, the vertex-stage GLSL |
 | `src/board/visuals/waterOptics.ts` | Water optics: absorption, Fresnel, vector Snell, the refraction bound |
 | `src/board/visuals/waveSlopeGlsl.ts` | The cascade slope and whitecap look-ups shared by the water and the seabed |
-| `src/board/visuals/useWaveCascades.ts` | Runs the FFT cascades and the whitecap accumulators on the GPU |
+| `src/board/visuals/waveCascade.ts` | One FFT cascade: spectrum, slopes, stretch and displacement spectra |
+| `src/board/visuals/waveCascadeShaders.ts` | The cascades' GPU passes: spectrum, FFT stage, slope, displacement and whitecap outputs |
+| `src/board/visuals/useWaveCascades.ts` | Runs the FFT cascades, the displacement outputs and the whitecap accumulators on the GPU |
+| `src/board/hexOutlineMaterial.ts` | The water hex grid's lines, floating on the displaced sea |
 | `src/board/visuals/whitecapFoam.ts` | Whitecap maths: Jacobian, fold threshold, accumulation step |
 | `src/board/visuals/shoreFoam.ts` | Shore, breaker and reef bands; the wash up the beach; windward weight |
 | `src/board/visuals/shoreFoamLand.ts` | Patches the land material so the wash runs up the sand |

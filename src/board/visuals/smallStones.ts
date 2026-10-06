@@ -10,8 +10,8 @@
  */
 import { hexToWorld } from "../../game/hex";
 import type { Biome, MapCell } from "../../game/types";
-import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
-import { ROCK_UNIT_RADIUS } from "./rockGeometry";
+import type { GroundField } from "./groundPlacement";
+import { placeRock } from "./rockPlacement";
 import type { DecorationData } from "./useDecorationLayout";
 import { lerpRange, seedOf, stream } from "./variationStream";
 
@@ -27,7 +27,8 @@ export const STONE_SPREAD = 0.55;
  */
 export const STONE_SCALE_RANGE: readonly [number, number] = [0.6, 1];
 
-const STONE_PLACEMENT: GroundPlacementOptions = { footprintRadius: ROCK_UNIT_RADIUS, sink: 0.01, maxSlope: 1.6 };
+/** A stone sinks a little less than an outcrop. */
+const STONE_SINK = 0.01;
 const STONE_SALT = 0x5d7a3c91;
 const TAU = Math.PI * 2;
 
@@ -59,9 +60,14 @@ export function smallStones(cells: readonly MapCell[], field: GroundField, seed:
       const rotation = next() * TAU;
       const scale = lerpRange(STONE_SCALE_RANGE, next());
       const spot = { x: hexX + Math.cos(angle) * distance, z: hexZ + Math.sin(angle) * distance };
-      const ground = placeOnGround(field, spot, anchor, {
-        ...STONE_PLACEMENT,
-        footprintRadius: STONE_PLACEMENT.footprintRadius * scale,
+      // Stands on the centre height, probed out to the stone's drawn radius (#53):
+      // the small class Rocks.tsx draws it at, not the biome's.
+      const ground = placeRock(field, spot, anchor, {
+        scale,
+        rotation,
+        biome: cell.biome,
+        sink: STONE_SINK,
+        sizeClass: "small",
       });
       if (!ground) continue;
       stones.push({

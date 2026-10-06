@@ -15,7 +15,7 @@
  * than the ground they sit on, and the sizes are roughly doubled.
  */
 import type { Biome } from "../../game/types";
-import { ROCK_VARIANT_COUNT } from "./rockGeometry";
+import { ROCK_UNIT_RADIUS, ROCK_VARIANT_COUNT, rockVariantRadii } from "./rockGeometry";
 import { lerpRange, seedOf, stream } from "./variationStream";
 
 /** Where a rock stands, after ground placement. */
@@ -39,7 +39,7 @@ export interface RockVariation {
   baseColor: number;
   /** Multiplier on the base colour, within 1 ± ROCK_TINT_SPREAD. */
   tint: number;
-  /** Full scale per axis: decoration scale × size class × stretch. */
+  /** Full scale per axis: decoration scale × size class × stretch, shrunk uniformly to `ROCK_MAX_EXTENT`. */
   scale: readonly [number, number, number];
   /** Turn about the vertical axis (radians). */
   yaw: number;
@@ -80,6 +80,15 @@ export const ROCK_SIZE_CLASS_SCALE: Readonly<Record<RockSizeClass, number>> = {
   medium: 1.5,
   small: 1,
 };
+/**
+ * Farthest a drawn rock reaches from its origin in the ground plane, world
+ * units (#53). Just inside a hex's inradius (√3/2 ≈ 0.87, `hexToWorld`), so
+ * the ground probed under a rock stays within its own cell's reach. Without
+ * it a large slab at the generator's biggest scale (1.6) would reach
+ * 0.22 × 1.6 × 2.2 × 1.3 (stretch) × 1.3 (slab radius) ≈ 1.31 units. A rock
+ * over the cap is shrunk uniformly, so only the very biggest slabs change.
+ */
+export const ROCK_MAX_EXTENT = 0.85;
 
 const SIZE_CLASS_BY_BIOME: Readonly<Record<Biome, RockSizeClass>> = {
   ROCK: "large",
@@ -92,19 +101,45 @@ export function rockSizeClass(biome: Biome | undefined): RockSizeClass {
   return biome ? SIZE_CLASS_BY_BIOME[biome] : "medium";
 }
 
-/** The rock's variation; `sizeClass` overrides the biome's (small stones). */
+/** How far the drawn rock reaches from its origin in the ground plane, world units (before tilt). */
+export function rockDrawnRadius(v: Pick<RockVariation, "variant" | "scale">): number {
+  const [rx, , rz] = rockVariantRadii(v.variant);
+  return Math.max(v.scale[0] * rx, v.scale[2] * rz) * ROCK_UNIT_RADIUS;
+}
+
+/** How high the drawn rock's top is above its origin (the ground contact), world units. */
+export function rockDrawnHeight(v: Pick<RockVariation, "variant" | "scale">): number {
+  return v.scale[1] * rockVariantRadii(v.variant)[1] * ROCK_UNIT_RADIUS;
+}
+
+/** The per-axis scale, shrunk uniformly if the rock would reach past `ROCK_MAX_EXTENT`. */
+function cappedScale(variant: number, scale: readonly [number, number, number]): readonly [number, number, number] {
+  const radius = rockDrawnRadius({ variant, scale });
+  if (radius <= ROCK_MAX_EXTENT) return scale;
+  const k = ROCK_MAX_EXTENT / radius;
+  return [scale[0] * k, scale[1] * k, scale[2] * k];
+}
+
+/**
+ * The rock's variation; `sizeClass` overrides the biome's (small stones).
+ * Hashes the placement's X, Z, rotation and scale, never its Y, so the
+ * placement can derive the same variation before it knows the ground height.
+ */
 export function rockVariation(p: RockPlacement, sizeClass: RockSizeClass = rockSizeClass(p.biome)): RockVariation {
   const next = stream(seedOf([p.worldX, p.worldZ, p.rotation, p.scale], 0x2f6b1a7d));
   const base = p.scale * ROCK_SIZE_CLASS_SCALE[sizeClass];
+  const variant = Math.min(ROCK_VARIANT_COUNT - 1, Math.floor(next() * ROCK_VARIANT_COUNT));
+  const tint = 1 + (next() * 2 - 1) * ROCK_TINT_SPREAD;
+  const stretched: readonly [number, number, number] = [
+    base * lerpRange(ROCK_STRETCH_RANGE, next()),
+    base * lerpRange(ROCK_STRETCH_RANGE, next()),
+    base * lerpRange(ROCK_STRETCH_RANGE, next()),
+  ];
   return {
-    variant: Math.min(ROCK_VARIANT_COUNT - 1, Math.floor(next() * ROCK_VARIANT_COUNT)),
+    variant,
     baseColor: ROCK_BASE_COLOR[p.biome ?? "GRASS"],
-    tint: 1 + (next() * 2 - 1) * ROCK_TINT_SPREAD,
-    scale: [
-      base * lerpRange(ROCK_STRETCH_RANGE, next()),
-      base * lerpRange(ROCK_STRETCH_RANGE, next()),
-      base * lerpRange(ROCK_STRETCH_RANGE, next()),
-    ],
+    tint,
+    scale: cappedScale(variant, stretched),
     yaw: p.rotation,
     tilt: [lerpRange(ROCK_TILT_RANGE, next()), lerpRange(ROCK_TILT_RANGE, next())],
     bury: lerpRange(ROCK_BURY_RANGE, next()),

@@ -8,15 +8,8 @@ import {
   wrapCopyRange,
   type GroundFootprint,
 } from "./wrapView";
-import {
-  CAMERA_FOV,
-  CAMERA_MAX_DISTANCE,
-  CAMERA_OFFSET,
-  CAMERA_PITCH,
-  MAX_VIEW_ASPECT,
-  groundViewReach,
-  oceanPlaneSize,
-} from "./cameraBounds";
+import { CAMERA_FOV, CAMERA_MAX_DISTANCE, CAMERA_OFFSET } from "./cameraBounds";
+import { OCEAN_GRID_BASE_CELL, OCEAN_GRID_RINGS, oceanGridCoverage } from "./visuals/oceanGrid";
 import { MAP_PRESETS } from "../game/mapConfig";
 
 const SQRT3 = Math.sqrt(3);
@@ -146,11 +139,11 @@ describe("the game's camera on a wrapping map", () => {
         expect(z + d * footprint.maxZ).toBeGreaterThanOrEqual(band.maxZ - 1e-9);
       });
 
-      it(`keeps the edge of the ocean plane off screen at full zoom-out on ${label} with the focus at either edge of the rows`, () => {
+      it(`keeps the edge of the ocean grid off screen at full zoom-out on ${label} with the focus at either edge of the rows`, () => {
         const d = CAMERA_MAX_DISTANCE;
-        const halfSize = oceanPlaneSize(groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)) / 2;
+        const halfSize = oceanGridCoverage(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL);
         for (const focus of [clampFocusToBand(-1000, band), clampFocusToBand(1000, band)]) {
-          // The plane is centred under the focus and follows it.
+          // The grid is centred under the focus (to within its snap) and follows it.
           const plane = { minZ: focus - halfSize, maxZ: focus + halfSize, minX: -halfSize, maxX: halfSize };
           expect(focus + d * footprint.minZ).toBeGreaterThanOrEqual(plane.minZ);
           expect(focus + d * footprint.maxZ).toBeLessThanOrEqual(plane.maxZ);

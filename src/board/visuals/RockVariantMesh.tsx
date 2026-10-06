@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { BufferGeometry, Color, InstancedMesh, MeshStandardMaterial, Object3D } from "three";
 import type { RockVariation } from "./rockVariation";
+import { SEABED_LAYER } from "./seabedPrepass";
 
 const tempObject = new Object3D();
 tempObject.rotation.order = "YXZ"; // Tilt in local space first, then yaw
@@ -18,15 +19,23 @@ interface RockVariantMeshProps {
   geometry: BufferGeometry;
   material: MeshStandardMaterial;
   rocks: readonly RockInstance[];
+  /**
+   * Seabed prepass (#38) membership: by default the main pass only; "also"
+   * draws in both (rocks that reach under the waterline); "only" draws in the
+   * prepass alone, for rocks wholly under water, which the water looks through.
+   */
+  prepass?: "also" | "only";
 }
 
 /** Every rock of one faceted variant in one instanced draw, tinted per instance. */
-export function RockVariantMesh({ geometry, material, rocks }: RockVariantMeshProps) {
+export function RockVariantMesh({ geometry, material, rocks, prepass }: RockVariantMeshProps) {
   const meshRef = useRef<InstancedMesh>(null);
 
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
+    if (prepass === "only") mesh.layers.set(SEABED_LAYER);
+    else if (prepass === "also") mesh.layers.enable(SEABED_LAYER);
     rocks.forEach((rock, i) => {
       const v = rock.variation;
       // The ground contact is the mesh origin; the bury depth sinks it a little further.
@@ -40,7 +49,7 @@ export function RockVariantMesh({ geometry, material, rocks }: RockVariantMeshPr
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [rocks]);
+  }, [rocks, prepass]);
 
   if (rocks.length === 0) return null;
 

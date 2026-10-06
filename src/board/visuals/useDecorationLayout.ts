@@ -5,22 +5,25 @@ import type { Biome, MapCell, Decoration } from "../../game/types";
 import { hexToWorld, type MapWrap } from "../../game/hex";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { terrainSeedFromCells } from "./terrainHeightField";
-import { placeOnGround, type GroundPlacementOptions } from "./groundPlacement";
+import { placeOnGround, type GroundPlacementOptions, type GroundSpot } from "./groundPlacement";
 import { usePalmTrees, type PalmTreesResources } from "./usePalmTrees";
 import { ROCK_UNIT_RADIUS } from "./rockGeometry";
-import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
+import { placeRock } from "./rockPlacement";
 import { smallStones } from "./smallStones";
 import { pierOrigin } from "./pierPlacement";
 import { portBuildings, type PortBuilding } from "./portSettlement";
 import { portQuays, type QuayPlacement } from "./quayPlacement";
 import { landSurface } from "./landMesh";
+import { placeShrubs } from "./shrubPlacement";
+import { useShrubs, type ShrubsResources } from "./useShrubs";
+import { useSwayClock } from "./useSwayClock";
+import { shoreBoulders, type ShoreBoulder } from "./shoreBoulders";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
 
 // Ground fit at scale 1. The footprint covers the trunk base plus its lean.
 const TREE_PLACEMENT: GroundPlacementOptions = { footprintRadius: 0.06, sink: 0.03, maxSlope: 0.9 };
-const ROCK_PLACEMENT: GroundPlacementOptions = { footprintRadius: ROCK_RADIUS, sink: 0.02, maxSlope: 1.6 };
 
 export interface DecorationData {
   type: Decoration["type"];
@@ -40,6 +43,8 @@ export interface DecorationLayout {
   rocks: DecorationData[];
   /** Derived small stones, one per sand or grass cell without a rock (#49). */
   stones: DecorationData[];
+  /** Derived boulders along the waterline, emergent and submerged (#49). */
+  shoreBoulders: ShoreBoulder[];
   /** Piers, with the origin at the land end where the beach meets the water (#49). */
   piers: DecorationData[];
   /** Derived stone quays, one at each pier's root (#59). */
@@ -47,6 +52,8 @@ export interface DecorationLayout {
   /** Derived port buildings and watchtowers, from the port flag and the `pier`/`fort` decorations (#49). */
   buildings: PortBuilding[];
   palms: PalmTreesResources;
+  /** Derived bushes and dry tufts on sand and grass cells (#49). */
+  shrubs: ShrubsResources;
 }
 
 /** Where each decoration stands, worked out once per map and wrap (`perMapCache`). */
@@ -68,13 +75,8 @@ const decorationsOf = perMapCache((cells, wrap) => {
 
         // Trees and rocks stand on the height field: nudged off water and
         // cliffs towards the cell centre, or dropped if nowhere fits.
-        const onGround = (placement: GroundPlacementOptions, footprintScale: number): DecorationData | null => {
-          const ground = placeOnGround(field, spot, anchor, {
-            ...placement,
-            footprintRadius: placement.footprintRadius * footprintScale,
-          });
-          if (!ground) return null;
-          return {
+        const standing = (ground: GroundSpot | null): DecorationData | null =>
+          ground && {
             type: deco.type,
             worldX: ground.x,
             worldY: ground.y + deco.position[1],
@@ -83,17 +85,19 @@ const decorationsOf = perMapCache((cells, wrap) => {
             scale,
             biome: cell.biome,
           };
-        };
 
         switch (deco.type) {
           case "tree": {
-            const tree = onGround(TREE_PLACEMENT, scale);
+            // A trunk rests on the lowest ground under its base so it never floats.
+            const tree = standing(
+              placeOnGround(field, spot, anchor, { ...TREE_PLACEMENT, footprintRadius: TREE_PLACEMENT.footprintRadius * scale })
+            );
             if (tree) trees.push(tree);
             break;
           }
           case "rock": {
-            // The footprint covers the rock at its biome's size class.
-            const rock = onGround(ROCK_PLACEMENT, scale * ROCK_SIZE_CLASS_SCALE[rockSizeClass(cell.biome)]);
+            // Rocks stand on the centre height, probed out to their drawn radius (#53).
+            const rock = standing(placeRock(field, spot, anchor, { scale, rotation: deco.rotation, biome: cell.biome }));
             if (rock) rocks.push(rock);
             break;
           }
@@ -117,6 +121,8 @@ const decorationsOf = perMapCache((cells, wrap) => {
 
     const seed = terrainSeedFromCells(cells);
     const stones = smallStones(cells, field, seed);
+    const shrubs = placeShrubs(cells, field, seed, { trees, rocks, stones, piers });
+    const boulders = shoreBoulders(cells, field, wrap, seed);
     // The settlement and its quays stand on the ground as the land mesh draws
     // it (the lattice surface, up to a few hundredths off the smooth field
     // between lattice points), so a wall is never cut into by the drawn sand.
@@ -124,13 +130,16 @@ const decorationsOf = perMapCache((cells, wrap) => {
     const buildings = portBuildings(cells, drawn, seed);
     const quays = portQuays(cells, drawn, seed);
 
-    return { trees, rocks, stones, piers, quays, buildings };
+    return { trees, rocks, stones, shoreBoulders: boulders, piers, shrubs, quays, buildings };
 });
 
 /** Places every decoration on the height field once per map (and wrap). */
 export function useDecorationLayout(cells: MapCell[], wrap: MapWrap): DecorationLayout {
   // Collect all decorations with their world positions
   const decorationsByType = decorationsOf(cells, wrap);
-  const palms = usePalmTrees(decorationsByType.trees);
-  return useMemo(() => ({ ...decorationsByType, palms }), [decorationsByType, palms]);
+  // One clock for everything that sways, so reduced motion stops palms and shrubs together.
+  const sway = useSwayClock();
+  const palms = usePalmTrees(decorationsByType.trees, sway);
+  const shrubs = useShrubs(decorationsByType.shrubs, sway);
+  return useMemo(() => ({ ...decorationsByType, palms, shrubs }), [decorationsByType, palms, shrubs]);
 }
