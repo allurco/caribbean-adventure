@@ -283,7 +283,13 @@ function Scene({
   // copies share these geometries, materials and hover state.
   const landTerrain = useLandTerrain(G.cells, G.wrap, { sun: SUN_DIRECTION, waveSlopes, terrainField });
   const decorations = useDecorationLayout(G.cells, G.wrap);
+  // The displaced sea the grid lines float on (#38 step 8).
+  const waveSurface = useMemo(
+    () => ({ displacements: waves.displacements, terrainField }),
+    [waves.displacements, terrainField]
+  );
   const grid = useHexGrid({
+    surface: waveSurface,
     cells: G.cells,
     wrap: G.wrap,
     validTargets: attackMode || spyglassMode ? [] : movesRemaining > 0 ? targets : [],

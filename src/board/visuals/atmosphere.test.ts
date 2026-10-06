@@ -12,6 +12,7 @@ import {
 import { SEABED_FLOOR_DEPTH } from "./seabedProfile";
 import { SEABED_FADE_END, seabedVisibility } from "./waterOptics";
 import { metresToUnits, unitsToMetres } from "./worldScale";
+import { WAVE_CREST_BOUND_UNITS } from "./waveDisplacement";
 import { shadowDepthRange, shadowExtentFor, shadowTexel } from "../shadowFit";
 import { CAMERA_MAX_DISTANCE } from "../cameraBounds";
 
@@ -24,6 +25,15 @@ describe("the sun's shadow camera", () => {
       expect(near).toBeGreaterThan(SUN_SHADOW.near);
       expect(far).toBeLessThan(SUN_SHADOW.far);
     }
+  });
+
+  it("needs no refit for the displaced sea (#38 step 8): its crests stay far inside the scene's height range", () => {
+    // The water neither casts nor receives shadows, and the box is fitted to
+    // the sea plane's reach plus margins for receivers off it; a crest a few
+    // centimetres of a unit high is well within the caster margin, and the
+    // troughs within the seabed's.
+    expect(WAVE_CREST_BOUND_UNITS).toBeLessThan(SHADOW_CASTER_HEIGHT / 10);
+    expect(WAVE_CREST_BOUND_UNITS).toBeLessThan(SUN_SHADOW.fit.receiverDepth / 10);
   });
 
   it("fits the box between a usable floor and the old fixed extent", () => {

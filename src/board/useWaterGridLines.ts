@@ -18,11 +18,15 @@ import {
   buildHexGridEdges,
   type HexGridEdges,
 } from "./hexGridEdges";
-import { createHexOutlineMaterial, setHexOutlineFade } from "./hexOutlineMaterial";
+import { createHexOutlineMaterial, setHexOutlineFade, type WaveSurface } from "./hexOutlineMaterial";
 
 const OUTLINE_Y = 0.01;
-// Segments per hex edge, so the shore fade follows the coast along each edge.
-const EDGE_SUBDIVISIONS = 4;
+// Segments per hex edge, so the shore fade follows the coast along each edge
+// and the lines follow the swell they float on (#38 step 8: a 1-unit edge
+// in 8 segments of ~8 m rides a 48 m wave within a few centimetres).
+const EDGE_SUBDIVISIONS = 8;
+/** A hex edge is one unit (hex.ts: circumradius 1), so a segment is this long. */
+const SEGMENT_UNITS = 1 / EDGE_SUBDIVISIONS;
 
 const groundPlane = new Plane(new Vector3(0, 1, 0), 0);
 const ray = new Ray();
@@ -66,6 +70,8 @@ export interface WaterGridLinesOptions {
   data: GridLineData;
   /** Hex index (into `data.waterCells`) -> minimum opacity, for hexes the player is acting on. */
   emphasis: ReadonlyMap<number, number>;
+  /** The displaced sea the lines float on (#38 step 8); a new object rebuilds the material. */
+  surface: Omit<WaveSurface, "segmentUnits">;
 }
 
 /** The grid lines' geometry and material, shared by every world copy. */
@@ -82,11 +88,11 @@ export interface WaterGridLines {
  * the zoom-scaled fade radii are pushed to the shader as uniforms each frame
  * (once, however many world copies draw it); no React state per frame.
  */
-export function useWaterGridLines({ data, emphasis }: WaterGridLinesOptions): WaterGridLines {
+export function useWaterGridLines({ data, emphasis, surface }: WaterGridLinesOptions): WaterGridLines {
   const controls = useThree((s) => s.controls);
   const material = useMemo(
-    () => createHexOutlineMaterial(GRID_LINE_COLOR, GRID_EMPHASIS_COLOR, GRID_FADE),
-    []
+    () => createHexOutlineMaterial(GRID_LINE_COLOR, GRID_EMPHASIS_COLOR, GRID_FADE, { ...surface, segmentUnits: SEGMENT_UNITS }),
+    [surface]
   );
 
   const { edges } = data;
