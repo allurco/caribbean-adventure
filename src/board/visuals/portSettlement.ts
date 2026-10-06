@@ -8,9 +8,10 @@
  * this derives a small settlement: a watchtower on the fort's side and up to
  * three other buildings, behind the pier on the landward half of the hex,
  * facing the water. The `PortMarker` at the hex centre is an invisible hover
- * volume (#59), so the buildings may use the whole hex: each stands as near
- * the centre as the ground and its neighbours allow, keeping only a small
- * reserve at the pier's land end (`pierOrigin`), where the quay will land.
+ * volume (#59), so the buildings may use the whole hex: they form a crescent
+ * round a small open square at the centre, each as near the square as the
+ * ground and its neighbours allow, keeping clear too of a small reserve at
+ * the pier's land end (`pierOrigin`), where the quay will land.
  *
  * A port hex is a small beach with water on one to three sides and a shore
  * ramp running down to each, so each building looks round the landward arc
@@ -54,6 +55,8 @@ export interface PortBuilding {
 
 /** Preferred slots on the landward arc, as turns from straight away from the water (radians). */
 export const PORT_BUILDING_SLOT_ANGLES: readonly number[] = [-1.3, -0.45, 0.45, 1.3];
+/** The open square at the hex centre that no building corner enters: the crescent forms round it. */
+export const PORT_SQUARE_RADIUS = 0.15;
 /** Farthest a building's origin stands from the hex centre: the widest building then still lies inside the hex. */
 export const PORT_BUILDING_MAX_RADIUS = 0.62;
 /** Kept clear round the pier's land end (`pierOrigin`): the deck's root and the quay that will stand there (slice 3). */
@@ -135,7 +138,7 @@ function settlementGround(field: GroundField): GroundField {
 
 /**
  * Ground for a building of plan radius `reach`, as near as the land allows
- * to the ray at `preferred` from the hex centre and as near the centre as
+ * to the ray at `preferred` from the hex centre and as near the square as
  * the ground, the pier's land end and the buildings already placed allow.
  */
 function standOnBeach(
@@ -153,10 +156,11 @@ function standOnBeach(
 
   for (const angle of candidates) {
     const dir = { x: Math.sin(angle), z: Math.cos(angle) };
-    // Rings from the centre outwards, the first with the near corner at the centre (so the
-    // building is wholly on its landward ray); the ground fit may pull a spot back to the ring inside it.
-    for (let radius = reach; radius <= PORT_BUILDING_MAX_RADIUS + 1e-9; radius += RADIAL_STEP) {
-      const inner = Math.max(reach, radius - RADIAL_STEP);
+    // Rings from the square outwards, the first with the near corner on the square's edge;
+    // the ground fit may pull a spot back to the ring inside it.
+    const first = PORT_SQUARE_RADIUS + reach;
+    for (let radius = first; radius <= PORT_BUILDING_MAX_RADIUS + 1e-9; radius += RADIAL_STEP) {
+      const inner = Math.max(first, radius - RADIAL_STEP);
       const anchor = { x: centre.x + dir.x * inner, z: centre.z + dir.z * inner };
       const spot = { x: centre.x + dir.x * radius, z: centre.z + dir.z * radius };
       const ground = placeOnGround(field, spot, anchor, { ...BUILDING_PLACEMENT, footprintRadius: reach });

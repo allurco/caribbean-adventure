@@ -20,6 +20,7 @@ import {
   PIER_ROOT_RESERVE,
   PORT_BUILDING_GAP,
   PORT_BUILDING_MAX_RADIUS,
+  PORT_SQUARE_RADIUS,
   PORT_BUILDING_SCALE_RANGE,
   PORT_BUILDING_SLOT_ANGLES,
   PORT_BUILDING_TINT_SPREAD,
@@ -66,6 +67,9 @@ describe("portBuildings", () => {
     expect(PIER_ROOT_RESERVE).toBeGreaterThanOrEqual(PIER_WIDTH / 2);
     // The widest building at the farthest slot still lies inside the hex.
     expect(PORT_BUILDING_MAX_RADIUS + maxReach).toBeLessThan(HEX_INRADIUS);
+    // The open square at the centre is small: well inside the old 0.35 marker footprint.
+    expect(PORT_SQUARE_RADIUS).toBeGreaterThan(0);
+    expect(PORT_SQUARE_RADIUS).toBeLessThan(PORT_MARKER_RADIUS);
     expect(PORT_BUILDING_SCALE_RANGE[0]).toBeGreaterThanOrEqual(0.9);
     expect(PORT_BUILDING_SCALE_RANGE[1]).toBeLessThanOrEqual(1.1);
     expect(PORT_BUILDING_TINT_SPREAD).toBeLessThanOrEqual(0.1);
@@ -119,6 +123,8 @@ describe("portBuildings", () => {
       const reach = BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
       expect(d).toBeLessThanOrEqual(PORT_BUILDING_MAX_RADIUS + 1e-9);
       expect(d + reach).toBeLessThan(HEX_INRADIUS);
+      // The buildings ring an open square at the centre; no footprint intrudes on it.
+      expect(d - reach).toBeGreaterThanOrEqual(PORT_SQUARE_RADIUS - 1e-9);
       // The quay (slice 3) lands where the pier meets the beach; no building stands on that spot.
       const root = pierOrigin(field, { x: px, z: pz }, pierRotation(port));
       expect(Math.hypot(b.worldX - root.x, b.worldZ - root.z) - reach).toBeGreaterThanOrEqual(PIER_ROOT_RESERVE - 1e-9);
@@ -131,7 +137,7 @@ describe("portBuildings", () => {
   });
 
   it("uses the whole hex now the marker is an invisible hover volume: buildings stand over its footprint", () => {
-    // The marker used to hold every corner 0.39 from the centre; the settlement now closes in on it.
+    // The marker used to hold every corner 0.39 from the centre; the crescent now closes in on the square.
     const nearest = ports.map((port) => {
       const [px, , pz] = hexToWorld(port.hex);
       return Math.min(

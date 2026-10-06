@@ -352,11 +352,14 @@ a hash of the cell and the whole terrain seed) on the landward half of the
 hex, facing the docking hex. The `PortMarker` is an invisible hover volume
 (#59: `visible` false, radius 0.5, as tall as the 0.5 building cap, no
 shadow; R3F still raycasts it, like the water hexes), so the buildings
-use the whole hex: each tries rings from the centre outwards (0.06 apart,
-the first with its near corner at the centre, the last at 0.62 so the
-widest building stays inside the hex's 0.866 inradius) and keeps only a
-reserve of one pier width round `pierOrigin`, the pier's land end, where
-the quay will stand. A port hex is a small beach with water on one
+use the whole hex: they form a crescent round an open square of radius
+0.15 at the centre (a knot of buildings on the centre hid the ones
+behind the tower from the camera), each trying rings outwards from the
+square (0.06 apart, the first with its near corner on the square's edge,
+the last at 0.62 so the widest building stays inside the hex's 0.866
+inradius) and keeping a reserve of one pier width round `pierOrigin`,
+the pier's land end, where the quay will stand. A port hex is a small
+beach with water on one
 to three sides and a shore ramp down to each, and higher jungle neighbours
 pull its field up, so a footprint commonly spans 0.1–0.2 in height; a
 fixed arc of slots lost half the buildings. Each building instead looks
@@ -368,9 +371,9 @@ ground the buildings probe goes through one function, `settlementGround`,
 where the quay's flat top plugs in. `PortBuildings.tsx` draws one
 `InstancedMesh` per kind on a white `vertexColors` material with
 `instanceColor` carrying the tint. Instance counts (10-seed average):
-small 5 piers + 19.6 buildings (every port gets its tower; 3.9 per port,
+small 5 piers + 17.3 buildings (every port gets its tower; 3.5 per port,
 up from 2.9 while the marker held them to the outer ring), medium 10 +
-39.5, large 15 + 57.9. Draw calls: five instanced meshes per copy where
+34.6, large 15 + 50.6. Draw calls: five instanced meshes per copy where
 the pier box was one; the marker's 32-triangle cylinder per port is no
 longer drawn.
 
