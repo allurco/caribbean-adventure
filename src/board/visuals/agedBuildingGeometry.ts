@@ -144,23 +144,32 @@ export const AGED_BUILDING_HALF_DIAGONAL: Readonly<Record<BuildingKind, number>>
 
 export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
 /**
- * What the builds below come to. A gabled piece is its footing 10, walls
- * 4 × 18 panels + 8 corner facets, two gables of 3, four eave streaks of
- * 2, the roof (`agedRoofTriangles`: 244 house and warehouse, 312 tavern),
- * a door 50, and its windows (62 each), hatch (22) or sign (10). The tower
- * is its footing 10, body 16, the blocks (about 370, varying with the
- * courses the hash lays), slit recesses and streaks 20, ledge 28, parapet
- * 36, eight merlons 80, pole 18 and door 50; its flag (36) is a separate
- * mesh.
+ * What the builds below come to. A gabled piece is its footing 10 and
+ * plinth course 10, walls 4 × 18 panels + 8 corner facets, two gables of 3,
+ * four eave streaks of 2, the roof (`agedRoofTriangles`: 244 house and
+ * warehouse, 312 tavern), a door 50, and its windows (62 each), hatch (22)
+ * or sign (10). The tower is its footing 10 and plinth course 10, body 16,
+ * the blocks (about 370, varying with the courses the hash lays), slit
+ * recesses and streaks 20, ledge 28, parapet 36, eight merlons 80, pole 18
+ * and door 50; its flag (36) is a separate mesh.
  */
 export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
-  warehouse: 448,
-  tavern: 600,
-  house: 448,
-  watchtower: 560,
+  warehouse: 458,
+  tavern: 610,
+  house: 458,
+  watchtower: 570,
 };
 
-const FOOTING_SHADE = 0.8;
+const FOOTING_SHADE = 0.85;
+/**
+ * The plinth course: a band of the footing standing proud of the wall line
+ * a little below ground contact, so where the ground falls away under a
+ * building on a slope the exposed footing reads as a raised stone platform
+ * (as colonial houses and churches on slopes were built) and not as a wall
+ * sinking out of sight. Below ground contact, so the lean's pivot ring at
+ * y = 0 is untouched.
+ */
+const PLINTH_COURSE = { top: -0.012, bottom: -0.03, proud: 0.004 };
 const MORTAR_SHADE = 0.68;
 const WALKWAY_SHADE = 0.72;
 const WALL_JITTER = 0.04;
@@ -171,6 +180,13 @@ const AO = { groundHeight: 0.035, groundStrength: 0.3, eaveReach: 0.03, eaveStre
 const SALT = 0x5a1d;
 
 const kindSeed = (kind: BuildingKind, part: number) => seedOf([BUILDING_KINDS.indexOf(kind), part], SALT);
+
+/** The stone footing below ground contact (10 triangles) with its proud plinth course (10 more). */
+function plinth(b: FacetBuilder, hw: number, hd: number, stone: Rgb) {
+  b.box([-hw, -BUILDING_FOOTING, -hd], [hw, 0, hd], shadeRgb(stone, FOOTING_SHADE), { top: false });
+  const p = PLINTH_COURSE.proud;
+  b.box([-hw - p, PLINTH_COURSE.bottom, -hd - p], [hw + p, PLINTH_COURSE.top, hd + p], stone, { bottom: false });
+}
 
 /** The window band on a wall whose roof underside is at `wallTop`: never into the roof. */
 export function agedWindowBand(wallTop: number): { bottom: number; top: number } {
@@ -219,9 +235,9 @@ function addAgedGabled(b: FacetBuilder, kind: Exclude<BuildingKind, "watchtower"
   const bottomCuts = wornCuts(kindSeed(kind, 1));
   const topCuts = wornCuts(kindSeed(kind, 2));
 
-  // Footing below ground, then the worn, panelled walls up to the roof's underside.
+  // The stone plinth below ground, then the worn, panelled walls up to the roof's underside.
   const wallsFrom = b.vertexCount();
-  b.box([-hw, -BUILDING_FOOTING, -hd], [hw, 0, hd], shadeRgb(colors.wall, FOOTING_SHADE), { top: false });
+  plinth(b, hw, hd, colors.stone);
   wornPrism(b, { hw, hd, y: 0, cuts: bottomCuts }, { hw, hd, y: wallTop, cuts: topCuts }, colors.wall, {
     panel: { cols: 3, rows: 3, cellTint: flakingTint(kindSeed(kind, 3)) },
     faces: { bottom: false, top: false },
@@ -289,9 +305,9 @@ function addAgedTower(b: FacetBuilder, colors: AgedColors) {
   const topCuts = wornCuts(kindSeed(kind, 2));
   const cutAt = (k: number, y: number) => bottomCuts[k] + (topCuts[k] - bottomCuts[k]) * (y / t.bodyTop);
 
-  // Footing, then the tapering mortar body the blocks lie on.
+  // The stone plinth, then the tapering mortar body the blocks lie on.
   const bodyFrom = b.vertexCount();
-  b.box([-t.halfBase, -BUILDING_FOOTING, -t.halfBase], [t.halfBase, 0, t.halfBase], shadeRgb(colors.stone, FOOTING_SHADE), { top: false });
+  plinth(b, t.halfBase, t.halfBase, colors.stone);
   wornPrism(
     b,
     { hw: t.halfBase, hd: t.halfBase, y: 0, cuts: bottomCuts },

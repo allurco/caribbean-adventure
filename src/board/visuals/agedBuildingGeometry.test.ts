@@ -139,6 +139,37 @@ describe("buildAgedBuildingGeometry", () => {
     }
   });
 
+  it("gives every kind a stone plinth: the footing in the stone colour with a course standing proud of it below ground contact", () => {
+    for (const kind of BUILDING_KINDS) {
+      const g = built[kind];
+      let groundReach = 0;
+      let courseReach = 0;
+      let courseVertices = 0;
+      let footingStone = 0;
+      let footingVertices = 0;
+      for (let i = 0; i < g.vertexCount; i++) {
+        const [x, y, z] = vertex(g, i);
+        const c = color(g, i);
+        if (Math.abs(y) < 1e-6) groundReach = Math.max(groundReach, Math.hypot(x, z));
+        if (y > -0.031 && y < -0.011) {
+          courseReach = Math.max(courseReach, Math.hypot(x, z));
+          courseVertices++;
+        }
+        // The footing proper, below the plinth course's top (the door sill dips 0.011 under ground contact).
+        if (y < -0.0125) {
+          footingVertices++;
+          // Stone, not the wall's render: the grime and ground occlusion darken the footing, so tell them by hue,
+          // the test stone's blue-to-red ratio (0.77) against the wall's (0.85).
+          if (c[2] / c[0] < 0.8) footingStone++;
+        }
+      }
+      // The course reaches past the walls' line at ground contact (the lean moves it by far less than its projection).
+      expect(courseVertices).toBeGreaterThan(0);
+      expect(courseReach).toBeGreaterThan(groundReach + 0.003);
+      expect(footingStone).toBe(footingVertices);
+    }
+  });
+
   it("grimes the foot of the walls darker than mid-height and flakes cells into several tones", () => {
     for (const kind of ["house", "tavern", "warehouse"] as const) {
       const g = built[kind];
