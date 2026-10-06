@@ -370,7 +370,41 @@ lowest probe (never floating) and the high side buried at most 0.1. The
 ground the buildings probe goes through one function, `settlementGround`,
 where the quay's flat top plugs in. `PortBuildings.tsx` draws one
 `InstancedMesh` per kind on a white `vertexColors` material with
-`instanceColor` carrying the tint. Instance counts (10-seed average):
+`instanceColor` carrying the tint, plus one per nation present for the
+flags over the towers (same matrices, untinted).
+
+**The aged settlement (#59).** The faceted kinds looked like fresh-cut
+toys ("biscuits"), so the settlement now draws aged pieces from
+`agedBuildingGeometry.ts`, built on `agedKit.ts` and `agedRoof.ts` with
+the same local-space contract and footprints (the aged half-diagonals,
+0.165–0.215, are what `portSettlement.ts` probes). Walls are lime render
+grimed over the lowest fifth (`tintColors`), an irregular grid of cells
+of which a hash flakes some darker, with staining streaks under windows
+and eave corners, corners cut unequally top and bottom (never a uniform
+chamfer), and the whole piece leaning a degree or two through the
+builder's `shear`, which puts the normals through the inverse transpose
+so they stay exact. Roofs are two thick slabs under rows of raised
+terracotta strips of unequal length (uneven eaves), a couple slipped down
+the slope, a ridge cap that sags 0.006 in the middle, one slope mossy and
+the other salt-pale. Doors are three planks in alternating tones under a
+tapering lintel with a near-black iron strap; shutters hang open by
+different angles; the warehouse has a loft hatch and the tavern a sign.
+The watchtower is the port's landmark: a 0.2-square body tapering to
+0.17, its mortar body covered in rough-cut blocks of unequal widths in
+wobbling courses (a quarter proud and bevelled, one corner chipped, some
+with an ochre cast), a string course, a parapet with eight merlons (one
+chipped), and a flagpole to 0.49, under the 0.5 cap, flying the owning
+nation's flag (`nationFlagGeometry.ts`: a two-sided rippled 3 × 3 grid in
+the HUD's bands, 0.1 × 0.055, converted from sRGB without three). Every
+port gets its tower, fort decoration or not, at the end of the crescent
+on the fort's side (the slot nearest the water); if the landward arc has
+no room it takes any direction, and failing that the hex centre, so it is
+never dropped. Triangles: warehouse 448, tavern 600, house 448,
+watchtower 560 (+36 flag), budget 1000. Honest judgement from the
+screenshots: at ship zoom the pieces read as an old stone-and-tile port;
+at map zoom the tower is a small pale upright with a dot of flag colour,
+findable beside the label but not yet unmistakable on its own, because
+the 0.5 cap keeps it to about twenty pixels tall at the default zoom. Instance counts (10-seed average):
 small 5 piers + 17.3 buildings (every port gets its tower; 3.5 per port,
 up from 2.9 while the marker held them to the outer ring), medium 10 +
 34.6, large 15 + 50.6. Draw calls: five instanced meshes per copy where
