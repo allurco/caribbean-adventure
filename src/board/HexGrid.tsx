@@ -14,15 +14,18 @@ import { WaterHexOutlines } from "./WaterHexOutlines";
 import { hoverEnter, hoverLeave } from "./sharedHover";
 import type { HexGridState, PortSite } from "./useHexGrid";
 import { BUILDING_MAX_HEIGHT } from "./visuals/buildingGeometry";
+import { PORT_SETTLEMENT_RADIUS } from "./visuals/portSettlement";
 
 const TILE_SIZE = 1;
 const HEX_BASE_DEPTH = 0.1;
 const HIGHLIGHT_DEPTH = 0.02;
 
-// The port's hover volume (#59): invisible, covering the settlement, so a
-// pointer over the buildings or the ground between them shows the tooltip.
+// The port's hover volume (#59): invisible, covering the settlement's whole
+// envelope (every building's farthest corner, PORT_SETTLEMENT_RADIUS, inside
+// the hex's inradius so no neighbour's hover is taken), so a pointer over
+// any part of a building or the ground between them shows the tooltip.
 // The buildings themselves are the port's visual (portSettlement.ts).
-const PORT_HOVER_RADIUS = 0.5;
+const PORT_HOVER_RADIUS = PORT_SETTLEMENT_RADIUS;
 const PORT_HOVER_HEIGHT = BUILDING_MAX_HEIGHT;
 // Port name label baseline above the ground
 const PORT_LABEL_HEIGHT = 0.6;

@@ -26,6 +26,7 @@ import {
   PIER_ROOT_RESERVE,
   PORT_BUILDING_GAP,
   PORT_BUILDING_MAX_RADIUS,
+  PORT_SETTLEMENT_RADIUS,
   PORT_SQUARE_RADIUS,
   PORT_BUILDING_SCALE_RANGE,
   PORT_BUILDING_SLOT_ANGLES,
@@ -202,8 +203,13 @@ describe("portBuildings", () => {
     for (const a of PORT_BUILDING_SLOT_ANGLES) expect(Math.abs(a)).toBeLessThan(Math.PI / 2);
     // The reserve at the pier's land end is at least half the deck's width, so the deck's root stays clear.
     expect(PIER_ROOT_RESERVE).toBeGreaterThanOrEqual(PIER_WIDTH / 2);
-    // The widest building at the farthest slot still lies inside the hex.
+    // The widest building at the farthest slot still lies inside the hex, and the settlement's
+    // envelope (which the port's hover volume covers) is exactly that, counting the tower's own scale.
     expect(PORT_BUILDING_MAX_RADIUS + maxReach).toBeLessThan(HEX_INRADIUS);
+    const towerReach = AGED_BUILDING_HALF_DIAGONAL.watchtower * WATCHTOWER_SCALE_RANGE[1];
+    expect(PORT_SETTLEMENT_RADIUS).toBeCloseTo(PORT_BUILDING_MAX_RADIUS + Math.max(maxReach, towerReach), 12);
+    expect(PORT_SETTLEMENT_RADIUS).toBeLessThan(HEX_INRADIUS);
+    expect(PORT_SETTLEMENT_RADIUS).toBeGreaterThan(0.8);
     // The open square at the centre is small: well inside the old 0.35 marker footprint.
     expect(PORT_SQUARE_RADIUS).toBeGreaterThan(0);
     expect(PORT_SQUARE_RADIUS).toBeLessThan(PORT_MARKER_RADIUS);
@@ -323,6 +329,8 @@ describe("portBuildings", () => {
       const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
       expect(d).toBeLessThanOrEqual(PORT_BUILDING_MAX_RADIUS + 1e-9);
       expect(d + reach).toBeLessThan(HEX_INRADIUS);
+      // Every corner is under the port's hover volume.
+      expect(d + reach).toBeLessThanOrEqual(PORT_SETTLEMENT_RADIUS + 1e-9);
       // The buildings ring an open square at the centre; no footprint intrudes on it.
       expect(d - reach).toBeGreaterThanOrEqual(PORT_SQUARE_RADIUS - 1e-9);
       // The quay stands where the pier meets the beach; no building covers the pier's land end,

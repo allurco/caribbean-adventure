@@ -88,6 +88,18 @@ const RADIAL_STEP = 0.04;
 export const PORT_BUILDING_SCALE_RANGE: readonly [number, number] = [0.92, 1.08];
 /** The tower's range keeps AGED_BUILDING_HEIGHT.watchtower × scale (the flag's hoist) under BUILDING_MAX_HEIGHT. */
 export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING_MAX_HEIGHT / AGED_BUILDING_HEIGHT.watchtower];
+/** The largest plan reach any kind can have, at its largest scale. */
+const maxPlanReach = Math.max(
+  ...Object.entries(AGED_BUILDING_HALF_DIAGONAL).map(
+    ([kind, reach]) => reach * (kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE)[1]
+  )
+);
+/**
+ * The settlement's envelope: no building's corner stands farther than this
+ * from the hex centre (the farthest origin plus the widest plan reach), and
+ * it stays inside the hex's inradius. The port's hover volume covers it.
+ */
+export const PORT_SETTLEMENT_RADIUS = PORT_BUILDING_MAX_RADIUS + maxPlanReach;
 export const PORT_BUILDING_TINT_SPREAD = 0.08;
 /** Buildings face the water give or take this (radians, about 8°). */
 export const PORT_BUILDING_YAW_JITTER = 0.14;
