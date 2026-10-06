@@ -177,12 +177,3 @@ export function groundViewReach(
   }
   return reach;
 }
-
-/**
- * Side of the square ocean plane that keeps its edge off screen. The plane is
- * centred under the camera focus and follows it (#36), and from the focus the
- * view reaches at most `reach` across the sea.
- */
-export function oceanPlaneSize(reach: number): number {
-  return 2 * reach;
-}

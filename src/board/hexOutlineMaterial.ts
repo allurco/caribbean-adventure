@@ -1,5 +1,9 @@
-import { Color, ShaderMaterial, Vector2 } from "three";
+import { Color, ShaderMaterial, Vector2, Vector4 } from "three";
+import type { Texture } from "three";
 import type { GridFadeParams } from "./hexOutlineGrid";
+import type { TerrainFieldTexture } from "./visuals/useTerrainFieldTexture";
+import { OCEAN_GRID_CELL_GLSL } from "./visuals/oceanGrid";
+import { WAVE_DISPLACEMENT_GLSL, bindWaveDisplacementTextures } from "./visuals/waveDisplacement";
 
 /**
  * Line material for the water hex grid. Opacity fades with XZ distance from
@@ -8,17 +12,39 @@ import type { GridFadeParams } from "./hexOutlineGrid";
  * per-vertex `aEmphasis`, so acted-on hexes stay crisp anywhere. Emphasised
  * lines also blend from `uColor` toward `uEmphasisColor`.
  * The opacity formula mirrors `gridFadeOpacity` in `hexOutlineGrid.ts`.
+ *
+ * The lines sit a little above sea level and the sea heaves (#38 step 8),
+ * so each vertex rides the same wave displacement as the water
+ * (`waveSurfaceDisplacement`, waveDisplacement.ts), read at the level of
+ * detail of the sea mesh's ring under it (`oceanGridCellAt`, oceanGrid.ts,
+ * from `uGridOrigin`, the snapped focus the rings are centred on). The
+ * rings average away the waves their cell cannot carry, so a line read at a
+ * finer level would ride swell the water there does not draw and dip under
+ * it in the troughs; at the mesh's own level the line and the water move
+ * together.
  */
+
+/** What the lines need to float on the displaced sea. */
+export interface WaveSurface {
+  /** The displacing cascades' textures (useWaveCascades), in DISPLACEMENT_CASCADES order. */
+  displacements: readonly Texture[];
+  /** The map's terrain field, which damps the displacement in the shallows. */
+  terrainField: TerrainFieldTexture;
+}
 
 const vertexShader = /* glsl */ `
   attribute float aEmphasis;
   attribute float aShore;
+  uniform vec2 uGridOrigin;
   varying float vEmphasis;
   varying float vShore;
   varying vec2 vWorldXZ;
+  ${WAVE_DISPLACEMENT_GLSL}
+  ${OCEAN_GRID_CELL_GLSL}
 
   void main() {
     vec4 world = modelMatrix * vec4(position, 1.0);
+    world.xyz += waveSurfaceDisplacement(world.xz, oceanGridCellAt(world.xz - uGridOrigin));
     vWorldXZ = world.xz;
     vEmphasis = aEmphasis;
     vShore = aShore;
@@ -54,6 +80,8 @@ export type HexOutlineUniforms = {
   uFadeStart: { value: number };
   uFadeEnd: { value: number };
   uBaseOpacity: { value: number };
+  /** Where the sea mesh's rings are centred (Ocean.tsx: the focus snapped to the coarsest cell). */
+  uGridOrigin: { value: Vector2 };
 };
 
 /** Push new fade radii (e.g. zoom-scaled) to an existing outline material. */
@@ -68,20 +96,28 @@ export function setHexOutlineFade(
 export function createHexOutlineMaterial(
   color: string,
   emphasisColor: string,
-  { fadeStart, fadeEnd, baseOpacity }: GridFadeParams
+  { fadeStart, fadeEnd, baseOpacity }: GridFadeParams,
+  surface: WaveSurface
 ): ShaderMaterial & { uniforms: HexOutlineUniforms } {
-  const uniforms: HexOutlineUniforms = {
+  const { minX, maxX, minZ, maxZ } = surface.terrainField.bounds;
+  const uniforms: HexOutlineUniforms & Record<string, { value: unknown }> = {
     uColor: { value: new Color(color) },
     uEmphasisColor: { value: new Color(emphasisColor) },
     uFocus: { value: new Vector2() },
     uFadeStart: { value: fadeStart },
     uFadeEnd: { value: fadeEnd },
     uBaseOpacity: { value: baseOpacity },
+    uGridOrigin: { value: new Vector2() },
+    terrainField: { value: surface.terrainField.texture },
+    mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
   };
+  bindWaveDisplacementTextures(uniforms, surface.displacements);
   const material = new ShaderMaterial({
     uniforms,
     vertexShader,
     fragmentShader,
+    // On a wrapping map the field covers one wrap width and repeats in s.
+    defines: surface.terrainField.wrap ? { TERRAIN_FIELD_WRAP_X: "" } : {},
     transparent: true,
     depthWrite: false,
   });

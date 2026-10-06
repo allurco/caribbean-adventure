@@ -29,6 +29,15 @@
  * with u the wind direction and v across it (`windInTile`): along the wind
  * the stretch is largest and the shear ∂Du/∂v, which does not fit, is
  * smallest (whitecapFoam.ts). `evolvedStretchSpectrum` is the CPU mirror.
+ *
+ * The geometry (#38 step 8) needs the displacement itself from the large
+ * cascades: the height h and the choppy pull D = i λ (k/|k|) h̃. Three real
+ * fields, packed into two more inverse FFTs that ride in their own blocks of
+ * the atlas (waveCascadeAtlas.ts, waveCascadeShaders.ts):
+ *   P(k) = h̃ + i · i λ (kx/|k|) h̃ = h̃ (1 − λ kx/|k|),   IFFT(P) = h + i Dx,
+ *   Q(k) = i λ (kz/|k|) h̃,                              IFFT(Q) = Dz + i·0,
+ * in the tile's own axes (the water turns D into the world's).
+ * `evolvedDisplacementSpectrum` is the CPU mirror.
  */
 import { directionalSpreading } from "./directionalSpreading";
 import { jonswapSpectrum, type WindSea } from "./jonswap";
@@ -228,6 +237,64 @@ export function evolvedStretchSpectrum(
     }
   }
   return { re, im };
+}
+
+interface ComplexSpectrum {
+  re: Float64Array;
+  im: Float64Array;
+}
+
+/**
+ * The packed displacement spectra at time `seconds` (see the header), for
+ * choppiness λ: `heightAndX` is P(k), whose inverse FFT is the height (real)
+ * and the x displacement (imaginary); `z` is Q(k), whose inverse FFT is the
+ * z displacement (real). Both in the tile's own axes.
+ */
+export function evolvedDisplacementSpectrum(
+  initial: Float32Array,
+  cascade: WaveCascade,
+  seconds: number,
+  loopSeconds: number,
+  choppiness: number
+): { heightAndX: ComplexSpectrum; z: ComplexSpectrum } {
+  const { size, tileMetres } = cascade;
+  const heightAndX = { re: new Float64Array(size * size), im: new Float64Array(size * size) };
+  const z = { re: new Float64Array(size * size), im: new Float64Array(size * size) };
+  for (let zi = 0; zi < size; zi++) {
+    for (let x = 0; x < size; x++) {
+      const kx = cascadeWavenumber(x, size, tileMetres);
+      const kz = cascadeWavenumber(zi, size, tileMetres);
+      const k = Math.hypot(kx, kz);
+      if (k === 0) continue;
+      const t = (zi * size + x) * 4;
+      const [hr, hi] = evolvedAmplitude(initial.subarray(t, t + 4), k, seconds, loopSeconds);
+      const i = zi * size + x;
+      // P = h̃ · (1 − λ kx/|k|), a real coefficient.
+      const p = 1 - (choppiness * kx) / k;
+      heightAndX.re[i] = hr * p;
+      heightAndX.im[i] = hi * p;
+      // Q = h̃ · i λ kz/|k|.
+      const q = (choppiness * kz) / k;
+      z.re[i] = -hi * q;
+      z.im[i] = hr * q;
+    }
+  }
+  return { heightAndX, z };
+}
+
+/**
+ * Expected height variance E[h²] the cascade resolves: Σ E|h̃(k)|² =
+ * Σ 2 E|h0(k)|² over the grid. Its significant height is 4 √variance.
+ */
+export function resolvedHeightVariance(cascade: WaveCascade): number {
+  const { size, tileMetres } = cascade;
+  let total = 0;
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      total += 2 * modeVariance(cascadeWavenumber(x, size, tileMetres), cascadeWavenumber(z, size, tileMetres), cascade);
+    }
+  }
+  return total;
 }
 
 /**

@@ -257,10 +257,10 @@ every copy's meshes share those geometries and materials, so a copy costs no
 build time or GPU upload. The hex hover is shared too (`sharedHover.ts`), so
 the hovered hex lights up in every copy. Tooltips are drawn once, in the
 copy under the pointer (`PointerCopy`): a very wide view can show the same
-ship twice. The ocean is still **one** plane, centred under the camera
-focus and following it (all its shading is in world space, so moving it
-changes no pixel); the seabed prepass draws the land copies like the main
-pass. The zoom-out cap is `CAMERA_MAX_DISTANCE` (28) on every map size, Civ
+ship twice. The ocean is still **one** mesh, the ring grid of
+`oceanGrid.ts` (see *Geometry* below), centred under the camera focus and
+following it (all its shading is in world space, so moving it changes no
+pixel); the seabed prepass draws the land copies like the main pass. The zoom-out cap is `CAMERA_MAX_DISTANCE` (28) on every map size, Civ
 style. North and south, `wrapView.ts` clamps the **focus point** (the centre
 of the view, on the sea plane) to the band every column covers,
 z ∈ [0, √3·(rows − ½)] (`clampFocusToBand`), at every zoom and whatever the
@@ -269,8 +269,8 @@ the screen centre, and the rest of the view is open sea, where Civ shows the
 void past the poles. Clamping the view instead of the focus (the first cut)
 pinned the focus at any zoom where the view was taller than the rows (a
 small map at distance 28 on a 16:9 screen: ~61 units of view against 30 of
-rows), so only east–west panning worked. The ocean plane is centred under
-the focus and sized for the view's reach at full zoom-out on the widest
+rows), so only east–west panning worked. The ocean grid is centred under
+the focus and reaches past the view's reach at full zoom-out on the widest
 screen, so its edge stays off screen with the focus anywhere in the band.
 The sea past the rows needs nothing drawn: the ocean shader treats
 everything outside the field's bounds as open sea (the field texture clamps
@@ -451,8 +451,10 @@ frame the GPU evolves each spectrum (frequencies rounded to whole cycles per
 FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float
 texture of (∂h/∂x, ∂h/∂z, |∇h|², J), J being the whitecaps' Jacobian
 (below). The three are batched side by side in one atlas
-(`waveCascadeAtlas.ts`), so all of them take 20 draws a frame (22 with the
-two whitecap accumulators). The
+(`waveCascadeAtlas.ts`), with one more block per displacing cascade for the
+height and choppy pull (*Geometry* below), so all of them take 24 draws a
+frame: one spectrum, 16 FFT stages, three slope and two displacement
+outputs, two whitecap accumulators. The
 cascades are run by the board (`useWaveCascades`) and their textures handed
 to both the water and the seabed; the look-up that sums them lives in one
 place, `waveSlopeGlsl.ts`. The water shader samples each texture once, sums
@@ -532,8 +534,8 @@ bright as dry sand). `PALETTE_SURF` is gone.
 
 - *Whitecaps* (`whitecapFoam.ts`). The spectrum pass fills the working
   textures' spare BA pair with the choppy displacement's stretch along and
-  across the wind (λ = `WAVE_CHOPPINESS`, 1.2; the displacement itself is
-  not drawn until step 8), riding the same FFT as the slopes; the output
+  across the wind (λ = `WAVE_CHOPPINESS`, 1.2, the same pull that moves
+  the geometry in step 8), riding the same FFT as the slopes; the output
   pass writes the surface Jacobian J = (1 + ∂Du/∂u)(1 + ∂Dv/∂v) into the
   slope texture's A channel. The shear ∂Du/∂v, which would need a third
   real signal, is dropped: measured in the wind frame it enters J only
@@ -587,6 +589,84 @@ as the fragment's diffuse albedo so three's own lighting shades it like the
 sand. No extra pass and no change to the water's depth test. The field
 texture is built once per map (`useTerrainFieldTexture.ts`) and handed to
 both.
+
+**Geometry (#38 step 8).** Until this step the sea was a flat plane whose
+waves were all in the normals. It is now a mesh that the large cascades
+displace.
+
+- *Grid* (`oceanGrid.ts`). Five concentric level-of-detail rings under the
+  camera focus: a square of 0.1-unit cells (6.5 m, about one texel of the
+  swell cascade) out to 8 units, then annuli to 16 / 32 / 64 / 96 units with
+  0.2 / 0.4 / 0.8 / 1.6-unit cells; 25.9k + 20k + 20k + 20k + 8.7k = 94.6k
+  vertices, 184k triangles, one mesh per ring on one material so the rings
+  off screen at ship zoom are frustum-culled. The outer ring reaches 95.2
+  units from the focus after snapping, against the 80.5 the camera can see
+  at full zoom-out on a 4:1 screen (`oceanGridReach`); the inner ring 7.2
+  against the 6.6 of the closest ship zoom at 16:9. Where a ring meets the
+  finer ring inside it, its edge cells are split into fans through the finer
+  ring's boundary vertices, so there are no T-junctions and the displaced
+  mesh cannot crack (the test counts every inner edge in two triangles and
+  every boundary edge in one). Every vertex is an integer number of base
+  cells converted once, so a shared vertex is the same float in both rings.
+- *Snapping.* The grid moves only in whole multiples of the coarsest cell
+  (1.6 units, `snapToCell`); every finer cell divides it, so after a pan each
+  ring's vertices land on the same world lattice they left and sample the
+  same displacement: nothing swims. Each ring is built half a coarse cell
+  larger than it needs. On a wrapping map the one grid serves every copy of
+  the world, as the plane did.
+- *Displacement* (`waveDisplacement.ts`). The swell and the chop
+  (`DISPLACEMENT_CASCADES`, 83% and 16% of the height variance) move the
+  mesh; the ripple (0.3%, waves under 3.2 m and a few centimetres high)
+  keeps contributing normals only. Each displacing cascade's FFT carries two
+  more packed spectra in its own blocks of the working atlas, P = h̃ (1 −
+  λ kx/|k|) and Q = i λ kz/|k| h̃ (`waveCascade.ts`), and a second output
+  pass writes (h, Dx, Dz) in metres into a mipmapped tile texture: the
+  height and Tessendorf's choppy pull toward the crests with the whitecaps'
+  λ, so the sharpened crests and the foam on them agree. A vertex reads each
+  texture with `textureLod` at log2(cell / texel) + 0.5 (`displacementLod`),
+  so waves the mesh cannot carry are averaged away rather than aliased; a
+  band whose longest wave spans under four cells fades out as it does for
+  the normals, and everything fades to flat with distance like the normals.
+  Vertices two rings share carry the finer ring's cell in the `gridCell`
+  attribute, so both sample them alike. The height is drawn as it is
+  (`WAVE_HEIGHT_GAIN` = 1): the displaced bands' significant height is 1.56 m
+  (`DISPLACED_SIGNIFICANT_HEIGHT_METRES`), 0.024 units
+  (`WAVE_CREST_BOUND_UNITS`), which pads the rings' culling bounds. At the
+  closest ship zoom (~0.003 units per pixel) typical crests move the surface
+  2–4 pixels: the water laps a static hull as it would round a ship that is
+  not yet heaving (step 11).
+- *Shallows.* The displacement is scaled by `shallowDisplacementDamping` of
+  the seabed's depth from the terrain field: a smoothstep from nothing at the
+  waterline (and on land) to full at twice the breaking depth
+  (`DISPLACEMENT_FULL_DEPTH_METRES`, ≈ 4 m). Shoreward of the breaker line
+  the real sea is a broken bore whose height is bounded by the depth; the
+  test keeps the damped significant height under the depth all the way in
+  (0.07 m at 0.5 m, 0.24 m at 1 m, 0.78 m at 2 m), so a trough never reaches
+  the sand and the surface never lifts over the beach.
+- *Fragment side.* `vWorld` is the displaced point: the view ray, the
+  refraction trace and the Beer–Lambert path measure the water's depth from
+  it (a crest looks through more water than a trough). The wave slope and
+  whitecap look-ups keep the rest point (`vRestXZ`), so the slope and foam
+  textures stay attached to the surface the displacement moved. The shore
+  bands keep the seabed's depth below sea level: the breaker line and the
+  wash are contours of the bathymetry and hold still while the surface
+  heaves over them, and the damping is zero at the waterline, so they still
+  meet the land's wash there.
+- *Grid lines.* The water hex grid sits 0.01 units (0.65 m) above sea level,
+  lower than most swell crests, so its lines ride the same displacement
+  (`hexOutlineMaterial.ts`; edges went from 4 to 8 segments, so a line
+  follows the swell between its vertices). Each line vertex reads it at the
+  level of detail of the sea ring under it (`oceanGridCellAt`, from the
+  rings' snapped origin), not of its own 8 m segment: a coarse ring averages
+  away the swell its cell cannot carry (the 0.8-unit ring keeps about a
+  quarter of a 48 m wave's height, an 8 m segment nine tenths), so a line
+  read at its own segment rode a swell the water there
+  did not draw, dipped under the opaque surface in the troughs and floated
+  above it on the crests at map zoom. Reduced motion freezes the wave clock,
+  which freezes the cascade textures, and with them the displacement.
+- *Shadows.* The sea neither casts nor receives, and the crest bound is
+  under a tenth of the shadow box's caster and receiver margins
+  (`atmosphere.test.ts`), so `shadowFit.ts` is unchanged.
 
 ---
 
@@ -673,10 +753,15 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 |------|---------|
 | `src/board/visuals/TerrainHeightmap.ts` | SDF-based heightmap generation |
 | `src/board/visuals/UnifiedTerrain.tsx` | Land shader with vertex squashing |
-| `src/board/visuals/Ocean.tsx` | Water: refraction, water colour, waves, glint, foam |
+| `src/board/visuals/Ocean.tsx` | Water: the displaced ring grid, refraction, water colour, waves, glint, foam |
+| `src/board/visuals/oceanGrid.ts` | The sea's mesh: stitched level-of-detail rings, snapping, coverage |
+| `src/board/visuals/waveDisplacement.ts` | Which cascades displace, the height gain, shallow damping, the vertex-stage GLSL |
 | `src/board/visuals/waterOptics.ts` | Water optics: absorption, Fresnel, vector Snell, the refraction bound |
 | `src/board/visuals/waveSlopeGlsl.ts` | The cascade slope and whitecap look-ups shared by the water and the seabed |
-| `src/board/visuals/useWaveCascades.ts` | Runs the FFT cascades and the whitecap accumulators on the GPU |
+| `src/board/visuals/waveCascade.ts` | One FFT cascade: spectrum, slopes, stretch and displacement spectra |
+| `src/board/visuals/waveCascadeShaders.ts` | The cascades' GPU passes: spectrum, FFT stage, slope, displacement and whitecap outputs |
+| `src/board/visuals/useWaveCascades.ts` | Runs the FFT cascades, the displacement outputs and the whitecap accumulators on the GPU |
+| `src/board/hexOutlineMaterial.ts` | The water hex grid's lines, floating on the displaced sea |
 | `src/board/visuals/whitecapFoam.ts` | Whitecap maths: Jacobian, fold threshold, accumulation step |
 | `src/board/visuals/shoreFoam.ts` | Shore, breaker and reef bands; the wash up the beach; windward weight |
 | `src/board/visuals/shoreFoamLand.ts` | Patches the land material so the wash runs up the sand |

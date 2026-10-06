@@ -13,10 +13,17 @@
  * wave clock and one grid size.
  *
  * Whitecaps add one draw per whitecapping cascade (two for the trade-wind
- * sea: 22 draws a frame): a tile-space ping-pong pair of the cascade's size
- * that integrates the fold of its Jacobian (whitecapFoam.ts). The pair swaps
- * every frame, so `whitecaps[i]` is replaced in place each update: read it
- * in a frame callback after CASCADE_PRIORITY, not once at material creation.
+ * sea): a tile-space ping-pong pair of the cascade's size that integrates
+ * the fold of its Jacobian (whitecapFoam.ts). The pair swaps every frame, so
+ * `whitecaps[i]` is replaced in place each update: read it in a frame
+ * callback after CASCADE_PRIORITY, not once at material creation.
+ *
+ * The displacement (#38 step 8) adds one block of the working atlas per
+ * displacing cascade, transformed by the same FFT draws (the working targets
+ * are wider, not more numerous), and one output draw per displacing cascade
+ * into its own mipmapped tile texture of (h, Dx, Dz). For the trade-wind
+ * sea's two displaced cascades that is 24 draws a frame in all: 1 spectrum,
+ * 16 FFT stages, 3 slope and 2 displacement outputs, 2 whitecap steps.
  *
  * On a GPU that cannot render to float or half float (waveCascadeSupport.ts)
  * the cascades are skipped: the hook returns flat, zero-slope textures and
@@ -46,9 +53,10 @@ import {
 import type { Texture, TextureDataType, WebGLRenderer } from "three";
 import { butterflyTable, fftStageCount } from "./fftButterfly";
 import { initialSpectrum, type WaveCascade } from "./waveCascade";
-import { packCascadeAtlas } from "./waveCascadeAtlas";
+import { atlasBlockCount, displacementBlockColumn, packCascadeAtlas } from "./waveCascadeAtlas";
 import { WAVE_LOOP_SECONDS, advanceWaveTime, waveTimeStep } from "./waveClock";
 import {
+  DISPLACEMENT_OUTPUT_FRAGMENT,
   FFT_STAGE_FRAGMENT,
   FULLSCREEN_VERTEX,
   SLOPE_OUTPUT_FRAGMENT,
@@ -102,6 +110,8 @@ export interface WaveCascadeTextures {
   slopes: Texture[];
   /** One accumulated-whitecap texture per entry of `whitecaps` (the cascade indices given); replaced in place every update. */
   whitecaps: Texture[];
+  /** One (h, Dx, Dz) displacement texture per displaced cascade, in the order given; stable objects. */
+  displacements: Texture[];
 }
 
 interface CascadesGpu extends WaveCascadeTextures {
@@ -114,8 +124,8 @@ let warnedUnsupported = false;
 
 const BLACK = new Color(0);
 
-/** 1×1 textures of zero slope, zero slope variance and no foam: a flat, calm sea. */
-function flatSlopes(count: number, whitecapCount: number): CascadesGpu {
+/** 1×1 textures of zero slope, zero slope variance, no foam and no displacement: a flat, calm sea. */
+function flatSlopes(count: number, whitecapCount: number, displacedCount: number): CascadesGpu {
   const flat = () => {
     const texture = new DataTexture(new Uint8Array(4), 1, 1, RGBAFormat, UnsignedByteType);
     texture.wrapS = RepeatWrapping;
@@ -125,11 +135,23 @@ function flatSlopes(count: number, whitecapCount: number): CascadesGpu {
   };
   const slopes = Array.from({ length: count }, flat);
   const whitecaps = Array.from({ length: whitecapCount }, flat);
-  return { slopes, whitecaps, update: () => {}, dispose: () => [...slopes, ...whitecaps].forEach((t) => t.dispose()) };
+  const displacements = Array.from({ length: displacedCount }, flat);
+  return {
+    slopes,
+    whitecaps,
+    displacements,
+    update: () => {},
+    dispose: () => [...slopes, ...whitecaps, ...displacements].forEach((t) => t.dispose()),
+  };
 }
 
 /** GPU resources for the cascades; `dispose` frees them all. */
-function createCascadesGpu(cascades: readonly WaveCascade[], whitecapCascades: readonly number[], gl: WebGLRenderer): CascadesGpu {
+function createCascadesGpu(
+  cascades: readonly WaveCascade[],
+  whitecapCascades: readonly number[],
+  displacementCascades: readonly number[],
+  gl: WebGLRenderer
+): CascadesGpu {
   const types = cascadeTargetTypes({
     colorBufferFloat: gl.extensions.has("EXT_color_buffer_float"),
     colorBufferHalfFloat: gl.extensions.has("EXT_color_buffer_half_float"),
@@ -139,29 +161,32 @@ function createCascadesGpu(cascades: readonly WaveCascade[], whitecapCascades: r
       console.warn("Wave cascades skipped: this GPU cannot render to float or half-float targets; the sea is drawn flat.");
       warnedUnsupported = true;
     }
-    return flatSlopes(cascades.length, whitecapCascades.length);
+    return flatSlopes(cascades.length, whitecapCascades.length, displacementCascades.length);
   }
-  return createRenderingCascades(cascades, whitecapCascades, gl, types);
+  return createRenderingCascades(cascades, whitecapCascades, displacementCascades, gl, types);
 }
 
 function createRenderingCascades(
   cascades: readonly WaveCascade[],
   whitecapCascades: readonly number[],
+  displacementCascades: readonly number[],
   gl: WebGLRenderer,
   types: CascadeTargetTypes
 ): CascadesGpu {
   const { size } = cascades[0];
-  const width = size * cascades.length;
+  // The working atlas carries the displacement blocks too; the initial spectrum only the cascades' own.
+  const width = size * atlasBlockCount(cascades.length, displacementCascades);
   const stages = fftStageCount(size);
   // Full float keeps the 16 butterfly stages accurate; half float where the
   // GPU can only render to half float.
   const workType = types.work === "float" ? FloatType : HalfFloatType;
 
-  const spectrum = floatTexture(packCascadeAtlas(cascades.map(initialSpectrum), size), width, size);
+  const spectrum = floatTexture(packCascadeAtlas(cascades.map(initialSpectrum), size), size * cascades.length, size);
   const butterfly = floatTexture(butterflyTable(size), size, stages);
   const ping = workTarget(width, size, workType);
   const pong = workTarget(width, size, workType);
   const outputs = cascades.map(() => tileTarget(size, gl));
+  const displacementOutputs = displacementCascades.map(() => tileTarget(size, gl));
   // Per whitecapping cascade, a ping-pong pair in its tile space.
   const accumulators = whitecapCascades.map((c) => ({
     cascade: c,
@@ -169,7 +194,7 @@ function createRenderingCascades(
     latest: 0,
   }));
 
-  const spectrumPass = pass(spectrumFragment(cascades, WAVE_LOOP_SECONDS), {
+  const spectrumPass = pass(spectrumFragment(cascades, WAVE_LOOP_SECONDS, displacementCascades), {
     initialSpectrum: { value: spectrum },
     cycles: { value: 0 },
   });
@@ -180,6 +205,7 @@ function createRenderingCascades(
     horizontal: { value: true },
   });
   const outputPass = pass(SLOPE_OUTPUT_FRAGMENT, { source: { value: null }, column: { value: 0 } });
+  const displacementPass = pass(DISPLACEMENT_OUTPUT_FRAGMENT, { source: { value: null }, column: { value: 0 } });
   const whitecapPass = pass(WHITECAP_ACCUMULATE_FRAGMENT, {
     jacobian: { value: null },
     previous: { value: null },
@@ -242,6 +268,11 @@ function createRenderingCascades(
       outputPass.uniforms.column.value = c * size;
       draw(outputPass, output);
     });
+    displacementPass.uniforms.source.value = src.texture;
+    displacementOutputs.forEach((output, d) => {
+      displacementPass.uniforms.column.value = displacementBlockColumn(cascades.length, d, size);
+      draw(displacementPass, output);
+    });
     whitecapPass.uniforms.decay.value = whitecapDecay(stepSeconds);
     whitecapPass.uniforms.injection.value = whitecapInjection(stepSeconds);
     accumulators.forEach((a, i) => {
@@ -257,28 +288,41 @@ function createRenderingCascades(
 
   const dispose = () => {
     const targets = accumulators.flatMap((a) => a.targets);
-    for (const d of [spectrum, butterfly, ping, pong, ...outputs, ...targets, spectrumPass, fftPass, outputPass, whitecapPass, geometry]) {
+    const resources = [spectrum, butterfly, ping, pong, ...outputs, ...displacementOutputs, ...targets];
+    for (const d of [...resources, spectrumPass, fftPass, outputPass, displacementPass, whitecapPass, geometry]) {
       d.dispose();
     }
   };
 
-  return { slopes: outputs.map((o) => o.texture), whitecaps, update, dispose };
+  return {
+    slopes: outputs.map((o) => o.texture),
+    whitecaps,
+    displacements: displacementOutputs.map((o) => o.texture),
+    update,
+    dispose,
+  };
 }
 
 /**
- * Each cascade's slope texture, in the order given, and the whitecap foam of
- * the cascades at indices `whitecapCascades`, updated once per frame on one
- * shared clock; frozen under reduced motion (the foam neither grows nor
- * decays then). `cascades` and `whitecapCascades` should be stable arrays of
- * one grid size: a new array rebuilds every cascade.
+ * Each cascade's slope texture, in the order given, the whitecap foam of the
+ * cascades at indices `whitecapCascades` and the displacement of those at
+ * `displacementCascades`, updated once per frame on one shared clock; frozen
+ * under reduced motion (the foam neither grows nor decays then, and the
+ * surface holds still). `cascades`, `whitecapCascades` and
+ * `displacementCascades` should be stable arrays of one grid size: a new
+ * array rebuilds every cascade.
  */
 export function useWaveCascades(
   cascades: readonly WaveCascade[],
   whitecapCascades: readonly number[],
+  displacementCascades: readonly number[],
   reducedMotion: boolean
 ): WaveCascadeTextures {
   const gl = useThree((s) => s.gl);
-  const gpu = useMemo(() => createCascadesGpu(cascades, whitecapCascades, gl), [cascades, whitecapCascades, gl]);
+  const gpu = useMemo(
+    () => createCascadesGpu(cascades, whitecapCascades, displacementCascades, gl),
+    [cascades, whitecapCascades, displacementCascades, gl]
+  );
   useEffect(() => () => gpu.dispose(), [gpu]);
 
   const time = useRef(0);

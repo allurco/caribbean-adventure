@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   cascadeWavenumber,
   evolvedAmplitude,
+  evolvedDisplacementSpectrum,
   evolvedSlopeSpectrum,
   evolvedStretchSpectrum,
   inCascadeBand,
   initialSpectrum,
   modeVariance,
   nyquistWavenumber,
+  resolvedHeightVariance,
   resolvedSlopeVariance,
   windInTile,
   type WaveCascade,
@@ -214,6 +216,85 @@ describe("evolvedStretchSpectrum (choppy displacement derivatives, #38 step 7)",
 });
 
 const spread = (s: { re: Float64Array; im: Float64Array }): [Float64Array, Float64Array] => [s.re, s.im];
+
+describe("evolvedDisplacementSpectrum (height and choppy displacement, #38 step 8)", () => {
+  // The hand-made wave again: amplitude 0.5 m, one mode along tile +x on a 16-texel tile.
+  const n = 16;
+  const tile = 160;
+  const k = (2 * Math.PI) / tile;
+  const loop = 100;
+  const choppiness = 1.2;
+  const alongX = new Float32Array(n * n * 4);
+  alongX[1 * 4] = 0.25;
+  alongX[(n - 1) * 4 + 2] = 0.25;
+  // The same wave along tile +z: modes (0, 1) and (0, n − 1).
+  const alongZ = new Float32Array(n * n * 4);
+  alongZ[(1 * n) * 4] = 0.25;
+  alongZ[((n - 1) * n) * 4 + 2] = 0.25;
+  const c = cascade({ size: n, tileMetres: tile });
+
+  const fields = (initial: Float32Array) => {
+    const s = evolvedDisplacementSpectrum(initial, c, 0, loop, choppiness);
+    return { heightAndX: inverseFft2d(...spread(s.heightAndX), n), z: inverseFft2d(...spread(s.z), n) };
+  };
+
+  it("packs the height (real) with the x displacement (imaginary), and the z displacement alone", () => {
+    // h = 0.5 cos(k x); the choppy displacement pulls the surface toward the
+    // crests (Gerstner): Dx = −λ · 0.5 · sin(k x), and nothing along z.
+    const out = fields(alongX);
+    for (let x = 0; x < n; x++) {
+      const px = (x * tile) / n;
+      expect(out.heightAndX.re[x]).toBeCloseTo(0.5 * Math.cos(k * px), 6);
+      expect(out.heightAndX.im[x]).toBeCloseTo(-choppiness * 0.5 * Math.sin(k * px), 6);
+      expect(out.z.re[x]).toBeCloseTo(0, 6);
+      expect(out.z.im[x]).toBeCloseTo(0, 6);
+    }
+  });
+
+  it("displaces a wave along z along z only", () => {
+    const out = fields(alongZ);
+    for (let z = 0; z < n; z++) {
+      const pz = (z * tile) / n;
+      expect(out.heightAndX.re[z * n]).toBeCloseTo(0.5 * Math.cos(k * pz), 6);
+      expect(out.heightAndX.im[z * n]).toBeCloseTo(0, 6);
+      expect(out.z.re[z * n]).toBeCloseTo(-choppiness * 0.5 * Math.sin(k * pz), 6);
+    }
+  });
+
+  it("does not depend on the wind: the pull is toward the crests whichever way they run", () => {
+    const a = evolvedDisplacementSpectrum(alongX, c, 0, loop, choppiness);
+    const b = evolvedDisplacementSpectrum(alongX, cascade({ size: n, tileMetres: tile, windAngle: 2 }), 0, loop, choppiness);
+    expect(Array.from(a.heightAndX.re)).toEqual(Array.from(b.heightAndX.re));
+    expect(Array.from(a.z.im)).toEqual(Array.from(b.z.im));
+  });
+
+  it("leaves the height alone when the choppiness is zero", () => {
+    const s = evolvedDisplacementSpectrum(alongX, c, 0, loop, 0);
+    const out = inverseFft2d(...spread(s.heightAndX), n);
+    for (let x = 0; x < n; x++) expect(out.im[x]).toBeCloseTo(0, 6);
+  });
+});
+
+describe("resolvedHeightVariance", () => {
+  it("is the sum of the mode variances, E|h̃|² = 2 E|h0|² per mode", () => {
+    const c = cascade({ size: 8, tileMetres: 100, kMin: 0.06, kMax: 0.07 });
+    const dk = (2 * Math.PI) / 100;
+    let expected = 0;
+    for (const [kx, kz] of [[dk, 0], [-dk, 0], [0, dk], [0, -dk]]) expected += 2 * modeVariance(kx, kz, c);
+    expect(resolvedHeightVariance(c)).toBeCloseTo(expected, 12);
+  });
+
+  it("matches the height variance ∫ S dω over the band's frequencies", () => {
+    const c = cascade({ size: 256, tileMetres: 800 });
+    const lo = deepWaterFrequency((2 * Math.PI) / c.tileMetres);
+    const hi = deepWaterFrequency(c.kMax);
+    const n = 20000;
+    const h = (hi - lo) / n;
+    let integral = 0;
+    for (let i = 0; i < n; i++) integral += jonswapSpectrum(lo + (i + 0.5) * h, sea) * h;
+    expect(resolvedHeightVariance(c) / integral).toBeCloseTo(1, 1);
+  });
+});
 
 describe("windInTile", () => {
   it("is the world wind direction expressed in the tile's turned axes", () => {
