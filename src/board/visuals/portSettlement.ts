@@ -71,8 +71,17 @@ export interface PortBuilding {
   nation?: PortNation;
 }
 
-/** Preferred slots on the landward arc, as turns from straight away from the water (radians). */
-export const PORT_BUILDING_SLOT_ANGLES: readonly number[] = [-1.3, -0.45, 0.45, 1.3];
+/**
+ * Preferred slots on the landward arc, as turns from straight away from
+ * the water (radians). The middle slot, straight landward, is the church's:
+ * it fronts the square (#59). The slots either side of it were at ±0.45
+ * for four small buildings; with the church's 0.23 footprint between them
+ * they stand at ±0.8, or a house beside the church would be pushed to the
+ * outer ring before it cleared it.
+ */
+export const PORT_BUILDING_SLOT_ANGLES: readonly number[] = [-1.3, -0.8, 0, 0.8, 1.3];
+/** The slot the church takes, straight landward of the square. */
+export const PORT_CHURCH_SLOT_INDEX = 2;
 /** The open square at the hex centre that no building corner enters: the crescent forms round it. */
 export const PORT_SQUARE_RADIUS = 0.15;
 /** Farthest a building's origin stands from the hex centre: the widest building then still lies inside the hex. */
@@ -319,8 +328,13 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
       fortDirection === null
         ? ends[next() < 0.5 ? 0 : 1]
         : ends.reduce((best, i) => (angleDiff(slots[i], fortDirection) < angleDiff(slots[best], fortDirection) ? i : best), ends[0]);
-    const order: { kind: BuildingKind; slot: number }[] = [{ kind: "watchtower", slot: slots[towerSlot] }];
+    // The church fronts the square from straight landward and is placed second, before the shuffled others.
+    const order: { kind: BuildingKind; slot: number }[] = [
+      { kind: "watchtower", slot: slots[towerSlot] },
+      { kind: "church", slot: slots[PORT_CHURCH_SLOT_INDEX] },
+    ];
     slots.splice(towerSlot, 1);
+    slots.splice(slots.indexOf(landward + PORT_BUILDING_SLOT_ANGLES[PORT_CHURCH_SLOT_INDEX]), 1);
     for (const kind of shuffledKinds(next)) {
       const slot = slots.shift();
       if (slot === undefined) break;
@@ -335,12 +349,10 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
       const footing = BUILDING_FOOTING * scale;
       let spot = standOnBeach(ground, centre, candidateAngles(landward, slot, false), reach, footing, pierRoot, placed);
-      if (!spot && kind === "watchtower") {
-        // The landmark is never dropped: any direction, then the hex centre on its highest ground (never under the sea).
-        spot =
-          standOnBeach(ground, centre, candidateAngles(landward, slot, true), reach, footing, pierRoot, placed) ??
-          { x: centre.x, y: buildingGroundY(Math.max(SEA_LEVEL, footprintGround(ground, centre.x, centre.z, reach).max)), z: centre.z };
-      }
+      // The landmark and the church look round the whole hex if the landward arc has no room; the tower
+      // is never dropped and takes the hex centre on its highest ground (never under the sea), the church is dropped.
+      if (!spot && (kind === "watchtower" || kind === "church")) spot = standOnBeach(ground, centre, candidateAngles(landward, slot, true), reach, footing, pierRoot, placed);
+      if (!spot && kind === "watchtower") spot = { x: centre.x, y: buildingGroundY(Math.max(SEA_LEVEL, footprintGround(ground, centre.x, centre.z, reach).max)), z: centre.z };
       if (!spot) continue;
       placed.push({ x: spot.x, z: spot.z, reach });
       const building: PortBuilding = { kind, worldX: spot.x, worldY: spot.y, worldZ: spot.z, yaw, scale, tint };

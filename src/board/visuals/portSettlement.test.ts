@@ -17,6 +17,7 @@ import {
   buildingGroundY,
   buildingMaxSpread,
   CHURCH_SCALE_RANGE,
+  PORT_CHURCH_SLOT_INDEX,
   pierRootReserve,
   portBuildings,
   scaleRangeOf,
@@ -200,9 +201,13 @@ describe("standBuilding", () => {
 });
 
 describe("portBuildings", () => {
-  it("names its layout constants: four slots on the landward arc, small scale and tint spreads", () => {
-    expect(PORT_BUILDING_SLOT_ANGLES).toHaveLength(4);
+  it("names its layout constants: five slots on the landward arc, the middle one straight landward for the church, small scale and tint spreads", () => {
+    expect(PORT_BUILDING_SLOT_ANGLES).toHaveLength(5);
     for (const a of PORT_BUILDING_SLOT_ANGLES) expect(Math.abs(a)).toBeLessThan(Math.PI / 2);
+    expect(PORT_BUILDING_SLOT_ANGLES[PORT_CHURCH_SLOT_INDEX]).toBe(0);
+    // Symmetric about the landward ray, the ends unchanged.
+    expect(PORT_BUILDING_SLOT_ANGLES.map((a) => 0 - a || 0).reverse()).toEqual([...PORT_BUILDING_SLOT_ANGLES]);
+    expect(PORT_BUILDING_SLOT_ANGLES[0]).toBe(-1.3);
     // The reserve at the pier's land end is at least half the deck's width, so the deck's root stays clear.
     expect(PIER_ROOT_RESERVE).toBeGreaterThanOrEqual(PIER_WIDTH / 2);
     // The widest building at the farthest slot still lies inside the hex, and the settlement's
@@ -257,19 +262,21 @@ describe("portBuildings", () => {
     }
   });
 
-  it("gives every port a watchtower and up to three other buildings, four to five instances at most", () => {
+  it("gives every port a watchtower, a church where the ground takes one, and up to three other buildings, five at most", () => {
     expect(ports.length).toBeGreaterThan(0);
     for (const port of ports) {
       const mine = buildings.filter((b) => portOf(b) === port);
       expect(mine.length).toBeGreaterThanOrEqual(1);
       expect(mine.length).toBeLessThanOrEqual(5);
       expect(mine.filter((b) => b.kind === "watchtower")).toHaveLength(1);
+      expect(mine.filter((b) => b.kind === "church").length).toBeLessThanOrEqual(1);
       // The other kinds appear at most once each.
       const kinds = mine.map((b) => b.kind);
       expect(new Set(kinds).size).toBe(kinds.length);
     }
-    // Most slots are filled; a cramped beach with water on three sides drops a building or two.
-    expect(buildings.length).toBeGreaterThanOrEqual(ports.length * 2.5);
+    // The tower, the church and one or two more: the church's 0.23 footprint in the middle of the arc
+    // leaves room for about one small building (3.5 per port before the church, 2.4 to 2.8 since).
+    expect(buildings.length).toBeGreaterThanOrEqual(ports.length * 2.2);
   });
 
   it("puts no building on a cell without a port, but a watchtower on every port, fort decoration or not", () => {
@@ -315,6 +322,59 @@ describe("portBuildings", () => {
       const [px, , pz] = hexToWorld(portOf(b).hex);
       expect(Math.hypot(b.worldX - px, b.worldZ - pz)).toBeGreaterThan(PORT_SQUARE_RADIUS);
     }
+  });
+
+  it("fronts the church on the square from straight landward, placed second so it gets the ground after the tower", () => {
+    const onFlat = portBuildings(cells, flat(0.3), seed);
+    for (const port of ports) {
+      const mine = onFlat.filter((b) => portOf(b) === port);
+      expect(mine[0].kind).toBe("watchtower");
+      expect(mine[1].kind).toBe("church");
+      const [px, , pz] = hexToWorld(port.hex);
+      const landward = pierRotation(port) + Math.PI;
+      const direction = Math.atan2(mine[1].worldX - px, mine[1].worldZ - pz);
+      // On flat ground the church takes the centre slot exactly: straight landward of the square.
+      expect(angleDiff(direction, landward)).toBeLessThan(1e-6);
+      // Its door faces the square and the water, like the others.
+      expect(angleDiff(mine[1].yaw, pierRotation(port))).toBeLessThanOrEqual(PORT_BUILDING_YAW_JITTER + 1e-9);
+      expect(mine[1].nation).toBeUndefined();
+    }
+  });
+
+  it("gives nearly every port a church over seeded maps of every size, and keeps every top under the label", () => {
+    let portsSeen = 0;
+    let churches = 0;
+    let slack = Infinity;
+    let churchSlack = Infinity;
+    for (const size of ["small", "medium", "large"] as const) {
+      for (const mapSeed of [3, 11, 42]) {
+        const someCells = generateMap(getMapPreset(size), mapSeed);
+        const someSeed = terrainSeedFromCells(someCells);
+        const someField = createTerrainHeightField(someCells, someSeed);
+        const placed = portBuildings(someCells, someField, someSeed);
+        const somePorts = someCells.filter((c) => c.hasPort);
+        portsSeen += somePorts.length;
+        for (const port of somePorts) {
+          const [px, , pz] = hexToWorld(port.hex);
+          const labelBase = groundTopY(someField, px, pz, PORT_MARKER_RADIUS) + 0.6;
+          const mine = placed.filter((b) => Math.hypot(b.worldX - px, b.worldZ - pz) < 1);
+          if (mine.some((b) => b.kind === "church")) churches++;
+          for (const b of mine) {
+            const s = labelBase - (b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale);
+            slack = Math.min(slack, s);
+            if (b.kind === "church") churchSlack = Math.min(churchSlack, s);
+          }
+        }
+      }
+    }
+    expect(portsSeen).toBeGreaterThan(50);
+    // A church is dropped only where no ground on the hex takes its footprint: about one port in eight
+    // (87.8 % of 300 ports over these nine maps; 86–90 % by size over ten seeds each).
+    expect(churches / portsSeen).toBeGreaterThanOrEqual(0.85);
+    // Everything stays under the label; the tower sets the minimum (0.027 here, as before the church),
+    // the church's cross never comes within 0.1 of it.
+    expect(slack).toBeGreaterThan(0);
+    expect(churchSlack).toBeGreaterThan(0.1);
   });
 
   it("never drops the tower: on a beach too small for any footprint it stands at the hex centre on the highest ground there", () => {

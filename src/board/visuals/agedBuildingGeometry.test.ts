@@ -404,7 +404,8 @@ describe("buildAgedBuildingGeometry", () => {
       const allowed = kind === "watchtower" ? 2 : 0;
       expect(hits.map((h) => `${kind} triangle ${h.triangle} at ${h.point.map((v) => v.toFixed(3)).join(", ")}`).slice(allowed)).toEqual([]);
     }
-  });
+    // Nearly twenty thousand rays against up to 800 triangles per kind: a few seconds under a loaded suite.
+  }, 30_000);
 
   it("gives the church's two roof slopes their full rows of tile strips, each strip's top facing its own way", () => {
     const g = built.church;
