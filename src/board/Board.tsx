@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
-import { Vector3, PCFSoftShadowMap } from "three";
+import { Vector3 } from "three";
 import type { MapControls as MapControlsType } from "three-stdlib";
 import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
@@ -35,8 +35,8 @@ import {
   SUN_DIRECTION,
   SUN_INTENSITY,
   SUN_OFFSET,
-  SHADOW_MAP_SIZE,
-  SHADOW_EXTENT,
+  SUN_SHADOW,
+  SHADOW_MAP_TYPE,
   BLOOM_INTENSITY,
   BLOOM_THRESHOLD,
   BLOOM_SMOOTHING,
@@ -311,14 +311,8 @@ function Scene({
       <color attach="background" args={[HAZE_COLOR]} />
       <fog attach="fog" args={[HAZE_COLOR, HAZE_NEAR, HAZE_FAR]} />
 
-      {/* High, warm mid-afternoon sun in front of the camera; shadow box follows the camera target */}
-      <SunLight
-        color={SUN_COLOR}
-        intensity={SUN_INTENSITY}
-        offset={SUN_OFFSET}
-        shadowMapSize={SHADOW_MAP_SIZE}
-        shadowExtent={SHADOW_EXTENT}
-      />
+      {/* High, warm mid-afternoon sun in front of the camera; shadow box follows the camera target and fits the view */}
+      <SunLight color={SUN_COLOR} intensity={SUN_INTENSITY} offset={SUN_OFFSET} shadow={SUN_SHADOW} />
 
       {/* Ocean, coloured by depth from the same terrain height field, under
           the camera focus and sized so its edge is never on screen. One plane
@@ -695,7 +689,7 @@ export function CaribbeanBoard(props: BoardProps<CaribbeanState>) {
   return (
     <div className="relative w-screen h-screen font-body bg-[#0a1929]">
       <Canvas
-        shadows={{ type: PCFSoftShadowMap }}
+        shadows={{ type: SHADOW_MAP_TYPE }}
         camera={{
           // Start due south of the middle of the map (the rectangle's corner
           // is the origin), looking north along CAMERA_OFFSET

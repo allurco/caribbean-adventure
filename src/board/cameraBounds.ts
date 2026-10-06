@@ -145,17 +145,25 @@ export function clampToCameraBounds(bounds: CameraBounds, x: number, z: number):
  * The visible patch of sea is the quadrilateral where the four frustum corner
  * rays hit the plane, so its furthest point is one of those four hits.
  * Infinity if a corner ray never comes down to the sea (horizon in view).
+ *
+ * With a `drop` (world units, ≥ 0) the rays are followed on to a plane that
+ * far below the sea instead, the seabed say, and the reach is still measured
+ * horizontally from the target on the sea plane. This is not the sea-plane
+ * reach of a camera `drop / sin(pitch)` further out: that camera's target
+ * would sit `drop / tan(pitch)` further along the view axis, so its reach
+ * would be measured from the wrong point.
  */
 export function groundViewReach(
   distance: number,
   pitch: number,
   fovDeg: number,
-  aspect: number
+  aspect: number,
+  drop = 0
 ): number {
   const t = Math.tan(((fovDeg / 2) * Math.PI) / 180);
   const sin = Math.sin(pitch);
   const cos = Math.cos(pitch);
-  const height = distance * sin;
+  const height = distance * sin + drop; // camera height over the plane being hit
   const behind = distance * cos; // camera sits this far behind the target
   let reach = 0;
   for (const sy of [-1, 1]) {
