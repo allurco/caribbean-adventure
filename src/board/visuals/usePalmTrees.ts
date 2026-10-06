@@ -1,6 +1,5 @@
-/** The palms' shared geometry, materials and sway, built once per map (#36). */
+/** The palms' shared geometry and materials, built once per map (#36); the sway clock is shared (`useSwayClock`). */
 import { useEffect, useMemo } from "react";
-import { useFrame } from "@react-three/fiber";
 import {
   BufferAttribute,
   BufferGeometry,
@@ -12,8 +11,8 @@ import {
 import { paletteColor } from "./palette";
 import { buildPalmGeometry, type Rgb } from "./palmGeometry";
 import { palmVariation, type PalmPlacement } from "./palmVariation";
-import { advanceSwayAngle, injectPalmSway } from "./palmSway";
-import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
+import { injectPalmSway } from "./palmSway";
+import type { SwayClock } from "./useSwayClock";
 
 const rgb = (name: "palmTrunk" | "palmFrond"): Rgb => {
   const c = paletteColor(name);
@@ -33,17 +32,8 @@ function createPalmGeometry(count: number): BufferGeometry {
   return geometry;
 }
 
-interface SwayUniform {
-  value: number;
-}
-
-/** The sway angle uniform shared by a palm material and its depth material. */
-const swayUniformOf = (material: MeshStandardMaterial): SwayUniform =>
-  material.userData.palmSwayAngle as SwayUniform;
-
-function createPalmMaterials() {
-  const angle: SwayUniform = { value: 0 };
-
+/** Palm materials bound to the shared sway clock's angle uniform. */
+function createPalmMaterials(clock: SwayClock) {
   // Flat shading takes facet normals from the displaced surface, so lighting
   // follows the sway and the per-instance height stretch.
   const material = new MeshStandardMaterial({
@@ -52,15 +42,14 @@ function createPalmMaterials() {
     side: DoubleSide, // Fronds are single sheets
   });
   material.onBeforeCompile = (shader) => {
-    injectPalmSway(shader, angle);
+    injectPalmSway(shader, clock.angle);
   };
   material.customProgramCacheKey = () => "palm-sway";
-  material.userData.palmSwayAngle = angle;
 
   // Shadows use the same displacement, so they sway with the palms.
   const depthMaterial = new MeshDepthMaterial();
   depthMaterial.onBeforeCompile = (shader) => {
-    injectPalmSway(shader, angle);
+    injectPalmSway(shader, clock.angle);
   };
   depthMaterial.customProgramCacheKey = () => "palm-sway-depth";
 
@@ -76,14 +65,12 @@ export interface PalmTreesResources {
 }
 
 /**
- * Builds the palm geometry and materials once per map, fills the
- * per-instance sway data, and advances the sway once per frame for every
- * world copy that draws them.
+ * Builds the palm geometry and materials once per map and fills the
+ * per-instance sway data. The sway angle comes from the shared clock, which
+ * advances once per frame for every world copy that draws them.
  */
-export function usePalmTrees(palms: PalmPlacement[]): PalmTreesResources {
-  const reducedMotion = usePrefersReducedMotion();
-
-  const { material, depthMaterial } = useMemo(() => createPalmMaterials(), []);
+export function usePalmTrees(palms: PalmPlacement[], clock: SwayClock): PalmTreesResources {
+  const { material, depthMaterial } = useMemo(() => createPalmMaterials(clock), [clock]);
   useEffect(
     () => () => {
       material.dispose();
@@ -102,11 +89,6 @@ export function usePalmTrees(palms: PalmPlacement[]): PalmTreesResources {
     return g;
   }, [palms]);
   useEffect(() => () => geometry.dispose(), [geometry]);
-
-  useFrame((_, delta) => {
-    const angle = swayUniformOf(material);
-    angle.value = advanceSwayAngle(angle.value, delta, reducedMotion);
-  });
 
   return useMemo(() => ({ palms, geometry, material, depthMaterial }), [palms, geometry, material, depthMaterial]);
 }

@@ -10,6 +10,9 @@ import { usePalmTrees, type PalmTreesResources } from "./usePalmTrees";
 import { ROCK_UNIT_RADIUS } from "./rockGeometry";
 import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
 import { smallStones } from "./smallStones";
+import { placeShrubs } from "./shrubPlacement";
+import { useShrubs, type ShrubsResources } from "./useShrubs";
+import { useSwayClock } from "./useSwayClock";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -38,6 +41,8 @@ export interface DecorationLayout {
   stones: DecorationData[];
   piers: DecorationData[];
   palms: PalmTreesResources;
+  /** Derived bushes and dry tufts on sand and grass cells (#49). */
+  shrubs: ShrubsResources;
 }
 
 /** Where each decoration stands, worked out once per map and wrap (`perMapCache`). */
@@ -105,14 +110,18 @@ const decorationsOf = perMapCache((cells, wrap) => {
     }
 
     const stones = smallStones(cells, field, terrainSeedFromCells(cells));
+    const shrubs = placeShrubs(cells, field, terrainSeedFromCells(cells), { trees, rocks, stones, piers });
 
-    return { trees, rocks, stones, piers };
+    return { trees, rocks, stones, piers, shrubs };
 });
 
 /** Places every decoration on the height field once per map (and wrap). */
 export function useDecorationLayout(cells: MapCell[], wrap: MapWrap): DecorationLayout {
   // Collect all decorations with their world positions
   const decorationsByType = decorationsOf(cells, wrap);
-  const palms = usePalmTrees(decorationsByType.trees);
-  return useMemo(() => ({ ...decorationsByType, palms }), [decorationsByType, palms]);
+  // One clock for everything that sways, so reduced motion stops palms and shrubs together.
+  const sway = useSwayClock();
+  const palms = usePalmTrees(decorationsByType.trees, sway);
+  const shrubs = useShrubs(decorationsByType.shrubs, sway);
+  return useMemo(() => ({ ...decorationsByType, palms, shrubs }), [decorationsByType, palms, shrubs]);
 }

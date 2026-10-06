@@ -326,6 +326,48 @@ can overhang a lower neighbour or the water on a coastal `ROCK` cell. Both
 halves are one placement problem (the probed footprint is not the drawn
 extent) and are tracked as a follow-up.
 
+**Props: vegetation (#49).** Between the palms the islands grow two kinds of
+derived ground cover, hand-built and faceted like the palms and placed on
+the board, with `src/game/` untouched. `shrubGeometry.ts` builds a **bush**
+for `GRASS` cells (four overlapping jittered polar-lattice blobs on a short
+square stem, 0.18 units tall, 88 triangles) and a dry **tuft** for `SAND`
+cells (nine folded blades splaying out of a low mound of dry earth, 0.1
+units tall, 32 triangles). Both carry the palms' `palm` vec2 attribute, so
+`injectPalmSway` displaces them unchanged: the sway weight rises with height
+from 0 at the base to `SHRUB_MAX_SWAY` (0.5 for a bush, 0.65 for a tuft;
+the shader bends by weight², so a bush top moves about 5% of its height and
+a blade tip about 15%, against a frond tip's weight of 1), and the crown
+mask is 0 throughout, so the palm's crown twist and frond flutter leave
+shrubs alone. `shrubPlacement.ts` derives one to three shrubs per `SAND`/`GRASS`
+cell (`SHRUBS_PER_GRASS_CELL`, `SHRUBS_PER_SAND_CELL`, both `[1, 3]`) from a
+per-cell hash of the cell's coordinates and the whole terrain seed, as the
+stones do, within `SHRUB_SPREAD` (0.68) of the centre: wider than the
+stones' 0.55 because the generator keeps its trees and rocks within ±0.35
+of the centre, so the outer ring is where a grass cell has room left.
+Each shrub goes through `placeOnGround` with a probe the size of its stem
+or mound (`SHRUB_GROUND_FOOTPRINT`, 0.04), not its foliage, since the
+placement buries a prop to the lowest ground under the probe and probing
+the foliage radius sank bushes past their leaves on slopes. It must then
+clear the cell's trees, rocks, stones and pier deck by its foliage radius
+plus `SHRUB_CLEARANCE` (0.05), stay `SHRUB_PORT_CLEARANCE` (0.45, the port
+marker's 0.35 plus a margin) from a port cell's centre, and not overlap the
+cell's other shrubs; `SHRUB_ATTEMPTS` (5) spots are tried per shrub before
+it is given up. Rock clearance uses the rock's nominal radius, not its
+stretched one, so foliage may brush a long slab but is never rooted inside
+one. `shrubVariation.ts` hashes each placement into a width and a height
+stretch, a per-channel tint (±12% luminance with a ±5% green-against-red
+hue nudge) and a sway phase; the colours are chosen against the ground
+each kind stands on (a warm light green 0x6aa23f for bush leaves on the
+jungle floor, a dry olive straw 0xa89f58 for blades on the beach). The sway
+clock is shared: `useSwayClock` owns the angle uniform, advances it once per
+frame and holds it still under `prefers-reduced-motion`, and `usePalmTrees`
+and `useShrubs` both bind their materials to it, so one setting stops every
+plant. `Shrubs.tsx` draws one `InstancedMesh` per kind on a vertex-coloured
+material with `instanceColor` carrying the tint, casting shadows and not
+frustum-culled, as the palms are: two more instanced draws per world copy.
+Instance counts (10-seed average, bushes + tufts): small 42 + 52 (94),
+medium 103 + 117 (220), large 188 + 241 (428).
+
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
