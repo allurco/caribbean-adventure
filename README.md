@@ -61,12 +61,12 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | Parameter | Effect |
 |---|---|
 | `size=small\|medium\|large` | Map size (random otherwise) |
-| `seed=<integer>` | Map generation seed (random otherwise) |
+| `seed=<integer>` | Map generation seed: a plain decimal integer from -2147483648 to 2147483647 (random otherwise) |
 | `cx=<x>&cz=<z>` | Where the camera looks on the first frame, in world units (both needed; the map's middle otherwise) |
 | `dist=<positive number>` | How far the camera starts from its target (the map's iso distance otherwise); the zoom limits still apply |
 | `view=props` | The prop viewer instead of the game, with `focus=<n>` to start close up on entry n |
 
-The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=4.3` opens the same small map every time, at ship zoom over its middle port. The size and seed become the game's boardgame.io `setupData`; the camera values go to the board. Captains and NPCs stay random.
+The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=4.3` opens the same small map every time, at ship zoom over its middle port. The size and seed become the game's boardgame.io `setupData` (merged over whatever match creation passes, so a pin overrides only the keys it sets); the camera values go to the board. Captains and NPCs stay random.
 
 ## Project structure
 

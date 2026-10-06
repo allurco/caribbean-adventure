@@ -25,6 +25,18 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?size=SMALL")).toEqual({});
   });
 
+  it("takes a seed only as a plain decimal integer within int32, so the pin is exact", () => {
+    // The generator folds the seed to int32, so anything else would alias
+    // to another seed's map instead of failing.
+    expect(parseDevUrlParams("?seed=2147483647")).toEqual({ setupData: { mapSeed: 2147483647 } });
+    expect(parseDevUrlParams("?seed=-2147483648")).toEqual({ setupData: { mapSeed: -2147483648 } });
+    expect(parseDevUrlParams("?seed=2147483648")).toEqual({});
+    expect(parseDevUrlParams("?seed=4294967297")).toEqual({});
+    expect(parseDevUrlParams("?seed=0x10")).toEqual({});
+    expect(parseDevUrlParams("?seed=1e6")).toEqual({});
+    expect(parseDevUrlParams("?seed=+5")).toEqual({});
+  });
+
   it("pins the camera's target and distance", () => {
     expect(parseDevUrlParams("?cx=12&cz=13.9&dist=4.3")).toEqual({
       cameraTarget: [12, 0, 13.9],

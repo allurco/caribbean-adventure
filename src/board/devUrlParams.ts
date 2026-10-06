@@ -8,7 +8,7 @@ import type { MapSizeId } from "../game/mapConfig";
  * under "Dev URL parameters".
  */
 export interface DevUrlParams {
-  /** `?size=small|medium|large&seed=<integer>`: the map to generate. */
+  /** `?size=small|medium|large&seed=<int32>`: the map to generate. */
   setupData?: CaribbeanSetupData;
   /** `?cx=&cz=`: where the camera looks at first (both needed). */
   cameraTarget?: [number, number, number];
@@ -58,7 +58,14 @@ function finiteNumber(value: string | null): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/**
+ * A plain decimal integer within int32, or undefined. Not `Number()`'s
+ * reading: no hex, no exponent, no sign other than a leading minus, so
+ * that a seed the map generator folds to int32 (`seed | 0`) means exactly
+ * the map it names and never aliases to another's.
+ */
 function integer(value: string | null): number | undefined {
-  const n = finiteNumber(value);
-  return n !== undefined && Number.isInteger(n) ? n : undefined;
+  if (value === null || !/^-?\d+$/.test(value)) return undefined;
+  const n = Number(value);
+  return n >= -2147483648 && n <= 2147483647 ? n : undefined;
 }
