@@ -10,7 +10,7 @@ import { usePalmTrees, type PalmTreesResources } from "./usePalmTrees";
 import { ROCK_UNIT_RADIUS } from "./rockGeometry";
 import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
 import { smallStones } from "./smallStones";
-import { placeShrubs } from "./shrubs";
+import { placeShrubs } from "./shrubPlacement";
 import { useShrubs, type ShrubsResources } from "./useShrubs";
 import { useSwayClock } from "./useSwayClock";
 

@@ -24,13 +24,13 @@ import {
   SHRUBS_PER_GRASS_CELL,
   SHRUBS_PER_SAND_CELL,
   type PlacedProps,
-} from "./shrubs";
+} from "./shrubPlacement";
 
 const TAU = Math.PI * 2;
 
 /** The generator's props at their raw spots (no ground nudge), plus the derived stones. */
 function placedPropsOf(cells: readonly MapCell[], field: GroundField, seed: number): PlacedProps {
-  const placed: PlacedProps = { trees: [], rocks: [], stones: smallStones(cells, field, seed), piers: [] };
+  const placed = { trees: [] as DecorationData[], rocks: [] as DecorationData[], piers: [] as DecorationData[] };
   for (const cell of cells) {
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     for (const deco of cell.decorations ?? []) {
@@ -48,7 +48,7 @@ function placedPropsOf(cells: readonly MapCell[], field: GroundField, seed: numb
       else if (deco.type === "pier") placed.piers.push(data);
     }
   }
-  return placed;
+  return { ...placed, stones: smallStones(cells, field, seed) };
 }
 
 function layoutOf(size: "small" | "medium" | "large", mapSeed: number, wrap: MapWrap = null) {
