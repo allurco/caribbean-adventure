@@ -89,11 +89,14 @@ export const SUN_OFFSET: [number, number, number] = [
  *
  * Cool and pale: it stands for sky light and sand bounce together, so it is
  * bluer than the sun without being a blue cast. Its strength is a fraction of
- * the sun's so it never reads as a second key light or doubles the sky;
- * it is tuned from screenshot comparisons of a shadow-side house wall.
+ * the sun's so it never reads as a second key light or doubles the sky. 0.8
+ * (a third of the sun) was picked from screenshot comparisons at ship zoom:
+ * it lifts a shadow-side house wall from 0.044 to 0.122 linear luminance
+ * while the sunlit sand beside it moves from 0.317 to 0.427 (0.5 gave 0.083
+ * and 0.377, still too dark for the grimed walls).
  */
 export const FILL_COLOR = "#cfdcea";
-export const FILL_INTENSITY = 0.5;
+export const FILL_INTENSITY = 0.8;
 /**
  * Fill placement, relative to the camera's view like the sun's.
  *
