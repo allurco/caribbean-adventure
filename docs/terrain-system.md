@@ -357,8 +357,8 @@ use the whole hex: they form a crescent round an open square of radius
 behind the tower from the camera), each trying rings outwards from the
 square (0.06 apart, the first with its near corner on the square's edge,
 the last at 0.62 so the widest building stays inside the hex's 0.866
-inradius) and keeping a reserve of one pier width round `pierOrigin`,
-the pier's land end, where the quay will stand. A port hex is a small
+inradius) and keeping a reserve round `pierOrigin`, the pier's land end,
+where the quay stands (see **settlement on the quay** below). A port hex is a small
 beach with water on one
 to three sides and a shore ramp down to each, and higher jungle neighbours
 pull its field up, so a footprint commonly spans 0.1–0.2 in height; a
@@ -368,7 +368,7 @@ round the arc (12° steps) for the ground nearest its preferred slot that
 spans at most 0.16, then stands with its origin half a footing above the
 lowest probe (never floating) and the high side buried at most 0.1. The
 ground the buildings probe goes through one function, `settlementGround`,
-where the quay's flat top plugs in. `PortBuildings.tsx` draws one
+which lays the quay's flat top over the terrain. `PortBuildings.tsx` draws one
 `InstancedMesh` per kind on a white `vertexColors` material with
 `instanceColor` carrying the tint, plus one per nation present for the
 flags over the towers (same matrices, untinted).
@@ -467,9 +467,31 @@ onto the lowest point should the ground fall away, so it never floats
 (on generated maps it never has to). Width and depth vary ±10–15 % per
 port from a hash of the cell and the whole terrain seed, as instance
 scale. `Quays.tsx` draws one `InstancedMesh` per world copy, on the seabed
-prepass layer too. `quayTopY(cell, field, seed, point)` is the seam for
-the settlement: the deck or step height under a world point, or
-undefined off the quay.
+prepass layer too. `quayTopAt(quay, point)` is the seam for the
+settlement: the deck or step height under a world point over a placed
+quay, or undefined off it; `quayTopY(cell, field, seed, point)` is the
+same for a cell, placing the quay first.
+
+**Settlement on the quay (#59).** `settlementGround(cell, field, seed)`
+in `portSettlement.ts` is the ground the buildings probe: it places the
+port's quay once and answers each probe with the quay's flat top (the
+deck, or the rear step 0.03 lower) wherever the point is on the quay and
+the terrain elsewhere, so `placeOnGround` and the footprint probes see a
+building on the quay standing on its deck, not on the sand under it; where
+the sand drifts over the quay's back the sand is the visible surface and
+wins. Two rules go with it, in `standBuilding`. A footprint is wholly on
+the quay or wholly off it: one straddling the edge would step a wall down
+the quay's side (the 0.04–0.1 step is inside the 0.16 spread the sand rule
+allows, so the spread rule alone would take it). And the reserve round
+the pier's land end is one pier width (`PIER_ROOT_RESERVE`, 0.16) for a
+footprint on the sand but only the pier's mouth, half its width
+(`PIER_MOUTH_RESERVE`, 0.08), for one on the quay, so the deck is
+buildable but where the pier meets the quay stays walkable. With the
+present kit nothing fits: the smallest footprint circle, the tower's
+(0.285–0.3 across), is about as wide as the deck is deep (0.29–0.35) and
+cannot keep the mouth clear, so on generated maps no building stands on
+the quay and none moved when the rule landed; the seam is in place for
+smaller quay pieces (a crane, a customs shed, stacked cargo).
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
