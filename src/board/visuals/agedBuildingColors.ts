@@ -2,7 +2,8 @@
  * The aged settlement's colours (#59), shared by the board
  * (`PortBuildings.tsx`) and the prop viewer: lime render under weathered
  * terracotta, salt-greyed timber, rough stone for the tower, near-black
- * iron. The warehouse is timber-walled, a shade lighter than its fittings.
+ * iron. The warehouse is plank-walled in sun-bleached softwood, well
+ * clear of the dark timber of its door, hatch and beams.
  */
 import { paletteColor, type PaletteName } from "./palette";
 import type { Rgb } from "./palmGeometry";
@@ -15,8 +16,7 @@ const rgb = (name: PaletteName): Rgb => {
 };
 
 export function agedBuildingColors(kind: BuildingKind): AgedColors {
-  const timber = rgb("oldTimber");
-  const base: AgedColors = { wall: rgb("limewash"), roof: rgb("oldTerracotta"), timber, stone: rgb("roughStone"), iron: rgb("ironwork") };
-  if (kind === "warehouse") return { ...base, wall: [timber[0] * 1.4, timber[1] * 1.4, timber[2] * 1.4] };
+  const base: AgedColors = { wall: rgb("limewash"), roof: rgb("oldTerracotta"), timber: rgb("oldTimber"), stone: rgb("roughStone"), iron: rgb("ironwork") };
+  if (kind === "warehouse") return { ...base, wall: rgb("bleachedPlank") };
   return base;
 }

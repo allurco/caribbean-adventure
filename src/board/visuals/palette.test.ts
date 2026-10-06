@@ -30,7 +30,19 @@ describe("palette", () => {
       oldTimber: 0x4b3f35,
       roughStone: 0xa89b8b,
       ironwork: 0x1b1816,
+      bleachedPlank: 0xae9e8f,
     });
+  });
+
+  it("bleaches the warehouse's planking (#59): paler and greyer than the fittings' timber, darker than the lime render", () => {
+    const luminance = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const saturation = (c: Color) => (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / Math.max(c.r, c.g, c.b);
+    const plank = paletteColor("bleachedPlank");
+    expect(luminance(plank)).toBeGreaterThan(luminance(paletteColor("oldTimber")) * 2);
+    expect(luminance(plank)).toBeLessThan(luminance(paletteColor("limewash")) * 0.6);
+    expect(saturation(plank)).toBeLessThan(saturation(paletteColor("oldTimber")));
+    // Still warm: a softwood, not a slate.
+    expect(plank.r).toBeGreaterThan(plank.b);
   });
 
   it("ages the settlement's colours (#59): dimmer render, browner tiles, greyer timber, stone darker and greyer than the sand", () => {

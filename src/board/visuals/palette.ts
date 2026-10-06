@@ -80,6 +80,7 @@ export const PALETTE_HEX = {
   oldTimber: 0x4b3f35, // Salt-greyed timber: doors, shutters, beams
   roughStone: 0xa89b8b, // Rough-cut blocks, warm grey-brown
   ironwork: 0x1b1816, // Hinges, straps and the flagpole's finial
+  bleachedPlank: 0xae9e8f, // Sun-bleached, salt-greyed softwood planking: the warehouse's walls
 } as const;
 
 export type PaletteName = keyof typeof PALETTE_HEX;
