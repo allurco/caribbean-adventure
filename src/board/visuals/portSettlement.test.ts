@@ -13,10 +13,13 @@ import {
   BUILDING_MAX_BURY,
   BUILDING_MAX_HEIGHT,
 } from "./buildingGeometry";
+import { PIER_WIDTH } from "./pierGeometry";
+import { pierOrigin } from "./pierPlacement";
 import {
   portBuildings,
-  PORT_BUILDING_CLEARANCE,
+  PIER_ROOT_RESERVE,
   PORT_BUILDING_GAP,
+  PORT_BUILDING_MAX_RADIUS,
   PORT_BUILDING_SCALE_RANGE,
   PORT_BUILDING_SLOT_ANGLES,
   PORT_BUILDING_TINT_SPREAD,
@@ -24,6 +27,10 @@ import {
   WATCHTOWER_SCALE_RANGE,
   type PortBuilding,
 } from "./portSettlement";
+
+/** Inradius of a flat-top hex of size 1: the nearest any edge comes to the centre. */
+const HEX_INRADIUS = Math.sqrt(3) / 2;
+const maxReach = Math.max(...Object.values(BUILDING_HALF_DIAGONAL)) * PORT_BUILDING_SCALE_RANGE[1];
 
 const cells = generateMap(getMapPreset("small"), 11);
 const seed = terrainSeedFromCells(cells);
@@ -55,7 +62,10 @@ describe("portBuildings", () => {
   it("names its layout constants: four slots on the landward arc, small scale and tint spreads", () => {
     expect(PORT_BUILDING_SLOT_ANGLES).toHaveLength(4);
     for (const a of PORT_BUILDING_SLOT_ANGLES) expect(Math.abs(a)).toBeLessThan(Math.PI / 2);
-    expect(PORT_BUILDING_CLEARANCE).toBeGreaterThan(0);
+    // The reserve at the pier's land end is at least half the deck's width, so the deck's root stays clear.
+    expect(PIER_ROOT_RESERVE).toBeGreaterThanOrEqual(PIER_WIDTH / 2);
+    // The widest building at the farthest slot still lies inside the hex.
+    expect(PORT_BUILDING_MAX_RADIUS + maxReach).toBeLessThan(HEX_INRADIUS);
     expect(PORT_BUILDING_SCALE_RANGE[0]).toBeGreaterThanOrEqual(0.9);
     expect(PORT_BUILDING_SCALE_RANGE[1]).toBeLessThanOrEqual(1.1);
     expect(PORT_BUILDING_TINT_SPREAD).toBeLessThanOrEqual(0.1);
@@ -101,19 +111,40 @@ describe("portBuildings", () => {
     expect(portBuildings(noPorts, flat(0.3), seed)).toEqual([]);
   });
 
-  it("keeps every building clear of the port marker's hover volume, inside the hex and off its neighbours", () => {
+  it("keeps every building inside the hex, off its neighbours and clear of the pier's land end", () => {
     for (const b of buildings) {
-      const [px, , pz] = hexToWorld(portOf(b).hex);
+      const port = portOf(b);
+      const [px, , pz] = hexToWorld(port.hex);
       const d = Math.hypot(b.worldX - px, b.worldZ - pz);
       const reach = BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
-      expect(d - reach).toBeGreaterThanOrEqual(PORT_MARKER_RADIUS + PORT_BUILDING_CLEARANCE - 1e-9);
-      expect(d + reach).toBeLessThan(1);
+      expect(d).toBeLessThanOrEqual(PORT_BUILDING_MAX_RADIUS + 1e-9);
+      expect(d + reach).toBeLessThan(HEX_INRADIUS);
+      // The quay (slice 3) lands where the pier meets the beach; no building stands on that spot.
+      const root = pierOrigin(field, { x: px, z: pz }, pierRotation(port));
+      expect(Math.hypot(b.worldX - root.x, b.worldZ - root.z) - reach).toBeGreaterThanOrEqual(PIER_ROOT_RESERVE - 1e-9);
       for (const other of buildings) {
         if (other === b) continue;
         const gap = Math.hypot(other.worldX - b.worldX, other.worldZ - b.worldZ) - reach - BUILDING_HALF_DIAGONAL[other.kind] * other.scale;
         expect(gap).toBeGreaterThanOrEqual(PORT_BUILDING_GAP - 1e-9);
       }
     }
+  });
+
+  it("uses the whole hex now the marker is an invisible hover volume: buildings stand over its footprint", () => {
+    // The marker used to hold every corner 0.39 from the centre; the settlement now closes in on it.
+    const nearest = ports.map((port) => {
+      const [px, , pz] = hexToWorld(port.hex);
+      return Math.min(
+        ...buildings.filter((b) => portOf(b) === port).map((b) => Math.hypot(b.worldX - px, b.worldZ - pz) - BUILDING_HALF_DIAGONAL[b.kind] * b.scale)
+      );
+    });
+    const overFootprint = nearest.filter((d) => d < PORT_MARKER_RADIUS).length;
+    expect(overFootprint).toBeGreaterThanOrEqual(Math.ceil(ports.length * 0.75));
+    const mean = buildings.reduce((sum, b) => {
+      const [px, , pz] = hexToWorld(portOf(b).hex);
+      return sum + Math.hypot(b.worldX - px, b.worldZ - pz);
+    }, 0) / buildings.length;
+    expect(mean).toBeLessThan(0.45);
   });
 
   it("stands every building on the ground, on land", () => {

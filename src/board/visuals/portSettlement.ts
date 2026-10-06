@@ -7,16 +7,18 @@
  * and a `fort` (which the layout used to drop). From those and the port flag
  * this derives a small settlement: a watchtower on the fort's side and up to
  * three other buildings, behind the pier on the landward half of the hex,
- * facing the water. They keep clear of the `PortMarker` hover cylinder at
- * the hex centre, so hovering and the label work as before.
+ * facing the water. The `PortMarker` at the hex centre is an invisible hover
+ * volume (#59), so the buildings may use the whole hex: each stands as near
+ * the centre as the ground and its neighbours allow, keeping only a small
+ * reserve at the pier's land end (`pierOrigin`), where the quay will land.
  *
  * A port hex is a small beach with water on one to three sides and a shore
  * ramp running down to each, so each building looks round the landward arc
- * for the flat ground nearest its preferred slot: `placeOnGround` rejects
- * wet or steep spots and keeps the building outside the clearance circle,
- * then the footprint is probed and a spot is only taken if the ground under
- * it spans little enough that, with the origin half a footing above the
- * lowest point, the high side is buried no deeper than BUILDING_MAX_BURY.
+ * for the flat ground nearest its preferred slot, from the centre outwards:
+ * `placeOnGround` rejects wet or steep spots, then the footprint is probed
+ * and a spot is only taken if the ground under it spans little enough that,
+ * with the origin half a footing above the lowest point, the high side is
+ * buried no deeper than BUILDING_MAX_BURY.
  * Kind order, scale, tint and yaw jitter come from a hash of the
  * cell and the whole terrain seed, so every client draws the same port.
  * Each port is placed once from its canonical cell; the world copies redraw
@@ -24,7 +26,8 @@
  */
 import { hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
-import { PORT_MARKER_RADIUS } from "../useHexGrid";
+import { PIER_WIDTH } from "./pierGeometry";
+import { pierOrigin } from "./pierPlacement";
 import {
   BUILDING_FOOTING,
   BUILDING_HALF_DIAGONAL,
@@ -49,20 +52,22 @@ export interface PortBuilding {
   tint: number;
 }
 
-/** Gap between the marker's hover cylinder and the nearest building corner. */
-export const PORT_BUILDING_CLEARANCE = 0.04;
 /** Preferred slots on the landward arc, as turns from straight away from the water (radians). */
 export const PORT_BUILDING_SLOT_ANGLES: readonly number[] = [-1.3, -0.45, 0.45, 1.3];
-/** How far past the clearance circle a building asks to stand; the ground fit may pull it back to the circle. */
-export const PORT_BUILDING_SETBACK = 0.06;
+/** Farthest a building's origin stands from the hex centre: the widest building then still lies inside the hex. */
+export const PORT_BUILDING_MAX_RADIUS = 0.62;
+/** Kept clear round the pier's land end (`pierOrigin`): the deck's root and the quay that will stand there (slice 3). */
+export const PIER_ROOT_RESERVE = PIER_WIDTH;
+/** Rings tried from the centre outwards, this far apart; `placeOnGround` nudges within a ring's step. */
+const RADIAL_STEP = 0.06;
 export const PORT_BUILDING_SCALE_RANGE: readonly [number, number] = [0.92, 1.08];
 /** The tower's range keeps BUILDING_HEIGHT.watchtower × scale under BUILDING_MAX_HEIGHT. */
 export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING_MAX_HEIGHT / BUILDING_HEIGHT.watchtower];
 export const PORT_BUILDING_TINT_SPREAD = 0.08;
 /** Buildings face the water give or take this (radians, about 8°). */
 export const PORT_BUILDING_YAW_JITTER = 0.14;
-/** Gap kept between neighbouring buildings' plan circles. */
-export const PORT_BUILDING_GAP = 0.02;
+/** Gap kept between neighbouring buildings' plan circles: a lane, now the cluster closes in on the centre. */
+export const PORT_BUILDING_GAP = 0.06;
 
 const OTHER_KINDS: readonly BuildingKind[] = ["warehouse", "tavern", "house"];
 /** Beaches slope at about 0.33 (0.3 over 0.9) plus relief; a building wants flatter ground than a rock. */
@@ -118,9 +123,20 @@ interface Footprint {
 }
 
 /**
+ * The ground a port's buildings stand on. Today that is the terrain height
+ * field as is. Slice 3's quay (a flat deck at the pier's land end) plugs in
+ * here: return a field whose `sampleHeight` is the quay's top wherever (x, z)
+ * is on the quay and the terrain elsewhere, and the footprint probes and
+ * `placeOnGround` below see a building on the quay standing on its flat top.
+ */
+function settlementGround(field: GroundField): GroundField {
+  return field;
+}
+
+/**
  * Ground for a building of plan radius `reach`, as near as the land allows
- * to the ray at `preferred` from the hex centre, no closer to the centre
- * than the marker clearance and not overlapping a building already placed.
+ * to the ray at `preferred` from the hex centre and as near the centre as
+ * the ground, the pier's land end and the buildings already placed allow.
  */
 function standOnBeach(
   field: GroundField,
@@ -128,23 +144,29 @@ function standOnBeach(
   landward: number,
   preferred: number,
   reach: number,
+  pierRoot: { x: number; z: number },
   placed: readonly Footprint[]
 ): { x: number; y: number; z: number } | null {
-  const inner = PORT_MARKER_RADIUS + PORT_BUILDING_CLEARANCE + reach;
   const candidates: number[] = [];
   for (let k = -CANDIDATE_HALF_COUNT; k <= CANDIDATE_HALF_COUNT; k++) candidates.push(landward + k * CANDIDATE_STEP);
   candidates.sort((a, b) => angleDiff(a, preferred) - angleDiff(b, preferred) || a - b);
 
   for (const angle of candidates) {
     const dir = { x: Math.sin(angle), z: Math.cos(angle) };
-    const anchor = { x: centre.x + dir.x * inner, z: centre.z + dir.z * inner };
-    const spot = { x: centre.x + dir.x * (inner + PORT_BUILDING_SETBACK), z: centre.z + dir.z * (inner + PORT_BUILDING_SETBACK) };
-    const ground = placeOnGround(field, spot, anchor, { ...BUILDING_PLACEMENT, footprintRadius: reach });
-    if (!ground) continue;
-    if (placed.some((p) => Math.hypot(p.x - ground.x, p.z - ground.z) < p.reach + reach + PORT_BUILDING_GAP)) continue;
-    const { min, max } = footprintGround(field, ground.x, ground.z, reach);
-    if (max - min > BUILDING_MAX_SPREAD) continue;
-    return { x: ground.x, y: buildingGroundY(min), z: ground.z };
+    // Rings from the centre outwards, the first with the near corner at the centre (so the
+    // building is wholly on its landward ray); the ground fit may pull a spot back to the ring inside it.
+    for (let radius = reach; radius <= PORT_BUILDING_MAX_RADIUS + 1e-9; radius += RADIAL_STEP) {
+      const inner = Math.max(reach, radius - RADIAL_STEP);
+      const anchor = { x: centre.x + dir.x * inner, z: centre.z + dir.z * inner };
+      const spot = { x: centre.x + dir.x * radius, z: centre.z + dir.z * radius };
+      const ground = placeOnGround(field, spot, anchor, { ...BUILDING_PLACEMENT, footprintRadius: reach });
+      if (!ground) continue;
+      if (Math.hypot(pierRoot.x - ground.x, pierRoot.z - ground.z) < PIER_ROOT_RESERVE + reach) continue;
+      if (placed.some((p) => Math.hypot(p.x - ground.x, p.z - ground.z) < p.reach + reach + PORT_BUILDING_GAP)) continue;
+      const { min, max } = footprintGround(field, ground.x, ground.z, reach);
+      if (max - min > BUILDING_MAX_SPREAD) continue;
+      return { x: ground.x, y: buildingGroundY(min), z: ground.z };
+    }
   }
   return null;
 }
@@ -162,6 +184,8 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     const centre = { x: hexX, z: hexZ };
+    const ground = settlementGround(field);
+    const pierRoot = pierOrigin(field, centre, toWater);
     // The seed goes in through the salt: seedOf quantises its values by 4096 (a
     // 12-bit shift into int32), which would drop a 32-bit seed's top 12 bits.
     const next = stream(seedOf([cell.hex.q, cell.hex.r], PORT_BUILDING_SALT ^ seed));
@@ -191,10 +215,10 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
       const reach = BUILDING_HALF_DIAGONAL[kind] * scale;
-      const ground = standOnBeach(field, centre, landward, slot, reach, placed);
-      if (!ground) continue;
-      placed.push({ x: ground.x, z: ground.z, reach });
-      buildings.push({ kind, worldX: ground.x, worldY: ground.y, worldZ: ground.z, yaw, scale, tint });
+      const spot = standOnBeach(ground, centre, landward, slot, reach, pierRoot, placed);
+      if (!spot) continue;
+      placed.push({ x: spot.x, z: spot.z, reach });
+      buildings.push({ kind, worldX: spot.x, worldY: spot.y, worldZ: spot.z, yaw, scale, tint });
     }
   }
   return buildings;
