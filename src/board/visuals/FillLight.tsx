@@ -22,7 +22,9 @@ export function FillLight({ color, intensity, offset }: FillLightProps) {
   const lightRef = useRef<DirectionalLight>(null);
   const controls = useThree((state) => state.controls);
 
-  // Light the seabed prepass too: three only uses lights on the camera's layers.
+  // Light the seabed prepass too: three only uses lights on the camera's
+  // layers. The seabed's caustic scales only the sun (seabedCaustics.ts
+  // guards it to directional light 0); this light reaches it unfocused.
   useEffect(() => {
     lightRef.current?.layers.enable(SEABED_LAYER);
   }, []);
