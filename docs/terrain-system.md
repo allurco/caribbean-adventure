@@ -479,9 +479,16 @@ the warehouse.)
 other buildings (kind order, scale ±8%, tint ±8% and yaw jitter ±8° from
 a hash of the cell and the whole terrain seed) on the landward half of the
 hex, facing the docking hex. The `PortMarker` is an invisible hover volume
-(#59: `visible` false, radius 0.5, as tall as the 0.5 building cap, no
-shadow; R3F still raycasts it, like the water hexes), so the buildings
-use the whole hex: they form a crescent round an open square of radius
+(#59: `visible` false, no shadow; R3F still raycasts it, like the water
+hexes) sized by `portHover.ts` to the settlement as placed: the
+settlement radius in plan, and in height from the lowest building's foot
+to the tallest building's top (at least the 0.5 cap over the probed
+ground), with 0.05 to spare either way. A fixed cap's worth of air over
+the centre's ground was not enough: the buildings stand on the drawn
+surface out to 0.62, and on a beach rising inland a tower there can top
+out 0.7 above the ground probed round the centre, so hovering its upper
+half showed no tooltip. The buildings use the whole hex: they form a
+crescent round an open square of radius
 0.15 at the centre (a knot of buildings on the centre hid the ones
 behind the tower from the camera), each trying rings outwards from the
 square (0.06 apart, the first with its near corner on the square's edge,

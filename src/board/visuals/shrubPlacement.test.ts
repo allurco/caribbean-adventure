@@ -6,7 +6,7 @@ import type { MapCell } from "../../game/types";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
 import { MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { smallStones } from "./smallStones";
-import { PORT_MARKER_RADIUS } from "../useHexGrid";
+import { PORT_GROUND_PROBE_RADIUS as PORT_MARKER_RADIUS } from "./portHover";
 import { SHRUB_FOOTPRINT_RADIUS } from "./shrubGeometry";
 import type { DecorationData } from "./useDecorationLayout";
 import {

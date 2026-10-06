@@ -9,26 +9,31 @@ import { groundTopY } from "./visuals/groundPlacement";
 import { gridLineData, useWaterGridLines, type WaterGridLines, type WaterGridLinesOptions } from "./useWaterGridLines";
 import { NO_HOVER, type SharedHover } from "./sharedHover";
 import { perMapCache } from "./visuals/perMapCache";
+import { decorationLayoutOf } from "./visuals/decorationLayout";
+import { PORT_GROUND_PROBE_RADIUS, portHoverVolumeAt, type PortHoverVolume } from "./visuals/portHover";
 
-export const PORT_MARKER_RADIUS = 0.35;
 // Minimum outline opacity for hexes the player is acting on. These ignore the
 // distance fade, so targets stay crisp anywhere on the map.
 const OUTLINE_OPACITY_TARGET = 0.45;
 const OUTLINE_OPACITY_HOVERED = 0.85;
 
-/** A port and the height-field ground Y it stands on. */
+/** A port, the height-field ground Y it stands on, and the volume its settlement is hovered through. */
 export interface PortSite {
   cell: MapCell;
   groundY: number;
+  hover: PortHoverVolume;
 }
 
 const portSitesOf = perMapCache((cells, wrap): PortSite[] => {
   const field = sharedTerrainField(cells, wrap);
+  // The buildings as placed (the same layout the board draws), so the hover volume follows them.
+  const { buildings } = decorationLayoutOf(cells, wrap);
   return cells
     .filter((c) => c.hasPort)
     .map((cell) => {
       const [x, , z] = hexToWorld(cell.hex);
-      return { cell, groundY: groundTopY(field, x, z, PORT_MARKER_RADIUS) };
+      const groundY = groundTopY(field, x, z, PORT_GROUND_PROBE_RADIUS);
+      return { cell, groundY, hover: portHoverVolumeAt(cell.hex, groundY, buildings) };
     });
 });
 

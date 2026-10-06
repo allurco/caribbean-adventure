@@ -6,7 +6,7 @@ import type { MapCell } from "../../game/types";
 import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { landSurface, landSurfaceHeight } from "./landMesh";
-import { PORT_MARKER_RADIUS } from "../useHexGrid";
+import { PORT_GROUND_PROBE_RADIUS as PORT_MARKER_RADIUS } from "./portHover";
 import { BUILDING_FOOTING, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { PIER_WIDTH } from "./pierGeometry";
