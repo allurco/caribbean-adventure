@@ -9,20 +9,70 @@ import {
   type ShadowFit,
 } from "./shadowFit";
 
+// Receivers on and above the sea only; the seabed cases set `receiverDepth`.
 const fit: ShadowFit = {
   pitch: CAMERA_PITCH,
   fovDeg: CAMERA_FOV,
   sunElevationDeg: 55,
   casterHeight: 2.6,
+  receiverDepth: 0,
   minExtent: 4,
   maxExtent: 25,
 };
-const margin = fit.casterHeight * Math.cos((fit.sunElevationDeg * Math.PI) / 180);
+const cosElevation = Math.cos((fit.sunElevationDeg * Math.PI) / 180);
+const margin = fit.casterHeight * cosElevation;
 
 describe("shadowExtentFor", () => {
   it("covers the furthest visible sea point plus the caster margin", () => {
     const reach = groundViewReach(8, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
     expect(shadowExtentFor(8, 16 / 9, fit)).toBeCloseTo(reach + margin, 10);
+  });
+
+  describe("with receivers below the sea", () => {
+    const depth = 1.9;
+    const seabed: ShadowFit = { ...fit, receiverDepth: depth };
+
+    it("is the old fit when nothing lies below the sea", () => {
+      for (const distance of [3.5, 8, 16, 28]) {
+        const reach = groundViewReach(distance, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
+        const old = Math.min(fit.maxExtent, Math.max(fit.minExtent, reach + margin));
+        expect(shadowExtentFor(distance, 16 / 9, { ...fit, receiverDepth: 0 })).toBeCloseTo(old, 12);
+      }
+    });
+
+    it("never shrinks the box and widens it by at least the seabed's displacement across it", () => {
+      for (const distance of [3.5, 4.3, 8, 12]) {
+        const above = shadowExtentFor(distance, 16 / 9, fit);
+        const below = shadowExtentFor(distance, 16 / 9, seabed);
+        expect(below).toBeGreaterThanOrEqual(above);
+        // Under the cap, a receiver `depth` down is displaced depth·cos(elevation) across the box.
+        if (below < fit.maxExtent) expect(below - above).toBeGreaterThanOrEqual(depth * cosElevation - 1e-12);
+      }
+    });
+
+    it("covers the seabed's hit along the far corner ray plus its displacement", () => {
+      // A straight-down camera 10 up sees the sea out to 10·tan(fov/2)·√(1 + aspect²)
+      // and a plane 1.9 lower out to 11.9× the same; the seabed term wins.
+      const t = Math.tan((22.5 * Math.PI) / 180);
+      const corner = t * Math.hypot(1, 2);
+      const topDown: ShadowFit = { ...seabed, pitch: Math.PI / 2, maxExtent: 100 };
+      const seaTerm = 10 * corner + margin;
+      const seabedTerm = 11.9 * corner + depth * cosElevation;
+      expect(seabedTerm).toBeGreaterThan(seaTerm);
+      expect(shadowExtentFor(10, 2, topDown)).toBeCloseTo(seabedTerm, 10);
+    });
+
+    it("lets the sea term win when the seabed is shallow and the casters tall", () => {
+      const t = Math.tan((22.5 * Math.PI) / 180);
+      const corner = t * Math.hypot(1, 2);
+      const puddle: ShadowFit = { ...fit, receiverDepth: 0.1, pitch: Math.PI / 2, maxExtent: 100 };
+      expect(shadowExtentFor(10, 2, puddle)).toBeCloseTo(10 * corner + margin, 10);
+    });
+
+    it("still clamps to the maximum at full zoom-out and when the horizon is in view", () => {
+      expect(shadowExtentFor(CAMERA_MAX_DISTANCE, 16 / 9, seabed)).toBe(fit.maxExtent);
+      expect(shadowExtentFor(10, 1, { ...seabed, pitch: (10 * Math.PI) / 180 })).toBe(fit.maxExtent);
+    });
   });
 
   it("never exceeds the maximum: at full zoom-out the box stays today's size", () => {
@@ -45,7 +95,8 @@ describe("shadowExtentFor", () => {
     const ship = shadowExtentFor(3.5, 16 / 9, fit);
     expect(mid).toBeLessThan(map);
     expect(ship).toBeLessThan(mid);
-    // Ship zoom on a 16:9 screen gets a texel roughly 3.5–4× finer than map zoom.
+    // With receivers above the sea only, ship zoom on a 16:9 screen gets a
+    // texel roughly 3.5–4× finer than map zoom.
     expect(map / ship).toBeGreaterThan(3.4);
     expect(map / ship).toBeLessThan(4.2);
   });

@@ -19,6 +19,8 @@ export interface ShadowFit {
   sunElevationDeg: number;
   /** Tallest thing that casts or receives a shadow, world units above the sea. */
   casterHeight: number;
+  /** Deepest thing that receives a shadow, world units below the sea (positive): the seabed floor. */
+  receiverDepth: number;
   /** Smallest half-extent, so the box never degenerates. */
   minExtent: number;
   /** Largest half-extent: the old fixed size, used at full zoom-out. */
@@ -51,17 +53,29 @@ const toRadians = (deg: number): number => (deg * Math.PI) / 180;
  *
  * The box is square and perpendicular to the sun. A caster and the shadow it
  * casts lie on the same light ray, so they have the same position across the
- * box: the box only has to cover the receivers on screen, and the furthest of
- * those is the sea-plane reach of the view (`groundViewReach`; everything
- * above the sea plane is hit earlier along the same frustum rays, so it is
- * nearer the target). A receiver `h` above the sea is displaced across the box
- * by h·cos(elevation), which is the margin added for hill tops and decks.
+ * box: the box only has to cover the receivers on screen. A receiver `y` off
+ * the sea plane is displaced across the box by |y|·cos(elevation), so two
+ * layers of receiver bound the box, and the larger wins:
+ *
+ * - On and above the sea: the sea-plane reach of the view (`groundViewReach`;
+ *   everything above the sea is hit earlier along the same frustum rays, so
+ *   it is nearer the target) plus casterHeight·cos(e) for hill tops and decks.
+ * - Below the sea: the seabed receives too (hull shadows show through the
+ *   water), and along the far corner ray a plane `receiverDepth` down is hit
+ *   beyond the sea-plane reach (`groundViewReach` with that drop, no
+ *   refraction, so on the safe side), plus receiverDepth·cos(e).
+ *
  * Clamped to [minExtent, maxExtent]; Infinity (horizon in view) clamps to max.
  */
 export function shadowExtentFor(distance: number, aspect: number, fit: ShadowFit): number {
-  const reach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect);
-  const margin = fit.casterHeight * Math.cos(toRadians(fit.sunElevationDeg));
-  return Math.min(fit.maxExtent, Math.max(fit.minExtent, reach + margin));
+  const cosElevation = Math.cos(toRadians(fit.sunElevationDeg));
+  const seaReach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect);
+  const seabedReach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect, fit.receiverDepth);
+  const wanted = Math.max(
+    seaReach + fit.casterHeight * cosElevation,
+    seabedReach + fit.receiverDepth * cosElevation
+  );
+  return Math.min(fit.maxExtent, Math.max(fit.minExtent, wanted));
 }
 
 /** World-unit size of one shadow-map texel for a box of `extent` half-width. */

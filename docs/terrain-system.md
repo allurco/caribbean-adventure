@@ -426,25 +426,33 @@ double-sided fronds shadow themselves into acne). The seabed receives in the
 prepass too, so hull shadows show through the water.
 
 **Fit (#48).** The shadow box follows the camera target and is sized to the
-view each frame by the pure maths in `shadowFit.ts`. Its half-extent is the
-furthest visible point of the sea plane (`groundViewReach` in
-`cameraBounds.ts`, for the live camera distance and viewport aspect) plus a
-margin for receivers above the sea (`SHADOW_CASTER_HEIGHT` × cos elevation,
-their displacement across the box), clamped to `[SHADOW_EXTENT_MIN,
-SHADOW_EXTENT]` = [4, 25]. A caster and its shadow lie on the same light ray,
-so covering the receivers on screen covers the casters that matter; tall
-things only widen the depth range, which `shadowDepthRange` checks against
-the near and far planes (0.5 and 150) in `atmosphere.test.ts`. At full
-zoom-out (distance 28) the 16:9 view reaches ~43 units, so the box sits at
-the 25-unit cap, as before: 50 units across, a 0.79 m texel. At ship zoom
-(distance 3.5–4.3; 4.3 is as close as the small map's `minDistance` allows)
-it fits to 6.8–8.1 units, a 0.22–0.26 m texel, 3–3.7× finer. From there up
-to distance 16, where the cap takes over, the texel tracks the screen pixel
-at the focus (1.1–1.2 px), so the PCF disc smooths what is left at every
-zoom. The fixed box was sized for the cap at every zoom, which is why hull
-and palm shadows stepped close up. Because the cap sets the map-zoom texel,
-the map stays at 4096: 2048 would double it. One box covers mid zoom too,
-so there are no cascades.
+view each frame by the pure maths in `shadowFit.ts`. A caster and its shadow
+lie on the same light ray, so covering the receivers on screen covers the
+casters that matter, and a receiver `y` off the sea plane is displaced
+across the box by |y| × cos elevation. Two layers of receiver bound the
+half-extent, and the larger wins: the furthest visible point of the sea
+plane (`groundViewReach` in `cameraBounds.ts`, for the live camera distance
+and viewport aspect) plus `SHADOW_CASTER_HEIGHT` × cos elevation for hill
+tops and decks; and the furthest visible point of the seabed floor
+(`groundViewReach` followed on to a plane `SHADOW_RECEIVER_DEPTH` ≈ 1.9
+units down, without refraction, so on the safe side) plus that depth × cos
+elevation, because the seabed receives too and lies beyond the sea along
+the far top-corner ray. The result is clamped to `[SHADOW_EXTENT_MIN,
+SHADOW_EXTENT]` = [4, 25]. Tall and deep things also widen the depth range,
+which `shadowDepthRange` checks against the near and far planes (0.5 and
+150) in `atmosphere.test.ts`. At full zoom-out (distance 28) the 16:9 view
+reaches ~43 units across the sea, so the box sits at the 25-unit cap, as
+before: 50 units across, a 0.79 m texel. From ship zoom (distance 3.5–4.3;
+4.3 is as close as the small map's `minDistance` allows) the seabed term
+sets the box: it fits to 11.5–12.7 units, a 0.37–0.41 m texel, 2–2.2× finer
+than the cap. The top-corner ray descends at only ~24°, so the 1.9 units of
+seabed depth add ~5 units of reach; without the seabed the box would be
+6.8–8.1 units. From ship zoom up to distance ~12, where the cap takes over,
+the texel is 1.3–2.1 screen pixels at the focus (1080 rows), and the PCF
+disc smooths what is left at every zoom. The fixed box was sized for the cap
+at every zoom, which is why hull and palm shadows stepped close up. Because
+the cap sets the map-zoom texel, the map stays at 4096: 2048 would double
+it. One box covers mid zoom too, so there are no cascades.
 
 **Refit and snap.** The box is rebuilt (`shadow.camera.left/right/top/bottom`
 and its projection matrix) as soon as the fitted extent grows, by however

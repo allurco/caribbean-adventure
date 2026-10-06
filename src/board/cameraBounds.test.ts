@@ -157,6 +157,46 @@ describe("groundViewReach", () => {
     expect(Number.isFinite(reach)).toBe(true);
     expect(reach).toBeGreaterThan(CAMERA_MAX_DISTANCE);
   });
+
+  describe("on a plane below the target's", () => {
+    it("reaches the sea plane when the drop is zero", () => {
+      expect(groundViewReach(8, CAMERA_PITCH, CAMERA_FOV, 16 / 9, 0)).toBe(
+        groundViewReach(8, CAMERA_PITCH, CAMERA_FOV, 16 / 9)
+      );
+    });
+
+    it("is the footprint of a camera that much higher, for a straight-down view", () => {
+      const t = Math.tan(halfFov);
+      expect(groundViewReach(10, Math.PI / 2, CAMERA_FOV, 2, 3)).toBeCloseTo(13 * t * Math.hypot(1, 2), 10);
+    });
+
+    it("reaches further the deeper the plane, measured from the same target", () => {
+      const sea = groundViewReach(8, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
+      const shallow = groundViewReach(8, CAMERA_PITCH, CAMERA_FOV, 16 / 9, 1);
+      const deep = groundViewReach(8, CAMERA_PITCH, CAMERA_FOV, 16 / 9, 2);
+      expect(shallow).toBeGreaterThan(sea);
+      expect(deep).toBeGreaterThan(shallow);
+    });
+
+    it("is the top-corner ray's hit on the lower plane for the tilted game camera", () => {
+      // Camera 8 from the target: 8·sin(pitch) up, 8·cos(pitch) behind it. The
+      // top-corner ray drops at sin(pitch) − tan(fov/2)·cos(pitch) per unit and
+      // runs cos(pitch) + tan(fov/2)·sin(pitch) ahead; it meets a plane `drop`
+      // lower after (height + drop) / drop-rate units.
+      const t = Math.tan(halfFov);
+      const sin = Math.sin(CAMERA_PITCH);
+      const cos = Math.cos(CAMERA_PITCH);
+      const drop = 1.5;
+      const s = (8 * sin + drop) / (sin - t * cos);
+      const ahead = s * (cos + t * sin) - 8 * cos;
+      const side = s * (16 / 9) * t;
+      expect(groundViewReach(8, CAMERA_PITCH, CAMERA_FOV, 16 / 9, drop)).toBeCloseTo(Math.hypot(ahead, side), 10);
+    });
+
+    it("is still infinite when the top of the view reaches the horizon", () => {
+      expect(groundViewReach(10, (10 * Math.PI) / 180, CAMERA_FOV, 1, 2)).toBe(Infinity);
+    });
+  });
 });
 
 describe("oceanPlaneSize", () => {
