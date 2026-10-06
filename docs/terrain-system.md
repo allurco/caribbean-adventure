@@ -368,16 +368,25 @@ cylinder is still drawn; making it an invisible hover volume now that the
 buildings are the port's visual is a follow-up.
 
 **Port kit: the stone quay (#59, slice 3).** `quayGeometry.ts` builds a
-flat stone platform at the pier root in the pier's local frame (170
-triangles, budget 200): a footing as deep as the pier posts, above the
-waterline three stepped courses (each a vertical band standing 0.005
-further out than the one above, so the wall is battered and its foot is
-flush with the coping's edge, with an up-facing ledge at every course
-line), the courses alternating in tone with the sea face of each split
-into staggered blocks that take their own jitter (colour only, no
-texture), a coping slab 0.03 thick that overhangs the wall by 0.015 with
-chamfered edges, a step down a coping's thickness behind z = −0.2 so the
-back reads as a stair into the beach, and two timber bollards. The sea face stands 0.04 seaward of the pier's
+flat stone platform at the pier root in the pier's local frame (670
+triangles, budget 700; one per port, so cheap): a footing as deep as the
+pier posts; above the waterline three stepped courses (each a vertical
+band standing 0.005 further out than the one above, so the wall is
+battered and its foot is flush with the coping's edge, with an up-facing
+ledge at every course line), alternating in tone, their sea faces set
+with 4/5/4 staggered blocks standing 0.004 proud a 0.005 joint apart so
+every joint is a shadow groove in any light; a wet band over the lowest
+course (a `tintColors` gradient, darker and greener down to the
+waterline); a coping base 0.018 thick overhanging the wall by 0.015 with
+a chamfered edge, carrying a 3 × 2 grid of flagstones 0.012 thick with
+irregular widths from the variation stream, bevelled, a 0.006 groove
+apart and each with its own tone (±10 %); a step down a coping's
+thickness behind z = −0.2 so the back reads as a stair into the beach; a
+three-tread stair hung on the +x end of the sea wall from just under the
+coping to the water, a hair seaward of the wall's foot so it touches
+nothing; and on the deck two bollards, three crates (one on another, one
+turned 15°) and a barrel with two darker hoops (an 8-sided lathe). All
+colour is per vertex, no texture. The sea face stands 0.04 seaward of the pier's
 land end, so the pier's root is embedded in it. Parts meet on shared
 planes with the hidden face dropped (the body open on top, the coping open
 underneath with its exposed overhang drawn as three strips, the bollards
