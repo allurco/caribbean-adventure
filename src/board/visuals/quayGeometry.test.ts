@@ -8,6 +8,9 @@ import {
   QUAY_BOLLARD,
   QUAY_COPING_PROUD,
   QUAY_COPING_THICKNESS,
+  QUAY_COURSE_COUNT,
+  QUAY_COURSE_HEIGHT,
+  QUAY_COURSE_LEDGES,
   QUAY_SEA_FACE,
   QUAY_STEP_TOP,
   QUAY_STEP_Z,
@@ -19,7 +22,7 @@ import {
 } from "./quayGeometry";
 import { SEA_LEVEL } from "./terrainHeightField";
 
-const colors: QuayColors = { stone: [0.42, 0.38, 0.32], coping: [0.55, 0.5, 0.42], bollard: [0.12, 0.08, 0.05] };
+const colors: QuayColors = { stone: [0.42, 0.38, 0.32], coping: [0.6, 0.55, 0.47], bollard: [0.12, 0.08, 0.05] };
 const quay = buildQuayGeometry(colors);
 
 type Vec3 = [number, number, number];
@@ -43,8 +46,8 @@ function faceNormal([a, b, c]: Vec3[]): Vec3 {
 /** Which part a (shaded, jittered) vertex colour came from. */
 function partOf(c: Vec3): "stone" | "coping" | "bollard" {
   if (luminance(c) < 0.2) return "bollard";
-  // The coping starts lighter than the stone; occlusion only ever darkens, and the jitter is small.
-  return luminance(c) > luminance(colors.stone) * 1.08 ? "coping" : "stone";
+  // The coping starts well above the stone; occlusion only ever darkens, and the course, block and vertex jitters are small.
+  return luminance(c) > (luminance(colors.stone) + luminance(colors.coping)) / 2 ? "coping" : "stone";
 }
 
 const EPS = 1e-6;
@@ -175,9 +178,10 @@ describe("buildQuayGeometry", () => {
       const n = normal(quay, t * 3);
       const ys = tri.map((p) => p[1]);
       if (n[1] > 0.99) {
-        // Every upward face is the deck, the rear step or a bollard's cap.
+        // Every upward face is the deck, the rear step, a course ledge or a bollard's cap.
         if (Math.abs(ys[0] - QUAY_TOP) < 1e-6) topFaces++;
         else if (Math.abs(ys[0] - QUAY_STEP_TOP) < 1e-6) stepFaces++;
+        else if (QUAY_COURSE_LEDGES.some((y) => Math.abs(ys[0] - y) < 1e-6)) expect(partOf(color(quay, t * 3))).toBe("stone");
         else expect(partOf(color(quay, t * 3))).toBe("bollard");
         for (const y of ys) expect(y).toBeCloseTo(ys[0], 6);
       }
@@ -219,14 +223,57 @@ describe("buildQuayGeometry", () => {
     expect(chamfers).toBeGreaterThanOrEqual(8);
   });
 
-  it("batters the sea wall: the stone face below the coping leans back as it rises", () => {
-    let seaward = 0;
-    for (let t = 0; t < quay.vertexCount / 3; t++) {
-      const n = normal(quay, t * 3);
-      if (partOf(color(quay, t * 3)) !== "stone") continue;
-      if (n[2] > 0.9 && n[1] > 0.02) seaward++;
+  it("lays the wall above the waterline in stepped courses: a ledge at each course line, out to the coping's edge at the foot", () => {
+    expect(QUAY_COURSE_COUNT).toBeGreaterThanOrEqual(3);
+    expect(QUAY_COURSE_LEDGES).toHaveLength(QUAY_COURSE_COUNT);
+    expect(QUAY_COURSE_LEDGES[0]).toBeCloseTo(SEA_LEVEL, 9);
+    expect(QUAY_COURSE_LEDGES[QUAY_COURSE_COUNT - 1]).toBeLessThan(QUAY_STEP_TOP - 0.01);
+    const tris = triangles(quay);
+    for (const y of QUAY_COURSE_LEDGES) {
+      let frontLedges = 0;
+      tris.forEach((tri, t) => {
+        if (partOf(color(quay, t * 3)) !== "stone" || normal(quay, t * 3)[1] < 0.99) return;
+        if (tri.every((p) => Math.abs(p[1] - y) < 1e-6) && tri.every((p) => p[2] > QUAY_SEA_FACE - 1e-6)) frontLedges++;
+      });
+      expect(frontLedges, `front ledge at ${y}`).toBe(2);
     }
-    expect(seaward).toBeGreaterThanOrEqual(2);
+    // Each course's face is vertical; the courses step out going down, the lowest flush with the coping's edge.
+    let footZ = -Infinity;
+    let topCourseZ = -Infinity;
+    for (let i = 0; i < quay.vertexCount; i++) {
+      const [, y, z] = vertex(quay, i);
+      const n = normal(quay, i);
+      if (partOf(color(quay, i)) !== "stone" || n[2] < 0.99) continue;
+      expect(Math.abs(n[1])).toBeLessThan(1e-6);
+      if (Math.abs(y - SEA_LEVEL) < 1e-6) footZ = Math.max(footZ, z);
+      if (Math.abs(y - QUAY_STEP_TOP) < 1e-6) topCourseZ = Math.max(topCourseZ, z);
+    }
+    expect(footZ).toBeCloseTo(QUAY_SEA_FACE + QUAY_COPING_PROUD, 6);
+    expect(topCourseZ).toBeCloseTo(QUAY_SEA_FACE, 6);
+  });
+
+  it("alternates the courses in tone and staggers the block joints on the front face", () => {
+    const tris = triangles(quay);
+    const sums = Array.from({ length: QUAY_COURSE_COUNT }, () => ({ light: 0, count: 0, xs: new Set<number>() }));
+    tris.forEach((tri, t) => {
+      if (partOf(color(quay, t * 3)) !== "stone" || normal(quay, t * 3)[2] < 0.99) return;
+      const cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+      if (cy < SEA_LEVEL) return;
+      const course = Math.min(QUAY_COURSE_COUNT - 1, Math.floor((cy - SEA_LEVEL) / QUAY_COURSE_HEIGHT));
+      for (let k = 0; k < 3; k++) {
+        sums[course].light += luminance(color(quay, t * 3 + k));
+        sums[course].count++;
+        sums[course].xs.add(Math.round(tri[k][0] * 1e4));
+      }
+    });
+    const means = sums.map((s) => s.light / s.count);
+    for (let i = 0; i + 1 < QUAY_COURSE_COUNT; i++) {
+      expect(sums[i].count).toBeGreaterThan(0);
+      expect(Math.abs(means[i] - means[i + 1]) / Math.max(means[i], means[i + 1])).toBeGreaterThan(0.03);
+      // More than one block per course, and the joints of neighbouring courses do not line up.
+      expect(sums[i].xs.size).toBeGreaterThan(2);
+      expect([...sums[i].xs].sort()).not.toEqual([...sums[i + 1].xs].sort());
+    }
   });
 
   it("has no two overlapping coplanar faces", () => {

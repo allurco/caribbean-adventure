@@ -368,12 +368,16 @@ cylinder is still drawn; making it an invisible hover volume now that the
 buildings are the port's visual is a follow-up.
 
 **Port kit: the stone quay (#59, slice 3).** `quayGeometry.ts` builds a
-flat stone platform at the pier root in the pier's local frame (124
-triangles, budget 160): a body as deep as the pier posts in three bands,
-its sea wall battered above the waterline, a coping slab 0.03 thick that
-overhangs the wall by 0.015 with chamfered edges, a step down a coping's
-thickness behind z = −0.2 so the back reads as a stair into the beach,
-and two timber bollards. The sea face stands 0.04 seaward of the pier's
+flat stone platform at the pier root in the pier's local frame (170
+triangles, budget 200): a footing as deep as the pier posts, above the
+waterline three stepped courses (each a vertical band standing 0.005
+further out than the one above, so the wall is battered and its foot is
+flush with the coping's edge, with an up-facing ledge at every course
+line), the courses alternating in tone with the sea face of each split
+into staggered blocks that take their own jitter (colour only, no
+texture), a coping slab 0.03 thick that overhangs the wall by 0.015 with
+chamfered edges, a step down a coping's thickness behind z = −0.2 so the
+back reads as a stair into the beach, and two timber bollards. The sea face stands 0.04 seaward of the pier's
 land end, so the pier's root is embedded in it. Parts meet on shared
 planes with the hidden face dropped (the body open on top, the coping open
 underneath with its exposed overhang drawn as three strips, the bollards
