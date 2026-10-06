@@ -15,8 +15,12 @@
  * differences into the wave Hessian, and scale the sun's light by
  * 1 / |det(I + depth · G · H)|. The three look-ups per cascade are per
  * fragment, so the lines are not blocky the way dFdx of a sampled slope
- * (constant per 2×2 quad) would be. Only the directional light is scaled:
- * the sky's light reaches the seabed diffusely and is not focused.
+ * (constant per 2×2 quad) would be. Only the sun is scaled: the sky's light
+ * reaches the seabed diffusely and is not focused, and the shadowless fill
+ * (FillLight.tsx, #63) stands for bounce light, which is not focused either.
+ * The sun is the first directional light in three's loop: three sorts
+ * shadow-casting lights to the front (WebGLLights), and the sun is the only
+ * directional light that casts a shadow. The guard below relies on that.
  * Beer–Lambert is applied afterwards by the water shader, as before.
  *
  * Caustics move with the wave textures themselves, so they share the wave
@@ -88,10 +92,21 @@ const VERTEX_BODY = `
   #endif
   vCausticWorld = (modelMatrix * causticLocal).xyz;`;
 
-/** Three's lights chunk with the directional light's colour scaled by the caustic as it is read. */
+/**
+ * The caustic multiply, placed inside three's unrolled directional-light
+ * loop. Three replaces UNROLLED_LOOP_INDEX with each copy's literal index (it
+ * guards its own shadow look-up the same way), so this reaches only light 0:
+ * the sun, which sorts first because it alone casts a shadow. The fill light
+ * (index 1) is left alone, or it would carry the sun's caustic pattern from
+ * the opposite direction and tint the hotspots cool.
+ */
+export const SUN_CAUSTIC_MULTIPLY =
+  "#if UNROLLED_LOOP_INDEX == 0\n\t\tdirectLight.color *= causticFactor; // the sun: the shadow-casting light sorts first\n\t\t#endif";
+
+/** Three's lights chunk with the sun's colour scaled by the caustic as it is read. */
 const LIGHTS_WITH_CAUSTIC = ShaderChunk.lights_fragment_begin.replace(
   "getDirectionalLightInfo( directionalLight, directLight );",
-  "getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= causticFactor;"
+  `getDirectionalLightInfo( directionalLight, directLight );\n\t\t${SUN_CAUSTIC_MULTIPLY}`
 );
 
 export interface SeabedCausticShader {
@@ -108,9 +123,10 @@ export interface SeabedCausticOptions<T> {
 }
 
 /**
- * Patches a built-in material's shaders (from `onBeforeCompile`) so its
- * directional light is focused by the waves, and binds the uniforms. The sun
- * is fixed, so its refraction constants are computed here, once.
+ * Patches a built-in material's shaders (from `onBeforeCompile`) so the sun,
+ * the first of its directional lights, is focused by the waves, and binds the
+ * uniforms. The sun is fixed, so its refraction constants are computed here,
+ * once. Any further directional light (the fill) is not scaled.
  */
 export function injectSeabedCaustics<T>(shader: SeabedCausticShader, { sun, waveSlopes }: SeabedCausticOptions<T>): void {
   const focus = refractionFocusMatrix(sun);

@@ -3,6 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { Vector3 } from "three";
 import type { DirectionalLight } from "three";
 import { SEABED_LAYER } from "./seabedPrepass";
+import { controlsTarget } from "../controlsTarget";
 import {
   shadowBoxNeedsRefit,
   shadowDepthBias,
@@ -19,20 +20,8 @@ interface SunLightProps {
   shadow: SunShadowSettings;
 }
 
+/** Where the shadow box sits before the controls exist. */
 const ORIGIN = new Vector3();
-
-/** Read the default controls' target (set by MapControls `makeDefault`), if any. */
-function controlsTarget(controls: unknown): Vector3 {
-  if (
-    typeof controls === "object" &&
-    controls !== null &&
-    "target" in controls &&
-    controls.target instanceof Vector3
-  ) {
-    return controls.target;
-  }
-  return ORIGIN;
-}
 
 /**
  * Shadow-casting sun that keeps its shadow box centred on the camera target
@@ -61,7 +50,7 @@ export function SunLight({ color, intensity, offset, shadow }: SunLightProps) {
   useFrame(({ camera, size }) => {
     const light = lightRef.current;
     if (!light) return;
-    const target = controlsTarget(controls);
+    const target = controlsTarget(controls) ?? ORIGIN;
 
     const distance = camera.position.distanceTo(target);
     const aspect = size.width / Math.max(1, size.height);
