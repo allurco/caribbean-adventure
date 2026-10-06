@@ -3,11 +3,13 @@ import {
   cascadeWavenumber,
   evolvedAmplitude,
   evolvedSlopeSpectrum,
+  evolvedStretchSpectrum,
   inCascadeBand,
   initialSpectrum,
   modeVariance,
   nyquistWavenumber,
   resolvedSlopeVariance,
+  windInTile,
   type WaveCascade,
 } from "./waveCascade";
 import { inverseFft2d } from "./fftButterfly";
@@ -155,6 +157,72 @@ describe("evolvedSlopeSpectrum", () => {
     const a = slopes(12.3);
     const b = slopes(12.3 + loop);
     for (let i = 0; i < n; i++) expect(a.re[i]).toBeCloseTo(b.re[i], 4);
+  });
+});
+
+describe("evolvedStretchSpectrum (choppy displacement derivatives, #38 step 7)", () => {
+  // The same hand-made wave: amplitude 0.5 m along tile +x at mode 1 on a 16-texel tile.
+  const n = 16;
+  const tile = 160;
+  const k = (2 * Math.PI) / tile;
+  const single = new Float32Array(n * n * 4);
+  single[1 * 4] = 0.25;
+  single[(n - 1) * 4 + 2] = 0.25;
+  const loop = 100;
+  const choppiness = 1.2;
+
+  const stretch = (c: WaveCascade) => {
+    const s = evolvedStretchSpectrum(single, c, 0, loop, choppiness);
+    return inverseFft2d(s.re, s.im, n);
+  };
+
+  it("packs the stretch along the wind (real) and across it (imaginary); a wave running with the wind compresses the surface at its crest", () => {
+    // Wind toward tile +x. The choppy displacement pulls the surface toward
+    // the crests (Gerstner): D = −λ a sin(kx), so ∂Dx/∂x = −λ a k cos(kx),
+    // −λ a k at the crest and +λ a k in the trough.
+    const out = stretch(cascade({ size: n, tileMetres: tile, windAngle: 0, rotation: 0 }));
+    for (let x = 0; x < n; x++) {
+      const px = (x * tile) / n;
+      expect(out.re[x]).toBeCloseTo(-choppiness * 0.5 * k * Math.cos(k * px), 6);
+      expect(out.im[x]).toBeCloseTo(0, 6);
+    }
+  });
+
+  it("puts a cross-wind wave's stretch in the across part", () => {
+    // Wind toward tile +z: the wave along tile +x runs across the wind.
+    const out = stretch(cascade({ size: n, tileMetres: tile, windAngle: Math.PI / 2, rotation: 0 }));
+    for (let x = 0; x < n; x++) {
+      const px = (x * tile) / n;
+      expect(out.re[x]).toBeCloseTo(0, 6);
+      expect(out.im[x]).toBeCloseTo(-choppiness * 0.5 * k * Math.cos(k * px), 6);
+    }
+  });
+
+  it("measures the stretch against the world wind, not the tile's axes", () => {
+    // The tile is turned so its +x axis points along world +z, where the wind blows.
+    const out = stretch(cascade({ size: n, tileMetres: tile, windAngle: Math.PI / 2, rotation: Math.PI / 2 }));
+    expect(out.re[0]).toBeCloseTo(-choppiness * 0.5 * k, 6);
+    expect(out.im[0]).toBeCloseTo(0, 6);
+  });
+
+  it("scales with the choppiness", () => {
+    const c = cascade({ size: n, tileMetres: tile, windAngle: 0, rotation: 0 });
+    const a = inverseFft2d(...spread(evolvedStretchSpectrum(single, c, 0, loop, 1)), n);
+    const b = inverseFft2d(...spread(evolvedStretchSpectrum(single, c, 0, loop, 2)), n);
+    for (let x = 0; x < n; x++) expect(b.re[x]).toBeCloseTo(2 * a.re[x], 9);
+  });
+});
+
+const spread = (s: { re: Float64Array; im: Float64Array }): [Float64Array, Float64Array] => [s.re, s.im];
+
+describe("windInTile", () => {
+  it("is the world wind direction expressed in the tile's turned axes", () => {
+    const [ux, uz] = windInTile(cascade({ windAngle: Math.PI / 2, rotation: Math.PI / 2 }));
+    expect(ux).toBeCloseTo(1, 12);
+    expect(uz).toBeCloseTo(0, 12);
+    const [vx, vz] = windInTile(cascade({ windAngle: Math.PI, rotation: 0 }));
+    expect(vx).toBeCloseTo(-1, 12);
+    expect(vz).toBeCloseTo(0, 12);
   });
 });
 

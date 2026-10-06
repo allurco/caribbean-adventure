@@ -61,6 +61,23 @@ export const WAVE_CASCADES: readonly WaveCascade[] = bandedCascades(TRADE_WIND_S
   { tileMetres: 26.1, size: 256, rotation: 1.29, seed: 382 },
 ]);
 
+/**
+ * Choppiness λ (#38 step 7): how far the surface is pulled horizontally
+ * toward the crests, as a multiple of Tessendorf's unit displacement. 1–1.5
+ * is the usual range; the crests sharpen with it and so does the whitecap
+ * coverage (whitecapFoam.ts). The displacement itself is not drawn until
+ * step 8 displaces the geometry; here it only decides where crests fold.
+ */
+export const WAVE_CHOPPINESS = 1.2;
+
+/**
+ * Indices into WAVE_CASCADES of the cascades that whitecap: the swell (lightly;
+ * its crests are long and gentle) and the chop, where most of a moderate
+ * sea's white horses come from. The ripple band's waves are too short to
+ * break into foam that lasts, and would only add a tile of fine grain.
+ */
+export const WHITECAP_CASCADES: readonly number[] = [0, 1];
+
 /** Mean square slope the cascades carry between them. */
 const SHOWN_SLOPE_VARIANCE = WAVE_CASCADES.reduce((sum, c) => sum + resolvedSlopeVariance(c), 0);
 const MEASURED_SLOPE_VARIANCE = coxMunkSlopeVariance(TRADE_WIND_SEA.windSpeed);

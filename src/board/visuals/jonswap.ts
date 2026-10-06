@@ -31,6 +31,22 @@ export function jonswapAlpha({ windSpeed, fetch }: WindSea): number {
   return 0.076 * Math.pow((windSpeed * windSpeed) / (fetch * GRAVITY), 0.22);
 }
 
+/**
+ * Significant wave height Hs = 4 √m0, metres, with m0 = ∫ S dω the height
+ * variance, integrated numerically from a tenth of the peak frequency to
+ * thirty times it (the spectrum is negligible outside).
+ */
+export function jonswapSignificantHeight(sea: WindSea): number {
+  const wp = jonswapPeakFrequency(sea);
+  const lo = wp / 10;
+  const hi = wp * 30;
+  const steps = 20000;
+  const h = (hi - lo) / steps;
+  let m0 = 0;
+  for (let i = 0; i < steps; i++) m0 += jonswapSpectrum(lo + (i + 0.5) * h, sea) * h;
+  return 4 * Math.sqrt(m0);
+}
+
 /** Height spectral density S(ω), m²·s, at angular frequency `omega` (rad/s). */
 export function jonswapSpectrum(omega: number, sea: WindSea): number {
   if (omega <= 0) return 0;

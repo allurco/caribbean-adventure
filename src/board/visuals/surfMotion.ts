@@ -35,6 +35,14 @@ export function advanceSurfTime(current: number, deltaSeconds: number, reducedMo
   return next < 0 ? next + SURF_LOOP_SECONDS : next;
 }
 
+/**
+ * The one surf clock as a uniform (#38 step 7): the water advances it each
+ * frame and the land's shoreline patch (shoreFoamLand.ts) shares the very
+ * same object, so the wash on the sand pulses and churns in step with the
+ * wash on the water.
+ */
+export const surfTimeUniform: { value: number } = { value: 0 };
+
 /** The periods as GLSL constants, so the shader and the CPU loop agree. */
 export const SURF_TIMING_GLSL = `
   const float SURF_PULSE_PERIOD = ${SURF_PULSE_PERIOD.toFixed(1)};

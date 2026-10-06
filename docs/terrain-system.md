@@ -297,9 +297,11 @@ strip); texel centres sampled, rows from `minZ` up, so
 | R | Height (world Y); 0 is sea level. Depths to 10 m round to under 1 cm |
 | G | Coast signed distance (+ land, - water), world units, clamped near ±4, for shore foam (#10) |
 | B | Reef mask (#11), 0 … 1: 1 inside a reef hex, 0 everywhere else, ramping over a 0.2-unit rim just inside the reef outline (`reefMask.ts`) |
-| A | Reserved, 1 |
+| A | Reef windward weight (#38 step 7), 0 … 1: 1 where the reef faces into the wind, least in its lee, from the nearest rim edge's outward normal (`createReefOutward`) and `reefWindwardWeight` (`shoreFoam.ts`); 1 off reef |
 
-`TERRAIN_FIELD_GLSL` holds the matching read helpers.
+`TERRAIN_FIELD_GLSL` holds the matching read helpers. The texture is built
+once per map by `useTerrainFieldTexture.ts` and shared by the water and the
+land's shoreline foam.
 
 **Water colour.** Each frame `seabedPrepass.ts` renders `SEABED_LAYER` (the
 land mesh plus the sun) into a half-resolution HDR colour + depth target,
@@ -328,7 +330,7 @@ without fog or background. `Ocean.tsx` then, per pixel:
    `R∞ · downwelling irradiance` as the seabed fades (`waterOptics.ts` holds
    the coefficients and their sources);
 4. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), adds the GGX sun
-   glint, then the shore surf.
+   glint, then the foam (below).
 
 **Waves (#38 steps 4–5).** The surface normal comes from three FFT cascades
 (`useWaveCascades.ts`) of one JONSWAP sea (`oceanWaves.ts`: 7 m/s over
@@ -344,8 +346,10 @@ line up within three repeats, so the summed sea does not tile. Each
 frame the GPU evolves each spectrum (frequencies rounded to whole cycles per
 `WAVE_LOOP_SECONDS`, so the clock wraps seamlessly) and runs a Stockham inverse
 FFT (`fftButterfly.ts`, 8 row + 8 column passes) into a mipmapped half-float
-texture of (∂h/∂x, ∂h/∂z, |∇h|²). The three are batched side by side in one
-atlas (`waveCascadeAtlas.ts`), so all of them take 20 draws a frame. The
+texture of (∂h/∂x, ∂h/∂z, |∇h|², J), J being the whitecaps' Jacobian
+(below). The three are batched side by side in one atlas
+(`waveCascadeAtlas.ts`), so all of them take 20 draws a frame (22 with the
+two whitecap accumulators). The
 cascades are run by the board (`useWaveCascades`) and their textures handed
 to both the water and the seabed; the look-up that sums them lives in one
 place, `waveSlopeGlsl.ts`. The water shader samples each texture once, sums
@@ -406,13 +410,80 @@ share the wave clock and freeze with the waves under
 
 The shallow-water saturation boost scales with the red the water has
 absorbed, so sand under near-clear water keeps its colour instead of
-turning orange. Wet sand is dry sand at half albedo. Surf is limited to water
-shallower than 0.6 m on the drawn seabed, so it stays at the waterline (a
-stopgap until step 7; the outer breaker line is off until then).
+turning orange. Wet sand is dry sand at half albedo.
 
 Where the prepass has no seabed (below the mesh cut-off, or off the mesh) the
 shader reads `NO_SEABED_DEPTH` (105 m, past the fade), so the water is deep
 water.
+
+**Foam (#38 step 7).** Three coverages, unioned (1 − Π(1 − cᵢ), so they
+saturate rather than add past white), each broken into lace by a
+world-space noise churned on the surf clock (`surfMotion.ts`; the lace
+fades back to its smooth mean where its features fall under a few pixels,
+so at map zoom the shore reads as a thin bright line), and all fading with
+distance like the waves. The foam replaces the water under it, sky
+reflection and glint included, as a Lambertian of albedo ≈ 0.88, slightly
+warm (`FOAM_ALBEDO`, `foamShading.ts`), lit by the sun and the sky in the
+water body's own irradiance units, so it stays HDR-consistent (about as
+bright as dry sand). `PALETTE_SURF` is gone.
+
+- *Whitecaps* (`whitecapFoam.ts`). The spectrum pass fills the working
+  textures' spare BA pair with the choppy displacement's stretch along and
+  across the wind (λ = `WAVE_CHOPPINESS`, 1.2; the displacement itself is
+  not drawn until step 8), riding the same FFT as the slopes; the output
+  pass writes the surface Jacobian J = (1 + ∂Du/∂u)(1 + ∂Dv/∂v) into the
+  slope texture's A channel. The shear ∂Du/∂v, which would need a third
+  real signal, is dropped: measured in the wind frame it enters J only
+  squared, and the CPU test shows the chop cascade's J changes by under
+  0.03 anywhere on the tile and its coverage by ~3% of itself. Each
+  whitecapping cascade (the swell and the chop, `WHITECAP_CASCADES`; the
+  ripple is too short to foam) then has one more draw into a 256²
+  half-float ping-pong pair in its own tile space that adds
+  max(0, `WHITECAP_FOLD_THRESHOLD` (0.77) − J) and decays with a 5 s time
+  constant, as the exact step of f' = −f/τ + g·fold over the frame's
+  wave-time step (frame-rate independent; frozen with the waves under
+  reduced motion). At that threshold the chop foams on about 1.4% of its
+  tile at any moment, the swell on a few hundredths of a percent: a
+  Beaufort 4 sea's "fairly frequent white horses". The water sums the
+  accumulators through the same tile transforms and fades as the slopes
+  (`sumCascadeWhitecaps`, `waveSlopeGlsl.ts`); the pair swaps every frame,
+  so the water rebinds it after the cascades draw.
+- *Shore and reef bands* (`shoreFoam.ts`), from the prepass depth in
+  metres, so they follow the drawn seabed exactly: the **wash** at the
+  waterline (full at 0, gone by 0.35–0.9 m, reaching deeper at the flood
+  of the pulse); the **breaker line** where waves of the sea's significant
+  height break, by McCowan's H / 0.78 (`jonswapSignificantHeight`,
+  ≈ 2.05 m for Hs ≈ 1.6 m), peaking on that contour and fading faster
+  seaward than shoreward (the bore runs on), pulsed so sets arrive a
+  little ahead of the wash; on the ~1:21 beach face it sits ~40 m off the
+  wash, and where the seabed drops fast they merge; and the **reef band**
+  wherever the reef mask is set and the crest is within ~3–4.5 m of the
+  surface, weighted by the field's windward channel so the line is
+  densest on the face that meets the wind (`REEF_WINDWARD_BIAS`).
+- *Hull foam* (`hullFoam.ts`, `shipFoamSources.ts`). `Ship.tsx` writes
+  each ship's animated position, heading, hull length (the mesh's) and
+  speed into a rendering-side registry from its frame callback (only in
+  the canonical world copy; a sinking ship is a different component and
+  stops); `Ocean.tsx` reads it into a uniform array of at most
+  `SHIP_FOAM_CAP` (24) ships. Nothing bounds the NPC count in the game, so
+  the fill order is fixed by id (players first, then NPCs) and the registry
+  warns once when ships are left out. The hull is a segment of half the hull
+  length along the heading; foam falls off to nothing half a hull length
+  out, extends astern with speed as a wake, and a ship at anchor keeps a
+  light ring. Distances wrap east–west.
+
+*Foam above the island.* The water plane stops showing where the land mesh
+rises above the waterline, so on its own the wash was cut off at the beach.
+The land material (`useLandTerrain.ts`) therefore carries a second patch
+after the caustics one (`shoreFoamLand.ts`): the same wash, by the baked
+coast distance (`beachWashBand`, up to ~6 m of sand at the flood, and none
+where the field still reads water: there it cannot say how far the real
+waterline is, and the field and the mesh disagree in places), on the
+shared surf-clock uniform, with the same lace, only above sea level, put in
+as the fragment's diffuse albedo so three's own lighting shades it like the
+sand. No extra pass and no change to the water's depth test. The field
+texture is built once per map (`useTerrainFieldTexture.ts`) and handed to
+both.
 
 ---
 
@@ -499,9 +570,17 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 |------|---------|
 | `src/board/visuals/TerrainHeightmap.ts` | SDF-based heightmap generation |
 | `src/board/visuals/UnifiedTerrain.tsx` | Land shader with vertex squashing |
-| `src/board/visuals/Ocean.tsx` | Water: refraction, water colour, waves, glint, surf |
+| `src/board/visuals/Ocean.tsx` | Water: refraction, water colour, waves, glint, foam |
 | `src/board/visuals/waterOptics.ts` | Water optics: absorption, Fresnel, vector Snell, the refraction bound |
-| `src/board/visuals/waveSlopeGlsl.ts` | The cascade slope look-up shared by the water and the seabed |
+| `src/board/visuals/waveSlopeGlsl.ts` | The cascade slope and whitecap look-ups shared by the water and the seabed |
+| `src/board/visuals/useWaveCascades.ts` | Runs the FFT cascades and the whitecap accumulators on the GPU |
+| `src/board/visuals/whitecapFoam.ts` | Whitecap maths: Jacobian, fold threshold, accumulation step |
+| `src/board/visuals/shoreFoam.ts` | Shore, breaker and reef bands; the wash up the beach; windward weight |
+| `src/board/visuals/shoreFoamLand.ts` | Patches the land material so the wash runs up the sand |
+| `src/board/visuals/hullFoam.ts` | Contact foam around a hull |
+| `src/board/shipFoamSources.ts` | Ships' animated positions for the hull foam |
+| `src/board/visuals/foamShading.ts` | Foam union, lace, detail fade, radiance; the surf pulse and churn noise |
+| `src/board/visuals/useTerrainFieldTexture.ts` | The terrain field texture, once per map, for the water and the land |
 | `src/board/visuals/causticFocus.ts` | Caustic maths: focus matrix, Hessian, intensity, depth and LOD fades |
 | `src/board/visuals/seabedCaustics.ts` | Patches the seabed material so its sunlight is focused by the waves |
 | `src/board/visuals/useLandTerrain.ts` | Land and seabed mesh and materials, once per map |

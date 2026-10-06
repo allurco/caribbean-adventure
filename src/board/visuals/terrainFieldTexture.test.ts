@@ -159,6 +159,20 @@ describe("terrainFieldTexture", () => {
       }
     });
 
+    it("stores the reef windward weight in A at each texel centre, clamped to 0 … 1 (#38 step 7)", () => {
+      const field = rampField();
+      const sampleReefWindward = (_x: number, z: number) => (z - field.bounds.minZ) / 2 - 0.5; // −0.5 … 2
+      const baked = bakeTerrainField(field, { texelsPerUnit: 4, sampleReefWindward });
+      for (let j = 0; j < baked.height; j++) {
+        for (let i = 0; i < baked.width; i++) {
+          const [x, z] = texelCenter(baked, i, j);
+          const expected = Math.max(0, Math.min(1, sampleReefWindward(x, z)));
+          expect(decodeReef(texel(baked, i, j)[3])).toBeCloseTo(expected, 3);
+        }
+      }
+      expect(TERRAIN_FIELD_GLSL).toContain("float terrainFieldReefWindward(vec4 texel) {\n    return texel.a;");
+    });
+
     it("stores the reef mask in B at each texel centre, without touching R, G or A", () => {
       const field = rampField();
       // A known ramp across x, so a swapped axis or offset texel shows up.

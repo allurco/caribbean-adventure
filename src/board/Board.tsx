@@ -25,7 +25,8 @@ import { useDecorationLayout } from "./visuals/useDecorationLayout";
 import { SunLight } from "./visuals/SunLight";
 import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import { useWaveCascades } from "./visuals/useWaveCascades";
-import { WAVE_CASCADES } from "./visuals/oceanWaves";
+import { useTerrainFieldTexture } from "./visuals/useTerrainFieldTexture";
+import { WAVE_CASCADES, WHITECAP_CASCADES } from "./visuals/oceanWaves";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import {
   HAZE_COLOR,
@@ -158,7 +159,11 @@ function Scene({
   // reduced motion). The water shades its surface with them and the seabed
   // focuses its sunlight through them (#38 step 6), so they live here.
   const reducedMotion = usePrefersReducedMotion();
-  const waveSlopes = useWaveCascades(WAVE_CASCADES, reducedMotion);
+  const waves = useWaveCascades(WAVE_CASCADES, WHITECAP_CASCADES, reducedMotion);
+  const waveSlopes = waves.slopes;
+  // The baked terrain field, read by the water (depth, coast, reefs) and by
+  // the land's shoreline foam (#38 step 7).
+  const terrainField = useTerrainFieldTexture(G.cells, G.wrap);
 
   const cameraBounds = useMemo(
     () => cameraBoundsFromHexes(G.cells.map((c) => c.hex), CAMERA_BOUNDS_PADDING),
@@ -287,7 +292,7 @@ function Scene({
 
   // Built once per map (and turn) and drawn by every copy of the world: the
   // copies share these geometries, materials and hover state.
-  const landTerrain = useLandTerrain(G.cells, G.wrap, { sun: SUN_DIRECTION, waveSlopes });
+  const landTerrain = useLandTerrain(G.cells, G.wrap, { sun: SUN_DIRECTION, waveSlopes, terrainField });
   const decorations = useDecorationLayout(G.cells, G.wrap);
   const grid = useHexGrid({
     cells: G.cells,
@@ -319,8 +324,7 @@ function Scene({
           for every copy of the world. Waits for the sky it reflects. */}
       {skyEnvironment && (
         <Ocean
-          cells={G.cells}
-          wrap={G.wrap}
+          terrainField={terrainField}
           size={oceanSize}
           sun={SUN_DIRECTION}
           sunColor={SUN_COLOR}
@@ -329,6 +333,7 @@ function Scene({
           skyHeight={skyEnvironment.textureHeight}
           skyIntensity={skyEnvironment.intensity}
           waveSlopes={waveSlopes}
+          waveWhitecaps={waves.whitecaps}
         />
       )}
 
@@ -351,6 +356,8 @@ function Scene({
           color={PLAYER_COLORS[id] ?? "#888888"}
           shipClass={ship.shipClass}
           wrapWidth={period}
+          foamId={copy === 0 ? id : undefined}
+          foamPlayer
           onPointerEnter={() => onShipHover(id)}
           onPointerLeave={() => onShipHover(null)}
           onClick={() => onShipClick(id)}
@@ -365,6 +372,7 @@ function Scene({
           color={npc.role === "FLOTILLA" ? NPC_FLOTILLA_COLOR : NPC_MERCHANT_COLOR}
           shipClass={npc.shipClass}
           wrapWidth={period}
+          foamId={copy === 0 ? npc.id : undefined}
           onPointerEnter={() => onShipHover(npc.id)}
           onPointerLeave={() => onShipHover(null)}
           onClick={() => onShipClick(npc.id)}

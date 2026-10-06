@@ -13,7 +13,7 @@ import {
   worldToHex,
   wrapWorldWidth,
 } from "../../game/hex";
-import { createReefMask, REEF_EDGE_SOFTNESS } from "./reefMask";
+import { createReefMask, createReefOutward, REEF_EDGE_SOFTNESS } from "./reefMask";
 
 const INRADIUS = Math.sqrt(3) / 2;
 
@@ -139,6 +139,72 @@ describe("reefMask", () => {
     const mask = createReefMask(mapWith([]));
     for (let x = -6; x <= 6; x += 0.25) {
       for (let z = -6; z <= 6; z += 0.25) expect(mask(x, z)).toBe(0);
+    }
+  });
+});
+
+describe("createReefOutward (#38 step 7)", () => {
+  it("points from a reef hex out across its nearest rim edge", () => {
+    const outward = createReefOutward(mapWith(["0,0"]));
+    const centre = hexToWorld(hex(0, 0));
+    for (const n of neighbors(hex(0, 0))) {
+      const other = hexToWorld(n);
+      const [x, z] = between(centre, other, 0.4);
+      const [ox, oz] = outward(x, z);
+      const expected = [(other[0] - centre[0]) / Math.sqrt(3), (other[2] - centre[2]) / Math.sqrt(3)];
+      expect(ox).toBeCloseTo(expected[0], 9);
+      expect(oz).toBeCloseTo(expected[1], 9);
+    }
+  });
+
+  it("is a unit vector everywhere on a reef with a rim", () => {
+    const outward = createReefOutward(mapWith(["0,0", "1,0"]));
+    for (let x = -1.5; x <= 3; x += 0.1) {
+      for (let z = -1; z <= 1; z += 0.1) {
+        const h = worldToHex(x, z);
+        if (!((h.q === 0 && h.r === 0) || (h.q === 1 && h.r === 0))) continue;
+        const [ox, oz] = outward(x, z);
+        expect(Math.hypot(ox, oz)).toBeCloseTo(1, 9);
+      }
+    }
+  });
+
+  it("ignores edges shared by two reef hexes: between them it looks across the outer rim", () => {
+    const outward = createReefOutward(mapWith(["0,0", "1,0"]));
+    const a = hexToWorld(hex(0, 0));
+    const b = hexToWorld(hex(1, 0));
+    const [x, z] = between(a, b, 0.5);
+    const [ox] = outward(x, z);
+    // The shared edge runs across x; its own normal would be (±1, 0). The
+    // nearest outer edges run obliquely, so the outward normal is not along x.
+    expect(Math.abs(ox)).toBeLessThan(0.99);
+  });
+
+  it("is zero off the reef", () => {
+    const outward = createReefOutward(mapWith(["0,0"]));
+    const [x, , z] = hexToWorld(hex(2, 0));
+    expect(outward(x, z)).toEqual([0, 0]);
+    expect(createReefOutward(mapWith([]))(0, 0)).toEqual([0, 0]);
+  });
+
+  it("repeats every wrap width", () => {
+    const columns = 8;
+    const wrap = createWrap(columns);
+    const width = wrapWorldWidth(wrap);
+    const reef = offsetToHex(columns - 1, 2);
+    const cells: MapCell[] = hexRect(columns, 5).map((h) => ({
+      hex: h,
+      terrain: hexEquals(h, reef) ? "reef" : "water",
+      hasPort: false,
+      elevation: 0,
+    }));
+    const outward = createReefOutward(cells, wrap);
+    const [cx, , cz] = hexToWorld(reef);
+    for (let dx = -0.8; dx <= 0.8; dx += 0.1) {
+      const here = outward(cx + dx, cz + 0.3);
+      const there = outward(cx + dx + width, cz + 0.3);
+      expect(there[0]).toBeCloseTo(here[0], 9);
+      expect(there[1]).toBeCloseTo(here[1], 9);
     }
   });
 });

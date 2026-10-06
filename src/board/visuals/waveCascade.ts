@@ -17,6 +17,18 @@
  * real, so they are packed into one complex inverse FFT as
  *   C(k) = i·kx·h̃ + i·(i·kz·h̃),   IFFT(C) = ∂h/∂x + i ∂h/∂z.
  * `evolvedSlopeSpectrum` is the CPU mirror of the GPU spectrum pass.
+ *
+ * Whitecaps (#38 step 7) need the choppy horizontal displacement's
+ * derivatives. With Gerstner's sign for this e^(+ik·x) transform the
+ * displacement pulls the surface toward the crests,
+ *   D(k) = i λ (k/|k|) h̃,
+ * so ∂Du/∂u along a unit direction u has spectrum −λ (k·u)² / |k| · h̃: real
+ * coefficients, even in k, so the field is real. Two of them ride in the
+ * working texture's spare complex pair the same way as the slopes,
+ *   B(k) = −λ h̃ ((k·u)² + i (k·v)²) / |k|,   IFFT(B) = ∂Du/∂u + i ∂Dv/∂v,
+ * with u the wind direction and v across it (`windInTile`): along the wind
+ * the stretch is largest and the shear ∂Du/∂v, which does not fit, is
+ * smallest (whitecapFoam.ts). `evolvedStretchSpectrum` is the CPU mirror.
  */
 import { directionalSpreading } from "./directionalSpreading";
 import { jonswapSpectrum, type WindSea } from "./jonswap";
@@ -170,6 +182,49 @@ export function evolvedSlopeSpectrum(
       const i = z * size + x;
       re[i] = -kx * hi - kz * hr;
       im[i] = kx * hr - kz * hi;
+    }
+  }
+  return { re, im };
+}
+
+/** The world wind direction as a unit vector in the tile's own (turned) axes. */
+export function windInTile(cascade: Pick<WaveCascade, "windAngle" | "rotation">): [number, number] {
+  const angle = cascade.windAngle - cascade.rotation;
+  return [Math.cos(angle), Math.sin(angle)];
+}
+
+/**
+ * The packed stretch spectrum B(k) at time `seconds` (see the header): the
+ * choppy displacement's derivative along the wind (real part after the
+ * inverse FFT) and across it (imaginary part), for choppiness λ.
+ */
+export function evolvedStretchSpectrum(
+  initial: Float32Array,
+  cascade: WaveCascade,
+  seconds: number,
+  loopSeconds: number,
+  choppiness: number
+): { re: Float64Array; im: Float64Array } {
+  const { size, tileMetres } = cascade;
+  const [ux, uz] = windInTile(cascade);
+  const re = new Float64Array(size * size);
+  const im = new Float64Array(size * size);
+  for (let z = 0; z < size; z++) {
+    for (let x = 0; x < size; x++) {
+      const kx = cascadeWavenumber(x, size, tileMetres);
+      const kz = cascadeWavenumber(z, size, tileMetres);
+      const k = Math.hypot(kx, kz);
+      if (k === 0) continue;
+      const t = (z * size + x) * 4;
+      const [hr, hi] = evolvedAmplitude(initial.subarray(t, t + 4), k, seconds, loopSeconds);
+      const along = kx * ux + kz * uz;
+      const across = -kx * uz + kz * ux;
+      const a = (-choppiness * along * along) / k;
+      const b = (-choppiness * across * across) / k;
+      // B = h̃ · (a + i b)
+      const i = z * size + x;
+      re[i] = hr * a - hi * b;
+      im[i] = hr * b + hi * a;
     }
   }
   return { re, im };

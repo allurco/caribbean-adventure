@@ -1,11 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Vector3, Mesh, MathUtils } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
+import { shipFoamSources } from "./shipFoamSources";
 
 const DURATION = 0.4; // seconds
 const SINK_DURATION = 2.0; // seconds for sinking animation
+/** Seconds over which a ship's reported speed (for its hull foam) eases back to 0 after a move, so the wake fades rather than snaps off. */
+const FOAM_SPEED_DECAY = 0.8;
 
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
@@ -28,12 +31,22 @@ export function Ship({
   onPointerLeave,
   onClick,
   wrapWidth = Infinity,
+  foamId,
+  foamPlayer = false,
 }: {
   position: [number, number, number];
   color: string;
   shipClass?: ShipClass;
   /** World width of the map's east–west wrap (Infinity if it does not wrap). */
   wrapWidth?: number;
+  /**
+   * Registers the ship's animated position for the water's hull foam under
+   * this id (shipFoamSources.ts, #38 step 7). Given only in the canonical
+   * copy of a wrapping world, so each ship is registered once.
+   */
+  foamId?: string;
+  /** A player's ship, which keeps its hull foam ahead of the NPCs when more than SHIP_FOAM_CAP register. */
+  foamPlayer?: boolean;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
   onClick?: () => void;
@@ -45,6 +58,14 @@ export function Ship({
   const progressRef = useRef(1);
   const initialized = useRef(false);
   const targetYRotation = useRef(0);
+  const foamPrevPosition = useRef<Vector3 | null>(null);
+  const foamSpeed = useRef(0);
+  const hullLength = (shipClass ? SHIP_GEOMETRY[shipClass] : DEFAULT_GEOMETRY)[2];
+
+  useEffect(() => {
+    if (!foamId) return;
+    return () => shipFoamSources.remove(foamId);
+  }, [foamId]);
 
   const meshRef = useCallback(
     (mesh: Mesh | null) => {
@@ -92,10 +113,29 @@ export function Ship({
       1 - Math.pow(0.001, delta),
     );
 
-    if (progressRef.current >= 1) return;
-    progressRef.current = Math.min(progressRef.current + delta / DURATION, 1);
-    const t = smoothstep(progressRef.current);
-    ref.current.position.lerpVectors(from, to, t);
+    if (progressRef.current < 1) {
+      progressRef.current = Math.min(progressRef.current + delta / DURATION, 1);
+      const t = smoothstep(progressRef.current);
+      ref.current.position.lerpVectors(from, to, t);
+    }
+
+    if (foamId) {
+      const p = ref.current.position;
+      const prev = foamPrevPosition.current ?? (foamPrevPosition.current = p.clone());
+      const raw = delta > 0 ? prev.distanceTo(p) / delta : 0;
+      prev.copy(p);
+      foamSpeed.current = Math.max(raw, foamSpeed.current * Math.exp(-delta / FOAM_SPEED_DECAY));
+      const rot = ref.current.rotation.y;
+      shipFoamSources.set(foamId, {
+        x: p.x,
+        z: p.z,
+        headingX: Math.sin(rot),
+        headingZ: Math.cos(rot),
+        hullLength,
+        speed: foamSpeed.current,
+        player: foamPlayer,
+      });
+    }
   });
 
   return (
