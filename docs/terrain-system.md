@@ -368,25 +368,37 @@ cylinder is still drawn; making it an invisible hover volume now that the
 buildings are the port's visual is a follow-up.
 
 **Port kit: the stone quay (#59, slice 3).** `quayGeometry.ts` builds a
-flat stone platform at the pier root in the pier's local frame (670
-triangles, budget 700; one per port, so cheap): a footing as deep as the
-pier posts; above the waterline three stepped courses (each a vertical
-band standing 0.005 further out than the one above, so the wall is
-battered and its foot is flush with the coping's edge, with an up-facing
-ledge at every course line), alternating in tone, their sea faces set
-with 4/5/4 staggered blocks standing 0.004 proud a 0.005 joint apart so
-every joint is a shadow groove in any light; a wet band over the lowest
-course (a `tintColors` gradient, darker and greener down to the
-waterline); a coping base 0.018 thick overhanging the wall by 0.015 with
-a chamfered edge, carrying a 3 × 2 grid of flagstones 0.012 thick with
-irregular widths from the variation stream, bevelled, a 0.006 groove
-apart and each with its own tone (±10 %); a step down a coping's
-thickness behind z = −0.2 so the back reads as a stair into the beach; a
-three-tread stair hung on the +x end of the sea wall from just under the
-coping to the water, a hair seaward of the wall's foot so it touches
-nothing; and on the deck two bollards, three crates (one on another, one
-turned 15°) and a barrel with two darker hoops (an 8-sided lathe). All
-colour is per vertex, no texture. The sea face stands 0.04 seaward of the pier's
+stone platform at the pier root in the pier's local frame (749 triangles,
+budget 1000; one per port, so cheap), in the port kit's art direction: an
+old Spanish-Caribbean port that has stood a century in salt air, still
+in the stylised mid-poly register (faceted, vertex colour only, no
+textures), with nothing on a perfect grid. A footing as deep as the pier
+posts; above the waterline two tall battered courses (each 0.0075
+further out than the one above, the foot flush with the base's edge, an
+up-facing ledge at the course line) whose sea face and seaward sides are
+a near-black mortar plane set with rough-cut blocks laid out once from
+the variation stream (`QUAY_WALL_BLOCKS`): unequal widths, joints of
+0.004–0.010, each block proud by its own 0.002–0.010 (0.007 on the lower
+course so it stays under the base's edge), beds that wobble, a few
+chipped corners, two blocks missing to show the rubble behind, tones
+±15 % with an ochre drift, and the blocks under the bollards and the
+mooring ring stained dark. A green-black wet band over 90 % of the lower
+course (a `tintColors` gradient to the waterline). The deck is a
+square-edged stone base 0.018 thick overhanging the wall by 0.015, its
+top the mortar the paving's joints show, carrying twelve unbevelled
+paving stones in three rows of 4/3/5 (`QUAY_PAVING`): unequal widths,
+joints of 0.004–0.010, every corner at its own height within ±0.003 of
+`QUAY_TOP`, a fifth of them sunk 0.004, and the five that carry a prop
+flat; sand drifts over the landward row, a damp patch darkens the
+middle, and the outer edge is salt-pale. A step down a coping's thickness
+behind z = −0.2 so the back reads as a stair into the beach; a
+three-tread stair on the +x end of the sea wall with uneven rises and a
+chipped top tread, a hair seaward of the proudest block so it touches
+nothing. Props: two tapered octagonal timber posts leaning 4° (the top
+ring pushed over, the foot flat on its stone) and worn dark at the foot,
+an iron mooring ring on the upper course, a rope coil, an aged crate and
+a barrel with alternating stave tones and two iron hoops. `QUAY_TOP`,
+the footprint and the placement are unchanged from the first slice. The sea face stands 0.04 seaward of the pier's
 land end, so the pier's root is embedded in it. Parts meet on shared
 planes with the hidden face dropped (the body open on top, the coping open
 underneath with its exposed overhang drawn as three strips, the bollards
