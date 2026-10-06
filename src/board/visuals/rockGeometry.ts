@@ -34,7 +34,7 @@ export const ROCK_TRIANGLE_BUDGET = 80;
 /** The underside (y < 0) is squashed to this fraction of the top's height. */
 export const ROCK_UNDERSIDE_SQUASH = 0.45;
 
-interface RockVariantSpec {
+export interface RockVariantSpec {
   sides: number;
   rings: number;
   /** Ellipsoid radii as multiples of `ROCK_UNIT_RADIUS`: [x, y, z]. */
@@ -47,14 +47,20 @@ interface RockVariantSpec {
 }
 
 /** Three silhouettes: a rounded boulder, a long low slab and a tall angular spur. */
-const VARIANTS: readonly RockVariantSpec[] = [
+export const ROCK_VARIANTS: readonly RockVariantSpec[] = [
   { sides: 6, rings: 3, radii: [1.0, 0.85, 0.9], jitter: 0.22, twist: 0.3, seed: 0x5a11 }, // 36 triangles
   { sides: 7, rings: 3, radii: [1.3, 0.65, 0.85], jitter: 0.18, twist: 0.25, seed: 0x2bd7 }, // 42 triangles
   { sides: 5, rings: 4, radii: [0.85, 1.15, 0.8], jitter: 0.26, twist: 0.3, seed: 0x7e39 }, // 40 triangles
 ];
 
-const variantOf = (index: number): RockVariantSpec =>
-  VARIANTS[((index % ROCK_VARIANT_COUNT) + ROCK_VARIANT_COUNT) % ROCK_VARIANT_COUNT];
+/** A variant's jittered lattice: the two poles and the rings between them, top down. */
+export interface RockLattice {
+  top: Vec3;
+  rings: Vec3[][];
+  bottom: Vec3;
+}
+
+export type TriangleSink = (a: Vec3, b: Vec3, c: Vec3) => void;
 
 /**
  * A variant's ellipsoid radii as multiples of `ROCK_UNIT_RADIUS`: [x, y, z].
@@ -62,11 +68,11 @@ const variantOf = (index: number): RockVariantSpec =>
  * them as the rock's nominal extent.
  */
 export function rockVariantRadii(index: number): readonly [number, number, number] {
-  return variantOf(index).radii;
+  return rockVariantSpec(index).radii;
 }
 
 /** The largest horizontal radius multiple over all variants (the slab's long axis). */
-export const ROCK_VARIANT_MAX_RADIUS_XZ = Math.max(...VARIANTS.map((v) => Math.max(v.radii[0], v.radii[2])));
+export const ROCK_VARIANT_MAX_RADIUS_XZ = Math.max(...ROCK_VARIANTS.map((v) => Math.max(v.radii[0], v.radii[2])));
 
 /** How far a variant can reach from its origin at scale 1, world units: the farthest any vertex lies horizontally, and the highest any rises. */
 export interface RockReach {
@@ -80,7 +86,7 @@ export interface RockReach {
  * must keep a rock's rim clear of something (the shore boulders' offshore cap,
  * #49) scale these by the instance's scale instead of probing the mesh.
  */
-export const ROCK_VARIANT_REACH: readonly RockReach[] = VARIANTS.map((v) => ({
+export const ROCK_VARIANT_REACH: readonly RockReach[] = ROCK_VARIANTS.map((v) => ({
   horizontal: ROCK_UNIT_RADIUS * Math.max(v.radii[0], v.radii[2]) * (1 + v.jitter),
   top: ROCK_UNIT_RADIUS * v.radii[1] * (1 + v.jitter),
 }));
@@ -114,7 +120,7 @@ function createBuilder() {
 }
 
 /** The lattice's rings from the top down, each a loop of `sides` points, plus the two poles. */
-function latticeOf(spec: RockVariantSpec): { top: Vec3; rings: Vec3[][]; bottom: Vec3 } {
+export function rockLattice(spec: RockVariantSpec): RockLattice {
   const next = stream(spec.seed);
   const [rx, ry, rz] = spec.radii.map((r) => r * ROCK_UNIT_RADIUS);
   const point = (theta: number, phi: number, radial: number): Vec3 => {
@@ -148,40 +154,60 @@ function latticeOf(spec: RockVariantSpec): { top: Vec3; rings: Vec3[][]; bottom:
 }
 
 /**
- * Builds one rock variant's triangles (`index` wraps round the variant
- * count). Positions are in world units at scale 1.
+ * The crown: a fan from the top pole to the first ring. Azimuth increases
+ * clockwise seen from above (+x towards +z), so a face is outward-wound
+ * when its ring vertices go in decreasing azimuth.
  */
-export function buildRockGeometry(index: number): RockGeometryData {
-  const spec = variantOf(index);
-  const { top, rings, bottom } = latticeOf(spec);
-  const b = createBuilder();
-  const sides = spec.sides;
-
-  // Azimuth increases clockwise seen from above (+x towards +z), so a face
-  // is outward-wound when its ring vertices go in decreasing azimuth.
+export function rockTopCap({ top, rings }: RockLattice, triangle: TriangleSink) {
   const first = rings[0];
-  for (let k = 0; k < sides; k++) b.triangle(top, first[(k + 1) % sides], first[k]);
+  const sides = first.length;
+  for (let k = 0; k < sides; k++) triangle(top, first[(k + 1) % sides], first[k]);
+}
 
-  // Bands zigzag between the half-step-offset rings: on an even band the
-  // lower ring's k-th vertex sits between the upper ring's k and k+1, on an
-  // odd band it is the upper vertex that sits between the lower pair.
+/**
+ * The bands zigzag between the half-step-offset rings: on an even band the
+ * lower ring's k-th vertex sits between the upper ring's k and k+1, on an
+ * odd band it is the upper vertex that sits between the lower pair.
+ */
+export function rockBands({ rings }: RockLattice, triangle: TriangleSink) {
+  const sides = rings[0].length;
   for (let i = 0; i < rings.length - 1; i++) {
     const upper = rings[i];
     const lower = rings[i + 1];
     for (let k = 0; k < sides; k++) {
       const k1 = (k + 1) % sides;
       if (i % 2 === 0) {
-        b.triangle(upper[k], upper[k1], lower[k]);
-        b.triangle(upper[k1], lower[k1], lower[k]);
+        triangle(upper[k], upper[k1], lower[k]);
+        triangle(upper[k1], lower[k1], lower[k]);
       } else {
-        b.triangle(upper[k], lower[k1], lower[k]);
-        b.triangle(upper[k], upper[k1], lower[k1]);
+        triangle(upper[k], lower[k1], lower[k]);
+        triangle(upper[k], upper[k1], lower[k1]);
       }
     }
   }
+}
 
+/** The buried base: a fan from the last ring to the bottom pole. */
+export function rockBottomCap({ rings, bottom }: RockLattice, triangle: TriangleSink) {
   const last = rings[rings.length - 1];
-  for (let k = 0; k < sides; k++) b.triangle(bottom, last[k], last[(k + 1) % sides]);
+  const sides = last.length;
+  for (let k = 0; k < sides; k++) triangle(bottom, last[k], last[(k + 1) % sides]);
+}
 
+/** The variant spec for an index, wrapped round the variant count. */
+export function rockVariantSpec(index: number): RockVariantSpec {
+  return ROCK_VARIANTS[((index % ROCK_VARIANT_COUNT) + ROCK_VARIANT_COUNT) % ROCK_VARIANT_COUNT];
+}
+
+/**
+ * Builds one rock variant's triangles (`index` wraps round the variant
+ * count). Positions are in world units at scale 1.
+ */
+export function buildRockGeometry(index: number): RockGeometryData {
+  const lattice = rockLattice(rockVariantSpec(index));
+  const b = createBuilder();
+  rockTopCap(lattice, b.triangle);
+  rockBands(lattice, b.triangle);
+  rockBottomCap(lattice, b.triangle);
   return b.build();
 }

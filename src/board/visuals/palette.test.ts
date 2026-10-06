@@ -10,7 +10,7 @@ import {
 } from "./palette";
 
 describe("palette", () => {
-  it("defines the issue #8 starting values and the issue #14 palm colours", () => {
+  it("defines the issue #8 starting values, the issue #14 palm colours and the issue #49 port colours", () => {
     expect(PALETTE_HEX).toEqual({
       wetSand: 0xa69772,
       drySand: 0xe3cf9c,
@@ -21,7 +21,59 @@ describe("palette", () => {
       seabedSand: 0xc6b49d,
       coral: 0x4d442b,
       deepSeabed: 0xa0a27b,
+      whitewash: 0xf2ead8,
+      terracotta: 0xb4553a,
+      timber: 0x5c4431,
+      masonry: 0x8c8375,
+      limewash: 0xe4dac6,
+      oldTerracotta: 0x96503a,
+      oldTimber: 0x4b3f35,
+      roughStone: 0xa89b8b,
+      ironwork: 0x1b1816,
+      bleachedPlank: 0xae9e8f,
     });
+  });
+
+  it("bleaches the warehouse's planking (#59): paler and greyer than the fittings' timber, darker than the lime render", () => {
+    const luminance = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const saturation = (c: Color) => (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / Math.max(c.r, c.g, c.b);
+    const plank = paletteColor("bleachedPlank");
+    expect(luminance(plank)).toBeGreaterThan(luminance(paletteColor("oldTimber")) * 2);
+    expect(luminance(plank)).toBeLessThan(luminance(paletteColor("limewash")) * 0.6);
+    expect(saturation(plank)).toBeLessThan(saturation(paletteColor("oldTimber")));
+    // Still warm: a softwood, not a slate.
+    expect(plank.r).toBeGreaterThan(plank.b);
+  });
+
+  it("ages the settlement's colours (#59): dimmer render, browner tiles, greyer timber, stone darker and greyer than the sand", () => {
+    const luminance = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const saturation = (c: Color) => (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / Math.max(c.r, c.g, c.b);
+    const sand = paletteColor("drySand");
+    expect(luminance(paletteColor("limewash"))).toBeLessThan(luminance(paletteColor("whitewash")));
+    expect(luminance(paletteColor("limewash"))).toBeGreaterThan(luminance(sand) * 1.1);
+    expect(luminance(paletteColor("oldTerracotta"))).toBeLessThan(luminance(paletteColor("terracotta")));
+    expect(saturation(paletteColor("oldTimber"))).toBeLessThan(saturation(paletteColor("timber")));
+    const stone = paletteColor("roughStone");
+    expect(luminance(stone)).toBeLessThan(luminance(sand) * 0.55);
+    expect(saturation(stone)).toBeLessThan(saturation(sand));
+    expect(luminance(paletteColor("ironwork"))).toBeLessThan(0.01);
+  });
+
+  it("gives the port buildings colours that read against sand and grass at map zoom (#49)", () => {
+    const luminance = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const sand = luminance(paletteColor("drySand"));
+    const grass = luminance(paletteColor("jungle"));
+    // Whitewash is brighter than the sand; timber and terracotta are darker than it.
+    expect(luminance(paletteColor("whitewash"))).toBeGreaterThan(sand * 1.2);
+    expect(luminance(paletteColor("timber"))).toBeLessThan(sand * 0.3);
+    expect(luminance(paletteColor("terracotta"))).toBeLessThan(sand * 0.5);
+    // Terracotta sits near the grass in luminance, so it reads against it by hue:
+    // strongly red where the jungle is strongly green.
+    const roof = paletteColor("terracotta");
+    const jungle = paletteColor("jungle");
+    expect(Math.abs(luminance(roof) - grass)).toBeLessThan(0.1);
+    expect(roof.r).toBeGreaterThan(roof.g * 2);
+    expect(jungle.g).toBeGreaterThan(jungle.r * 2);
   });
 
   describe("seabed (#38): bottom reflectance at 650 / 550 / 450 nm (Maritorena et al. 1994, Fig. 6)", () => {

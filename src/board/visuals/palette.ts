@@ -64,6 +64,23 @@ export const PALETTE_HEX = {
   seabedSand: 0xc6b49d, // Shallow seabed: clean coral sand (Maritorena et al. 1994)
   coral: 0x4d442b, // Reef coral heads (brown-algae spectrum as a stand-in)
   deepSeabed: 0xa0a27b, // Seabed down the drop-off: half sand, half green algae
+  // Port buildings and pier (issue #49): picked to read against sand and
+  // grass at map zoom. Terracotta roofs against the green and the pale sand,
+  // whitewashed walls against the grass, dark timber against the sand.
+  whitewash: 0xf2ead8, // Lime-washed walls
+  terracotta: 0xb4553a, // Clay roof tiles
+  timber: 0x5c4431, // Weathered timber: pier posts, doors, the house's shingles
+  masonry: 0x8c8375, // The watchtower's stone
+  // The aged settlement (#59): a Spanish-Caribbean port a century in salt
+  // air. Lime render off-white, not bright; tiles muted brick to brown;
+  // timber weathered grey-brown; rough-cut stone darker and greyer than the
+  // beige sand; ironwork near black.
+  limewash: 0xe4dac6, // Old lime render
+  oldTerracotta: 0x96503a, // Weathered clay tiles
+  oldTimber: 0x4b3f35, // Salt-greyed timber: doors, shutters, beams
+  roughStone: 0xa89b8b, // Rough-cut blocks, warm grey-brown
+  ironwork: 0x1b1816, // Hinges, straps and the flagpole's finial
+  bleachedPlank: 0xae9e8f, // Sun-bleached, salt-greyed softwood planking: the warehouse's walls
 } as const;
 
 export type PaletteName = keyof typeof PALETTE_HEX;

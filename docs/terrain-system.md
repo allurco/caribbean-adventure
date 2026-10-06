@@ -449,6 +449,239 @@ submerged boulders and on the emergent ones' feet is focused by the waves
 `useDecorationLayout` (`DecorationLayout.shoreBoulders`) and drawn per world
 copy: up to three emergent and three submerged instanced draws per copy.
 
+**Props: port buildings and pier (#49).** A port is identified at map zoom
+by a small faceted settlement, all derived on the board from the existing
+`pier` and `fort` decorations and the port flag; `src/game/` is untouched.
+`pierGeometry.ts` replaces the single box with a plank pier (six posts,
+two stringers, eight banded planks; 192 triangles) built with the shared
+`facetBuilder.ts`: the deck top sits at +0.07, the posts reach to −0.3, and
+`Piers.tsx` draws the one instanced mesh on the seabed prepass layer as
+well as the main pass, so the posts show through the shallows. The old
+pier was pushed a fixed 0.7 units towards the docking hex, which buried
+it in the beach wherever the coast noise pulled the shoreline out (the
+shore lies 0.6–1.1 units from the centre along that line);
+`pierPlacement.ts` now walks the ground along the pier's line and
+starts the deck 0.12 inland of where the ground drops to the shore
+(clamped to 0.5–0.85 from the centre, so a 0.6 deck stays clear of a
+docked galleon). The ground it walks is the drawn land surface
+(`landSurface`, as the quay and the settlement's pier-root reserve
+walk it, #59): on the smooth field the shore step landed 0.025–0.075
+away on about half of generated ports, which started the deck past
+the quay's coping or stood its first posts inside the quay body. `buildingGeometry.ts` builds four kinds, origin at the
+ground contact and the door on +z: a timber warehouse (gable to the
+water, ridge 0.24), a whitewashed two-storey tavern (0.27), a gabled
+house under dark shingles (0.19) and a masonry watchtower with a parapet
+and terracotta pyramid roof (0.46), all under a 0.5 cap so the label at
+0.6 stays clear; walls carry on 0.12 below ground as a footing. (Those
+are the faceted kit's heights; the aged kit below raises the house and
+the warehouse.)
+`portSettlement.ts` places a watchtower on the fort's side and up to three
+other buildings (kind order, scale ±8%, tint ±8% and yaw jitter ±8° from
+a hash of the cell and the whole terrain seed) on the landward half of the
+hex, facing the docking hex. The `PortMarker` is an invisible hover volume
+(#59: `visible` false, no shadow; R3F still raycasts it, like the water
+hexes) sized by `portHover.ts` to the settlement as placed: the
+settlement radius in plan, and in height from the lowest building's foot
+to the tallest building's top (at least the 0.5 cap over the probed
+ground), with 0.05 to spare either way. A fixed cap's worth of air over
+the centre's ground was not enough: the buildings stand on the drawn
+surface out to 0.62, and on a beach rising inland a tower there can top
+out 0.7 above the ground probed round the centre, so hovering its upper
+half showed no tooltip. The buildings use the whole hex: they form a
+crescent round an open square of radius
+0.15 at the centre (a knot of buildings on the centre hid the ones
+behind the tower from the camera), each trying rings outwards from the
+square (0.06 apart, the first with its near corner on the square's edge,
+the last at 0.62 so the widest building stays inside the hex's 0.866
+inradius) and keeping a reserve round `pierOrigin`, the pier's land end,
+where the quay stands (see **settlement on the quay** below). A port hex is a small
+beach with water on one
+to three sides and a shore ramp down to each, and higher jungle neighbours
+pull its field up, so a footprint commonly spans 0.1–0.2 in height; a
+fixed arc of slots lost half the buildings. Each building instead looks
+round the arc (7.5° steps) and outwards in rings 0.04 apart for the ground
+nearest its preferred slot that `placeOnGround` accepts, that overlaps no
+neighbour, and whose footprint the building's footing can cover (see
+**standing on the ground** below). The ground the buildings probe goes
+through one function, `settlementGround`, which lays the quay's flat top
+over the ground as it is drawn. `PortBuildings.tsx` draws one
+`InstancedMesh` per kind on a white `vertexColors` material with
+`instanceColor` carrying the tint, plus one per nation present for the
+flags over the towers (same matrices, untinted).
+
+**The aged settlement (#59).** The faceted kinds looked like fresh-cut
+toys ("biscuits"), so the settlement now draws aged pieces from
+`agedBuildingGeometry.ts`, built on `agedKit.ts` and `agedRoof.ts` with
+the same local-space contract and footprints (the aged half-diagonals,
+0.165–0.215, are what `portSettlement.ts` probes). Walls are lime render
+grimed over the lowest fifth (`tintColors`), an irregular grid of cells
+of which a hash flakes some darker, with staining streaks under windows
+and eave corners, corners cut unequally top and bottom (never a uniform
+chamfer), and the whole piece leaning a degree or two through the
+builder's `shear`, which puts the normals through the inverse transpose
+so they stay exact. Roofs are two thick slabs under rows of raised
+terracotta strips of unequal length (uneven eaves), a couple slipped down
+the slope, a ridge cap that sags 0.006 in the middle, one slope mossy and
+the other salt-pale. Doors are three planks in alternating tones under a
+tapering lintel with a near-black iron strap; shutters hang open by
+different angles; the warehouse has a loft hatch and the tavern a sign.
+The watchtower is the port's landmark: a 0.2-square body tapering to
+0.17, its mortar body covered in rough-cut blocks of unequal widths in
+wobbling courses (a quarter proud and bevelled, one corner chipped, some
+with an ochre cast), a string course, a parapet with eight merlons (one
+chipped), and a flagpole to 0.49, under the 0.5 cap, flying the owning
+nation's flag (`nationFlagGeometry.ts`: a two-sided rippled 3 × 3 grid in
+the HUD's bands, 0.1 × 0.055, converted from sRGB without three). Every
+port gets its tower, fort decoration or not, at the end of the crescent
+on the fort's side (the slot nearest the water); if the landward arc has
+no room it takes any direction, and failing that the hex centre, so it is
+never dropped. The gabled kinds keep the faceted footprints but not all
+the heights: the house's eave is at 0.14 under a 0.23 ridge (it was
+0.10 / 0.19, and read at ship zoom as a hut sunk to its sills) and the
+warehouse's at 0.16 under 0.27 (was 0.13 / 0.24), each at its old pitch;
+the tavern stays at 0.17 / 0.27. The warehouse's walls are
+`bleachedPlank` (sun-bleached, salt-greyed softwood) so they read apart
+from the dark timber of its door and hatch; the house and tavern keep
+the lime render. Every kind stands on a stone plinth: the footing
+(0.16 deep) in the stone colour, with a course standing 0.004 proud of
+the wall line from 0.03 to 0.012 below ground contact whose top 0.006 is
+a paler cap, so where the ground falls away under a piece on a slope the
+exposed footing reads as a raised platform with a crisp pale line at the
+wall's foot rather than a wall sinking out of sight. Triangles:
+warehouse 466, tavern 618, house 466, watchtower 580 (+36 flag), budget
+1000. Honest judgement from the
+screenshots: at ship zoom the pieces read as an old stone-and-tile port;
+at map zoom the tower is a small pale upright with a dot of flag colour,
+findable beside the label but not yet unmistakable on its own, because
+the 0.5 cap keeps it to about twenty pixels tall at the default zoom. Instance counts (10-seed average):
+small 5 piers + 17.3 buildings (every port gets its tower; 3.5 per port,
+up from 2.9 while the marker held them to the outer ring), medium 10 +
+34.6, large 15 + 50.6. Draw calls: five instanced meshes per copy where
+the pier box was one; the marker's 32-triangle cylinder per port is no
+longer drawn.
+
+**Port kit: the stone quay (#59, slice 3).** `quayGeometry.ts` builds a
+stone platform at the pier root in the pier's local frame (749 triangles,
+budget 1000; one per port, so cheap), in the port kit's art direction: an
+old Spanish-Caribbean port that has stood a century in salt air, still
+in the stylised mid-poly register (faceted, vertex colour only, no
+textures), with nothing on a perfect grid. The mesh is shared by every
+port but `quayAt` lifts each instance by its own amount (0 on a low
+beach, 0.085 at the cap, a median of 0.055 over generated maps), so the
+mesh's waterline is modelled `QUAY_TYPICAL_LIFT` (0.055) below the sea
+and the lift lands the tide mark, the course line and the stair foot at
+the water on a typical port, a little under it on a low beach and at
+most 0.03 above it at the cap (`quayPlacement.test.ts` pins the lift to
+the maps). A footing from as deep as the pier posts up to that waterline;
+above it two tall battered courses (each 0.0075
+further out than the one above, the foot flush with the base's edge, an
+up-facing ledge at the course line) whose sea face and seaward sides are
+a near-black mortar plane set with rough-cut blocks laid out once from
+the variation stream (`QUAY_WALL_BLOCKS`): unequal widths, joints of
+0.004–0.010, each block proud by its own 0.002–0.010 (0.007 on the lower
+course so it stays under the base's edge), beds that wobble, a few
+chipped corners, two blocks missing to show the rubble behind, tones
+±15 % with an ochre drift, and the blocks under the bollards and the
+mooring ring stained dark. A green-black wet band over three quarters of
+the lower course (a `tintColors` gradient to the waterline). The deck is a
+square-edged stone base 0.018 thick overhanging the wall by 0.015, its
+top the mortar the paving's joints show, carrying twelve unbevelled
+paving stones in three rows of 4/3/5 (`QUAY_PAVING`): unequal widths,
+joints of 0.004–0.010, every corner at its own height within ±0.003 of
+`QUAY_TOP`, a fifth of them sunk 0.004, and the five that carry a prop
+flat; sand drifts over the landward row, a damp patch darkens the
+middle, and the outer edge is salt-pale. A step down a coping's thickness
+behind z = −0.2 so the back reads as a stair into the beach; a
+three-tread stair on the +x end of the sea wall with uneven rises and a
+chipped top tread, a hair seaward of the proudest block so it touches
+nothing. Props: two tapered octagonal timber posts leaning 4° (the top
+ring pushed over, the foot flat on its stone) and worn dark at the foot,
+an iron mooring ring on the upper course, a rope coil, an aged crate and
+a barrel with alternating stave tones and two iron hoops. `QUAY_TOP`,
+the footprint and the placement are unchanged from the first slice. The sea face stands 0.04 seaward of the pier's
+land end, so the pier's root is embedded in it. Parts meet on shared
+planes with the hidden face dropped (the body open on top, the coping open
+underneath with its exposed overhang drawn as three strips, the bollards
+open at their feet); the tests check that no face overlaps another in its
+plane and none passes through another, and that the top is flat at
+`QUAY_TOP` (0.085, a 0.015 lip above the pier deck). Occlusion is baked
+along the waterline and under the coping, the stone carries a 5 % colour
+jitter. `quayPlacement.ts` puts one at every pier origin, turned with the
+pier: the beach at a pier root is anything from the waterline to 0.15
+high and higher to either side, so the deck is lifted until it stands
+0.04 above the highest sand along its sea face, between the lip and
+0.1 above the pier deck (past that the back is left buried). The body's
+footprint is probed as `placeOnGround` does and the whole quay is lowered
+onto the lowest point should the ground fall away, so it never floats
+(on generated maps it never has to). Width and depth vary ±10–15 % per
+port from a hash of the cell and the whole terrain seed, as instance
+scale. `Quays.tsx` draws one `InstancedMesh` per world copy, on the seabed
+prepass layer too. `quayTopAt(quay, point)` is the seam for the
+settlement: the deck or step height under a world point over a placed
+quay, or undefined off it; `quayTopY(cell, field, seed, point)` is the
+same for a cell, placing the quay first.
+
+**Standing on the ground (#59).** A building stands ON the ground, never
+cut into it. Two things make that true. First, what it stands on is the
+ground as drawn: the land is a lattice mesh (`landMesh.ts`, 0.15 steps)
+whose vertices sample the field, so between lattice points the drawn
+surface is the triangle's plane, not the smooth field. Measured at the
+buildings' footprints over 12 generated maps (328 buildings, 5,576
+probes) the two differ by 0.006 on average, 0.013 at the 90th percentile
+and up to 0.039 (the drawn surface lies under the field two times in
+three, the lattice cutting the relief's bumps). A rule evaluated on the
+field would therefore still let the drawn sand rise through a wall by a
+few hundredths, so `useDecorationLayout` hands the settlement and the
+quays `landSurface(field)`: the lattice surface as a `GroundField`, the
+same triangulation `buildLandMesh` emits (pinned against its triangles),
+with each lattice vertex sampled once. Second, the standing rule in
+`standBuilding`: the footprint is probed at its centre, 24 rim points,
+two inner rings, and at every crease of the drawn surface under it (`creasesWithin`: the
+lattice vertices inside the footprint and the lattice edges' crossings of
+its rim, where a piecewise-flat surface takes its extremes; a ring of
+probes alone missed kinks by up to 5 mm). The ground contact is set
+`BUILDING_SINK` (0.002) under the HIGHEST probe, so the high side meets
+the wall and nothing cuts in, and the spot is only taken if the spread of
+the probes is at most `buildingMaxSpread(footing)` = footing − sink −
+`BUILDING_FOOTING_MARGIN` (0.01), so the footing (`BUILDING_FOOTING` × the
+building's scale) reaches under the lowest point with the margin to spare
+and nothing floats. On a
+slope the footing shows on the downhill side, so the aged kinds' footing
+is a stone plinth: the stone colour (not the wall's render) with a course
+0.004 proud of the wall line just below ground contact (`PLINTH_COURSE`),
+10 triangles per kind, so the exposed part reads as a raised platform, as
+colonial houses on slopes were built. The footing is 0.16 deep: at 0.12
+the allowed spread (about 0.1) refused most beach-ramp spots and the
+settlements fell from 2.65 / 2.65 / 2.76 buildings per port
+(small / medium / large, 8 seeds each) to 1.85 / 1.78 / 1.88 even with the
+finer search, warehouses all but vanished and one tower fell back to its
+hex centre; at 0.16 they stand at 2.45 / 2.54 / 2.65 with every tower on
+its arc. (Before this rule the contact sat half a footing above the lowest
+probe and the high side was buried up to 0.1, which cut the back walls of
+houses into rising sand; 320 of those 328 buildings had ground above their
+contact, by up to 0.12.)
+
+**Settlement on the quay (#59).** `settlementGround(cell, field, seed)`
+in `portSettlement.ts` is the ground the buildings probe: it places the
+port's quay once and answers each probe with the quay's flat top (the
+deck, or the rear step 0.03 lower) wherever the point is on the quay and
+the terrain elsewhere, so `placeOnGround` and the footprint probes see a
+building on the quay standing on its deck, not on the sand under it; where
+the sand drifts over the quay's back the sand is the visible surface and
+wins. Two rules go with it, in `standBuilding`. A footprint is wholly on
+the quay or wholly off it: one straddling the edge would step a wall down
+the quay's side (the 0.04–0.1 step is inside the 0.16 spread the sand rule
+allows, so the spread rule alone would take it). And the reserve round
+the pier's land end is one pier width (`PIER_ROOT_RESERVE`, 0.16) for a
+footprint on the sand but only the pier's mouth, half its width
+(`PIER_MOUTH_RESERVE`, 0.08), for one on the quay, so the deck is
+buildable but where the pier meets the quay stays walkable. With the
+present kit nothing fits: the smallest footprint circle, the tower's
+(0.285–0.3 across), is about as wide as the deck is deep (0.29–0.35) and
+cannot keep the mouth clear, so on generated maps no building stands on
+the quay and none moved when the rule landed; the seam is in place for
+smaller quay pieces (a crane, a customs shed, stacked cargo).
+
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
