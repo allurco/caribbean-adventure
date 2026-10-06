@@ -71,8 +71,24 @@ const ROOF_OVERHANG = 0.015;
 const ROOF_THICKNESS = 0.012;
 const FOOTING_SHADE = 0.8;
 const DOOR = { halfWidth: 0.02, height: 0.06, proud: 0.006 };
-const WINDOW = { halfWidth: 0.012, bottom: 0.1, top: 0.14, proud: 0.004 };
+/** A window's top sits at `top`, or lower so that it stays `WINDOW_EAVE_MARGIN` under the wall's eave. */
+const WINDOW = { halfWidth: 0.012, height: 0.04, top: 0.14, proud: 0.004 };
+export const WINDOW_EAVE_MARGIN = 0.02;
 const SLIT = { halfWidth: 0.006, bottom: 0.2, top: 0.26, proud: 0.004 };
+
+/** The window band on a wall whose eave is at `eave`: as high as the standard window, but never into the roof. */
+export function windowBand(eave: number): { bottom: number; top: number } {
+  const top = Math.min(WINDOW.top, eave - WINDOW_EAVE_MARGIN);
+  return { bottom: top - WINDOW.height, top };
+}
+
+/** Top of each kind's walls at scale 1: the eave, or the tower body's top. */
+export const BUILDING_WALL_TOP: Readonly<Record<BuildingKind, number>> = {
+  warehouse: GABLED.warehouse.eave,
+  tavern: GABLED.tavern.eave,
+  house: GABLED.house.eave,
+  watchtower: TOWER.bodyTop,
+};
 
 /** Top of each kind at scale 1 (the ridge or the tower's apex). */
 export const BUILDING_HEIGHT: Readonly<Record<BuildingKind, number>> = {
@@ -100,9 +116,21 @@ const squareRing = (h: number, y: number): Vec3[] => [
   [h, y, -h],
 ];
 
-/** A thin box standing proud of a wall on the front (+z) face. */
+/**
+ * A thin slab standing `proud` of the front (+z) wall plane, its back open:
+ * it starts on the wall rather than inside it (a back face there would
+ * z-fight the wall; a box sunk into the wall would cut through it). Its
+ * ring reads counter-clockwise seen from the front, so the sides and the
+ * face wind outwards.
+ */
 function frontFixture(b: FacetBuilder, x: number, bottom: number, top: number, halfWidth: number, wallZ: number, proud: number, color: Rgb) {
-  b.box([x - halfWidth, bottom, wallZ - proud], [x + halfWidth, top, wallZ + proud], color, { bottom: false });
+  const ring = (z: number): Vec3[] => [
+    [x - halfWidth, bottom, z],
+    [x + halfWidth, bottom, z],
+    [x + halfWidth, top, z],
+    [x - halfWidth, top, z],
+  ];
+  b.prism(ring(wallZ), ring(wallZ + proud), color, { bottom: false });
 }
 
 /**
@@ -159,9 +187,10 @@ function addGabled(b: FacetBuilder, s: GabledSpec, colors: BuildingColors) {
 
   // Door on the front, windows either side of it.
   frontFixture(b, 0, 0, DOOR.height, DOOR.halfWidth, hd, DOOR.proud, colors.timber);
+  const window = windowBand(s.eave);
   for (let i = 0; i < s.windows; i++) {
     const x = (i % 2 === 0 ? -1 : 1) * hw * 0.55;
-    frontFixture(b, x, WINDOW.bottom, WINDOW.top, WINDOW.halfWidth, hd, WINDOW.proud, colors.timber);
+    frontFixture(b, x, window.bottom, window.top, WINDOW.halfWidth, hd, WINDOW.proud, colors.timber);
   }
 }
 

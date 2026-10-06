@@ -7,6 +7,9 @@ import {
   BUILDING_KINDS,
   BUILDING_MAX_HEIGHT,
   BUILDING_TRIANGLE_BUDGET,
+  BUILDING_WALL_TOP,
+  WINDOW_EAVE_MARGIN,
+  windowBand,
   type BuildingColors,
   type BuildingGeometryData,
   type BuildingKind,
@@ -168,6 +171,54 @@ describe("buildBuildingGeometry", () => {
     expect(walls("tavern", colors.wall)).toBeGreaterThan(walls("tavern", colors.stone));
     expect(walls("house", colors.wall)).toBeGreaterThan(walls("house", colors.stone));
     expect(walls("watchtower", colors.stone)).toBeGreaterThan(walls("watchtower", colors.wall));
+  });
+
+  it("keeps every window under the eave line, so none cuts up through the roof", () => {
+    expect(windowBand(0.17)).toEqual({ bottom: 0.1, top: 0.14 });
+    expect(windowBand(0.1).top).toBeCloseTo(0.1 - WINDOW_EAVE_MARGIN, 9);
+    expect(windowBand(0.1).top - windowBand(0.1).bottom).toBeCloseTo(0.04, 9);
+    for (const kind of BUILDING_KINDS) {
+      const g = built[kind];
+      let windowTop = -Infinity;
+      let windowBottom = Infinity;
+      for (let i = 0; i < g.vertexCount; i++) {
+        if (!sameColor(color(g, i), colors.timber)) continue;
+        const [, y] = vertex(g, i);
+        // Anything timber above the door is a window (or the tower's slit).
+        if (y > 0.07) {
+          windowTop = Math.max(windowTop, y);
+          windowBottom = Math.min(windowBottom, y);
+        }
+      }
+      if (kind === "warehouse") expect(windowTop).toBe(-Infinity);
+      else {
+        expect(windowTop).toBeLessThanOrEqual(BUILDING_WALL_TOP[kind] - WINDOW_EAVE_MARGIN + 1e-9);
+        expect(windowBottom).toBeGreaterThan(0.07);
+      }
+    }
+  });
+
+  it("stands the door and windows on the wall plane with an open back, not inside the wall", () => {
+    for (const kind of BUILDING_KINDS) {
+      const g = built[kind];
+      let minZ = Infinity;
+      let count = 0;
+      for (let t = 0; t < g.vertexCount / 3; t++) {
+        if (!sameColor(color(g, t * 3), colors.timber)) continue;
+        count++;
+        // No face looks back into the wall.
+        expect(g.normals[t * 9 + 2]).toBeGreaterThan(-1e-9);
+        for (let k = 0; k < 3; k++) minZ = Math.min(minZ, vertex(g, t * 3 + k)[2]);
+      }
+      // Five faces per fixture (four sides and the front), as before.
+      expect(count % 10).toBe(0);
+      if (kind !== "watchtower") {
+        // The fixture's back edge lies on the wall's front face.
+        let wallFront = 0;
+        for (let i = 0; i < g.vertexCount; i++) if (sameColor(color(g, i), colors.wall)) wallFront = Math.max(wallFront, vertex(g, i)[2]);
+        expect(minZ).toBeCloseTo(wallFront, 9);
+      }
+    }
   });
 
   it("is deterministic and differs between kinds", () => {
