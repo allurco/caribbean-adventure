@@ -81,11 +81,16 @@ export function shadowDepthBias(texels: number, texel: number, near: number, far
 }
 
 /**
- * Whether the box should be rebuilt for a new extent. Each rebuild changes the
- * texel grid, so the box only follows the view once the extent has moved by
- * more than `hysteresis` (a fraction of the current extent), not on every
- * damping step of the zoom. A wheel tick zooms by 5%, so 5% refits on each
- * deliberate tick and ignores the drift of the easing.
+ * Whether the box should be rebuilt for a new extent `next`.
+ *
+ * The box must never be smaller than the view needs, or receivers at the far
+ * screen corners fall outside it and lose their shadow, so any growth refits
+ * at once. Shrinking only costs texel resolution, and each rebuild re-snaps
+ * the texel grid, so the box only shrinks once the fit has fallen more than
+ * `hysteresis` (a fraction of the current extent) below it: zooming in by
+ * one wheel tick (5%) moves the extent by less than that, because the caster
+ * margin does not scale with the zoom, so the box shrinks every second tick
+ * and the easing between ticks never re-snaps it.
  */
 export function shadowBoxNeedsRefit(
   current: number | undefined,
@@ -93,7 +98,8 @@ export function shadowBoxNeedsRefit(
   hysteresis: number
 ): boolean {
   if (current === undefined) return true;
-  return Math.abs(next - current) > hysteresis * current;
+  if (next > current) return true;
+  return current - next > hysteresis * current;
 }
 
 export interface HeightRange {

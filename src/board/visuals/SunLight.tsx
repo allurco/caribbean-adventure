@@ -38,9 +38,10 @@ function controlsTarget(controls: unknown): Vector3 {
  * Shadow-casting sun that keeps its shadow box centred on the camera target
  * and fitted to the view (#48): the box only has to cover what is on screen,
  * so the same shadow map gets a finer texel the closer the camera is. The
- * box is rebuilt when the fitted extent moves past a hysteresis band, and
- * the target is snapped to whole texels of the live box so shadow edges do
- * not shimmer while panning.
+ * box is rebuilt whenever the fitted extent grows and, to spare the texel
+ * grid, only once it has shrunk past a hysteresis band; the target is
+ * snapped to whole texels of the live box so shadow edges do not shimmer
+ * while panning.
  */
 export function SunLight({ color, intensity, offset, shadow }: SunLightProps) {
   const lightRef = useRef<DirectionalLight>(null);

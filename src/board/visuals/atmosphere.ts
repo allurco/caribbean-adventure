@@ -160,9 +160,11 @@ export const SHADOW_EXTENT_MIN = 4;
  */
 export const SHADOW_CASTER_HEIGHT = ELEVATION_HEIGHTS[3] + RELIEF_AMPLITUDES[3] + 0.7;
 /**
- * Only rebuild the box when the fitted extent has moved by this fraction of
- * the current one. A wheel tick zooms 5%, so each tick refits and the
- * damping between ticks (sub-5% drift) does not re-snap the texel grid.
+ * Growing refits at once (the box must cover the view); the box only shrinks
+ * once the fitted extent has fallen this fraction of the current one below
+ * it. A wheel tick zooms 5% but moves the extent by less (the caster margin
+ * does not zoom), so zooming in shrinks the box about every second tick and
+ * the damping between ticks does not re-snap the texel grid.
  */
 export const SHADOW_FIT_HYSTERESIS = 0.05;
 /**

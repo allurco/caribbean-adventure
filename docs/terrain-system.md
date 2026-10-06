@@ -447,12 +447,16 @@ the map stays at 4096: 2048 would double it. One box covers mid zoom too,
 so there are no cascades.
 
 **Refit and snap.** The box is rebuilt (`shadow.camera.left/right/top/bottom`
-and its projection matrix) only when the fitted extent has moved by more than
-`SHADOW_FIT_HYSTERESIS` (5%) of the current one: a wheel tick zooms 5%, so
-each tick refits and the easing between ticks does not re-snap the texel
-grid. The light's target is snapped to whole texels of the live box (texel =
-2 × extent / 4096), as the fixed box was for #13, so edges don't shimmer
-while panning.
+and its projection matrix) as soon as the fitted extent grows, by however
+little: a box smaller than the view needs drops the shadows of receivers at
+the far screen corners, and that is worse than a re-snapped texel grid. It
+shrinks only once the fitted extent has fallen more than
+`SHADOW_FIT_HYSTERESIS` (5%) of the current one below it. A wheel tick zooms
+5% but moves the extent by less, because the caster margin does not zoom, so
+zooming in shrinks the box about every second tick, and the easing between
+ticks (sub-5% drift) never re-snaps the grid. The light's target is snapped
+to whole texels of the live box (texel = 2 × extent / 4096), as the fixed
+box was for #13, so edges don't shimmer while panning.
 
 **Bias.** three's `shadow.bias` is in the map's [0, 1] depth, spread linearly
 over near…far by the orthographic camera, and `normalBias` is in world units;

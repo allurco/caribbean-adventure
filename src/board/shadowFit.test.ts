@@ -90,14 +90,19 @@ describe("shadowDepthBias", () => {
 });
 
 describe("shadowBoxNeedsRefit", () => {
-  it("ignores changes within the hysteresis band", () => {
-    expect(shadowBoxNeedsRefit(10, 10.4, 0.05)).toBe(false);
+  it("refits as soon as the view needs a larger box, by however little", () => {
+    expect(shadowBoxNeedsRefit(10, 10.01, 0.05)).toBe(true);
+    expect(shadowBoxNeedsRefit(10, 10.4, 0.05)).toBe(true);
+    expect(shadowBoxNeedsRefit(10, 10.6, 0.05)).toBe(true);
+  });
+
+  it("keeps a box that is slightly too large: shrinking within the band does not refit", () => {
     expect(shadowBoxNeedsRefit(10, 9.6, 0.05)).toBe(false);
+    expect(shadowBoxNeedsRefit(10, 9.5, 0.05)).toBe(false);
     expect(shadowBoxNeedsRefit(10, 10, 0.05)).toBe(false);
   });
 
-  it("refits once the extent moves more than the band, either way", () => {
-    expect(shadowBoxNeedsRefit(10, 10.6, 0.05)).toBe(true);
+  it("refits once the box is more than the band too large", () => {
     expect(shadowBoxNeedsRefit(10, 9.4, 0.05)).toBe(true);
   });
 
