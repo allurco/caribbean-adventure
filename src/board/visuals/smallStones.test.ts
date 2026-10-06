@@ -93,6 +93,16 @@ describe("smallStones", () => {
     expect(STONE_SCALE_RANGE[0]).toBeLessThan(STONE_SCALE_RANGE[1]);
   });
 
+  it("stands each stone on the ground at its centre, not the lowest point under it (#53)", () => {
+    // On a 0.5 slope the lowest-probe rule sank a 0.22-wide stone by ~0.1, burying most of it.
+    const slope: GroundField = { sampleHeight: (x) => 0.6 + 0.5 * x };
+    const onSlope = smallStones(cells, slope, seed);
+    expect(onSlope.length).toBeGreaterThan(0);
+    for (const stone of onSlope) {
+      expect(stone.worldY).toBeCloseTo(slope.sampleHeight(stone.worldX, stone.worldZ) - 0.01, 5);
+    }
+  });
+
   it("places nothing on a map with no eligible cells", () => {
     const rocky = cells.map((c) => (c.terrain === "island" ? { ...c, biome: "ROCK" as const } : c));
     expect(smallStones(rocky, flat(0.5), seed)).toEqual([]);
