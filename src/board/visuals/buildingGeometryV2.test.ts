@@ -1,15 +1,26 @@
 import { describe, it, expect } from "vitest";
 import type { FacetGeometryData } from "./facetBuilder";
-import { BUILDING_FOOTING, BUILDING_HALF_DIAGONAL, BUILDING_HEIGHT, BUILDING_MAX_HEIGHT, type BuildingColors } from "./buildingGeometry";
 import {
+  BUILDING_FOOTING,
+  BUILDING_HALF_DIAGONAL,
+  BUILDING_HEIGHT,
+  BUILDING_MAX_HEIGHT,
+  WINDOW_EAVE_MARGIN,
+  type BuildingColors,
+} from "./buildingGeometry";
+import {
+  addHouseV2RoofSlab,
   buildHouseGeometryV2,
+  HOUSE_V2_EAVE_UNDERSIDE,
   HOUSE_V2_HALF_DIAGONAL,
   HOUSE_V2_HEIGHT,
+  HOUSE_V2_RIDGE_BEAM,
   HOUSE_V2_ROOF_OVERHANG,
   HOUSE_V2_ROOF_THICKNESS,
   HOUSE_V2_TRIANGLE_BUDGET,
   HOUSE_V2_TRIANGLES,
 } from "./buildingGeometryV2";
+import { createFacetBuilder } from "./facetBuilder";
 
 const colors: BuildingColors = {
   wall: [0.9, 0.86, 0.78],
@@ -24,7 +35,7 @@ type Vec3 = [number, number, number];
 const vertex = (g: FacetGeometryData, i: number): Vec3 => [g.positions[i * 3], g.positions[i * 3 + 1], g.positions[i * 3 + 2]];
 const normal = (g: FacetGeometryData, i: number): Vec3 => [g.normals[i * 3], g.normals[i * 3 + 1], g.normals[i * 3 + 2]];
 const color = (g: FacetGeometryData, i: number): Vec3 => [g.colors[i * 3], g.colors[i * 3 + 1], g.colors[i * 3 + 2]];
-const luminance = (c: Vec3) => (c[0] + c[1] + c[2]) / 3;
+const luminance = (c: readonly [number, number, number]) => (c[0] + c[1] + c[2]) / 3;
 
 /** Which palette entry a (possibly shaded and jittered) vertex colour came from. */
 function kindOf(c: Vec3): "wall" | "roof" | "timber" {
@@ -152,7 +163,7 @@ describe("buildHouseGeometryV2", () => {
         low += luminance(c);
         lowCount++;
       }
-      // The ring at the top of the ground band, clear of both the ground and the eave shading.
+      // The ring at the top of the ground band, clear of the ground shading (the eave band fades in above 0.04).
       if (kind === "wall" && y > 0.03 && y < 0.04) {
         mid += luminance(c);
         midCount++;
@@ -187,6 +198,52 @@ describe("buildHouseGeometryV2", () => {
     }
     expect(walls.size).toBeGreaterThan(3);
     expect([...roofs]).toEqual([Math.round(luminance(colors.roof) * 1e4)]);
+  });
+
+  it("stops the walls and gables at the roof's underside instead of running up into the slabs", () => {
+    const hw = 0.09;
+    for (let i = 0; i < house.vertexCount; i++) {
+      if (kindOf(color(house, i)) !== "wall") continue;
+      const [x, y] = vertex(house, i);
+      // The long walls end at the eave underside; only the gables rise above it, and only inboard.
+      if (y > HOUSE_V2_EAVE_UNDERSIDE + 1e-9) expect(Math.abs(x)).toBeLessThan(hw);
+      expect(y).toBeLessThanOrEqual(HOUSE_V2_HEIGHT - HOUSE_V2_ROOF_THICKNESS);
+    }
+  });
+
+  it("seats the ridge beam on the slab tops and hides the slab ends inside it; the slabs meet on the midline", () => {
+    const slope = 1;
+    const beam = HOUSE_V2_RIDGE_BEAM;
+    expect(beam.bottom).toBeCloseTo(0.19 - beam.halfWidth * slope, 9);
+    for (const side of [-1, 1] as const) {
+      const b = createFacetBuilder();
+      addHouseV2RoofSlab(b, side, colors.roof);
+      const slab = b.build();
+      for (let i = 0; i < slab.vertexCount; i++) {
+        const [x, y] = vertex(slab, i);
+        // Nothing crosses the midline.
+        expect(x * side).toBeGreaterThanOrEqual(-1e-9);
+        // Whatever rises above the beam's bottom is within the beam's width.
+        if (y > beam.bottom + 1e-9) expect(Math.abs(x)).toBeLessThan(beam.halfWidth);
+        expect(y).toBeLessThan(beam.top);
+      }
+    }
+  });
+
+  it("stands the door and window on the wall plane with open backs, the window under the eave", () => {
+    let minZ = Infinity;
+    let windowTop = -Infinity;
+    for (let t = 0; t < house.vertexCount / 3; t++) {
+      if (kindOf(color(house, t * 3)) !== "timber") continue;
+      expect(normal(house, t * 3)[2]).toBeGreaterThan(-1e-9);
+      for (let k = 0; k < 3; k++) {
+        const [, y, z] = vertex(house, t * 3 + k);
+        minZ = Math.min(minZ, z);
+        if (y > 0.07) windowTop = Math.max(windowTop, y);
+      }
+    }
+    expect(minZ).toBeCloseTo(0.07, 9);
+    expect(windowTop).toBeLessThanOrEqual(HOUSE_V2_EAVE_UNDERSIDE - WINDOW_EAVE_MARGIN + 1e-9);
   });
 
   it("is deterministic", () => {

@@ -21,7 +21,7 @@ function faceNormal(g: FacetGeometryData, t: number): Vec3 {
 
 describe("buildRockGeometryV2", () => {
   it("records each variant's triangle count under the budget", () => {
-    expect(ROCK_V2_TRIANGLE_BUDGET).toBeLessThanOrEqual(100);
+    expect(ROCK_V2_TRIANGLE_BUDGET).toBeLessThanOrEqual(160);
     variants.forEach((g, i) => {
       expect(g.vertexCount % 3).toBe(0);
       expect(g.vertexCount / 3).toBe(ROCK_V2_TRIANGLES[i]);
@@ -37,13 +37,17 @@ describe("buildRockGeometryV2", () => {
     }
   });
 
-  it("winds every face outwards and keeps the vertex normals on the face's side", () => {
+  it("winds every face outwards, none folded steeper than ~70° off its radial, and keeps the vertex normals on the face's side", () => {
     for (const g of variants) {
       for (let t = 0; t < g.vertexCount / 3; t++) {
         const n = faceNormal(g, t);
         const [a, b, c] = [vertex(g, t * 3), vertex(g, t * 3 + 1), vertex(g, t * 3 + 2)];
         const centroid = [(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3];
-        expect(centroid[0] * n[0] + centroid[1] * n[1] + centroid[2] * n[2]).toBeGreaterThan(0);
+        const radial = Math.hypot(...centroid);
+        const outwardness = (centroid[0] * n[0] + centroid[1] * n[1] + centroid[2] * n[2]) / radial;
+        // Above ground a face tilted far off the direction out from the centre is a fold (the tall
+        // dark facet of the first cut); the squashed, buried underside is flat by design, so only outward there.
+        expect(outwardness).toBeGreaterThan(centroid[1] > 0 ? 0.35 : 0);
         for (let k = 0; k < 3; k++) {
           const m = normal(g, t * 3 + k);
           expect(m[0] * n[0] + m[1] * n[1] + m[2] * n[2]).toBeGreaterThan(0.3);
@@ -52,29 +56,18 @@ describe("buildRockGeometryV2", () => {
     }
   });
 
-  it("shades the bulk smoothly: most band vertices no longer carry their face normal, the crown still does", () => {
+  it("shades smoothly: most vertices no longer carry their face normal, a few sharp edges still do", () => {
     for (const g of variants) {
       let smoothed = 0;
-      let crownFlat = 0;
-      let crown = 0;
-      let bulk = 0;
       for (let t = 0; t < g.vertexCount / 3; t++) {
         const n = faceNormal(g, t);
-        const touchesTop = [0, 1, 2].some((k) => vertex(g, t * 3 + k)[1] > 0.9 * topY(g));
         for (let k = 0; k < 3; k++) {
           const m = normal(g, t * 3 + k);
-          const flat = m[0] * n[0] + m[1] * n[1] + m[2] * n[2] > 1 - 1e-5;
-          if (touchesTop) {
-            crown++;
-            if (flat) crownFlat++;
-          } else {
-            bulk++;
-            if (!flat) smoothed++;
-          }
+          if (m[0] * n[0] + m[1] * n[1] + m[2] * n[2] < 1 - 1e-5) smoothed++;
         }
       }
-      expect(smoothed / bulk).toBeGreaterThan(0.5);
-      expect(crownFlat / crown).toBeGreaterThan(0.5);
+      expect(smoothed / g.vertexCount).toBeGreaterThan(0.8);
+      expect(smoothed / g.vertexCount).toBeLessThan(1);
     }
   });
 
