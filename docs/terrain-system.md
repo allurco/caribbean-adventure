@@ -387,6 +387,53 @@ frustum-culled, as the palms are: two more instanced draws per world copy.
 Instance counts (10-seed average, bushes + tufts): small 42 + 52 (94),
 medium 103 + 117 (220), large 188 + 241 (428).
 
+**Props: shore boulders (#49).** `shoreBoulders.ts` derives rocks along the
+waterline and just below it, so the wash and the breaker line (above) and
+the shallows have something to break against; nothing is stored in G and
+`src/game/` is untouched. For every coastal edge (a land cell's edge onto a
+water neighbour, the wrap respected so a seam edge onto land across it is
+not a coast) it samples `BOULDER_SAMPLES_PER_EDGE` (3) points along the edge,
+each offset `BOULDER_OFFSET_RANGE` (−0.45 inland … +0.2 offshore) from it,
+tries `BOULDER_KEEP_SHARE` (0.22) of them by a hash of the cell, edge and the
+whole terrain seed (`variationStream.ts`, the seed through the salt), and
+keeps those whose signed coast distance in the field is within `SHORE_BAND`
+(−0.3 … +0.4), so they follow the noisy coastline, not the hex edge; the
+edge a pier faces (its rotation points at the docking hex) is left clear.
+That is `BOULDERS_PER_COAST_EDGE` ≈ 0.6: 10-seed averages of 122 on the
+small map, 301 on the medium and 583 on the large, about 17% of them
+submerged. Each boulder takes the shared rock look (`rockVariation`, the
+small size class at scale 0.55–1.2, its cell's biome colour) darkened by up
+to `WET_DARKENING` (35%) within `WET_BAND` (0.2) of the water.
+
+*Sea lanes.* A ship sits at a water hex's centre, ~0.87 units from the land
+hex's edge, with a hull ~0.4 units from its centre, so a boulder's drawn rim
+(`boulderReach`: the variant's widest ring from `ROCK_VARIANT_REACH` times
+its scale, plus the lean of its top under the tilt) may pass the edge by at
+most `MAX_OFFSHORE_REACH` (0.3) and must keep `SHIP_HULL_CLEARANCE` (0.55)
+from every water hex centre within two hexes, which covers the corners where
+two water hexes meet. A boulder that would break either is shrunk to fit
+(dropped under `MIN_BOULDER_REACH`, which never happens within the offset
+range).
+
+*Layers.* Emergent boulders stand on the ground at their centre and draw in
+the main pass and the seabed prepass (`prepass="also"` on `RockVariantMesh`),
+since their feet reach under the waterline. The beach face is ~1:21
+(`seabedProfile.ts`), so within the offshore cap the water is under a metre
+deep and any boulder readable at ship zoom (≥ 4 m tall) would stand clear of
+it; `SUBMERGED_SHARE` (half) of the boulders whose centre is in the water
+are therefore sunk into the seabed until their crown is
+`SUBMERGED_CROWN_DEPTH_METRES` (0.4–1.2 m) under the surface, like
+half-buried reef rocks, and draw in the prepass only (`prepass="only"`,
+`SEABED_LAYER`), where the water tints them by depth, the wash foams over
+their crowns and nothing shows through the surface. A boulder whose crown
+breaks the surface is emergent whatever its centre. Both sets share one
+material per set of wave textures (`ShoreBoulderMeshes.tsx`): the rocks' white
+with `injectSeabedCaustics`, as the land material has it, so the sun on the
+submerged boulders and on the emergent ones' feet is focused by the waves
+(the factor is 1 above the waterline). The layout is built once per map in
+`useDecorationLayout` (`DecorationLayout.shoreBoulders`) and drawn per world
+copy: up to three emergent and three submerged instanced draws per copy.
+
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
