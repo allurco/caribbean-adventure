@@ -476,7 +476,9 @@ bright as dry sand). `PALETTE_SURF` is gone.
 rises above the waterline, so on its own the wash was cut off at the beach.
 The land material (`useLandTerrain.ts`) therefore carries a second patch
 after the caustics one (`shoreFoamLand.ts`): the same wash, by the baked
-coast distance (`beachWashBand`, up to ~6 m of sand at the flood), on the
+coast distance (`beachWashBand`, up to ~6 m of sand at the flood, and none
+where the field still reads water: there it cannot say how far the real
+waterline is, and the field and the mesh disagree in places), on the
 shared surf-clock uniform, with the same lace, only above sea level, put in
 as the fragment's diffuse albedo so three's own lighting shades it like the
 sand. No extra pass and no change to the water's depth test. The field

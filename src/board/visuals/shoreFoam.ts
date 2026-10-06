@@ -60,6 +60,12 @@ const WASH_SOLID_SHARE = 0.35;
 export const BEACH_WASH_EBB = 0.03;
 /** ... and at the flood: ~6 m of sand. */
 export const BEACH_WASH_FLOOD = 0.09;
+/**
+ * Coast distance (world units) over which the beach wash fades in from the
+ * water side, about a tenth of a field texel (~0.65 m), so the gate below
+ * leaves no hard edge where the field's zero contour crosses the land mesh.
+ */
+export const BEACH_WASH_WATERSIDE_FADE = 0.01;
 
 /** Reef crest depths (metres) between which the persistent reef band fades out. */
 export const REEF_FOAM_DEPTH_FADE: readonly [number, number] = [3, 4.5];
@@ -91,10 +97,20 @@ export function washBand(depthMetres: number, pulse: number): number {
   return 1 - smoothstep(reach * WASH_SOLID_SHARE, reach, depthMetres);
 }
 
-/** The wash on the sand at signed `coastDistance` (+ up the beach) for the surf `pulse`; 1 on the water side. */
+/**
+ * The wash on the sand at signed `coastDistance` (+ up the beach) for the
+ * surf `pulse`: 1 at the waterline, gone past the reach up the beach, and
+ * gone on the water side too. The land only draws it above the waterline,
+ * but the baked field and the land mesh disagree in places, and where the
+ * mesh stands above the water while the field still reads water (coast ≤ 0)
+ * the field says nothing about how far the real waterline is, so no wash is
+ * drawn there rather than a full one; the water's own wash takes over below
+ * the waterline anyway.
+ */
 export function beachWashBand(coastDistance: number, pulse: number): number {
   const reach = BEACH_WASH_EBB + (BEACH_WASH_FLOOD - BEACH_WASH_EBB) * pulse;
-  return 1 - smoothstep(reach * WASH_SOLID_SHARE, reach, coastDistance);
+  const upTheBeach = 1 - smoothstep(reach * WASH_SOLID_SHARE, reach, coastDistance);
+  return upTheBeach * smoothstep(-BEACH_WASH_WATERSIDE_FADE, 0, coastDistance);
 }
 
 /** The persistent reef band over a reef crest `depthMetres` down. */
@@ -148,6 +164,7 @@ export const SHORE_FOAM_GLSL = `
   const float WASH_SOLID_SHARE = ${WASH_SOLID_SHARE.toFixed(4)};
   const float BEACH_WASH_EBB = ${BEACH_WASH_EBB.toFixed(4)};
   const float BEACH_WASH_FLOOD = ${BEACH_WASH_FLOOD.toFixed(4)};
+  const float BEACH_WASH_WATERSIDE_FADE = ${BEACH_WASH_WATERSIDE_FADE.toFixed(4)};
   const vec2 REEF_FOAM_DEPTH_FADE = vec2(${REEF_FOAM_DEPTH_FADE.map((v) => v.toFixed(4)).join(", ")});
 
   float breakerBand(float depthMetres, float breakingDepthMetres) {
@@ -159,9 +176,12 @@ export const SHORE_FOAM_GLSL = `
     float reach = mix(WASH_DEPTH_EBB, WASH_DEPTH_FLOOD, pulse);
     return 1.0 - smoothstep(reach * WASH_SOLID_SHARE, reach, depthMetres);
   }
+  // Gone on the water side (coast <= 0): where the field reads water under
+  // land mesh it cannot say how far the real waterline is.
   float beachWashBand(float coastDistance, float pulse) {
     float reach = mix(BEACH_WASH_EBB, BEACH_WASH_FLOOD, pulse);
-    return 1.0 - smoothstep(reach * WASH_SOLID_SHARE, reach, coastDistance);
+    float upTheBeach = 1.0 - smoothstep(reach * WASH_SOLID_SHARE, reach, coastDistance);
+    return upTheBeach * smoothstep(-BEACH_WASH_WATERSIDE_FADE, 0.0, coastDistance);
   }
   float reefFoamBand(float depthMetres) {
     return 1.0 - smoothstep(REEF_FOAM_DEPTH_FADE.x, REEF_FOAM_DEPTH_FADE.y, depthMetres);

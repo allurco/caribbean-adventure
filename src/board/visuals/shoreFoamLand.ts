@@ -4,8 +4,10 @@
  * own the wash was cut off at the island's edge. The land material therefore
  * draws the same wash up the beach: by the baked coast distance
  * (shoreFoam.ts `beachWashBand`), on the same surf clock, with the same
- * lace, only above the waterline (below it the water's wash takes over),
- * fading with distance like the waves.
+ * lace, only above the waterline (below it the water's wash takes over)
+ * and only where the field itself reads land (the band is gated on the
+ * water side: the field and the mesh disagree in places), fading with
+ * distance like the waves.
  *
  * Like the caustics (seabedCaustics.ts) this patches three's standard
  * material from `onBeforeCompile`, and it is applied after the caustic patch

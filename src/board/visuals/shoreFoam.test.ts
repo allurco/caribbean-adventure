@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BEACH_WASH_EBB,
   BEACH_WASH_FLOOD,
+  BEACH_WASH_WATERSIDE_FADE,
   beachWashBand,
   BREAKER_INDEX,
   BREAKING_DEPTH_METRES,
@@ -87,11 +88,43 @@ describe("washBand", () => {
 });
 
 describe("beachWashBand (the wash on the sand, drawn by the land, #38 step 7)", () => {
-  it("is full at the waterline and on the water side, and gone past the flood reach up the beach", () => {
+  it("is full at the waterline and gone past the flood reach up the beach", () => {
     expect(beachWashBand(0, 0)).toBe(1);
-    expect(beachWashBand(-0.5, 0)).toBe(1);
+    expect(beachWashBand(0, 1)).toBe(1);
     expect(beachWashBand(BEACH_WASH_FLOOD, 1)).toBe(0);
     expect(beachWashBand(BEACH_WASH_EBB, 0)).toBe(0);
+  });
+
+  it("draws nothing on the water side, where the field may be reading water under land mesh", () => {
+    for (const pulse of [0, 0.5, 1]) {
+      expect(beachWashBand(-0.5, pulse)).toBe(0);
+      expect(beachWashBand(-BEACH_WASH_WATERSIDE_FADE, pulse)).toBe(0);
+      expect(beachWashBand(-5, pulse)).toBe(0);
+    }
+  });
+
+  it("fades in over a fraction of a field texel just inside the waterline, so the gate has no hard edge", () => {
+    expect(BEACH_WASH_WATERSIDE_FADE).toBeGreaterThan(0);
+    expect(BEACH_WASH_WATERSIDE_FADE).toBeLessThan(1 / 12); // one texel at 12 texels per unit
+    const half = beachWashBand(-BEACH_WASH_WATERSIDE_FADE / 2, 0);
+    expect(half).toBeGreaterThan(0);
+    expect(half).toBeLessThan(1);
+    let previous = 0;
+    for (let c = -BEACH_WASH_WATERSIDE_FADE; c <= 0; c += BEACH_WASH_WATERSIDE_FADE / 20) {
+      const band = beachWashBand(c, 0);
+      expect(band).toBeGreaterThanOrEqual(previous - 1e-12);
+      previous = band;
+    }
+  });
+
+  it("leaves the band on the sand itself as it was: solid near the waterline, then fading to the reach", () => {
+    const reach = BEACH_WASH_EBB;
+    expect(beachWashBand(reach * 0.3, 0)).toBe(1);
+    expect(beachWashBand(reach * 0.35, 0)).toBe(1);
+    const mid = beachWashBand(reach * 0.7, 0);
+    expect(mid).toBeGreaterThan(0);
+    expect(mid).toBeLessThan(1);
+    expect(beachWashBand(reach, 0)).toBe(0);
   });
 
   it("runs further up the sand at the flood than at the ebb", () => {
@@ -145,5 +178,10 @@ describe("SHORE_FOAM_GLSL", () => {
     expect(SHORE_FOAM_GLSL).toContain("float washBand(float depthMetres, float pulse)");
     expect(SHORE_FOAM_GLSL).toContain("float reefFoamBand(float depthMetres)");
     expect(SHORE_FOAM_GLSL).toContain("float beachWashBand(float coastDistance, float pulse)");
+  });
+
+  it("gates the beach wash on the water side the same way as the TypeScript", () => {
+    expect(SHORE_FOAM_GLSL).toContain(`const float BEACH_WASH_WATERSIDE_FADE = ${BEACH_WASH_WATERSIDE_FADE.toFixed(4)};`);
+    expect(SHORE_FOAM_GLSL).toContain("return upTheBeach * smoothstep(-BEACH_WASH_WATERSIDE_FADE, 0.0, coastDistance);");
   });
 });
