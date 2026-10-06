@@ -341,8 +341,8 @@ function Scene({
       {/* Islands: one continuous mesh from the terrain height field */}
       <LandTerrain terrain={landTerrain} />
 
-      {/* Terrain decorations: trees, rocks, forts, piers */}
-      <TerrainDecorations layout={decorations} />
+      {/* Terrain decorations: trees, rocks, shore boulders, piers */}
+      <TerrainDecorations layout={decorations} waveSlopes={waveSlopes} />
 
       <HexGrid grid={grid} copy={copy} />
 

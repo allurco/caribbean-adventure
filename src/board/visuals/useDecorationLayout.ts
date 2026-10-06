@@ -13,6 +13,7 @@ import { smallStones } from "./smallStones";
 import { placeShrubs } from "./shrubPlacement";
 import { useShrubs, type ShrubsResources } from "./useShrubs";
 import { useSwayClock } from "./useSwayClock";
+import { shoreBoulders, type ShoreBoulder } from "./shoreBoulders";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -38,6 +39,8 @@ export interface DecorationLayout {
   rocks: DecorationData[];
   /** Derived small stones, one per sand or grass cell without a rock (#49). */
   stones: DecorationData[];
+  /** Derived boulders along the waterline, emergent and submerged (#49). */
+  shoreBoulders: ShoreBoulder[];
   piers: DecorationData[];
   palms: PalmTreesResources;
   /** Derived bushes and dry tufts on sand and grass cells (#49). */
@@ -105,10 +108,12 @@ const decorationsOf = perMapCache((cells, wrap) => {
       }
     }
 
-    const stones = smallStones(cells, field, terrainSeedFromCells(cells));
-    const shrubs = placeShrubs(cells, field, terrainSeedFromCells(cells), { trees, rocks, stones, piers });
+    const seed = terrainSeedFromCells(cells);
+    const stones = smallStones(cells, field, seed);
+    const shrubs = placeShrubs(cells, field, seed, { trees, rocks, stones, piers });
+    const boulders = shoreBoulders(cells, field, wrap, seed);
 
-    return { trees, rocks, stones, piers, shrubs };
+    return { trees, rocks, stones, shoreBoulders: boulders, piers, shrubs };
 });
 
 /** Places every decoration on the height field once per map (and wrap). */
