@@ -15,9 +15,9 @@ const rgb = (name: PaletteName): Rgb => {
 function quayColors(): QuayColors {
   const masonry = rgb("masonry");
   return {
-    stone: [masonry[0] * 0.95, masonry[1] * 0.95, masonry[2] * 0.95],
-    coping: [masonry[0] * 1.15, masonry[1] * 1.15, masonry[2] * 1.15],
-    bollard: rgb("timber"),
+    stone: [masonry[0] * 0.9, masonry[1] * 0.9, masonry[2] * 0.9],
+    coping: [masonry[0] * 1.3, masonry[1] * 1.3, masonry[2] * 1.3],
+    timber: rgb("timber"),
   };
 }
 
