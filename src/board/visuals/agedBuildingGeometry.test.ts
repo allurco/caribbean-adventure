@@ -17,7 +17,7 @@ import {
 } from "./agedBuildingGeometry";
 import { wornRingPoints, type WallFace } from "./agedKit";
 import { FLAG_HEIGHT, FLAG_WIDTH } from "./nationFlagGeometry";
-import { tileStripCount } from "./agedRoof";
+import { RIDGE_CAP_RISE, roofEaveUnderside, tileStripCount } from "./agedRoof";
 
 const colors: AgedColors = {
   wall: [0.8, 0.76, 0.68],
@@ -108,6 +108,21 @@ describe("buildAgedBuildingGeometry", () => {
     }
     // The tower rises to within a hair of the cap.
     expect(AGED_BUILDING_HEIGHT.watchtower).toBeGreaterThan(BUILDING_MAX_HEIGHT - 0.02);
+  });
+
+  it("raises the house and warehouse eaves (#59) so neither reads as a sunk hut, keeping each roof's pitch and the tavern as it was", () => {
+    // Eave and ridge at scale 1: house 0.14 / 0.23, warehouse 0.16 / 0.27, tavern 0.17 / 0.27.
+    const spec = { house: { eave: 0.14, ridge: 0.23, halfU: 0.09, halfV: 0.07 }, warehouse: { eave: 0.16, ridge: 0.27, halfU: 0.13, halfV: 0.09 }, tavern: { eave: 0.17, ridge: 0.27, halfU: 0.09, halfV: 0.11 } };
+    for (const kind of ["house", "warehouse", "tavern"] as const) {
+      const s = { ...spec[kind], ridgeAlong: "z" as const };
+      expect(AGED_BUILDING_HEIGHT[kind]).toBeCloseTo(s.ridge + RIDGE_CAP_RISE, 9);
+      expect(AGED_BUILDING_WALL_TOP[kind]).toBeCloseTo(roofEaveUnderside(s), 9);
+    }
+    // The pitches the roofs had before the eaves rose: 1:1 on the house, 11:13 on the warehouse.
+    expect((spec.house.ridge - spec.house.eave) / spec.house.halfU).toBeCloseTo(1, 9);
+    expect((spec.warehouse.ridge - spec.warehouse.eave) / spec.warehouse.halfU).toBeCloseTo(0.11 / 0.13, 9);
+    // The house's eave now clears its door by more than the door's own height.
+    expect(AGED_BUILDING_WALL_TOP.house).toBeGreaterThan(0.062 * 1.8);
   });
 
   it("winds its faces outwards (positive signed volume) and faces its footing down", () => {
@@ -234,7 +249,7 @@ describe("buildAgedBuildingGeometry", () => {
         for (let k = 0; k < 3; k++) capTop = Math.max(capTop, vertex(g, t * 3 + k)[1]);
       }
       // Two triangles per strip top per slope, over the slab tops themselves.
-      const strips = tileStripCount({ halfU: 0.09, halfV: kind === "tavern" ? 0.11 : kind === "house" ? 0.07 : 0.09, eave: 0.1, ridge: 0.19, ridgeAlong: "z" });
+      const strips = tileStripCount({ halfU: 0.09, halfV: kind === "tavern" ? 0.11 : kind === "house" ? 0.07 : 0.09, eave: 0.14, ridge: 0.23, ridgeAlong: "z" });
       expect(raised).toBeGreaterThanOrEqual(strips * 2 * 2);
       expect(capTop).toBeCloseTo(AGED_BUILDING_HEIGHT[kind], 6);
     }

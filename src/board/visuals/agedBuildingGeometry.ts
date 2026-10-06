@@ -67,11 +67,16 @@ interface AgedGabledSpec {
   sign?: boolean;
 }
 
-/** The faceted kinds' footprints and heights (`GABLED` in buildingGeometry.ts). */
+/**
+ * The faceted kinds' footprints (`GABLED` in buildingGeometry.ts). The
+ * house's and warehouse's eaves stand 0.04 and 0.03 higher than the faceted
+ * kinds' at the same pitch: with the eave at 0.10 the house read as a hut
+ * sunk to its sills (#59).
+ */
 const GABLED: Readonly<Record<Exclude<BuildingKind, "watchtower">, AgedGabledSpec>> = {
-  warehouse: { w: 0.26, d: 0.18, eave: 0.13, ridge: 0.24, ridgeAlong: "z", windows: 0, hatch: true },
+  warehouse: { w: 0.26, d: 0.18, eave: 0.16, ridge: 0.27, ridgeAlong: "z", windows: 0, hatch: true },
   tavern: { w: 0.22, d: 0.18, eave: 0.17, ridge: 0.27, ridgeAlong: "x", windows: 2, sign: true },
-  house: { w: 0.18, d: 0.14, eave: 0.1, ridge: 0.19, ridgeAlong: "z", windows: 1 },
+  house: { w: 0.18, d: 0.14, eave: 0.14, ridge: 0.23, ridgeAlong: "z", windows: 1 },
 };
 
 /** The landmark tower at scale 1: a tapering body, a string course, a parapet with merlons, the pole. */

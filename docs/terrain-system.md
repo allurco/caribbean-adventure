@@ -468,7 +468,9 @@ ground contact and the door on +z: a timber warehouse (gable to the
 water, ridge 0.24), a whitewashed two-storey tavern (0.27), a gabled
 house under dark shingles (0.19) and a masonry watchtower with a parapet
 and terracotta pyramid roof (0.46), all under a 0.5 cap so the label at
-0.6 stays clear; walls carry on 0.12 below ground as a footing.
+0.6 stays clear; walls carry on 0.12 below ground as a footing. (Those
+are the faceted kit's heights; the aged kit below raises the house and
+the warehouse.)
 `portSettlement.ts` places a watchtower on the fort's side and up to three
 other buildings (kind order, scale ±8%, tint ±8% and yaw jitter ±8° from
 a hash of the cell and the whole terrain seed) on the landward half of the
@@ -522,8 +524,15 @@ the HUD's bands, 0.1 × 0.055, converted from sRGB without three). Every
 port gets its tower, fort decoration or not, at the end of the crescent
 on the fort's side (the slot nearest the water); if the landward arc has
 no room it takes any direction, and failing that the hex centre, so it is
-never dropped. Triangles: warehouse 448, tavern 600, house 448,
-watchtower 560 (+36 flag), budget 1000. Honest judgement from the
+never dropped. The gabled kinds keep the faceted footprints but not all
+the heights: the house's eave is at 0.14 under a 0.23 ridge (it was
+0.10 / 0.19, and read at ship zoom as a hut sunk to its sills) and the
+warehouse's at 0.16 under 0.27 (was 0.13 / 0.24), each at its old pitch;
+the tavern stays at 0.17 / 0.27. The warehouse's walls are
+`bleachedPlank` (sun-bleached, salt-greyed softwood) so they read apart
+from the dark timber of its door and hatch; the house and tavern keep
+the lime render. Triangles: warehouse 458, tavern 610, house 458,
+watchtower 572 (+36 flag), budget 1000. Honest judgement from the
 screenshots: at ship zoom the pieces read as an old stone-and-tile port;
 at map zoom the tower is a small pale upright with a dot of flag colour,
 findable beside the label but not yet unmistakable on its own, because
