@@ -390,18 +390,29 @@ medium 103 + 117 (220), large 188 + 241 (428).
 **Props: shore boulders (#49).** `shoreBoulders.ts` derives rocks along the
 waterline and just below it, so the wash and the breaker line (above) and
 the shallows have something to break against; nothing is stored in G and
-`src/game/` is untouched. For every coastal edge (a land cell's edge onto a
-water neighbour, the wrap respected so a seam edge onto land across it is
-not a coast) it samples `BOULDER_SAMPLES_PER_EDGE` (3) points along the edge,
+`src/game/` is untouched. Only the coasts of `SHORE_BOULDER_BIOMES` land
+cells (`ROCK` and `GRASS`) get boulders: a sandy beach meets the sea clean,
+emergent and submerged alike (the generator's land rocks and small stones on
+`SAND` cells are unchanged). The gate is per cell, before any sampling, and
+each edge hashes on its own, so skipping the sand coasts leaves the boulders
+on the others exactly where they were. For every allowed coastal edge (a
+land cell's edge onto a water neighbour, the wrap respected so a seam edge
+onto land across it is not a coast) it samples `BOULDER_SAMPLES_PER_EDGE` (3)
+points along the edge,
 each offset `BOULDER_OFFSET_RANGE` (−0.45 inland … +0.2 offshore) from it,
 tries `BOULDER_KEEP_SHARE` (0.22) of them by a hash of the cell, edge and the
 whole terrain seed (`variationStream.ts`, the seed through the salt), and
 keeps those whose signed coast distance in the field is within `SHORE_BAND`
 (−0.3 … +0.4), so they follow the noisy coastline, not the hex edge; the
 edge a pier faces (its rotation points at the docking hex) is left clear.
-That is `BOULDERS_PER_COAST_EDGE` ≈ 0.6: 10-seed averages of 122 on the
-small map, 301 on the medium and 583 on the large, about 17% of them
-submerged. Each boulder takes the shared rock look (`rockVariation`, the
+That is `BOULDERS_PER_COAST_EDGE` ≈ 0.6 per allowed edge. Ports sit on
+beach cells, so no port coast has them. About 45% of the coast edges are
+rock or grass (10-seed averages: 93 of 206 on the small map, 240 of 515 on
+the medium, 448 of 992 on the large), giving 10-seed averages of 55 boulders
+on the small map (45 emergent, 10 submerged), 145 on the medium (123 / 22)
+and 269 on the large (223 / 46), about 17–18% of them submerged; before the
+sand rule the same seeds gave 122 / 301 / 583 (101 / 250 / 484 emergent,
+21 / 51 / 99 submerged). Each boulder takes the shared rock look (`rockVariation`, the
 small size class at scale 0.55–1.2, its cell's biome colour) darkened by up
 to `WET_DARKENING` (35%) within `WET_BAND` (0.2) of the water.
 
@@ -418,9 +429,13 @@ range).
 *Layers.* Emergent boulders stand on the ground at their centre and draw in
 the main pass and the seabed prepass (`prepass="also"` on `RockVariantMesh`),
 since their feet reach under the waterline. The beach face is ~1:21
-(`seabedProfile.ts`), so within the offshore cap the water is under a metre
-deep and any boulder readable at ship zoom (≥ 4 m tall) would stand clear of
-it; `SUBMERGED_SHARE` (half) of the boulders whose centre is in the water
+(`seabedProfile.ts`) whatever the land cell's biome (the seabed is a function
+of coast distance alone; only the land side steepens from beach to jungle),
+so within the offshore cap the water is under a metre deep on rock and grass
+coasts too (10-seed mean 0.9 m at the cap past an edge's midpoint, 0.35 m
+under the offshore boulders themselves) and any boulder readable at ship
+zoom (≥ 4 m tall) would stand clear of it; `SUBMERGED_SHARE` (half) of the
+boulders whose centre is in the water
 are therefore sunk into the seabed until their crown is
 `SUBMERGED_CROWN_DEPTH_METRES` (0.4–1.2 m) under the surface, like
 half-buried reef rocks, and draw in the prepass only (`prepass="only"`,
