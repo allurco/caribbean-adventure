@@ -46,14 +46,21 @@ const ROOF_PITCH = Math.atan(ROOF_SLOPE);
 const SLAB_DROP = HOUSE_V2_ROOF_THICKNESS / Math.cos(ROOF_PITCH);
 /** Where the roof's underside meets the wall: the walls stop here and the occlusion bake shades under it. */
 export const HOUSE_V2_EAVE_UNDERSIDE = HOUSE.eave - SLAB_DROP;
-/** The gable apex, where the two undersides meet. */
-const GABLE_APEX = HOUSE.ridge - SLAB_DROP;
+/** The gable apex, where the two undersides and the slabs' inner faces meet. */
+export const HOUSE_V2_GABLE_APEX = HOUSE.ridge - SLAB_DROP;
 /**
- * A beam along the ridge, bevelled all round. Its bottom is where the slab
- * tops (which would meet at the ridge) reach its side planes, so it rests
- * on them; everything of the slabs above that line is inside it.
+ * A beam along the ridge, bevelled except underneath. Its bottom is where
+ * the slab tops (which would meet at the ridge) reach its side planes, so it
+ * rests on them; everything of the slabs above that line is inside it, and
+ * its ends run square down to that line so the wedge caps meet them flush.
  */
 export const HOUSE_V2_RIDGE_BEAM = { halfWidth: 0.02, bottom: HOUSE.ridge - 0.02 * ROOF_SLOPE, top: HOUSE.ridge + 0.008 };
+/**
+ * Between the two slabs' inner faces, under the beam, is a wedge of air
+ * from the gable apex up to the beam's bottom; this is its half-width at
+ * the top. A triangle at each end closes it.
+ */
+export const HOUSE_V2_WEDGE_HALF_WIDTH = (HOUSE_V2_RIDGE_BEAM.bottom - HOUSE_V2_GABLE_APEX) * Math.tan(ROOF_PITCH);
 /**
  * Each slab starts this far along its own top from the ridge line, which
  * puts its inner bottom corner on the midline: the two slabs meet there
@@ -65,13 +72,15 @@ export const HOUSE_V2_HEIGHT = HOUSE_V2_RIDGE_BEAM.top;
 export const HOUSE_V2_HALF_DIAGONAL =
   Math.ceil(Math.hypot(HOUSE.w / 2 + HOUSE_V2_ROOF_OVERHANG, HOUSE.d / 2 + HOUSE_V2_ROOF_OVERHANG) * 200) / 200;
 export const HOUSE_V2_TRIANGLE_BUDGET = 240;
-/** What the build below comes to: footing 10, two wall bands 32, gables 2, two slabs 88, ridge beam 44, door 20, window 30. */
-export const HOUSE_V2_TRIANGLES = 226;
+/** What the build below comes to: footing 10, two wall bands 32, gables 2, two slabs 64, ridge beam 30, wedge caps 2, door 20, window 30. */
+export const HOUSE_V2_TRIANGLES = 190;
 
 /**
  * One roof slab as a closed bevelled box built lying flat (x out from the
  * ridge, y down through its thickness, z along the ridge), then tilted
- * about the ridge line to the roof's pitch.
+ * about the ridge line to the roof's pitch. Its inner face is square (a
+ * plain quad in place of the chamfered one), so the two slabs meet edge to
+ * edge at the apex and the wedge caps can sit exactly between them.
  */
 export function addHouseV2RoofSlab(b: FacetBuilder, side: -1 | 1, color: Rgb) {
   const ue = HOUSE.w / 2 + HOUSE_V2_ROOF_OVERHANG;
@@ -81,7 +90,17 @@ export function addHouseV2RoofSlab(b: FacetBuilder, side: -1 | 1, color: Rgb) {
   const from = b.vertexCount();
   const min: Vec3 = [side > 0 ? SLAB_START : -length, -HOUSE_V2_ROOF_THICKNESS, -halfV];
   const max: Vec3 = [side > 0 ? length : -SLAB_START, 0, halfV];
-  b.bevelledBox(min, max, ROOF_BEVEL, color);
+  b.bevelledBox(min, max, ROOF_BEVEL, color, side > 0 ? { left: false } : { right: false });
+  const x = side * SLAB_START;
+  const corners: Vec3[] = [
+    [x, -HOUSE_V2_ROOF_THICKNESS, -halfV],
+    [x, -HOUSE_V2_ROOF_THICKNESS, halfV],
+    [x, 0, halfV],
+    [x, 0, -halfV],
+  ];
+  // Wound to face the ridge: −x for the +x slab, +x for the −x slab.
+  if (side > 0) b.quad(corners[0], corners[1], corners[2], corners[3], color);
+  else b.quad(corners[3], corners[2], corners[1], corners[0], color);
   b.rotate(from, b.vertexCount(), "z", -side * ROOF_PITCH);
   b.translate(from, b.vertexCount(), [0, HOUSE.ridge, 0]);
 }
@@ -104,15 +123,21 @@ export function buildHouseGeometryV2(colors: BuildingColors): FacetGeometryData 
     b.bevelledBox([-hw, bands[i], -hd], [hw, bands[i + 1], hd], WALL_BEVEL, colors.wall, { bottom: false, top: false });
   }
   // Gables fill the ends up to the undersides of the slabs, whose planes their edges lie in.
-  b.triangle([-hw, HOUSE_V2_EAVE_UNDERSIDE, hd], [hw, HOUSE_V2_EAVE_UNDERSIDE, hd], [0, GABLE_APEX, hd], colors.wall);
-  b.triangle([-hw, HOUSE_V2_EAVE_UNDERSIDE, -hd], [0, GABLE_APEX, -hd], [hw, HOUSE_V2_EAVE_UNDERSIDE, -hd], colors.wall);
+  b.triangle([-hw, HOUSE_V2_EAVE_UNDERSIDE, hd], [hw, HOUSE_V2_EAVE_UNDERSIDE, hd], [0, HOUSE_V2_GABLE_APEX, hd], colors.wall);
+  b.triangle([-hw, HOUSE_V2_EAVE_UNDERSIDE, -hd], [0, HOUSE_V2_GABLE_APEX, -hd], [hw, HOUSE_V2_EAVE_UNDERSIDE, -hd], colors.wall);
   b.jitterColors(WALL_JITTER, WALL_JITTER_SEED, wallsFrom, b.vertexCount());
 
   addHouseV2RoofSlab(b, -1, colors.roof);
   addHouseV2RoofSlab(b, 1, colors.roof);
   const halfV = hd + HOUSE_V2_ROOF_OVERHANG;
   const beam = HOUSE_V2_RIDGE_BEAM;
-  b.bevelledBox([-beam.halfWidth, beam.bottom, -halfV], [beam.halfWidth, beam.top, halfV], ROOF_BEVEL, shadeRgb(colors.roof, RIDGE_SHADE));
+  const beamColor = shadeRgb(colors.roof, RIDGE_SHADE);
+  // Its bottom face would lie inside the slabs and over the closed wedge, so it is dropped: the ends run square down.
+  b.bevelledBox([-beam.halfWidth, beam.bottom, -halfV], [beam.halfWidth, beam.top, halfV], ROOF_BEVEL, beamColor, { bottom: false });
+  // The wedge caps: from the apex up to the beam's bottom edge, their slanted edges on the slabs' inner faces.
+  const w = HOUSE_V2_WEDGE_HALF_WIDTH;
+  b.triangle([0, HOUSE_V2_GABLE_APEX, halfV], [w, beam.bottom, halfV], [-w, beam.bottom, halfV], beamColor);
+  b.triangle([0, HOUSE_V2_GABLE_APEX, -halfV], [-w, beam.bottom, -halfV], [w, beam.bottom, -halfV], beamColor);
 
   // Door and a window on the front, standing on the wall plane with their
   // backs open, bevelled on their proud faces.

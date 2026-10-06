@@ -12,6 +12,7 @@ import {
   addHouseV2RoofSlab,
   buildHouseGeometryV2,
   HOUSE_V2_EAVE_UNDERSIDE,
+  HOUSE_V2_GABLE_APEX,
   HOUSE_V2_HALF_DIAGONAL,
   HOUSE_V2_HEIGHT,
   HOUSE_V2_RIDGE_BEAM,
@@ -19,6 +20,7 @@ import {
   HOUSE_V2_ROOF_THICKNESS,
   HOUSE_V2_TRIANGLE_BUDGET,
   HOUSE_V2_TRIANGLES,
+  HOUSE_V2_WEDGE_HALF_WIDTH,
 } from "./buildingGeometryV2";
 import { createFacetBuilder } from "./facetBuilder";
 
@@ -228,6 +230,52 @@ describe("buildHouseGeometryV2", () => {
         expect(y).toBeLessThan(beam.top);
       }
     }
+  });
+
+  it("closes the wedge under the beam at both gable ends: slabs meet at the apex, a cap runs up to the beam's square bottom edge", () => {
+    const halfV = 0.07 + HOUSE_V2_ROOF_OVERHANG;
+    const beam = HOUSE_V2_RIDGE_BEAM;
+    const w = HOUSE_V2_WEDGE_HALF_WIDTH;
+    const near = (p: Vec3, q: Vec3) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]) < 1e-6;
+    const has = (g: FacetGeometryData, q: Vec3) => {
+      for (let i = 0; i < g.vertexCount; i++) if (near(vertex(g, i), q)) return true;
+      return false;
+    };
+    for (const side of [-1, 1] as const) {
+      const b = createFacetBuilder();
+      addHouseV2RoofSlab(b, side, colors.roof);
+      const slab = b.build();
+      // The square inner face reaches the apex at both ends; a chamfered one would stop short.
+      for (const z of [-halfV, halfV]) expect(has(slab, [0, HOUSE_V2_GABLE_APEX, z])).toBe(true);
+    }
+    for (const z of [-halfV, halfV]) {
+      // A cap triangle with exactly these corners, facing out along z.
+      let caps = 0;
+      for (let t = 0; t < house.vertexCount / 3; t++) {
+        const corners = [vertex(house, t * 3), vertex(house, t * 3 + 1), vertex(house, t * 3 + 2)];
+        const wanted: Vec3[] = [
+          [0, HOUSE_V2_GABLE_APEX, z],
+          [w, beam.bottom, z],
+          [-w, beam.bottom, z],
+        ];
+        if (wanted.every((q) => corners.some((p) => near(p, q)))) {
+          caps++;
+          expect(normal(house, t * 3)[2]).toBeCloseTo(Math.sign(z), 6);
+        }
+      }
+      expect(caps).toBe(1);
+      // The beam's end face comes square down to its bottom, so the cap meets it flush.
+      let beamEndBottom = Infinity;
+      for (let i = 0; i < house.vertexCount; i++) {
+        const [x, y, pz] = vertex(house, i);
+        if (kindOf(color(house, i)) === "roof" && Math.abs(pz - z) < 1e-6 && Math.abs(x) <= beam.halfWidth + 1e-6 && y > beam.bottom - 1e-6) {
+          beamEndBottom = Math.min(beamEndBottom, y);
+        }
+      }
+      expect(beamEndBottom).toBeCloseTo(beam.bottom, 6);
+    }
+    expect(w).toBeGreaterThan(0.005);
+    expect(w).toBeLessThan(beam.halfWidth);
   });
 
   it("stands the door and window on the wall plane with open backs, the window under the eave", () => {
