@@ -21,6 +21,7 @@ import {
   placeQuay,
   portQuays,
   quayAt,
+  quayTopAt,
   quayTopY,
   QUAY_DEPTH_RANGE,
   QUAY_LIP,
@@ -225,5 +226,24 @@ describe("quayTopY", () => {
   it("follows the per-port width: a point just inside a wide quay's edge is on it", () => {
     const edge = worldPoint(q, QUAY_WIDTH / 2 - 0.001, 0);
     expect(quayTopY(port, field, seed, edge)).toBeCloseTo(q.top, 9);
+  });
+
+  it("is quayTopAt over the placement, so a caller probing many points places the quay once", () => {
+    const hw = QUAY_WIDTH / 2;
+    const points = [
+      worldPoint(q, hw * 0.5, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2),
+      worldPoint(q, -hw * 0.5, (QUAY_BACK + QUAY_STEP_Z) / 2),
+      worldPoint(q, hw * 1.2, 0),
+      worldPoint(q, 0, QUAY_BACK - 0.05),
+      worldPoint(q, 0, QUAY_SEA_FACE + 0.05),
+    ];
+    for (const p of points) expect(quayTopAt(q, p)).toBe(quayTopY(port, field, seed, p));
+    expect(quayTopAt(q, points[0])).toBeCloseTo(q.top, 9);
+    expect(quayTopAt(q, points[1])).toBeCloseTo(q.top - QUAY_COPING_THICKNESS, 9);
+    expect(quayTopAt(q, points[2])).toBeUndefined();
+    // The lookup follows the placement it is given, not the cell: a quay lifted and turned elsewhere answers for itself.
+    const moved: QuayPlacement = { ...q, worldX: q.worldX + 5, worldZ: q.worldZ - 3, yaw: q.yaw + 1, worldY: q.worldY + 0.02, top: q.top + 0.02 };
+    expect(quayTopAt(moved, points[0])).toBeUndefined();
+    expect(quayTopAt(moved, worldPoint(moved, 0, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2))).toBeCloseTo(q.top + 0.02, 9);
   });
 });

@@ -16,9 +16,10 @@
  * port is placed once from its canonical cell; the world copies redraw the
  * same instances, so the seam shows nothing.
  *
- * Interface for the settlement (slice 2): `quayTopY` tells a building
- * standing at a world point whether it is on the quay and how high its
- * flat top is there, so it can sit on the deck rather than the sand.
+ * Interface for the settlement (slice 2): `quayTopAt` tells a building
+ * standing at a world point whether it is on a placed quay and how high its
+ * flat top is there, so it can sit on the deck rather than the sand;
+ * `quayTopY` is the same for a cell, placing the quay first.
  */
 import { hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
@@ -129,16 +130,23 @@ export function portQuays(cells: readonly MapCell[], field: GroundField, seed: n
 }
 
 /**
- * The height of the quay's flat top under a world point, for anything that
- * stands on it (the settlement, slice 2): the deck over the front of the
- * body's plan (the wall line, inside the coping's overhang), the lower rear
- * step behind `QUAY_STEP_Z`, and undefined off the quay or where the cell
- * has none. Same `field` and `seed` as `portQuays`.
+ * The height of a placed quay's flat top under a world point, for anything
+ * that stands on it (the settlement, slice 2): the deck over the front of
+ * the body's plan (the wall line, inside the coping's overhang), the lower
+ * rear step behind `QUAY_STEP_Z`, and undefined off the quay. A caller that
+ * probes many points places the quay once and asks here.
  */
-export function quayTopY(cell: MapCell, field: GroundField, seed: number, point: { x: number; z: number }): number | undefined {
-  const quay = placeQuay(cell, field, seed);
-  if (!quay) return undefined;
+export function quayTopAt(quay: QuayPlacement, point: { x: number; z: number }): number | undefined {
   const local = toLocal(quay, point);
   if (Math.abs(local.x) > QUAY_WIDTH / 2 || local.z < QUAY_BACK || local.z > QUAY_SEA_FACE) return undefined;
   return local.z < QUAY_STEP_Z ? quay.top - QUAY_COPING_THICKNESS : quay.top;
+}
+
+/**
+ * `quayTopAt` for a port cell's quay, placing it first: undefined where the
+ * cell has none. Same `field` and `seed` as `portQuays`.
+ */
+export function quayTopY(cell: MapCell, field: GroundField, seed: number, point: { x: number; z: number }): number | undefined {
+  const quay = placeQuay(cell, field, seed);
+  return quay ? quayTopAt(quay, point) : undefined;
 }
