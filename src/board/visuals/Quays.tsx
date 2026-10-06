@@ -11,13 +11,22 @@ const rgb = (name: PaletteName): Rgb => {
   return [c.r, c.g, c.b];
 };
 
-/** The quay's palette: the watchtower's masonry, the coping a sun-bleached shade of it, the bollards in timber (`propEntries.ts` mirrors it). */
+/**
+ * The quay's palette (`propEntries.ts` mirrors it): the watchtower's masonry
+ * pulled darker and warmer (weathered stone with an ochre cast, well below
+ * the sand), near-black mortar, the pier's timber, iron, hemp rope and the
+ * beach sand that drifts over the landward paving.
+ */
 function quayColors(): QuayColors {
   const masonry = rgb("masonry");
+  const stone: [number, number, number] = [masonry[0] * 0.95, masonry[1] * 0.86, masonry[2] * 0.72];
   return {
-    stone: [masonry[0] * 0.9, masonry[1] * 0.9, masonry[2] * 0.9],
-    coping: [masonry[0] * 1.3, masonry[1] * 1.3, masonry[2] * 1.3],
+    stone,
+    mortar: [stone[0] * 0.28, stone[1] * 0.26, stone[2] * 0.24],
     timber: rgb("timber"),
+    iron: [0.045, 0.04, 0.038],
+    rope: [0.42, 0.34, 0.22],
+    sand: rgb("drySand"),
   };
 }
 

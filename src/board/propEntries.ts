@@ -37,13 +37,17 @@ const rgb = (name: PaletteName): Rgb => {
 /** The house's palette, as `PortBuildings.tsx` picks it. */
 const HOUSE_COLORS: BuildingColors = { wall: rgb("whitewash"), roof: rgb("timber"), timber: rgb("timber"), stone: rgb("masonry") };
 
-/** The quay's palette, as `Quays.tsx` picks it: masonry, the coping a sun-bleached shade of it, timber bollards. */
+/** The quay's palette, as `Quays.tsx` picks it: weathered masonry, near-black mortar, timber, iron, rope and the beach sand. */
 const QUAY_COLORS: QuayColors = (() => {
   const masonry = rgb("masonry");
+  const stone: [number, number, number] = [masonry[0] * 0.95, masonry[1] * 0.86, masonry[2] * 0.72];
   return {
-    stone: [masonry[0] * 0.9, masonry[1] * 0.9, masonry[2] * 0.9],
-    coping: [masonry[0] * 1.3, masonry[1] * 1.3, masonry[2] * 1.3],
+    stone,
+    mortar: [stone[0] * 0.28, stone[1] * 0.26, stone[2] * 0.24],
     timber: rgb("timber"),
+    iron: [0.045, 0.04, 0.038],
+    rope: [0.42, 0.34, 0.22],
+    sand: rgb("drySand"),
   };
 })();
 

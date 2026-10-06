@@ -3,34 +3,52 @@ import type { FacetGeometryData } from "./facetBuilder";
 import { PIER_DECK_TOP, PIER_POST_BOTTOM, PIER_WIDTH } from "./pierGeometry";
 import {
   buildQuayGeometry,
+  buildQuayParts,
   QUAY_BACK,
   QUAY_BARREL,
   QUAY_BASE,
+  QUAY_BLOCK_PROUD,
   QUAY_BOLLARD,
+  QUAY_BOLLARDS,
   QUAY_COPING_PROUD,
   QUAY_COPING_THICKNESS,
   QUAY_COURSE_COUNT,
   QUAY_COURSE_HEIGHT,
   QUAY_COURSE_LEDGES,
-  QUAY_CRATES,
+  QUAY_CRATE,
   QUAY_DECK,
-  QUAY_GROOVE_FLOOR,
+  QUAY_JOINT,
+  QUAY_PAVING,
+  QUAY_PAVING_FLOOR,
+  QUAY_PAVING_ROWS,
+  QUAY_PAVING_SINK,
+  QUAY_PAVING_TILT,
+  QUAY_ROPE,
   QUAY_SEA_FACE,
-  QUAY_SLAB_GRID,
   QUAY_STAIR,
   QUAY_STEP_TOP,
   QUAY_STEP_Z,
   QUAY_TOP,
   QUAY_TRIANGLE_BUDGET,
   QUAY_TRIANGLES,
+  QUAY_WALL_BLOCKS,
   QUAY_WET_HEIGHT,
   QUAY_WIDTH,
   type QuayColors,
+  type QuayPart,
 } from "./quayGeometry";
 import { SEA_LEVEL } from "./terrainHeightField";
 
-const colors: QuayColors = { stone: [0.42, 0.38, 0.32], coping: [0.66, 0.6, 0.52], timber: [0.12, 0.08, 0.05] };
-const quay = buildQuayGeometry(colors);
+const colors: QuayColors = {
+  stone: [0.4, 0.34, 0.26],
+  mortar: [0.11, 0.09, 0.07],
+  timber: [0.12, 0.08, 0.05],
+  iron: [0.045, 0.04, 0.038],
+  rope: [0.42, 0.34, 0.22],
+  sand: [0.77, 0.63, 0.34],
+};
+const build = buildQuayParts(colors);
+const quay = build.data;
 
 type Vec3 = [number, number, number];
 const vertex = (g: FacetGeometryData, i: number): Vec3 => [g.positions[i * 3], g.positions[i * 3 + 1], g.positions[i * 3 + 2]];
@@ -50,16 +68,21 @@ function faceNormal([a, b, c]: Vec3[]): Vec3 {
   return [n[0] / len, n[1] / len, n[2] / len];
 }
 
-/** Which part a (shaded, jittered) vertex colour came from. */
-function partOf(c: Vec3): "stone" | "coping" | "timber" {
-  // The wet, occluded stone at the waterline comes down to about 0.15; the timber never rises past 0.1.
-  if (luminance(c) < 0.12) return "timber";
-  // The coping starts well above the stone; occlusion and the wet band only ever darken the stone, and the tone spreads are small.
-  return luminance(c) > (luminance(colors.stone) + luminance(colors.coping)) / 2 ? "coping" : "stone";
+/** Which part vertex `i` belongs to, from the build's own ranges. */
+function partOf(i: number): QuayPart {
+  for (const [name, [from, to]] of Object.entries(build.parts) as [QuayPart, readonly [number, number]][]) if (i >= from && i < to) return name;
+  throw new Error(`vertex ${i} is in no part`);
 }
+const partTriangles = (name: QuayPart) => {
+  const [from, to] = build.parts[name];
+  return Array.from({ length: (to - from) / 3 }, (_, k) => from / 3 + k);
+};
+const vertices = (name: QuayPart) => {
+  const [from, to] = build.parts[name];
+  return Array.from({ length: to - from }, (_, k) => from + k);
+};
 
 const EPS = 1e-6;
-/** The sea wall's foot: nothing of the wall itself stands seaward of this; only the stair does. */
 const WALL_FOOT = QUAY_SEA_FACE + QUAY_COPING_PROUD;
 
 /**
@@ -110,7 +133,6 @@ function segmentCrossesTriangle(a: Vec3, b: Vec3, tri: Vec3[]): boolean {
   return t > EPS && t < 1 - EPS;
 }
 
-/** Axis-aligned bounds of a triangle, for a cheap first pass over pairs. */
 function bounds(tri: Vec3[]): { min: Vec3; max: Vec3 } {
   const min: Vec3 = [Infinity, Infinity, Infinity];
   const max: Vec3 = [-Infinity, -Infinity, -Infinity];
@@ -123,20 +145,8 @@ function bounds(tri: Vec3[]): { min: Vec3; max: Vec3 } {
 const boundsTouch = (a: { min: Vec3; max: Vec3 }, b: { min: Vec3; max: Vec3 }) =>
   [0, 1, 2].every((k) => a.min[k] <= b.max[k] + EPS && b.min[k] <= a.max[k] + EPS);
 
-/** Plan extents of the vertices whose colour passes `part` and whose height passes `where`. */
-function planExtent(part: (c: Vec3) => boolean, where: (y: number) => boolean) {
-  const e = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity, count: 0 };
-  for (let i = 0; i < quay.vertexCount; i++) {
-    const [x, y, z] = vertex(quay, i);
-    if (!part(color(quay, i)) || !where(y)) continue;
-    e.minX = Math.min(e.minX, x);
-    e.maxX = Math.max(e.maxX, x);
-    e.minZ = Math.min(e.minZ, z);
-    e.maxZ = Math.max(e.maxZ, z);
-    e.count++;
-  }
-  return e;
-}
+const spread = (values: number[]) => Math.max(...values) / Math.min(...values);
+const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
 
 describe("the overlap and crossing checks", () => {
   const floor: Vec3[] = [
@@ -154,21 +164,25 @@ describe("the overlap and crossing checks", () => {
     ];
     expect(coplanarOverlap(floor, neighbour, [0, 1, 0])).toBe(false);
     expect(segmentCrossesTriangle([0.2, -1, 0.2], [0.2, 1, 0.2], floor)).toBe(true);
-    // Touching the face at its edge, or lying in its plane, is not a crossing.
     expect(segmentCrossesTriangle([0.5, -1, 0], [0.5, 1, 0], floor)).toBe(false);
     expect(segmentCrossesTriangle([0.1, 0, 0.1], [0.3, 0, 0.3], floor)).toBe(false);
   });
 });
 
 describe("buildQuayGeometry", () => {
-  it("records its triangle count under the budget", () => {
+  it("records its triangle count under the budget, with every vertex in exactly one part", () => {
     expect(quay.vertexCount % 3).toBe(0);
     expect(quay.vertexCount / 3).toBe(QUAY_TRIANGLES);
     expect(QUAY_TRIANGLES).toBeLessThanOrEqual(QUAY_TRIANGLE_BUDGET);
-    expect(QUAY_TRIANGLE_BUDGET).toBeLessThanOrEqual(700);
+    expect(QUAY_TRIANGLE_BUDGET).toBeLessThanOrEqual(1000);
+    const ranges = Object.values(build.parts).sort((a, b) => a[0] - b[0]);
+    expect(ranges[0][0]).toBe(0);
+    for (let k = 1; k < ranges.length; k++) expect(ranges[k][0]).toBe(ranges[k - 1][1]);
+    expect(ranges[ranges.length - 1][1]).toBe(quay.vertexCount);
+    for (const [from, to] of ranges) expect((to - from) % 3).toBe(0);
   });
 
-  it("stores unit normals and a colour per vertex, with no degenerate face; flat except on the barrel", () => {
+  it("stores unit normals and a colour per vertex, with no degenerate face; flat except on the rope's lathe", () => {
     expect(quay.colors).toHaveLength(quay.vertexCount * 3);
     triangles(quay).forEach((tri, t) => {
       const n = cross(sub(tri[1], tri[0]), sub(tri[2], tri[0]));
@@ -177,8 +191,7 @@ describe("buildQuayGeometry", () => {
         const stored = normal(quay, t * 3 + k);
         expect(Math.hypot(...stored)).toBeCloseTo(1, 5);
         const agreement = dot(stored, faceNormal(tri));
-        // The barrel's lathe shares normals round its rings; everything else is flat-shaded.
-        if (partOf(color(quay, t * 3)) === "timber") expect(agreement).toBeGreaterThan(0.6);
+        if (partOf(t * 3) === "rope") expect(agreement).toBeGreaterThan(0.5);
         else expect(agreement).toBeCloseTo(1, 4);
       }
     });
@@ -205,169 +218,186 @@ describe("buildQuayGeometry", () => {
     expect(minY).toBeCloseTo(QUAY_BASE, 6);
     expect(maxAbsX).toBeCloseTo(QUAY_WIDTH / 2 + QUAY_COPING_PROUD, 6);
     expect(minZ).toBeCloseTo(QUAY_BACK, 6);
-    // Only the stair stands seaward of the wall's foot.
     expect(maxZ).toBeCloseTo(QUAY_STAIR.back + QUAY_STAIR.depth, 6);
   });
 
-  it("has a flat deck at QUAY_TOP, just above the pier deck, with grooves between its flagstones and only timber standing on it", () => {
+  it("keeps the deck at QUAY_TOP within the paving's unevenness, just above the pier deck, with only props standing higher", () => {
     expect(QUAY_TOP).toBeGreaterThan(PIER_DECK_TOP);
     expect(QUAY_TOP - PIER_DECK_TOP).toBeLessThanOrEqual(0.02);
     expect(QUAY_STEP_TOP).toBeCloseTo(QUAY_TOP - QUAY_COPING_THICKNESS, 6);
-    expect(QUAY_GROOVE_FLOOR).toBeLessThan(QUAY_TOP);
-    expect(QUAY_GROOVE_FLOOR).toBeGreaterThan(QUAY_STEP_TOP);
-    let topFaces = 0;
-    let grooveFaces = 0;
-    let stepFaces = 0;
-    triangles(quay).forEach((tri, t) => {
+    expect(QUAY_PAVING_FLOOR).toBeGreaterThan(QUAY_STEP_TOP);
+    for (const i of vertices("paving")) {
+      const y = vertex(quay, i)[1];
+      expect(y).toBeGreaterThanOrEqual(QUAY_PAVING_FLOOR - EPS);
+      expect(y).toBeLessThanOrEqual(QUAY_TOP + QUAY_PAVING_TILT + EPS);
+      expect(y).toBeGreaterThanOrEqual(QUAY_PAVING_FLOOR - EPS);
+      if (y > QUAY_PAVING_FLOOR + EPS) expect(y).toBeGreaterThanOrEqual(QUAY_TOP - QUAY_PAVING_TILT - QUAY_PAVING_SINK - EPS);
+    }
+    for (let i = 0; i < quay.vertexCount; i++) {
+      const [x, y, z] = vertex(quay, i);
+      if (y <= QUAY_TOP + QUAY_PAVING_TILT + EPS) continue;
+      expect(["bollards", "rope", "crate", "barrel"]).toContain(partOf(i));
+      expect(x).toBeGreaterThanOrEqual(QUAY_DECK.minX);
+      expect(x).toBeLessThanOrEqual(QUAY_DECK.maxX);
+      expect(z).toBeGreaterThanOrEqual(QUAY_DECK.minZ);
+      expect(z).toBeLessThanOrEqual(QUAY_DECK.maxZ);
+    }
+  });
+
+  it("paves the deck with ten to fourteen unequal stones, joints of varying width, every corner at its own height, a few sunk, no bevels", () => {
+    expect(QUAY_PAVING.length).toBeGreaterThanOrEqual(10);
+    expect(QUAY_PAVING.length).toBeLessThanOrEqual(14);
+    expect(QUAY_PAVING).toHaveLength(QUAY_PAVING_ROWS.reduce((a, b) => a + b, 0));
+    const widths = QUAY_PAVING.map((s) => s.x1 - s.x0);
+    expect(spread(widths)).toBeGreaterThan(1.2);
+    const joints = new Set<number>();
+    for (const row of QUAY_PAVING_ROWS.keys()) {
+      const stones = QUAY_PAVING.filter((s) => s.row === row).sort((a, b) => a.x0 - b.x0);
+      expect(stones[0].x0).toBeCloseTo(QUAY_DECK.minX, 9);
+      expect(stones[stones.length - 1].x1).toBeCloseTo(QUAY_DECK.maxX, 9);
+      for (let k = 1; k < stones.length; k++) {
+        const joint = stones[k].x0 - stones[k - 1].x1;
+        expect(joint).toBeGreaterThanOrEqual(QUAY_JOINT[0] - EPS);
+        expect(joint).toBeLessThanOrEqual(QUAY_JOINT[1] + EPS);
+        joints.add(Number(joint.toFixed(4)));
+      }
+    }
+    expect(joints.size).toBeGreaterThan(3);
+    // Corners: the tilted stones have four different heights; some are sunk; the ones under props are flat.
+    const tilted = QUAY_PAVING.filter((s) => !s.flat);
+    expect(tilted.length).toBeGreaterThanOrEqual(6);
+    for (const s of tilted) expect(new Set(s.corners).size).toBe(4);
+    expect(tilted.some((s) => mean([...s.corners]) < QUAY_TOP - QUAY_PAVING_SINK + QUAY_PAVING_TILT)).toBe(true);
+    for (const s of QUAY_PAVING.filter((s) => s.flat)) expect(s.corners).toEqual([QUAY_TOP, QUAY_TOP, QUAY_TOP, QUAY_TOP]);
+    // No bevels: every paving face is a top facet or a vertical side.
+    for (const t of partTriangles("paving")) {
       const n = normal(quay, t * 3);
-      const part = partOf(color(quay, t * 3));
-      const ys = tri.map((p) => p[1]);
-      if (n[1] > 0.99 && part === "coping") {
-        // Every upward coping face is a flagstone's top or the groove floor between them.
-        if (Math.abs(ys[0] - QUAY_TOP) < 1e-6) topFaces++;
-        else if (Math.abs(ys[0] - QUAY_GROOVE_FLOOR) < 1e-6) grooveFaces++;
-        else expect.fail(`an upward coping face at ${ys[0]}`);
-        for (const y of ys) expect(y).toBeCloseTo(ys[0], 6);
+      expect(n[1] > 0.9 || Math.abs(n[1]) < 0.3).toBe(true);
+    }
+    // Ten stones' worth of faces at least: four sides and a two-facet top each.
+    expect(partTriangles("paving").length).toBe(QUAY_PAVING.length * 10);
+  });
+
+  it("drifts sand over the landward paving and keeps the seaward row stone", () => {
+    const rowLuminance = (row: number) => {
+      const values: number[] = [];
+      for (const i of vertices("paving")) {
+        const [x, y, z] = vertex(quay, i);
+        const stone = QUAY_PAVING.find((s) => s.row === row && x >= s.x0 - EPS && x <= s.x1 + EPS && z >= s.z0 - EPS && z <= s.z1 + EPS);
+        if (stone && y > QUAY_PAVING_FLOOR + EPS && z < stone.z0 + EPS) values.push(luminance(color(quay, i)));
       }
-      if (n[1] > 0.99 && part === "stone" && Math.abs(ys[0] - QUAY_STEP_TOP) < 1e-6) stepFaces++;
-      for (const [x, y, z] of tri) {
-        if (y > QUAY_TOP + 1e-6) {
-          expect(part).toBe("timber");
-          expect(x).toBeGreaterThanOrEqual(QUAY_DECK.minX);
-          expect(x).toBeLessThanOrEqual(QUAY_DECK.maxX);
-          expect(z).toBeGreaterThanOrEqual(QUAY_DECK.minZ);
-          expect(z).toBeLessThanOrEqual(QUAY_DECK.maxZ);
-        }
+      return mean(values);
+    };
+    expect(rowLuminance(0)).toBeGreaterThan(rowLuminance(QUAY_PAVING_ROWS.length - 1) * 1.3);
+  });
+
+  it("steps down landward of QUAY_STEP_Z: the paving covers the front, the lower step the back", () => {
+    expect(QUAY_STEP_Z).toBeGreaterThan(QUAY_BACK);
+    expect(QUAY_STEP_Z).toBeLessThan(0);
+    for (const i of vertices("paving")) expect(vertex(quay, i)[2]).toBeGreaterThanOrEqual(QUAY_STEP_Z - EPS);
+    let stepFaces = 0;
+    for (const t of partTriangles("wall")) {
+      const tri = [vertex(quay, t * 3), vertex(quay, t * 3 + 1), vertex(quay, t * 3 + 2)];
+      if (normal(quay, t * 3)[1] > 0.99 && tri.every((p) => Math.abs(p[1] - QUAY_STEP_TOP) < EPS)) {
+        stepFaces++;
+        for (const p of tri) expect(p[2]).toBeLessThanOrEqual(QUAY_STEP_Z + EPS);
       }
-    });
-    expect(topFaces).toBe(2 * QUAY_SLAB_GRID.across * QUAY_SLAB_GRID.along);
-    expect(grooveFaces).toBe(2);
+    }
     expect(stepFaces).toBe(2);
   });
 
-  it("lays the deck as a grid of flagstones with visibly different tones", () => {
-    expect(QUAY_SLAB_GRID.across).toBeGreaterThanOrEqual(3);
-    expect(QUAY_SLAB_GRID.along).toBeGreaterThanOrEqual(2);
-    // One tone per flagstone top (the per-vertex jitter is hashed by position, so a flat quad's corners differ a little;
-    // group by the quad's centre instead).
-    const tones = new Map<string, number[]>();
-    triangles(quay).forEach((tri, t) => {
-      if (normal(quay, t * 3)[1] < 0.99 || partOf(color(quay, t * 3)) !== "coping" || Math.abs(tri[0][1] - QUAY_TOP) > 1e-6) return;
-      const b = bounds(tri);
-      // A flagstone top is two triangles with the same bounding box.
-      const key = `${b.min[0].toFixed(4)},${b.max[0].toFixed(4)},${b.min[2].toFixed(4)},${b.max[2].toFixed(4)}`;
-      const list = tones.get(key) ?? [];
-      for (let k = 0; k < 3; k++) list.push(luminance(color(quay, t * 3 + k)));
-      tones.set(key, list);
-    });
-    expect(tones.size).toBe(QUAY_SLAB_GRID.across * QUAY_SLAB_GRID.along);
-    const means = [...tones.values()].map((l) => l.reduce((a, b) => a + b, 0) / l.length);
-    expect(Math.max(...means) / Math.min(...means)).toBeGreaterThan(1.1);
-    // Irregular widths: not every flagstone is the same size.
-    const widths = new Set([...tones.keys()].map((k) => (Number(k.split(",")[1]) - Number(k.split(",")[0])).toFixed(3)));
-    expect(widths.size).toBeGreaterThan(1);
-  });
-
-  it("steps down landward of QUAY_STEP_Z: the deck covers the front, the lower step the back", () => {
-    expect(QUAY_STEP_Z).toBeGreaterThan(QUAY_BACK);
-    expect(QUAY_STEP_Z).toBeLessThan(0);
-    for (const tri of triangles(quay)) {
-      const n = faceNormal(tri);
-      if (n[1] < 0.99) continue;
-      for (const [, y, z] of tri) {
-        if (Math.abs(y - QUAY_TOP) < 1e-6) expect(z).toBeGreaterThanOrEqual(QUAY_STEP_Z - 1e-6);
-        if (Math.abs(y - QUAY_STEP_TOP) < 1e-6) expect(z).toBeLessThanOrEqual(QUAY_STEP_Z + 1e-6);
-      }
-    }
-  });
-
-  it("bevels the coping's outer edge and each flagstone: lighter facets at 45 degrees", () => {
-    let outer = 0;
-    let slabs = 0;
-    for (let t = 0; t < quay.vertexCount / 3; t++) {
-      const n = normal(quay, t * 3);
-      if (partOf(color(quay, t * 3)) !== "coping" || Math.abs(n[1] - Math.SQRT1_2) > 1e-4) continue;
-      const y = vertex(quay, t * 3)[1];
-      if (y > QUAY_GROOVE_FLOOR + 1e-6) slabs++;
-      else outer++;
-    }
-    expect(outer).toBeGreaterThanOrEqual(8);
-    expect(slabs).toBeGreaterThanOrEqual(8 * QUAY_SLAB_GRID.across * QUAY_SLAB_GRID.along);
-  });
-
-  it("lays the wall above the waterline in stepped courses: a ledge at each course line, out to the coping's edge at the foot", () => {
-    expect(QUAY_COURSE_COUNT).toBeGreaterThanOrEqual(3);
-    expect(QUAY_COURSE_LEDGES).toHaveLength(QUAY_COURSE_COUNT);
-    expect(QUAY_COURSE_LEDGES[0]).toBeCloseTo(SEA_LEVEL, 6);
-    expect(QUAY_COURSE_LEDGES[QUAY_COURSE_COUNT - 1]).toBeLessThan(QUAY_STEP_TOP - 0.01);
-    const tris = triangles(quay);
+  it("lays the wall above the waterline in two tall battered courses: a ledge at each course line, the foot flush with the base's edge", () => {
+    expect(QUAY_COURSE_COUNT).toBe(2);
+    expect(QUAY_COURSE_HEIGHT).toBeGreaterThan(0.025);
+    expect(QUAY_COURSE_LEDGES).toEqual([SEA_LEVEL, SEA_LEVEL + QUAY_COURSE_HEIGHT]);
     for (const y of QUAY_COURSE_LEDGES) {
       let frontLedges = 0;
-      tris.forEach((tri, t) => {
-        if (partOf(color(quay, t * 3)) !== "stone" || normal(quay, t * 3)[1] < 0.99) return;
-        if (tri.every((p) => Math.abs(p[1] - y) < 1e-6 && p[2] > QUAY_SEA_FACE - 1e-6 && p[2] <= WALL_FOOT + 1e-6)) frontLedges++;
-      });
+      for (const t of partTriangles("wall")) {
+        const tri = [vertex(quay, t * 3), vertex(quay, t * 3 + 1), vertex(quay, t * 3 + 2)];
+        if (normal(quay, t * 3)[1] < 0.99) continue;
+        if (tri.every((p) => Math.abs(p[1] - y) < EPS && p[2] > QUAY_SEA_FACE - EPS)) frontLedges++;
+      }
       expect(frontLedges, `front ledge at ${y}`).toBe(2);
     }
-    // Each course's face is vertical; the courses step out going down, the lowest flush with the coping's edge.
     let footZ = -Infinity;
     let topCourseZ = -Infinity;
-    for (let i = 0; i < quay.vertexCount; i++) {
+    for (const i of vertices("wall")) {
       const [, y, z] = vertex(quay, i);
-      const n = normal(quay, i);
-      if (partOf(color(quay, i)) !== "stone" || n[2] < 0.99 || z > WALL_FOOT + 1e-6) continue;
-      expect(Math.abs(n[1])).toBeLessThan(1e-6);
-      if (Math.abs(y - SEA_LEVEL) < 1e-6) footZ = Math.max(footZ, z);
-      if (Math.abs(y - QUAY_STEP_TOP) < 1e-6) topCourseZ = Math.max(topCourseZ, z);
+      if (normal(quay, i)[2] < 0.99 || z > WALL_FOOT + EPS) continue;
+      if (Math.abs(y - SEA_LEVEL) < EPS) footZ = Math.max(footZ, z);
+      if (Math.abs(y - QUAY_STEP_TOP) < EPS) topCourseZ = Math.max(topCourseZ, z);
     }
-    expect(footZ).toBeCloseTo(WALL_FOOT, 6);
+    expect(footZ).toBeCloseTo(QUAY_SEA_FACE + QUAY_COPING_PROUD / 2, 6);
     expect(topCourseZ).toBeCloseTo(QUAY_SEA_FACE, 6);
   });
 
-  it("sets proud blocks on the sea face, each a shadow groove apart, alternating the courses in tone and staggering the joints", () => {
-    const tris = triangles(quay);
-    const courses = Array.from({ length: QUAY_COURSE_COUNT }, () => ({ light: 0, count: 0, xs: new Set<number>(), proud: 0 }));
-    tris.forEach((tri, t) => {
-      if (partOf(color(quay, t * 3)) !== "stone" || normal(quay, t * 3)[2] < 0.99) return;
-      const cy = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
-      if (cy < SEA_LEVEL || tri[0][2] > WALL_FOOT + 1e-6) return;
-      const course = Math.min(QUAY_COURSE_COUNT - 1, Math.floor((cy - SEA_LEVEL) / QUAY_COURSE_HEIGHT));
-      const z = tri[0][2];
-      // The block faces stand proud of the course's own wall plane.
-      const wallZ = QUAY_SEA_FACE + (QUAY_COURSE_COUNT - 1 - course) * (QUAY_COPING_PROUD / QUAY_COURSE_COUNT);
-      if (z > wallZ + 1e-6) {
-        courses[course].proud = Math.max(courses[course].proud, z - wallZ);
-        for (let k = 0; k < 3; k++) {
-          courses[course].light += luminance(color(quay, t * 3 + k));
-          courses[course].count++;
-          courses[course].xs.add(Math.round(tri[k][0] * 1e4));
+  it("sets rough-cut blocks on the sea face and the seaward sides: unequal widths, wobbling beds, each proud by its own amount, chipped and missing ones, strong tone variation", () => {
+    expect(QUAY_WALL_BLOCKS.length).toBeGreaterThan(20);
+    for (const face of ["sea", "left", "right"] as const) {
+      for (let course = 0; course < QUAY_COURSE_COUNT; course++) {
+        const row = QUAY_WALL_BLOCKS.filter((k) => k.face === face && k.course === course).sort((a, b) => a.u0 - b.u0);
+        expect(row.length).toBeGreaterThanOrEqual(3);
+        expect(spread(row.map((k) => k.u1 - k.u0))).toBeGreaterThan(1.25);
+        expect(new Set(row.map((k) => k.v0.toFixed(5))).size).toBeGreaterThan(1);
+        expect(new Set(row.map((k) => k.proud.toFixed(5))).size).toBeGreaterThan(1);
+        for (let k = 1; k < row.length; k++) {
+          const joint = row[k].u0 - row[k - 1].u1;
+          expect(joint).toBeGreaterThanOrEqual(QUAY_JOINT[0] - EPS);
+          expect(joint).toBeLessThanOrEqual(QUAY_JOINT[1] + EPS);
+        }
+        for (const block of row) {
+          expect(block.proud).toBeGreaterThanOrEqual(QUAY_BLOCK_PROUD[course][0] - EPS);
+          expect(block.proud).toBeLessThanOrEqual(QUAY_BLOCK_PROUD[course][1] + EPS);
+          // The ledges are listed from the waterline up; the courses run from the top down.
+          expect(block.v0).toBeGreaterThan(QUAY_COURSE_LEDGES[QUAY_COURSE_COUNT - 1 - course]);
+          expect(block.v1).toBeLessThan(course === 0 ? QUAY_STEP_TOP : QUAY_COURSE_LEDGES[QUAY_COURSE_COUNT - course]);
+          expect(Math.abs(block.tone - 1)).toBeLessThanOrEqual(0.15 + EPS);
         }
       }
-    });
-    const means = courses.map((s) => s.light / s.count);
-    for (let i = 0; i < QUAY_COURSE_COUNT; i++) {
-      expect(courses[i].count).toBeGreaterThan(0);
-      expect(courses[i].proud).toBeGreaterThanOrEqual(0.004 - 1e-6);
-      expect(courses[i].proud).toBeLessThan(QUAY_COPING_PROUD / QUAY_COURSE_COUNT);
-      // Several blocks per course, and the joints of neighbouring courses do not line up.
-      expect(courses[i].xs.size).toBeGreaterThan(4);
-      if (i + 1 < QUAY_COURSE_COUNT) {
-        expect(Math.abs(means[i] - means[i + 1]) / Math.max(means[i], means[i + 1])).toBeGreaterThan(0.03);
-        expect([...courses[i].xs].sort()).not.toEqual([...courses[i + 1].xs].sort());
-      }
+    }
+    expect(QUAY_BLOCK_PROUD[0][1]).toBeCloseTo(0.01, 9);
+    expect(QUAY_BLOCK_PROUD[0][0]).toBeCloseTo(0.002, 9);
+    expect(spread(QUAY_WALL_BLOCKS.map((k) => k.tone))).toBeGreaterThan(1.2);
+    expect(QUAY_WALL_BLOCKS.filter((k) => k.chip !== undefined).length).toBeGreaterThanOrEqual(2);
+    expect(QUAY_WALL_BLOCKS.filter((k) => k.missing).length).toBeGreaterThanOrEqual(1);
+    expect(QUAY_WALL_BLOCKS.filter((k) => k.missing).length).toBeLessThanOrEqual(2);
+    expect(QUAY_WALL_BLOCKS.filter((k) => k.stained).length).toBeGreaterThanOrEqual(2);
+    // Built: a chipped block is a pentagon (three facets) with five side quads, a plain one a quad with four, a missing one nothing.
+    const built = QUAY_WALL_BLOCKS.filter((k) => !k.missing);
+    const expected = built.reduce((a, k) => a + (k.chip === undefined ? 10 : 13), 0);
+    expect(partTriangles("blocks").length).toBe(expected);
+    // Every block face stands off its mortar plane, outward.
+    for (const t of partTriangles("blocks")) {
+      const [x, , z] = vertex(quay, t * 3);
+      expect(z <= WALL_FOOT + EPS && Math.abs(x) <= QUAY_WIDTH / 2 + QUAY_COPING_PROUD + EPS).toBe(true);
     }
   });
 
-  it("darkens and greens the wall towards the waterline: a wet band over the lowest course", () => {
-    expect(QUAY_WET_HEIGHT).toBeGreaterThan(0);
+  it("shows dark mortar behind the blocks: the wall's sea face is far darker than the blocks on it", () => {
+    const seaPlane: number[] = [];
+    for (const i of vertices("wall")) {
+      const [, y, z] = vertex(quay, i);
+      if (normal(quay, i)[2] > 0.99 && Math.abs(z - QUAY_SEA_FACE) < EPS && y > QUAY_COURSE_LEDGES[1] + QUAY_COURSE_HEIGHT * 0.5) seaPlane.push(luminance(color(quay, i)));
+    }
+    const blocks: number[] = [];
+    for (const i of vertices("blocks")) {
+      const [, y] = vertex(quay, i);
+      if (normal(quay, i)[2] > 0.99 && y > QUAY_COURSE_LEDGES[1] + QUAY_COURSE_HEIGHT * 0.5) blocks.push(luminance(color(quay, i)));
+    }
+    expect(seaPlane.length).toBeGreaterThan(0);
+    expect(blocks.length).toBeGreaterThan(0);
+    expect(mean(seaPlane)).toBeLessThan(mean(blocks) * 0.5);
+  });
+
+  it("darkens and greens the wall towards the waterline: a wet band over most of the lower course", () => {
+    expect(QUAY_WET_HEIGHT).toBeGreaterThan(QUAY_COURSE_HEIGHT * 0.6);
     expect(QUAY_WET_HEIGHT).toBeLessThanOrEqual(QUAY_COURSE_HEIGHT + 1e-9);
-    const at = (y: number) => {
+    const at = (lo: number, hi: number) => {
       const sum = [0, 0, 0];
       let count = 0;
-      for (let i = 0; i < quay.vertexCount; i++) {
-        const [, py, z] = vertex(quay, i);
-        const n = normal(quay, i);
-        if (partOf(color(quay, i)) !== "stone" || Math.abs(py - y) > 1e-6 || n[2] < 0.99 || z > WALL_FOOT + 1e-6) continue;
+      for (const i of vertices("blocks")) {
+        const [, y] = vertex(quay, i);
+        if (y < lo || y > hi || normal(quay, i)[2] < 0.99) continue;
         const c = color(quay, i);
         for (let k = 0; k < 3; k++) sum[k] += c[k];
         count++;
@@ -375,65 +405,90 @@ describe("buildQuayGeometry", () => {
       expect(count).toBeGreaterThan(0);
       return sum.map((v) => v / count);
     };
-    const wet = at(SEA_LEVEL);
-    const dry = at(QUAY_COURSE_LEDGES[1] + QUAY_COURSE_HEIGHT);
+    const wet = at(SEA_LEVEL, SEA_LEVEL + 0.008);
+    const dry = at(QUAY_COURSE_LEDGES[1] + 0.012, QUAY_STEP_TOP);
     expect(luminance(wet as Vec3)).toBeLessThan(luminance(dry as Vec3) * 0.75);
-    // Greener: the green channel loses less than the red.
     expect(wet[1] / dry[1]).toBeGreaterThan(wet[0] / dry[0]);
   });
 
-  it("hangs a stair at the +x end of the sea wall: treads stepping down from under the coping to the water", () => {
-    expect(QUAY_STAIR.steps).toBeGreaterThanOrEqual(3);
-    expect(QUAY_STAIR.steps).toBeLessThanOrEqual(4);
-    expect(QUAY_STAIR.back).toBeGreaterThan(WALL_FOOT);
-    expect(QUAY_STAIR.back - WALL_FOOT).toBeLessThan(0.003);
+  it("hangs a worn stair at the +x end of the sea wall: uneven rises, a chipped top tread, clear of the proudest block", () => {
+    expect(QUAY_STAIR.steps).toBe(3);
+    expect(QUAY_STAIR.rises).toHaveLength(3);
+    expect(spread(QUAY_STAIR.rises)).toBeGreaterThan(1.1);
+    expect(QUAY_STAIR.rises.reduce((a, b) => a + b, 0)).toBeCloseTo(QUAY_STAIR.topTread - SEA_LEVEL, 9);
+    expect(QUAY_STAIR.back).toBeGreaterThan(QUAY_SEA_FACE + QUAY_COPING_PROUD / 2 + QUAY_BLOCK_PROUD[1][1]);
+    expect(QUAY_STAIR.back - WALL_FOOT).toBeLessThan(0.002);
     expect(QUAY_STAIR.x0).toBeGreaterThan(PIER_WIDTH / 2);
-    expect(QUAY_STAIR.x0 + QUAY_STAIR.steps * QUAY_STAIR.tread).toBeLessThanOrEqual(QUAY_WIDTH / 2 + QUAY_COPING_PROUD + 1e-9);
-    const tris = triangles(quay);
+    expect(QUAY_STAIR.x0 + QUAY_STAIR.treads.reduce((a, b) => a + b, 0)).toBeCloseTo(QUAY_WIDTH / 2 + QUAY_COPING_PROUD, 9);
+    let y = QUAY_STAIR.topTread;
     for (let k = 0; k < QUAY_STAIR.steps; k++) {
-      const y = QUAY_STAIR.topTread - k * QUAY_STAIR.rise;
       expect(y).toBeLessThan(QUAY_STEP_TOP);
       expect(y).toBeGreaterThan(SEA_LEVEL);
       let treads = 0;
-      tris.forEach((tri, t) => {
-        if (normal(quay, t * 3)[1] < 0.99 || partOf(color(quay, t * 3)) !== "stone") return;
-        if (tri.every((p) => Math.abs(p[1] - y) < 1e-6 && p[2] >= QUAY_STAIR.back - 1e-6)) treads++;
-      });
-      expect(treads, `tread ${k}`).toBe(2);
+      for (const t of partTriangles("stair")) {
+        const tri = [vertex(quay, t * 3), vertex(quay, t * 3 + 1), vertex(quay, t * 3 + 2)];
+        if (normal(quay, t * 3)[1] > 0.99 && tri.every((p) => Math.abs(p[1] - y) < EPS)) treads++;
+      }
+      // The chipped top tread is a pentagon (three facets); the others are quads.
+      expect(treads, `tread ${k}`).toBe(k === 0 ? 3 : 2);
+      y -= QUAY_STAIR.rises[k];
     }
-    // The flight's riser line runs down towards the end: the lowest slab is the widest.
-    const stair = planExtent((c) => partOf(c) === "stone", (y) => y > SEA_LEVEL);
-    expect(stair.maxZ).toBeCloseTo(QUAY_STAIR.back + QUAY_STAIR.depth, 6);
   });
 
-  it("dresses the deck with crates and a barrel inside the deck outline, clear of the pier root and the bollards", () => {
-    expect(QUAY_CRATES.length).toBeGreaterThanOrEqual(2);
-    expect(QUAY_CRATES.length).toBeLessThanOrEqual(3);
-    expect(QUAY_CRATES.some((c) => Math.abs(c.yaw) > 0.2)).toBe(true);
-    for (const crate of QUAY_CRATES) {
-      const reach = crate.size * Math.SQRT1_2;
-      expect(crate.x - reach).toBeGreaterThanOrEqual(QUAY_DECK.minX);
-      expect(crate.x + reach).toBeLessThanOrEqual(QUAY_DECK.maxX);
-      expect(crate.z - reach).toBeGreaterThanOrEqual(QUAY_DECK.minZ);
-      expect(crate.z + reach).toBeLessThanOrEqual(QUAY_DECK.maxZ);
-      // Behind the pier's root and off the bollards.
-      expect(crate.z + reach).toBeLessThan(0);
-      for (const sign of [-1, 1]) expect(Math.hypot(crate.x - sign * (QUAY_WIDTH / 2 - QUAY_BOLLARD.inset), crate.z - QUAY_BOLLARD.z)).toBeGreaterThan(reach + 0.02);
+  it("stands its props on flat stones inside the deck outline: leaning tapered posts worn at the foot, a rope coil, an aged crate and a hooped barrel", () => {
+    const stoneUnder = (x: number, z: number) => QUAY_PAVING.find((s) => x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1);
+    for (const spot of [...QUAY_BOLLARDS, QUAY_CRATE, QUAY_BARREL, QUAY_ROPE]) {
+      const stone = stoneUnder(spot.x, spot.z);
+      expect(stone?.flat).toBe(true);
     }
-    expect(QUAY_BARREL.x - QUAY_BARREL.radius).toBeGreaterThanOrEqual(QUAY_DECK.minX);
-    expect(QUAY_BARREL.x + QUAY_BARREL.radius).toBeLessThanOrEqual(QUAY_DECK.maxX);
-    expect(QUAY_BARREL.z - QUAY_BARREL.radius).toBeGreaterThanOrEqual(QUAY_DECK.minZ);
-    expect(QUAY_BARREL.z + QUAY_BARREL.radius).toBeLessThan(0);
-    // The barrel is there: a timber ring at its top, and two darker hoops on its side.
-    const timberAbove = planExtent((c) => partOf(c) === "timber", (y) => y > QUAY_TOP + 1e-6);
-    expect(timberAbove.count).toBeGreaterThan(0);
-    const sideTones = new Set<number>();
-    for (let i = 0; i < quay.vertexCount; i++) {
+    expect(QUAY_BOLLARDS).toHaveLength(2);
+    expect(QUAY_BOLLARD.lean).toBeGreaterThanOrEqual((3 * Math.PI) / 180);
+    expect(QUAY_BOLLARD.lean).toBeLessThanOrEqual((5 * Math.PI) / 180);
+    expect(QUAY_BOLLARD.topRadius).toBeLessThan(QUAY_BOLLARD.radius);
+    // Each post: 8 sides and an 8-gon cap; its foot ring is on the deck, its top ring pushed over by the lean, and its foot is darker than its top.
+    expect(partTriangles("bollards").length).toBe(2 * (16 + 6));
+    const posts = vertices("bollards");
+    const feet = posts.filter((i) => Math.abs(vertex(quay, i)[1] - QUAY_TOP) < EPS);
+    const tops = posts.filter((i) => Math.abs(vertex(quay, i)[1] - QUAY_TOP - QUAY_BOLLARD.height) < EPS);
+    expect(feet.length).toBeGreaterThan(0);
+    expect(tops.length).toBeGreaterThan(0);
+    expect(mean(feet.map((i) => luminance(color(quay, i))))).toBeLessThan(mean(tops.map((i) => luminance(color(quay, i)))) * 0.75);
+    for (const post of QUAY_BOLLARDS) {
+      // The cap's fan repeats its first vertex, so average the ring's distinct positions.
+      const own = new Map(tops.filter((i) => Math.hypot(vertex(quay, i)[0] - post.x, vertex(quay, i)[2] - post.z) < 0.02).map((i) => [vertex(quay, i).join(","), vertex(quay, i)]));
+      expect(own.size).toBe(8);
+      const cx = mean([...own.values()].map((p) => p[0]));
+      const cz = mean([...own.values()].map((p) => p[2]));
+      const shift = QUAY_BOLLARD.height * Math.tan(QUAY_BOLLARD.lean);
+      expect(Math.hypot(cx - post.x, cz - post.z)).toBeCloseTo(shift, 5);
+    }
+    // The ring: a torus of iron on the sea face, in front of the mortar plane and clear of the base.
+    expect(partTriangles("ring").length).toBe(64);
+    for (const i of vertices("ring")) {
+      const [, y, z] = vertex(quay, i);
+      expect(z).toBeGreaterThan(QUAY_SEA_FACE);
+      expect(z).toBeLessThan(WALL_FOOT);
+      expect(y).toBeGreaterThan(QUAY_COURSE_LEDGES[1]);
+      expect(y).toBeLessThan(QUAY_STEP_TOP);
+    }
+    // The rope coil lies flat on its stone, lower than the posts.
+    for (const i of vertices("rope")) {
+      const [, y] = vertex(quay, i);
+      expect(y).toBeGreaterThanOrEqual(QUAY_TOP - EPS);
+      expect(y).toBeLessThanOrEqual(QUAY_TOP + QUAY_ROPE.height + EPS);
+    }
+    // The crate and the barrel stay inside the deck; the barrel's side shows two stave tones and the iron hoops.
+    for (const i of [...vertices("crate"), ...vertices("barrel")]) {
       const [x, y, z] = vertex(quay, i);
-      if (partOf(color(quay, i)) !== "timber" || Math.hypot(x - QUAY_BARREL.x, z - QUAY_BARREL.z) > QUAY_BARREL.radius + 1e-6 || y <= QUAY_TOP) continue;
-      if (Math.abs(normal(quay, i)[1]) < 0.5) sideTones.add(Math.round(luminance(color(quay, i)) * 1e3));
+      expect(y).toBeGreaterThanOrEqual(QUAY_TOP - EPS);
+      expect(x).toBeGreaterThanOrEqual(QUAY_DECK.minX);
+      expect(x).toBeLessThanOrEqual(QUAY_DECK.maxX);
+      expect(z).toBeGreaterThanOrEqual(QUAY_DECK.minZ);
+      expect(z).toBeLessThan(0);
     }
-    expect(sideTones.size).toBeGreaterThanOrEqual(2);
+    const sideTones = new Set<number>();
+    for (const i of vertices("barrel")) if (Math.abs(normal(quay, i)[1]) < 0.5) sideTones.add(Math.round(luminance(color(quay, i)) * 1e2));
+    expect(sideTones.size).toBeGreaterThanOrEqual(3);
   });
 
   it("has no two overlapping coplanar faces", () => {
@@ -445,7 +500,7 @@ describe("buildQuayGeometry", () => {
         if (!boundsTouch(boxes[i], boxes[j])) continue;
         if (Math.abs(Math.abs(dot(normals[i], normals[j])) - 1) > 1e-6) continue;
         if (Math.abs(dot(sub(tris[j][0], tris[i][0]), normals[i])) > 1e-6) continue;
-        expect(coplanarOverlap(tris[i], tris[j], normals[i]), `faces ${i} and ${j} overlap in one plane`).toBe(false);
+        expect(coplanarOverlap(tris[i], tris[j], normals[i]), `faces ${i} (${partOf(i * 3)}) and ${j} (${partOf(j * 3)}) overlap in one plane`).toBe(false);
       }
     }
   });
@@ -457,47 +512,33 @@ describe("buildQuayGeometry", () => {
       for (let j = 0; j < tris.length; j++) {
         if (i === j || !boundsTouch(boxes[i], boxes[j])) continue;
         for (let k = 0; k < 3; k++) {
-          expect(segmentCrossesTriangle(tris[i][k], tris[i][(k + 1) % 3], tris[j]), `edge of face ${i} crosses face ${j}`).toBe(false);
+          expect(segmentCrossesTriangle(tris[i][k], tris[i][(k + 1) % 3], tris[j]), `edge of face ${i} (${partOf(i * 3)}) crosses face ${j} (${partOf(j * 3)})`).toBe(false);
         }
       }
     }
   });
 
-  it("bakes occlusion: the wall is dark under the coping, the deck is bright", () => {
-    let underCoping = 0;
-    let underCopingCount = 0;
-    let midWall = 0;
-    let midWallCount = 0;
-    let deck = 0;
-    let deckCount = 0;
-    for (let i = 0; i < quay.vertexCount; i++) {
-      const c = color(quay, i);
-      const [, y, z] = vertex(quay, i);
-      const n = normal(quay, i);
-      for (const v of c) {
-        expect(v).toBeGreaterThanOrEqual(0);
-        expect(v).toBeLessThanOrEqual(1);
-      }
-      const part = partOf(c);
-      if (part === "stone" && z <= WALL_FOOT + 1e-6 && Math.abs(y - QUAY_STEP_TOP) < 1e-6 && Math.abs(n[1]) < 0.5) {
-        underCoping += luminance(c);
-        underCopingCount++;
-      }
-      // The middle course's wall, above the wet band and below the coping's shade.
-      if (part === "stone" && z <= WALL_FOOT + 1e-6 && y > QUAY_COURSE_LEDGES[1] + 1e-6 && y < QUAY_COURSE_LEDGES[2] - 1e-6 && Math.abs(n[1]) < 0.5) {
-        midWall += luminance(c);
-        midWallCount++;
-      }
-      if (part === "coping" && Math.abs(y - QUAY_TOP) < 1e-6 && n[1] > 0.99) {
-        deck += luminance(c);
-        deckCount++;
-      }
+  it("bakes occlusion: the blocks are dark under the base, lighter mid-wall; the paving stays bright; colours stay in range", () => {
+    for (let i = 0; i < quay.vertexCount; i++) for (const v of color(quay, i)) {
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
     }
-    expect(underCopingCount).toBeGreaterThan(0);
-    expect(midWallCount).toBeGreaterThan(0);
-    expect(deckCount).toBeGreaterThan(0);
-    expect(underCoping / underCopingCount).toBeLessThan((midWall / midWallCount) * 0.9);
-    expect(deck / deckCount).toBeGreaterThan(luminance(colors.coping) * 0.85);
+    const under: number[] = [];
+    const mid: number[] = [];
+    for (const i of vertices("blocks")) {
+      const [, y] = vertex(quay, i);
+      const block = QUAY_WALL_BLOCKS.find((k) => k.course === 0 && Math.abs(y - k.v1) < EPS);
+      if (normal(quay, i)[2] < 0.99) continue;
+      if (block && !block.stained) under.push(luminance(color(quay, i)));
+      if (y > QUAY_COURSE_LEDGES[1] + 0.004 && y < QUAY_COURSE_LEDGES[1] + 0.012) mid.push(luminance(color(quay, i)));
+    }
+    expect(under.length).toBeGreaterThan(0);
+    expect(mid.length).toBeGreaterThan(0);
+    expect(mean(under)).toBeLessThan(mean(mid));
+    const deck = vertices("paving")
+      .filter((i) => vertex(quay, i)[1] > QUAY_PAVING_FLOOR + EPS && normal(quay, i)[1] > 0.9)
+      .map((i) => luminance(color(quay, i)));
+    expect(mean(deck)).toBeGreaterThan(luminance(colors.stone) * 0.7);
   });
 
   it("is deterministic", () => {
