@@ -10,8 +10,15 @@ import { BUILDING_FOOTING, BUILDING_MAX_BURY, BUILDING_MAX_HEIGHT } from "./buil
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
+import { QUAY_BACK, QUAY_COPING_THICKNESS, QUAY_SEA_FACE, QUAY_STEP_Z, QUAY_WIDTH } from "./quayGeometry";
+import { placeQuay, type QuayPlacement } from "./quayPlacement";
 import {
+  buildingGroundY,
+  pierRootReserve,
   portBuildings,
+  settlementGround,
+  standBuilding,
+  PIER_MOUTH_RESERVE,
   PIER_ROOT_RESERVE,
   PORT_BUILDING_GAP,
   PORT_BUILDING_MAX_RADIUS,
@@ -53,6 +60,127 @@ function portOf(b: PortBuilding): MapCell {
 
 const pierRotation = (cell: MapCell) => (cell.decorations ?? []).find((d) => d.type === "pier")?.rotation ?? 0;
 const angleDiff = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+
+/** The centre and eight rim points of a plan circle, as the settlement probes a footprint. */
+function footprintPoints(x: number, z: number, reach: number): { x: number; z: number }[] {
+  const points = [{ x, z }];
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    points.push({ x: x + Math.cos(a) * reach, z: z + Math.sin(a) * reach });
+  }
+  return points;
+}
+
+/** A synthetic port with a pier, as `quayPlacement.test.ts` builds one. */
+const quayPort: MapCell = {
+  hex: { q: 2, r: -1, s: -1 },
+  terrain: "island",
+  hasPort: true,
+  elevation: 1,
+  decorations: [{ type: "pier", position: [0, 0, 0], rotation: 0.7 }],
+};
+const quaySeed = 0x1234abcd;
+
+/** World (x, z) of a point given in a quay's local frame (unscaled). */
+function quayPoint(q: QuayPlacement, x: number, z: number): { x: number; z: number } {
+  const lx = x * q.scaleX;
+  const lz = z * q.scaleZ;
+  return { x: q.worldX + lx * Math.cos(q.yaw) + lz * Math.sin(q.yaw), z: q.worldZ - lx * Math.sin(q.yaw) + lz * Math.cos(q.yaw) };
+}
+
+describe("settlementGround", () => {
+  const sand = flat(0.05);
+  const quay = placeQuay(quayPort, sand, quaySeed)!;
+  const ground = settlementGround(quayPort, sand, quaySeed);
+
+  it("is the quay's flat top on the deck, the step's top on the rear step and the terrain off the quay", () => {
+    expect(ground.quay).toEqual(quay);
+    const onDeck = quayPoint(quay, 0.05, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2);
+    expect(quay.top).toBeGreaterThan(0.05 + 0.03);
+    expect(ground.sampleHeight(onDeck.x, onDeck.z)).toBeCloseTo(quay.top, 9);
+    expect(ground.onQuay(onDeck.x, onDeck.z)).toBe(true);
+    const onStep = quayPoint(quay, -0.05, (QUAY_BACK + QUAY_STEP_Z) / 2);
+    expect(ground.sampleHeight(onStep.x, onStep.z)).toBeCloseTo(quay.top - QUAY_COPING_THICKNESS, 9);
+    expect(ground.onQuay(onStep.x, onStep.z)).toBe(true);
+    for (const off of [quayPoint(quay, QUAY_WIDTH / 2 + 0.05, 0), quayPoint(quay, 0, QUAY_BACK - 0.05), quayPoint(quay, 0, QUAY_SEA_FACE + 0.05)]) {
+      expect(ground.sampleHeight(off.x, off.z)).toBe(0.05);
+      expect(ground.onQuay(off.x, off.z)).toBe(false);
+    }
+  });
+
+  it("is the terrain everywhere, with no quay, for a port without a pier", () => {
+    const noPier = settlementGround({ ...quayPort, decorations: [] }, sand, quaySeed);
+    expect(noPier.quay).toBeNull();
+    const onDeck = quayPoint(quay, 0.05, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2);
+    expect(noPier.sampleHeight(onDeck.x, onDeck.z)).toBe(0.05);
+    expect(noPier.onQuay(onDeck.x, onDeck.z)).toBe(false);
+  });
+
+  it("lets the sand win where it drifts over the quay's back: the visible surface, not a buried deck", () => {
+    // Higher beach behind the step only; the sea-face probes that set the lift are untouched, so the quay is placed the same.
+    const drifted: GroundField = {
+      sampleHeight: (x, z) => {
+        const dx = x - quay.worldX;
+        const dz = z - quay.worldZ;
+        const localZ = (dx * Math.sin(quay.yaw) + dz * Math.cos(quay.yaw)) / quay.scaleZ;
+        return localZ < QUAY_STEP_Z ? 0.2 : 0.05;
+      },
+    };
+    const buried = settlementGround(quayPort, drifted, quaySeed);
+    expect(buried.quay).toEqual(quay);
+    const onStep = quayPoint(quay, 0, (QUAY_BACK + QUAY_STEP_Z) / 2);
+    expect(buried.sampleHeight(onStep.x, onStep.z)).toBe(0.2);
+    const onDeck = quayPoint(quay, 0, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2);
+    expect(buried.sampleHeight(onDeck.x, onDeck.z)).toBeCloseTo(quay.top, 9);
+  });
+});
+
+describe("standBuilding", () => {
+  const sand = flat(0.05);
+  const ground = settlementGround(quayPort, sand, quaySeed);
+  const quay = ground.quay!;
+  const [hx, , hz] = hexToWorld(quayPort.hex);
+  const pierRoot = pierOrigin(sand, { x: hx, z: hz }, 0.7);
+  const reach = 0.04;
+
+  it("keeps the pier's land end clear: the deck's width round the root on the sand, the pier's mouth on the quay", () => {
+    expect(PIER_MOUTH_RESERVE).toBeCloseTo(PIER_WIDTH / 2, 9);
+    expect(pierRootReserve(false)).toBe(PIER_ROOT_RESERVE);
+    expect(pierRootReserve(true)).toBe(PIER_MOUTH_RESERVE);
+    expect(PIER_MOUTH_RESERVE).toBeLessThan(PIER_ROOT_RESERVE);
+  });
+
+  it("stands a footprint on the deck on the deck's top, not the sand under it, and nearer the pier root than the sand's reserve allows", () => {
+    const at = quayPoint(quay, 0.08, -0.15);
+    const d = Math.hypot(at.x - pierRoot.x, at.z - pierRoot.z);
+    expect(d).toBeLessThan(PIER_ROOT_RESERVE + reach);
+    expect(d).toBeGreaterThanOrEqual(PIER_MOUTH_RESERVE + reach);
+    const spot = standBuilding(ground, at, reach, pierRoot, []);
+    expect(spot).not.toBeNull();
+    expect(spot!.x).toBe(at.x);
+    expect(spot!.z).toBe(at.z);
+    expect(spot!.y).toBeCloseTo(buildingGroundY(quay.top), 9);
+    expect(spot!.y).toBeGreaterThan(buildingGroundY(0.05));
+  });
+
+  it("never covers the pier's mouth: a footprint on the deck within the mouth reserve of the root is refused", () => {
+    const at = quayPoint(quay, 0, -0.08);
+    expect(Math.hypot(at.x - pierRoot.x, at.z - pierRoot.z)).toBeLessThan(PIER_MOUTH_RESERVE + reach);
+    expect(standBuilding(ground, at, reach, pierRoot, [])).toBeNull();
+  });
+
+  it("refuses a footprint straddling the quay's edge, which the same sand without a quay takes", () => {
+    const at = quayPoint(quay, QUAY_WIDTH / 2, -0.2);
+    const probes = footprintPoints(at.x, at.z, reach).map((p) => ground.onQuay(p.x, p.z));
+    expect(probes).toContain(true);
+    expect(probes).toContain(false);
+    expect(standBuilding(ground, at, reach, pierRoot, [])).toBeNull();
+    const noQuay = settlementGround({ ...quayPort, decorations: [] }, sand, quaySeed);
+    const spot = standBuilding(noQuay, at, reach, pierRoot, []);
+    expect(spot).not.toBeNull();
+    expect(spot!.y).toBeCloseTo(buildingGroundY(0.05), 9);
+  });
+});
 
 describe("portBuildings", () => {
   it("names its layout constants: four slots on the landward arc, small scale and tint spreads", () => {
@@ -170,9 +298,12 @@ describe("portBuildings", () => {
       expect(d + reach).toBeLessThan(HEX_INRADIUS);
       // The buildings ring an open square at the centre; no footprint intrudes on it.
       expect(d - reach).toBeGreaterThanOrEqual(PORT_SQUARE_RADIUS - 1e-9);
-      // The quay (slice 3) lands where the pier meets the beach; no building stands on that spot.
+      // The quay stands where the pier meets the beach; no building covers the pier's land end,
+      // from the sand by the deck's width, from the quay by the pier's mouth.
       const root = pierOrigin(field, { x: px, z: pz }, pierRotation(port));
-      expect(Math.hypot(b.worldX - root.x, b.worldZ - root.z) - reach).toBeGreaterThanOrEqual(PIER_ROOT_RESERVE - 1e-9);
+      const ground = settlementGround(port, field, seed);
+      const reserve = pierRootReserve(ground.onQuay(b.worldX, b.worldZ));
+      expect(Math.hypot(b.worldX - root.x, b.worldZ - root.z) - reach).toBeGreaterThanOrEqual(reserve - 1e-9);
       for (const other of buildings) {
         if (other === b) continue;
         const gap = Math.hypot(other.worldX - b.worldX, other.worldZ - b.worldZ) - reach - AGED_BUILDING_HALF_DIAGONAL[other.kind] * other.scale;
@@ -198,18 +329,19 @@ describe("portBuildings", () => {
     expect(mean).toBeLessThan(0.45);
   });
 
-  it("stands every building on the ground, on land", () => {
+  it("stands every building on the ground it sees, on land: the sand, or the quay's deck where it stands on the quay", () => {
     for (const b of buildings) {
-      const ground = field.sampleHeight(b.worldX, b.worldZ);
+      const settlement = settlementGround(portOf(b), field, seed);
+      const ground = settlement.sampleHeight(b.worldX, b.worldZ);
       expect(ground).toBeGreaterThan(MIN_GROUND_HEIGHT);
       // Everywhere under the footprint the ground lies between the bottom of the
       // footing (so no wall floats) and the deepest allowed bury on the high side.
       const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
-      const heights = [ground];
-      for (let k = 0; k < 8; k++) {
-        const a = (k / 8) * Math.PI * 2;
-        heights.push(field.sampleHeight(b.worldX + Math.cos(a) * reach, b.worldZ + Math.sin(a) * reach));
-      }
+      const probes = footprintPoints(b.worldX, b.worldZ, reach);
+      const heights = probes.map((p) => settlement.sampleHeight(p.x, p.z));
+      // Wholly on the quay or wholly off it: a wall never steps down the quay's edge.
+      const onQuay = probes.filter((p) => settlement.onQuay(p.x, p.z)).length;
+      expect([0, probes.length]).toContain(onQuay);
       for (const h of heights) {
         expect(h).toBeGreaterThanOrEqual(b.worldY - BUILDING_FOOTING - 1e-9);
         expect(h).toBeLessThanOrEqual(b.worldY + BUILDING_MAX_BURY + 1e-9);

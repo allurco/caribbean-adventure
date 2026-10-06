@@ -11,8 +11,8 @@
  * an invisible hover volume (#59), so the buildings may use the whole hex:
  * they form a crescent round a small open square at the centre, each as
  * near the square as the ground and its neighbours allow, keeping clear too
- * of a small reserve at the pier's land end (`pierOrigin`), where the quay
- * will land. The tower takes the end of the crescent on the fort's side,
+ * of the pier's land end (`pierOrigin`), where the stone quay stands
+ * (`quayPlacement.ts`). The tower takes the end of the crescent on the fort's side,
  * the slot nearest the water, so it reads against the sea; it flies the
  * port's nation and every port gets one, with or without a fort: if no spot
  * on the landward arc takes it, any direction will do, and failing that it
@@ -25,6 +25,14 @@
  * and a spot is only taken if the ground under it spans little enough that,
  * with the origin half a footing above the lowest point, the high side is
  * buried no deeper than BUILDING_MAX_BURY.
+ *
+ * The ground the buildings probe is `settlementGround`: the terrain, with
+ * the quay's flat top wherever a point is on the quay, so a building on the
+ * quay stands on its deck and not on the sand under it. A footprint is
+ * either wholly on the quay or wholly off it (one straddling the edge would
+ * step a wall down the quay's side), and the reserve round the pier's land
+ * end shrinks on the quay from the deck's width to the pier's mouth, so the
+ * deck is buildable but the pier's land end stays walkable.
  * Kind order, scale, tint and yaw jitter come from a hash of the
  * cell and the whole terrain seed, so every client draws the same port.
  * Each port is placed once from its canonical cell; the world copies redraw
@@ -37,6 +45,7 @@ import { pierOrigin } from "./pierPlacement";
 import { BUILDING_FOOTING, BUILDING_MAX_BURY, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { groundTopY, placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
+import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
 import { lerpRange, seedOf, stream } from "./variationStream";
 
 export interface PortBuilding {
@@ -60,8 +69,12 @@ export const PORT_BUILDING_SLOT_ANGLES: readonly number[] = [-1.3, -0.45, 0.45, 
 export const PORT_SQUARE_RADIUS = 0.15;
 /** Farthest a building's origin stands from the hex centre: the widest building then still lies inside the hex. */
 export const PORT_BUILDING_MAX_RADIUS = 0.62;
-/** Kept clear round the pier's land end (`pierOrigin`): the deck's root and the quay that will stand there (slice 3). */
+/** Kept clear round the pier's land end (`pierOrigin`) by a footprint on the sand: the deck's width, so nothing crowds the quay from the beach. */
 export const PIER_ROOT_RESERVE = PIER_WIDTH;
+/** Kept clear round the pier's land end by a footprint on the quay: the pier's mouth, half its width, so the deck is buildable but the pier stays walkable. */
+export const PIER_MOUTH_RESERVE = PIER_WIDTH / 2;
+/** The reserve a footprint's edge keeps from the pier root, by whether the footprint stands on the quay. */
+export const pierRootReserve = (onQuay: boolean) => (onQuay ? PIER_MOUTH_RESERVE : PIER_ROOT_RESERVE);
 /** Rings tried from the centre outwards, this far apart; `placeOnGround` nudges within a ring's step. */
 const RADIAL_STEP = 0.06;
 export const PORT_BUILDING_SCALE_RANGE: readonly [number, number] = [0.92, 1.08];
@@ -94,21 +107,27 @@ function shuffledKinds(next: () => number): BuildingKind[] {
   return kinds;
 }
 
-/** Lowest and highest ground at the centre and round the rim of a plan circle. */
-function footprintGround(field: GroundField, x: number, z: number, reach: number): { min: number; max: number } {
+/** Where a footprint stands with respect to the quay: wholly on it, wholly off it, or across its edge. */
+type QuayStance = "on" | "off" | "edge";
+
+/** Lowest and highest ground at the centre and round the rim of a plan circle, and the footprint's stance to the quay. */
+function footprintGround(ground: SettlementGround, x: number, z: number, reach: number): { min: number; max: number; quay: QuayStance } {
   let min = Infinity;
   let max = -Infinity;
+  let onQuay = 0;
   const probe = (px: number, pz: number) => {
-    const h = field.sampleHeight(px, pz);
+    const h = ground.sampleHeight(px, pz);
     min = Math.min(min, h);
     max = Math.max(max, h);
+    if (ground.onQuay(px, pz)) onQuay++;
   };
   probe(x, z);
   for (let k = 0; k < FOOTPRINT_PROBES; k++) {
     const a = (k / FOOTPRINT_PROBES) * Math.PI * 2;
     probe(x + Math.cos(a) * reach, z + Math.sin(a) * reach);
   }
-  return { min, max };
+  const quay: QuayStance = onQuay === 0 ? "off" : onQuay === FOOTPRINT_PROBES + 1 ? "on" : "edge";
+  return { min, max, quay };
 }
 
 /**
@@ -120,21 +139,64 @@ export const buildingGroundY = (min: number) => min + BUILDING_FOOTING / 2;
 /** Widest height spread a footprint may take before the high side is buried past BUILDING_MAX_BURY. */
 export const BUILDING_MAX_SPREAD = BUILDING_FOOTING / 2 + BUILDING_MAX_BURY;
 
-interface Footprint {
+/** A building already placed: its plan circle. */
+export interface Footprint {
   x: number;
   z: number;
   reach: number;
 }
 
+/** The ground a port's buildings stand on: the terrain with the quay's deck laid over it. */
+export interface SettlementGround extends GroundField {
+  /** The port's quay, placed once, or null where the cell has none. */
+  quay: QuayPlacement | null;
+  /** Whether a world point lies on the quay (its deck or rear step). */
+  onQuay(x: number, z: number): boolean;
+}
+
 /**
- * The ground a port's buildings stand on. Today that is the terrain height
- * field as is. Slice 3's quay (a flat deck at the pier's land end) plugs in
- * here: return a field whose `sampleHeight` is the quay's top wherever (x, z)
- * is on the quay and the terrain elsewhere, and the footprint probes and
- * `placeOnGround` below see a building on the quay standing on its flat top.
+ * The ground a port's buildings stand on: the terrain height field, with
+ * the quay's flat top wherever (x, z) is on the quay, so the footprint
+ * probes and `placeOnGround` see a building on the quay standing on its
+ * deck. Where the sand drifts over the quay's back (the quay is lowered
+ * onto low ground, never raised over high) the sand is the visible
+ * surface and wins. The quay is placed once here, however many points a
+ * port's buildings then probe. Same `field` and `seed` as `portQuays`.
  */
-function settlementGround(field: GroundField): GroundField {
-  return field;
+export function settlementGround(cell: MapCell, field: GroundField, seed: number): SettlementGround {
+  const quay = placeQuay(cell, field, seed);
+  if (!quay) return { quay, onQuay: () => false, sampleHeight: (x, z) => field.sampleHeight(x, z) };
+  return {
+    quay,
+    onQuay: (x, z) => quayTopAt(quay, { x, z }) !== undefined,
+    sampleHeight: (x, z) => {
+      const terrain = field.sampleHeight(x, z);
+      const top = quayTopAt(quay, { x, z });
+      return top === undefined ? terrain : Math.max(top, terrain);
+    },
+  };
+}
+
+/**
+ * A building of plan radius `reach` standing at `at`, if the ground there
+ * takes it: clear of the pier's land end (by the sand's reserve or, on the
+ * quay, the pier's mouth), off its neighbours, wholly on or wholly off the
+ * quay, and on ground spanning no more than BUILDING_MAX_SPREAD. Its Y is
+ * `buildingGroundY` of the lowest ground under it.
+ */
+export function standBuilding(
+  ground: SettlementGround,
+  at: { x: number; z: number },
+  reach: number,
+  pierRoot: { x: number; z: number },
+  placed: readonly Footprint[]
+): { x: number; y: number; z: number } | null {
+  if (placed.some((p) => Math.hypot(p.x - at.x, p.z - at.z) < p.reach + reach + PORT_BUILDING_GAP)) return null;
+  const { min, max, quay } = footprintGround(ground, at.x, at.z, reach);
+  if (quay === "edge") return null;
+  if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") + reach) return null;
+  if (max - min > BUILDING_MAX_SPREAD) return null;
+  return { x: at.x, y: buildingGroundY(min), z: at.z };
 }
 
 /** Candidate directions: the landward arc at CANDIDATE_STEP, or the whole circle, nearest `preferred` first. */
@@ -151,7 +213,7 @@ function candidateAngles(landward: number, preferred: number, wholeCircle: boole
  * the ground, the pier's land end and the buildings already placed allow.
  */
 function standOnBeach(
-  field: GroundField,
+  ground: SettlementGround,
   centre: { x: number; z: number },
   candidates: readonly number[],
   reach: number,
@@ -167,13 +229,10 @@ function standOnBeach(
       const inner = Math.max(first, radius - RADIAL_STEP);
       const anchor = { x: centre.x + dir.x * inner, z: centre.z + dir.z * inner };
       const spot = { x: centre.x + dir.x * radius, z: centre.z + dir.z * radius };
-      const ground = placeOnGround(field, spot, anchor, { ...BUILDING_PLACEMENT, footprintRadius: reach });
-      if (!ground) continue;
-      if (Math.hypot(pierRoot.x - ground.x, pierRoot.z - ground.z) < PIER_ROOT_RESERVE + reach) continue;
-      if (placed.some((p) => Math.hypot(p.x - ground.x, p.z - ground.z) < p.reach + reach + PORT_BUILDING_GAP)) continue;
-      const { min, max } = footprintGround(field, ground.x, ground.z, reach);
-      if (max - min > BUILDING_MAX_SPREAD) continue;
-      return { x: ground.x, y: buildingGroundY(min), z: ground.z };
+      const dry = placeOnGround(ground, spot, anchor, { ...BUILDING_PLACEMENT, footprintRadius: reach });
+      if (!dry) continue;
+      const stood = standBuilding(ground, dry, reach, pierRoot, placed);
+      if (stood) return stood;
     }
   }
   return null;
@@ -192,7 +251,7 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     const centre = { x: hexX, z: hexZ };
-    const ground = settlementGround(field);
+    const ground = settlementGround(cell, field, seed);
     const pierRoot = pierOrigin(field, centre, toWater);
     // The seed goes in through the salt: seedOf quantises its values by 4096 (a
     // 12-bit shift into int32), which would drop a 32-bit seed's top 12 bits.
