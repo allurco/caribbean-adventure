@@ -7,6 +7,7 @@ import {
   AGED_BUILDING_TRIANGLE_BUDGET,
   AGED_BUILDING_TRIANGLES,
   AGED_BUILDING_WALL_TOP,
+  AGED_CHURCH,
   AGED_LEAN_OF,
   AGED_TOWER,
   AGED_TOWER_FLAG_HOIST,
@@ -17,7 +18,7 @@ import {
 } from "./agedBuildingGeometry";
 import { wornRingPoints, type WallFace } from "./agedKit";
 import { FLAG_HEIGHT, FLAG_WIDTH } from "./nationFlagGeometry";
-import { tileStripCount } from "./agedRoof";
+import { RIDGE_CAP_RISE, tileStripCount } from "./agedRoof";
 
 const colors: AgedColors = {
   wall: [0.8, 0.76, 0.68],
@@ -193,7 +194,7 @@ describe("buildAgedBuildingGeometry", () => {
   });
 
   it("grimes the foot of the walls darker than mid-height and flakes cells into several tones", () => {
-    for (const kind of ["house", "tavern", "warehouse"] as const) {
+    for (const kind of ["house", "tavern", "warehouse", "church"] as const) {
       const g = built[kind];
       let low = 0;
       let lowCount = 0;
@@ -291,6 +292,106 @@ describe("buildAgedBuildingGeometry", () => {
     expect(AGED_TOWER_FLAG_HOIST[1]).toBeLessThan(BUILDING_MAX_HEIGHT);
     expect(AGED_TOWER_FLAG_HOIST[1] - FLAG_HEIGHT).toBeGreaterThan(AGED_TOWER.merlon.top);
     expect(AGED_TOWER_FLAG_HOIST[0] + FLAG_WIDTH).toBeLessThan(AGED_BUILDING_HALF_DIAGONAL.watchtower);
+  });
+
+  describe("the church", () => {
+    const g = built.church;
+    const c = AGED_CHURCH;
+    const hd = c.d / 2;
+
+    it("is a long nave, 0.2 across by 0.3 along z, under a tiled roof whose ridge runs along z", () => {
+      expect(c.w).toBe(0.2);
+      expect(c.d).toBe(0.3);
+      expect(c.eave).toBe(0.18);
+      expect(c.ridge).toBe(0.3);
+      let roofMinZ = Infinity;
+      let roofMaxZ = -Infinity;
+      let roofTopY = -Infinity;
+      for (let i = 0; i < g.vertexCount; i++) {
+        if (kindOf(color(g, i)) !== "roof") continue;
+        const [, y, z] = vertex(g, i);
+        roofMinZ = Math.min(roofMinZ, z);
+        roofMaxZ = Math.max(roofMaxZ, z);
+        roofTopY = Math.max(roofTopY, y);
+      }
+      // The roof overhangs the back gable, but at the front it tucks behind the bell gable's wall, never through it.
+      expect(roofMinZ).toBeLessThan(-hd - 0.02);
+      expect(roofMaxZ).toBeLessThan(hd - 0.01);
+      expect(roofMaxZ).toBeGreaterThan(hd - c.facade.thickness);
+      expect(roofTopY).toBeCloseTo(c.ridge + RIDGE_CAP_RISE, 6);
+    });
+
+    it("tops out at the cross, about 0.42, clearly under the tower's pole and under the cap", () => {
+      expect(AGED_BUILDING_HEIGHT.church).toBe(c.cross.top);
+      expect(c.cross.top).toBeGreaterThan(0.4);
+      expect(c.cross.top).toBeLessThanOrEqual(0.42);
+      expect(AGED_BUILDING_HEIGHT.watchtower - AGED_BUILDING_HEIGHT.church).toBeGreaterThan(0.06);
+      expect(AGED_BUILDING_HEIGHT.church).toBeLessThan(BUILDING_MAX_HEIGHT - 0.07);
+      // The cross is iron, the topmost thing, on the front wall's line.
+      let topY = -Infinity;
+      let topZ = 0;
+      let topLum = 1;
+      for (let i = 0; i < g.vertexCount; i++) {
+        const [, y, z] = vertex(g, i);
+        if (y > topY) {
+          topY = y;
+          topZ = z;
+          topLum = luminance(color(g, i));
+        }
+      }
+      expect(topY).toBeCloseTo(c.cross.top, 6);
+      expect(topZ).toBeGreaterThan(hd - c.facade.thickness);
+      expect(topLum).toBeLessThan(0.05);
+    });
+
+    it("raises a bell gable on the front wall above the roof ridge, pierced by two openings each holding a bronze bell", () => {
+      let wallAboveRidge = 0;
+      let bells = 0;
+      const bellX = new Set<number>();
+      for (let i = 0; i < g.vertexCount; i++) {
+        const [x, y, z] = vertex(g, i);
+        const col = color(g, i);
+        if (z < hd - c.facade.thickness - 1e-6) continue;
+        if (kindOf(col) === "wall" && y > AGED_BUILDING_HEIGHT.warehouse && y > c.ridge + RIDGE_CAP_RISE) wallAboveRidge++;
+        // Bronze in the test palette: red over green over blue, dim.
+        if (col[0] > col[1] && col[1] > col[2] && luminance(col) < 0.2 && y > c.facade.sill && y < c.facade.crown && Math.abs(x) < c.facade.screenHalf) {
+          bells++;
+          bellX.add(Math.sign(x));
+        }
+      }
+      expect(wallAboveRidge).toBeGreaterThan(20);
+      expect(bells).toBeGreaterThan(20);
+      expect(bellX).toEqual(new Set([-1, 1]));
+      expect(c.facade.pedimentTop).toBeGreaterThan(c.facade.crown);
+      expect(c.facade.sill).toBeGreaterThan(c.ridge + RIDGE_CAP_RISE);
+    });
+
+    it("puts a tall arched planked door in a stone surround on +z, and small high slit windows on the long walls instead of shutters", () => {
+      let doorTop = -Infinity;
+      let surround = 0;
+      let slits = 0;
+      for (let i = 0; i < g.vertexCount; i++) {
+        const [x, y, z] = vertex(g, i);
+        const col = color(g, i);
+        const lum = luminance(col);
+        if (z > hd - 1e-6 && Math.abs(x) < c.door.halfWidth && lum < 0.1 && y > 0) doorTop = Math.max(doorTop, y);
+        // The test stone, darker than the wall: jambs and voussoirs around the door, proud of the wall.
+        if (z > hd + 0.005 && Math.abs(x) < 0.05 && y > 0 && y < c.door.height + 0.05 && lum > 0.2 && lum < 0.3) surround++;
+        // A slit recess: a near-black quad high on a long wall.
+        if (Math.abs(Math.abs(x) - c.w / 2) < 0.003 && lum < 0.1 && y > c.window.bottom - 1e-6 && y <= c.window.top + 1e-6) slits++;
+      }
+      expect(doorTop).toBeGreaterThanOrEqual(c.door.height);
+      expect(c.door.height).toBeGreaterThan(0.07);
+      expect(surround).toBeGreaterThan(40);
+      // Three per long wall, two triangles each, with the streak's vertices under them.
+      expect(slits).toBeGreaterThanOrEqual(6 * 6);
+      expect(c.window.top).toBeLessThan(AGED_BUILDING_WALL_TOP.church);
+    });
+
+    it("stays within its budget of 800 triangles", () => {
+      expect(AGED_BUILDING_TRIANGLES.church).toBeLessThanOrEqual(800);
+      expect(g.vertexCount / 3).toBe(AGED_BUILDING_TRIANGLES.church);
+    });
   });
 
   it("is deterministic and differs between kinds", () => {

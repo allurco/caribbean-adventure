@@ -22,10 +22,12 @@ import { createFacetBuilder, shadeRgb, type FacetBuilder, type FacetGeometryData
 import {
   AGED_LEAN,
   boxFace,
+  CORNER_CUT_RANGE,
   faceQuad,
   faceSlab,
   flakingTint,
   GRIME_BAND,
+  panel,
   plankedDoor,
   shutteredWindow,
   stoneCourses,
@@ -49,7 +51,7 @@ import {
   type AgedRoofSpec,
 } from "./agedRoof";
 import type { Rgb } from "./palmGeometry";
-import { seedOf } from "./variationStream";
+import { seedOf, stream } from "./variationStream";
 
 export type { AgedColors } from "./agedKit";
 export type AgedBuildingGeometryData = FacetGeometryData;
@@ -67,13 +69,53 @@ interface AgedGabledSpec {
   sign?: boolean;
 }
 
+type GabledKind = Exclude<BuildingKind, "watchtower" | "church">;
+
 /** The faceted kinds' footprints and heights (`GABLED` in buildingGeometry.ts). */
-const GABLED: Readonly<Record<Exclude<BuildingKind, "watchtower">, AgedGabledSpec>> = {
+const GABLED: Readonly<Record<GabledKind, AgedGabledSpec>> = {
   warehouse: { w: 0.26, d: 0.18, eave: 0.13, ridge: 0.24, ridgeAlong: "z", windows: 0, hatch: true },
   tavern: { w: 0.22, d: 0.18, eave: 0.17, ridge: 0.27, ridgeAlong: "x", windows: 2, sign: true },
   house: { w: 0.18, d: 0.14, eave: 0.1, ridge: 0.19, ridgeAlong: "z", windows: 1 },
-  church: { w: 0.2, d: 0.3, eave: 0.18, ridge: 0.3, ridgeAlong: "z", windows: 0 },
 };
+
+/**
+ * The parish church at scale 1: a single nave 0.2 across by 0.3 along z
+ * (ridge along z, the door on +z), whitewashed, under the aged tile roof,
+ * with a bell gable (espadaña) on the front wall: a flat screen 0.035
+ * thick rising above the roof with two round-headed openings each
+ * holding a bell, under a small pediment and an iron cross. The roof tucks
+ * behind the screen at the front and overhangs the back gable as usual.
+ */
+export const AGED_CHURCH = {
+  w: 0.2,
+  d: 0.3,
+  eave: 0.18,
+  ridge: 0.3,
+  facade: {
+    thickness: 0.035,
+    /** Top of the full-width part of the front wall, above the eave. */
+    shoulder: 0.215,
+    /** Half-width of the bell screen. */
+    screenHalf: 0.07,
+    /** Where the sloped shoulders meet the screen's sides. */
+    screenFoot: 0.3,
+    /** The bell openings run from the sill up to the arch crown; the arch springs at `spring`. */
+    sill: 0.31,
+    spring: 0.345,
+    crown: 0.361,
+    bandTop: 0.378,
+    pedimentTop: 0.396,
+  },
+  /** Each opening's centre (±x) and the arch radius (half its width). */
+  opening: { centre: 0.032, radius: 0.016 },
+  bell: { top: 0.344, bottom: 0.318, radius: 0.0105 },
+  cross: { top: 0.42, halfWidth: 0.003, armHalf: 0.012, armY: 0.408, thickness: 0.006 },
+  door: { halfWidth: 0.024, height: 0.085, proud: 0.008, surround: 0.014, surroundProud: 0.013 },
+  /** Three slit windows per long wall, high under the eave, as deep recesses. */
+  window: { halfWidth: 0.007, bottom: 0.1, top: 0.135, count: 3 },
+  /** Quoin blocks at the corners: alternating courses on the two faces of each corner. */
+  quoin: { length: 0.03, courseHeight: 0.026, courses: 5, proud: 0.003 },
+} as const;
 
 /** The landmark tower at scale 1: a tapering body, a string course, a parapet with merlons, the pole. */
 export const AGED_TOWER = {
@@ -110,13 +152,26 @@ const roofSpec = (s: AgedGabledSpec): AgedRoofSpec => ({
   ridgeAlong: s.ridgeAlong,
 });
 
+/**
+ * The church's roof: the usual overhang at the back, but at the front it
+ * ends inside the bell gable's wall (half the screen's thickness behind
+ * the front face), so the roof is built shorter and shifted back by
+ * `churchRoofShift`.
+ */
+const churchRoofSpec = (): AgedRoofSpec => {
+  const c = AGED_CHURCH;
+  const length = c.d + AGED_ROOF_OVERHANG - c.facade.thickness / 2;
+  return { halfU: c.w / 2, halfV: length / 2 - AGED_ROOF_OVERHANG, eave: c.eave, ridge: c.ridge, ridgeAlong: "z" };
+};
+const churchRoofShift = () => -(AGED_ROOF_OVERHANG + AGED_CHURCH.facade.thickness / 2) / 2;
+
 /** Top of each kind at scale 1 (the ridge cap or the pole tip). */
 export const AGED_BUILDING_HEIGHT: Readonly<Record<BuildingKind, number>> = {
   warehouse: roofTop(roofSpec(GABLED.warehouse)),
   tavern: roofTop(roofSpec(GABLED.tavern)),
   house: roofTop(roofSpec(GABLED.house)),
   watchtower: AGED_TOWER.pole.top,
-  church: roofTop(roofSpec(GABLED.church)),
+  church: AGED_CHURCH.cross.top,
 };
 
 /** Top of each kind's walls at scale 1: where the roof's underside meets them, or the tower body's top. */
@@ -125,10 +180,10 @@ export const AGED_BUILDING_WALL_TOP: Readonly<Record<BuildingKind, number>> = {
   tavern: roofEaveUnderside(roofSpec(GABLED.tavern)),
   house: roofEaveUnderside(roofSpec(GABLED.house)),
   watchtower: AGED_TOWER.bodyTop,
-  church: roofEaveUnderside(roofSpec(GABLED.church)),
+  church: roofEaveUnderside(churchRoofSpec()),
 };
 
-const gabledHalfDiagonal = (kind: Exclude<BuildingKind, "watchtower">): number => {
+const gabledHalfDiagonal = (kind: GabledKind): number => {
   const s = GABLED[kind];
   const r = roofSpec(s);
   const [lx, lz] = AGED_LEAN_OF[kind];
@@ -138,12 +193,21 @@ const gabledHalfDiagonal = (kind: Exclude<BuildingKind, "watchtower">): number =
   return Math.ceil(Math.hypot(u, v) * 200) / 200;
 };
 
+/** The church's farthest corner is the roof's rear eave corner (the front overhang is inside the facade; the screen is narrower than the nave). */
+const churchHalfDiagonal = (): number => {
+  const c = AGED_CHURCH;
+  const [lx, lz] = AGED_LEAN_OF.church;
+  const u = roofReachU(churchRoofSpec()) + Math.abs(lx) * c.eave;
+  const v = c.d / 2 + AGED_ROOF_OVERHANG + Math.abs(lz) * c.eave;
+  return Math.ceil(Math.hypot(u, v) * 200) / 200;
+};
+
 /** Farthest any vertex reaches from the origin in plan, at scale 1 (the ground-placement footprint). */
 export const AGED_BUILDING_HALF_DIAGONAL: Readonly<Record<BuildingKind, number>> = {
   warehouse: gabledHalfDiagonal("warehouse"),
   tavern: gabledHalfDiagonal("tavern"),
   house: gabledHalfDiagonal("house"),
-  church: gabledHalfDiagonal("church"),
+  church: churchHalfDiagonal(),
   watchtower:
     Math.ceil((Math.hypot(AGED_TOWER.halfBase, AGED_TOWER.halfBase) + Math.hypot(...AGED_LEAN_OF.watchtower) * AGED_TOWER.ledge.top) * 200) / 200,
 };
@@ -157,14 +221,19 @@ export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
  * or sign (10). The tower is its footing 10 and plinth course 10, body 16,
  * the blocks (about 370, varying with the courses the hash lays), slit
  * recesses and streaks 20, ledge 28, parapet 36, eight merlons 80, pole 18
- * and door 50; its flag (36) is a separate mesh.
+ * and door 50; its flag (36) is a separate mesh. The church is its footing
+ * 10 and plinth course 10, walls 80, back gable 3, eave streaks 8, the
+ * bell-gable facade 100 (base 18, shoulders 8, screen foot 4, piers,
+ * reveals and sills 24, arch spandrels 32, band 4, sides 4, pediment 6),
+ * the roof 352, cross 22, two bells 48, door 50 with its recess 2 and
+ * stone surround 50, six slit windows 24 and twenty quoin blocks 40.
  */
 export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
   warehouse: 458,
   tavern: 610,
   house: 458,
   watchtower: 572,
-  church: 546,
+  church: 799,
 };
 
 const FOOTING_SHADE = 0.85;
@@ -242,7 +311,7 @@ function faceCuts(face: WallFace, cuts: readonly [number, number, number, number
   return [cuts[l], cuts[r]];
 }
 
-function addAgedGabled(b: FacetBuilder, kind: Exclude<BuildingKind, "watchtower">, s: AgedGabledSpec, colors: AgedColors) {
+function addAgedGabled(b: FacetBuilder, kind: GabledKind, s: AgedGabledSpec, colors: AgedColors) {
   const hw = s.w / 2;
   const hd = s.d / 2;
   const roof = roofSpec(s);
@@ -425,10 +494,255 @@ function addAgedTower(b: FacetBuilder, colors: AgedColors) {
   });
 }
 
+
+/**
+ * A convex polygon in the xy plane (counter-clockwise seen from +z)
+ * extruded from `z0` to `z1`: the front face at `z1`, the back at `z0`
+ * (either may be left out) and a side per edge where `edges[i]` is not
+ * false (edge `i` runs from point `i` to point `i + 1`). Faces that meet
+ * a neighbouring piece on a shared plane are left out that way.
+ */
+function extrudedPolygon(
+  b: FacetBuilder,
+  poly: readonly (readonly [number, number])[],
+  z0: number,
+  z1: number,
+  color: Rgb,
+  options: { front?: boolean; back?: boolean; edges?: readonly boolean[] } = {}
+) {
+  const at = (p: readonly [number, number], z: number): Vec3 => [p[0], p[1], z];
+  if (options.front !== false) for (let k = 1; k < poly.length - 1; k++) b.triangle(at(poly[0], z1), at(poly[k], z1), at(poly[k + 1], z1), color);
+  if (options.back !== false) for (let k = 1; k < poly.length - 1; k++) b.triangle(at(poly[0], z0), at(poly[k + 1], z0), at(poly[k], z0), color);
+  for (let k = 0; k < poly.length; k++) {
+    if (options.edges?.[k] === false) continue;
+    const p = poly[k];
+    const q = poly[(k + 1) % poly.length];
+    b.quad(at(p, z0), at(q, z0), at(q, z1), at(p, z1), color);
+  }
+}
+
+/** An open-backed slab on a face over any convex outline (counter-clockwise seen from outside): the front and a side per edge. */
+function facePolygonSlab(b: FacetBuilder, frame: FaceFrame, pts: readonly (readonly [number, number])[], proud: number, color: Rgb) {
+  const off: Vec3 = [frame.normal[0] * proud, frame.normal[1] * proud, frame.normal[2] * proud];
+  const back = pts.map(([s, y]) => frame.at(s, y));
+  const front = back.map((p): Vec3 => [p[0] + off[0], p[1] + off[1], p[2] + off[2]]);
+  for (let k = 1; k < pts.length - 1; k++) b.triangle(front[0], front[k], front[k + 1], color);
+  for (let k = 0; k < pts.length; k++) {
+    const k1 = (k + 1) % pts.length;
+    b.quad(back[k], back[k1], front[k1], front[k], color);
+  }
+}
+
+/**
+ * The bell gable (espadaña) on the church's front wall, from the wall top
+ * up: a full-width base to the shoulder line, sloped shoulders up to a
+ * screen that stands above the roof, pierced by two round-headed openings
+ * (the arch heads in two facets each) over a sill, under a flat band, a
+ * pediment and the cross. Built as convex pieces that meet on shared
+ * planes with the hidden faces dropped. `cl` and `cr` are the front wall's
+ * top-ring corner cuts, which the base is inset by so it sits on the worn
+ * corners rather than over them.
+ */
+function addChurchBellGable(b: FacetBuilder, wallTop: number, cl: number, cr: number, colors: AgedColors, seed: number) {
+  const c = AGED_CHURCH;
+  const f = c.facade;
+  const hw = c.w / 2;
+  const z1 = c.d / 2;
+  const z0 = z1 - f.thickness;
+  const xs = f.screenHalf;
+  const wall = colors.wall;
+  const left = -hw + cl;
+  const right = hw - cr;
+
+  // The base: its front panelled like the walls below so the flaking carries on up it.
+  panel(b, [left, wallTop, z1], [right, wallTop, z1], [right, f.shoulder, z1], [left, f.shoulder, z1], { cols: 3, rows: 2, cellTint: flakingTint(seed) }, wall, seed, 1);
+  extrudedPolygon(b, [[left, wallTop], [right, wallTop], [right, f.shoulder], [left, f.shoulder]], z0, z1, wall, { front: false, edges: [false, true, false, true] });
+  // The shoulders slope up from the base's ends to the screen's feet.
+  extrudedPolygon(b, [[xs, f.shoulder], [right, f.shoulder], [xs, f.screenFoot]], z0, z1, wall, { edges: [false, true, false] });
+  extrudedPolygon(b, [[-xs, f.shoulder], [-xs, f.screenFoot], [left, f.shoulder]], z0, z1, wall, { edges: [false, true, false] });
+  // The screen's foot, up to the openings' sill; its sides from the shoulders up are one strip each, added below.
+  extrudedPolygon(b, [[-xs, f.shoulder], [xs, f.shoulder], [xs, f.sill], [-xs, f.sill]], z0, z1, wall, { edges: [false, false, false, false] });
+  const r = c.opening.radius;
+  const xc = c.opening.centre;
+  // Three piers between and beside the openings, sill to crown; their reveals face into the openings, sill to spring.
+  const piers: [number, number][] = [
+    [-xs, -xc - r],
+    [-xc + r, xc - r],
+    [xc + r, xs],
+  ];
+  for (const [x0, x1] of piers) {
+    extrudedPolygon(b, [[x0, f.sill], [x1, f.sill], [x1, f.crown], [x0, f.crown]], z0, z1, wall, { edges: [false, false, false, false] });
+  }
+  for (const side of [-1, 1] as const) {
+    const centre = side * xc;
+    // The sill floor of the opening, facing up, and the two reveals.
+    b.quad([centre - r, f.sill, z0], [centre - r, f.sill, z1], [centre + r, f.sill, z1], [centre + r, f.sill, z0], shadeRgb(wall, 0.9));
+    b.quad([centre - r, f.sill, z1], [centre - r, f.sill, z0], [centre - r, f.spring, z0], [centre - r, f.spring, z1], shadeRgb(wall, 0.85));
+    b.quad([centre + r, f.sill, z0], [centre + r, f.sill, z1], [centre + r, f.spring, z1], [centre + r, f.spring, z0], shadeRgb(wall, 0.85));
+    // The arch head: a spandrel each side of the crown, its soffit in two facets (at 45° and the crown).
+    const k = Math.SQRT1_2;
+    const lo: [number, number] = [centre - r, f.spring];
+    const lm: [number, number] = [centre - r * k, f.spring + r * k];
+    const crown: [number, number] = [centre, f.crown];
+    const lt: [number, number] = [centre - r, f.crown];
+    extrudedPolygon(b, [lo, lm, crown, lt], z0, z1, wall, { edges: [true, true, false, false] });
+    const ro: [number, number] = [centre + r, f.spring];
+    const rm: [number, number] = [centre + r * k, f.spring + r * k];
+    const rt: [number, number] = [centre + r, f.crown];
+    extrudedPolygon(b, [rt, crown, rm, ro], z0, z1, wall, { edges: [false, true, true, false] });
+  }
+  // The band over the arches, the screen's sides, and the pediment.
+  extrudedPolygon(b, [[-xs, f.crown], [xs, f.crown], [xs, f.bandTop], [-xs, f.bandTop]], z0, z1, wall, { edges: [false, false, false, false] });
+  b.quad([xs, f.screenFoot, z0], [xs, f.screenFoot, z1], [xs, f.bandTop, z1], [xs, f.bandTop, z0], wall);
+  b.quad([-xs, f.screenFoot, z1], [-xs, f.screenFoot, z0], [-xs, f.bandTop, z0], [-xs, f.bandTop, z1], wall);
+  extrudedPolygon(b, [[-xs, f.bandTop], [xs, f.bandTop], [0, f.pedimentTop]], z0, z1, wall, { edges: [false, true, true] });
+}
+
+/** The two bells, hanging in the openings: a small lathe each, bronze. */
+function addChurchBells(b: FacetBuilder, colors: AgedColors) {
+  const c = AGED_CHURCH;
+  const zc = c.d / 2 - c.facade.thickness / 2;
+  for (const side of [-1, 1] as const) {
+    const from = b.vertexCount();
+    b.lathe(
+      [
+        [0, c.bell.top],
+        [c.bell.radius * 0.6, c.bell.top - 0.004],
+        [c.bell.radius, c.bell.bottom],
+        [0, c.bell.bottom],
+      ],
+      6,
+      colors.bronze
+    );
+    b.translate(from, b.vertexCount(), [side * c.opening.centre, 0, zc]);
+  }
+}
+
+/** The iron cross on the pediment: a post with its foot in the pediment, and a thicker arm across it. */
+function addChurchCross(b: FacetBuilder, colors: AgedColors) {
+  const c = AGED_CHURCH;
+  const zc = c.d / 2 - c.facade.thickness / 2;
+  const hz = c.cross.thickness / 2;
+  b.box([-c.cross.halfWidth, c.facade.pedimentTop - 0.006, zc - hz], [c.cross.halfWidth, c.cross.top, zc + hz], colors.iron, { bottom: false });
+  // The arm stands a little proud of the post on both faces, so the two never share a plane.
+  b.box([-c.cross.armHalf, c.cross.armY - 0.003, zc - hz - 0.0015], [c.cross.armHalf, c.cross.armY + 0.003, zc + hz + 0.0015], colors.iron);
+}
+
+/** The door: a tall planked door under a stone surround of two jambs and a three-facet round arch, a dark tympanum behind. */
+function addChurchDoor(b: FacetBuilder, front: FaceFrame, colors: AgedColors) {
+  const c = AGED_CHURCH;
+  const d = c.door;
+  const hw = c.w / 2;
+  const ri = d.halfWidth;
+  const ro = d.halfWidth + d.surround;
+  // The recess under the arch above the door, on the wall plane; the lintel and voussoirs cover its edges.
+  faceQuad(b, front, hw - ri, hw + ri, d.height, d.height + ri * Math.SQRT1_2 + 0.004, 0.0008, shadeRgb(colors.wall, 0.12));
+  plankedDoor(b, front, { s: hw, halfWidth: d.halfWidth, height: d.height, proud: d.proud }, colors.timber, colors.iron);
+  faceSlab(b, front, hw - ro, hw - ri, 0, d.height, d.surroundProud, colors.stone);
+  faceSlab(b, front, hw + ri, hw + ro, 0, d.height, d.surroundProud, shadeRgb(colors.stone, 0.94));
+  // Voussoirs: three facets over the half circle, from the right jamb round to the left.
+  for (let k = 0; k < 3; k++) {
+    const a0 = (k * Math.PI) / 3;
+    const a1 = ((k + 1) * Math.PI) / 3;
+    const pt = (radius: number, a: number): [number, number] => [hw + radius * Math.cos(a), d.height + radius * Math.sin(a)];
+    facePolygonSlab(b, front, [pt(ri, a0), pt(ro, a0), pt(ro, a1), pt(ri, a1)], d.surroundProud, shadeRgb(colors.stone, 0.9 + 0.06 * k));
+  }
+}
+
+/** Quoins: blocks of stone at each corner, in courses that alternate between the corner's two faces. */
+function addChurchQuoins(b: FacetBuilder, colors: AgedColors, seed: number) {
+  const c = AGED_CHURCH;
+  const q = c.quoin;
+  const hw = c.w / 2;
+  const hd = c.d / 2;
+  const next = stream(seed);
+  // Each corner as the two faces that meet there (the first face's right-hand end meets the second's left-hand end), the blocks starting past the corner's worn cut.
+  const corners: [WallFace, WallFace, number][] = [
+    ["front", "left", c.w],
+    ["right", "front", c.d],
+    ["back", "right", c.w],
+    ["left", "back", c.d],
+  ];
+  const start = CORNER_CUT_RANGE[1];
+  corners.forEach(([a, bFace, widthA], i) => {
+    for (let k = 0; k < q.courses; k++) {
+      const y0 = 0.012 + k * q.courseHeight;
+      const y1 = y0 + q.courseHeight - 0.004;
+      const length = q.length * (0.8 + next() * 0.4);
+      const tone = shadeRgb(colors.stone, 0.88 + next() * 0.24);
+      // Even courses lie on the first face at its right-hand end (the corner), odd ones on the second at its left-hand end.
+      if ((k + i) % 2 === 0) faceQuad(b, boxFace(a, hw, hd), widthA - start - length, widthA - start, y0, y1, q.proud, tone);
+      else faceQuad(b, boxFace(bFace, hw, hd), start, start + length, y0, y1, q.proud, tone);
+    }
+  });
+}
+
+function addAgedChurch(b: FacetBuilder, colors: AgedColors) {
+  const c = AGED_CHURCH;
+  const kind: BuildingKind = "church";
+  const hw = c.w / 2;
+  const hd = c.d / 2;
+  const roof = churchRoofSpec();
+  const wallTop = roofEaveUnderside(roof);
+  const apex = roofGableApex(roof);
+  const slope = roofSlope(roof);
+  const bottomCuts = wornCuts(kindSeed(kind, 1));
+  const topCuts = wornCuts(kindSeed(kind, 2));
+
+  // The stone plinth, the worn panelled walls, the back gable and the bell gable on the front.
+  const wallsFrom = b.vertexCount();
+  plinth(b, hw, hd, colors.stone);
+  wornPrism(b, { hw, hd, y: 0, cuts: bottomCuts }, { hw, hd, y: wallTop, cuts: topCuts }, colors.wall, {
+    panel: { cols: 3, rows: 3, cellTint: flakingTint(kindSeed(kind, 3)) },
+    faces: { bottom: false, top: false },
+    seed: kindSeed(kind, 4),
+  });
+  const [bl, br] = faceCuts("back", topCuts);
+  gable(b, boxFace("back", hw, hd), c.w, bl, br, wallTop, apex, slope, colors.wall);
+  const [fl, fr] = faceCuts("front", topCuts);
+  addChurchBellGable(b, wallTop, fl, fr, colors, kindSeed(kind, 8));
+  tintGrime(b, wallsFrom, b.vertexCount(), GRIME_BAND * c.ridge);
+  b.jitterColors(WALL_JITTER, kindSeed(kind, 5), wallsFrom, b.vertexCount());
+  // Staining from the eave corners of the long walls.
+  for (const face of ["right", "left"] as const) {
+    const frame = boxFace(face, hw, hd);
+    const [cl, cr] = faceCuts(face, topCuts);
+    streak(b, frame, cl + 0.012, wallTop, wallTop * 0.45, 0.006, colors.wall);
+    streak(b, frame, c.d - cr - 0.012, wallTop, wallTop * 0.35, 0.005, colors.wall);
+  }
+
+  // The roof, shorter at the front so it ends inside the bell gable's wall.
+  const roofRange = addAgedRoof(b, roof, colors.roof, kindSeed(kind, 6));
+  b.translate(roofRange.from, roofRange.to, [0, 0, churchRoofShift()]);
+
+  addChurchBells(b, colors);
+  addChurchCross(b, colors);
+  addChurchDoor(b, boxFace("front", hw, hd), colors);
+  // Slit windows high on the long walls, deep recesses with a staining run under each.
+  for (const face of ["right", "left"] as const) {
+    const frame = boxFace(face, hw, hd);
+    for (let i = 0; i < c.window.count; i++) {
+      const s = (c.d * (i + 1)) / (c.window.count + 1);
+      faceQuad(b, frame, s - c.window.halfWidth, s + c.window.halfWidth, c.window.bottom, c.window.top, 0.0008, shadeRgb(colors.wall, 0.1));
+      streak(b, frame, s, c.window.bottom, (c.window.top - c.window.bottom) * 0.9, c.window.halfWidth * 1.5, colors.wall);
+    }
+  }
+  addChurchQuoins(b, colors, kindSeed(kind, 9));
+
+  b.bakeAmbientOcclusion({
+    groundHeight: AO.groundHeight,
+    groundStrength: AO.groundStrength,
+    concavityStrength: AO.concavity,
+    centroid: [0, c.eave / 2, 0],
+    overhangs: [{ y: wallTop, reach: AO.eaveReach, strength: AO.eaveStrength }],
+  });
+}
+
 /** Builds one kind's triangles at scale 1, leaning as a whole. Colours are linear RGB in [0, 1]. */
 export function buildAgedBuildingGeometry(kind: BuildingKind, colors: AgedColors): AgedBuildingGeometryData {
   const b = createFacetBuilder();
   if (kind === "watchtower") addAgedTower(b, colors);
+  else if (kind === "church") addAgedChurch(b, colors);
   else addAgedGabled(b, kind, GABLED[kind], colors);
   const [lx, lz] = AGED_LEAN_OF[kind];
   b.shear(0, b.vertexCount(), "x", "y", lx);
