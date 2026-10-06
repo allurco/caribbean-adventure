@@ -12,6 +12,7 @@
  * slope (rock on steep faces) and a cheap occlusion term (darker where the
  * face sits below its neighbourhood); see `landFaceColor`.
  */
+import type { GroundField } from "./groundPlacement";
 import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { metresToUnits } from "./worldScale";
@@ -242,6 +243,143 @@ function hash(x: number, z: number): number {
   return s - Math.floor(s);
 }
 
+/** The triangular lattice the land mesh is built on, from the field's bounds and period. */
+interface LandLattice {
+  minX: number;
+  minZ: number;
+  spacing: number;
+  rowHeight: number;
+  cols: number;
+  rows: number;
+  period: number | null;
+  periodSteps: number;
+}
+
+/**
+ * The lattice for a field. On a wrapping map (#36) the field's bounds are one
+ * wrap width in x and the field repeats beyond them. The lattice then fits a
+ * whole number of steps into that width, so copies of the mesh one wrap apart
+ * share their edge vertices, and every look-up across the lattice's east/west
+ * edge (relief occlusion, seabed normals) wraps round to the other side.
+ * Vertex (i, j) sits at (minX + i·spacing [+ spacing/2 on odd rows], minZ + j·rowHeight).
+ */
+function landLattice(field: TerrainHeightField, requestedSpacing = LAND_MESH_SPACING): LandLattice {
+  const { minX, maxX, minZ, maxZ } = field.bounds;
+  const period = field.periodX;
+  const periodSteps = period === null ? 0 : Math.max(1, Math.round(period / requestedSpacing));
+  const spacing = period === null ? requestedSpacing : period / periodSteps;
+  const rowHeight = spacing * (Math.sqrt(3) / 2);
+  const cols = period === null ? Math.ceil((maxX - minX) / spacing) + 1 : periodSteps + 1;
+  const rows = Math.ceil((maxZ - minZ) / rowHeight) + 1;
+  return { minX, minZ, spacing, rowHeight, cols, rows, period, periodSteps };
+}
+
+/** Lattice column i, wrapped round on a periodic lattice, clamped to the edge otherwise. */
+const latticeColumn = (lattice: LandLattice, i: number): number =>
+  lattice.period === null ? Math.max(0, Math.min(lattice.cols - 1, i)) : ((i % lattice.periodSteps) + lattice.periodSteps) % lattice.periodSteps;
+
+/**
+ * The drawn land surface as a ground field: at a world point, the plane of
+ * the lattice triangle under (x, z), through the field's heights at its
+ * three vertices. The field is what the lattice samples, so between lattice
+ * points the two differ by the ground's curvature over a step (up to a few
+ * hundredths on a beach); anything that must sit on the ground as it is
+ * drawn (the port buildings and quays) asks here, not the field. Each
+ * lattice vertex is sampled once and kept, so a cluster of probes costs
+ * about one field sample each. The triangulation is the one `buildLandMesh`
+ * emits: between an even row j and the (right-shifted) odd row above it, up
+ * triangles (a_i, b_i, a_i+1) and down triangles (a_i+1, b_i, b_i+1);
+ * between an odd row and the even row above, (b_i, b_i+1, a_i) and
+ * (a_i, b_i+1, a_i+1).
+ */
+export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACING): GroundField {
+  const lattice = landLattice(field, spacing);
+  const { minX, minZ, rowHeight, rows, cols } = lattice;
+  const step = lattice.spacing;
+  const heights = new Map<number, number>();
+  const vertex = (ii: number, jj: number): [number, number, number] => {
+    const shift = jj % 2 === 1 ? step / 2 : 0;
+    const column = latticeColumn(lattice, ii);
+    const key = jj * cols + column;
+    let h = heights.get(key);
+    if (h === undefined) {
+      h = field.sampleHeight(minX + column * step + shift, minZ + jj * rowHeight);
+      heights.set(key, h);
+    }
+    return [minX + ii * step + shift, h, minZ + jj * rowHeight];
+  };
+  return {
+    creasesWithin: (x, z, radius) => {
+      // The lattice vertices inside the disc...
+      const points: { x: number; z: number }[] = [];
+      const j0 = Math.max(0, Math.ceil((z - radius - minZ) / rowHeight));
+      const j1 = Math.min(rows - 1, Math.floor((z + radius - minZ) / rowHeight));
+      for (let j = j0; j <= j1; j++) {
+        const shift = j % 2 === 1 ? step / 2 : 0;
+        const vz = minZ + j * rowHeight;
+        const i0 = Math.ceil((x - radius - minX - shift) / step);
+        const i1 = Math.floor((x + radius - minX - shift) / step);
+        for (let i = i0; i <= i1; i++) {
+          const vx = minX + i * step + shift;
+          if (Math.hypot(vx - x, vz - z) <= radius) points.push({ x: vx, z: vz });
+        }
+      }
+      // ...and where the lattice's edges cross its rim: the edges run along
+      // three families of parallel lines (the rows, and the two diagonals at
+      // 60° and 120°), each `rowHeight` apart, through the vertex (0, 0).
+      const h = Math.sqrt(3) / 2;
+      for (const f of [
+        { n: [0, 1], d: [1, 0], c: minZ },
+        { n: [-h, 0.5], d: [0.5, h], c: -h * minX + 0.5 * minZ },
+        { n: [h, 0.5], d: [-0.5, h], c: h * minX + 0.5 * minZ },
+      ]) {
+        const centre = f.n[0] * x + f.n[1] * z;
+        const k0 = Math.ceil((centre - radius - f.c) / rowHeight);
+        const k1 = Math.floor((centre + radius - f.c) / rowHeight);
+        for (let k = k0; k <= k1; k++) {
+          const off = f.c + k * rowHeight - centre;
+          const t = Math.sqrt(Math.max(0, radius * radius - off * off));
+          const fx = x + f.n[0] * off;
+          const fz = z + f.n[1] * off;
+          points.push({ x: fx + f.d[0] * t, z: fz + f.d[1] * t });
+          if (t > 0) points.push({ x: fx - f.d[0] * t, z: fz - f.d[1] * t });
+        }
+      }
+      return points;
+    },
+    sampleHeight: (x, z) => {
+      const j = Math.max(0, Math.min(rows - 2, Math.floor((z - minZ) / rowHeight)));
+      const v = (z - minZ) / rowHeight - j;
+      const u = (x - minX) / step;
+      // Column index and fraction in the unshifted row of the pair (row j when even, row j + 1 when odd).
+      const i = Math.floor(u);
+      const f = u - i;
+      let tri: [[number, number, number], [number, number, number], [number, number, number]];
+      if (j % 2 === 0) {
+        // Row j unshifted, row j + 1 shifted right by half a step.
+        if (f < v / 2) tri = [vertex(i, j), vertex(i - 1, j + 1), vertex(i, j + 1)];
+        else if (f > 1 - v / 2) tri = [vertex(i + 1, j), vertex(i, j + 1), vertex(i + 1, j + 1)];
+        else tri = [vertex(i, j), vertex(i, j + 1), vertex(i + 1, j)];
+      } else {
+        // Row j shifted right by half a step, row j + 1 unshifted.
+        const w = 1 - v;
+        if (f < w / 2) tri = [vertex(i - 1, j), vertex(i, j + 1), vertex(i, j)];
+        else if (f > 1 - w / 2) tri = [vertex(i, j), vertex(i + 1, j + 1), vertex(i + 1, j)];
+        else tri = [vertex(i, j + 1), vertex(i + 1, j + 1), vertex(i, j)];
+      }
+      const [[ax, ay, az], [bx, by, bz], [cx, cy, cz]] = tri;
+      const det = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
+      const wb = ((x - ax) * (cz - az) - (cx - ax) * (z - az)) / det;
+      const wc = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / det;
+      return ay + wb * (by - ay) + wc * (cy - ay);
+    },
+  };
+}
+
+/** The height of the drawn land surface at one world point (`landSurface` for a single probe). */
+export const landSurfaceHeight = (field: TerrainHeightField, x: number, z: number, spacing = LAND_MESH_SPACING): number =>
+  landSurface(field, spacing).sampleHeight(x, z);
+
 export function buildLandMesh(
   field: TerrainHeightField,
   options: LandMeshOptions = {}
@@ -251,21 +389,9 @@ export function buildLandMesh(
   const palette = options.colors ?? DEFAULT_COLORS;
   const occlusion = options.occlusion ?? LAND_MESH_OCCLUSION;
   const { sampleReef } = options;
-  const { minX, maxX, minZ, maxZ } = field.bounds;
-  // On a wrapping map (#36) the field's bounds are one wrap width in x and the
-  // field repeats beyond them. The lattice then fits a whole number of steps
-  // into that width, so copies of the mesh one wrap apart share their edge
-  // vertices, and every look-up across the lattice's east/west edge (relief
-  // occlusion, seabed normals) wraps round to the other side.
-  const period = field.periodX;
-  const periodSteps = period === null ? 0 : Math.max(1, Math.round(period / (options.spacing ?? LAND_MESH_SPACING)));
-  const spacing = period === null ? (options.spacing ?? LAND_MESH_SPACING) : period / periodSteps;
-  const rowHeight = spacing * (Math.sqrt(3) / 2);
-  const cols = period === null ? Math.ceil((maxX - minX) / spacing) + 1 : periodSteps + 1;
-  const rows = Math.ceil((maxZ - minZ) / rowHeight) + 1;
-  /** Lattice column i, wrapped round on a periodic lattice, clamped to the edge otherwise. */
-  const column = (i: number): number =>
-    period === null ? Math.max(0, Math.min(cols - 1, i)) : ((i % periodSteps) + periodSteps) % periodSteps;
+  const lattice = landLattice(field, options.spacing);
+  const { minX, minZ, spacing, rowHeight, cols, rows, period } = lattice;
+  const column = (i: number): number => latticeColumn(lattice, i);
   const bandNoise = period === null ? plainBandNoise : createPlaneNoise(mulberry32(BAND_NOISE_SEED), period);
 
   // Lattice vertex (i, j) sits at (minX + i·spacing [+ spacing/2 on odd rows], minZ + j·rowHeight).

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { MapCell } from "../../game/types";
-import { createWrap, hexGrid, hexRect, hexToOffset, wrapWorldWidth } from "../../game/hex";
+import { createWrap, hexGrid, hexRect, hexToOffset, hexToWorld, wrapWorldWidth } from "../../game/hex";
 import { createReefMask } from "./reefMask";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
@@ -11,6 +11,8 @@ import {
   LAND_MESH_SKIRT_DEPTH,
   VISIBLE_SEABED_DEPTH,
   LAND_MESH_SPACING,
+  landSurface,
+  landSurfaceHeight,
   type LandMeshColors,
   type LandMeshData,
 } from "./landMesh";
@@ -600,4 +602,114 @@ describe("buildLandMesh", () => {
     // against gross regressions.
     expect(best).toBeLessThan(750);
   }, 20000);
+});
+
+describe("landSurfaceHeight", () => {
+  it("is the drawn surface: the field at every lattice vertex and the plane of the emitted triangle between them", () => {
+    const { columns } = getMapPreset("small");
+    const wrap = createWrap(columns);
+    const cells = generateMap(getMapPreset("small"), 11);
+    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+    const { land } = buildLandMesh(field);
+    const p = land.positions;
+    let checked = 0;
+    for (let t = 0; t < p.length / 9; t += 7) {
+      const [ax, ay, az, bx, by, bz, cx, cy, cz] = p.subarray(t * 9, t * 9 + 9);
+      // Each vertex: the surface passes through it (the emitted positions are float32, a few 1e-6 off the lattice).
+      expect(landSurfaceHeight(field, ax, az)).toBeCloseTo(ay, 4);
+      // The centroid and a point a third of the way from a to the bc midpoint: on the triangle's plane.
+      expect(landSurfaceHeight(field, (ax + bx + cx) / 3, (az + bz + cz) / 3)).toBeCloseTo((ay + by + cy) / 3, 4);
+      const mx = (bx + cx) / 2, mz = (bz + cz) / 2, my = (by + cy) / 2;
+      expect(landSurfaceHeight(field, ax + (mx - ax) / 3, az + (mz - az) / 3)).toBeCloseTo(ay + (my - ay) / 3, 4);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(1000);
+  });
+
+  it("repeats across the wrap seam and differs from the field between the lattice points where the ground curves", () => {
+    const { columns } = getMapPreset("small");
+    const wrap = createWrap(columns);
+    const width = wrapWorldWidth(wrap);
+    const cells = generateMap(getMapPreset("small"), 11);
+    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+    let maxGap = 0;
+    for (const cell of cells) {
+      if (cell.terrain !== "island") continue;
+      const [x, , z] = hexToWorld(cell.hex);
+      const here = landSurfaceHeight(field, x + 0.0371, z + 0.0193);
+      expect(landSurfaceHeight(field, x + width + 0.0371, z + 0.0193)).toBeCloseTo(here, 6);
+      maxGap = Math.max(maxGap, Math.abs(here - field.sampleHeight(x + 0.0371, z + 0.0193)));
+    }
+    expect(maxGap).toBeGreaterThan(0);
+    // The lattice is fine enough that the drawn ground is never far from the field.
+    expect(maxGap).toBeLessThan(0.05);
+  });
+
+  it("landSurface is the same surface as a GroundField, and samples each lattice vertex once however often it is asked", () => {
+    const cells = generateMap(getMapPreset("small"), 11);
+    const base = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    let samples = 0;
+    const counted = { ...base, sampleHeight: (x: number, z: number) => (samples++, base.sampleHeight(x, z)) };
+    const surface = landSurface(counted);
+    const points: [number, number][] = [];
+    for (const cell of cells) {
+      if (cell.terrain !== "island") continue;
+      const [x, , z] = hexToWorld(cell.hex);
+      for (let k = 0; k < 12; k++) points.push([x + 0.05 * Math.cos(k), z + 0.05 * Math.sin(k)]);
+    }
+    for (const [x, z] of points) expect(surface.sampleHeight(x, z)).toBeCloseTo(landSurfaceHeight(base, x, z), 9);
+    const first = samples;
+    for (const [x, z] of points) surface.sampleHeight(x, z);
+    expect(samples).toBe(first);
+    // Twelve points within 0.05 of a centre share a handful of lattice vertices, not 36 samples.
+    expect(first).toBeLessThan(points.length * 1.5);
+  });
+
+  it("creasesWithin lists the lattice vertices inside a disc and the lattice edges' crossings of its rim: where the drawn surface bends", () => {
+    const cells = generateMap(getMapPreset("small"), 11);
+    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const surface = landSurface(field);
+    const rowHeight = LAND_MESH_SPACING * (Math.sqrt(3) / 2);
+    const { minX, minZ } = field.bounds;
+    const h = Math.sqrt(3) / 2;
+    /** Distance from a point to the nearest line of each lattice family (rows, 60° and 120° diagonals). */
+    const offLine = (p: { x: number; z: number }) =>
+      [p.z - minZ, -h * (p.x - minX) + 0.5 * (p.z - minZ), h * (p.x - minX) + 0.5 * (p.z - minZ)].map((c) => Math.abs(c / rowHeight - Math.round(c / rowHeight)) * rowHeight);
+    let vertices = 0;
+    let crossings = 0;
+    for (const cell of cells) {
+      if (cell.terrain !== "island") continue;
+      const [x, , z] = hexToWorld(cell.hex);
+      const centre = { x: x + 0.013, z: z - 0.027 };
+      const radius = 0.21;
+      const creases = surface.creasesWithin!(centre.x, centre.z, radius);
+      let inside = 0;
+      let onRim = 0;
+      for (const p of creases) {
+        const d = Math.hypot(p.x - centre.x, p.z - centre.z);
+        expect(d).toBeLessThanOrEqual(radius + 1e-9);
+        const off = offLine(p);
+        if (Math.abs(d - radius) < 1e-9) {
+          // On the rim, on a lattice line: an edge crosses the rim here.
+          expect(Math.min(...off)).toBeLessThan(1e-6);
+          onRim++;
+        } else {
+          // Inside: a lattice vertex, on a line of every family, where the drawn surface and the field agree.
+          for (const o of off) expect(o).toBeLessThan(1e-6);
+          expect(surface.sampleHeight(p.x, p.z)).toBeCloseTo(field.sampleHeight(p.x, p.z), 9);
+          inside++;
+        }
+      }
+      // A disc of radius 0.21 on a 0.15 lattice holds about 0.21² π / (0.15² √3 / 2) ≈ 7 vertices,
+      // and each family has about 2 × 0.21 / 0.13 ≈ 3 lines crossing it, twice each.
+      expect(inside).toBeGreaterThanOrEqual(5);
+      expect(inside).toBeLessThanOrEqual(10);
+      expect(onRim).toBeGreaterThanOrEqual(12);
+      expect(onRim).toBeLessThanOrEqual(24);
+      vertices += inside;
+      crossings += onRim;
+    }
+    expect(vertices).toBeGreaterThan(0);
+    expect(crossings).toBeGreaterThan(0);
+  });
 });

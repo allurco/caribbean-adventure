@@ -6,7 +6,17 @@
  */
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 
-export type GroundField = Pick<TerrainHeightField, "sampleHeight">;
+export interface GroundField extends Pick<TerrainHeightField, "sampleHeight"> {
+  /**
+   * Where the ground creases within `radius` of (x, z): the vertices of a
+   * drawn lattice surface (`landSurface`) inside the disc, and the points
+   * where its edges cross the disc's rim, between which the surface is
+   * flat. A footprint's highest and lowest ground lie on these or between
+   * rim probes, so a placement that must not be cut into probes them as
+   * well. Unset on a smooth field.
+   */
+  creasesWithin?(x: number, z: number, radius: number): { x: number; z: number }[];
+}
 
 /** Ground lower than this (just above the waterline) can't take a decoration. */
 export const MIN_GROUND_HEIGHT = SEA_LEVEL + 0.03;
