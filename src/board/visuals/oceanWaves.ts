@@ -65,8 +65,8 @@ export const WAVE_CASCADES: readonly WaveCascade[] = bandedCascades(TRADE_WIND_S
  * Choppiness λ (#38 step 7): how far the surface is pulled horizontally
  * toward the crests, as a multiple of Tessendorf's unit displacement. 1–1.5
  * is the usual range; the crests sharpen with it and so does the whitecap
- * coverage (whitecapFoam.ts). The displacement itself is not drawn until
- * step 8 displaces the geometry; here it only decides where crests fold.
+ * coverage (whitecapFoam.ts). The same λ pulls the geometry (step 8,
+ * waveDisplacement.ts), so the sharpened crests and the foam on them agree.
  */
 export const WAVE_CHOPPINESS = 1.2;
 
