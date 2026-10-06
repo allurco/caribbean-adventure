@@ -182,13 +182,27 @@ describe("buildAgedBuildingGeometry", () => {
       let courseVertices = 0;
       let footingStone = 0;
       let footingVertices = 0;
+      // The course's top band (its cap) against the band below it, on the side faces.
+      let cap = 0;
+      let capCount = 0;
+      let lower = 0;
+      let lowerCount = 0;
       for (let i = 0; i < g.vertexCount; i++) {
         const [x, y, z] = vertex(g, i);
         const c = color(g, i);
+        const n = normal(g, i);
         if (Math.abs(y) < 1e-6) groundReach = Math.max(groundReach, Math.hypot(x, z));
         if (y > -0.031 && y < -0.011) {
           courseReach = Math.max(courseReach, Math.hypot(x, z));
           courseVertices++;
+          // The cap's top edge against the course's bottom edge (the edge they share belongs to both).
+          if (Math.abs(n[1]) < 0.5 && y > -0.015) {
+            cap += luminance(c);
+            capCount++;
+          } else if (Math.abs(n[1]) < 0.5 && y < -0.021) {
+            lower += luminance(c);
+            lowerCount++;
+          }
         }
         // The footing proper, below the plinth course's top (the door sill dips 0.011 under ground contact).
         if (y < -0.0125) {
@@ -202,6 +216,10 @@ describe("buildAgedBuildingGeometry", () => {
       expect(courseVertices).toBeGreaterThan(0);
       expect(courseReach).toBeGreaterThan(groundReach + 0.003);
       expect(footingStone).toBe(footingVertices);
+      // A paler cap course on top of the plinth: a crisp line where the ground meets the wall.
+      expect(capCount).toBeGreaterThan(0);
+      expect(lowerCount).toBeGreaterThan(0);
+      expect(cap / capCount).toBeGreaterThan((lower / lowerCount) * 1.2);
     }
   });
 

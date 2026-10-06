@@ -531,8 +531,14 @@ warehouse's at 0.16 under 0.27 (was 0.13 / 0.24), each at its old pitch;
 the tavern stays at 0.17 / 0.27. The warehouse's walls are
 `bleachedPlank` (sun-bleached, salt-greyed softwood) so they read apart
 from the dark timber of its door and hatch; the house and tavern keep
-the lime render. Triangles: warehouse 458, tavern 610, house 458,
-watchtower 572 (+36 flag), budget 1000. Honest judgement from the
+the lime render. Every kind stands on a stone plinth: the footing
+(0.16 deep) in the stone colour, with a course standing 0.004 proud of
+the wall line from 0.03 to 0.012 below ground contact whose top 0.006 is
+a paler cap, so where the ground falls away under a piece on a slope the
+exposed footing reads as a raised platform with a crisp pale line at the
+wall's foot rather than a wall sinking out of sight. Triangles:
+warehouse 466, tavern 618, house 466, watchtower 580 (+36 flag), budget
+1000. Honest judgement from the
 screenshots: at ship zoom the pieces read as an old stone-and-tile port;
 at map zoom the tower is a small pale upright with a dot of flag colour,
 findable beside the label but not yet unmistakable on its own, because

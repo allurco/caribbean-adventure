@@ -150,19 +150,20 @@ export const AGED_BUILDING_HALF_DIAGONAL: Readonly<Record<BuildingKind, number>>
 export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
 /**
  * What the builds below come to. A gabled piece is its footing 10 and
- * plinth course 10, walls 4 × 18 panels + 8 corner facets, two gables of 3,
- * four eave streaks of 2, the roof (`agedRoofTriangles`: 244 house and
- * warehouse, 312 tavern), a door 50, and its windows (62 each), hatch (22)
- * or sign (10). The tower is its footing 10 and plinth course 10, body 16,
- * the blocks (about 370, varying with the courses the hash lays), slit
- * recesses and streaks 20, ledge 28, parapet 36, eight merlons 80, pole 18
- * and door 50; its flag (36) is a separate mesh.
+ * plinth course 18 (the course 8 under its cap 10), walls 4 × 18 panels +
+ * 8 corner facets, two gables of 3, four eave streaks of 2, the roof
+ * (`agedRoofTriangles`: 244 house and warehouse, 312 tavern), a door 50,
+ * and its windows (62 each), hatch (22) or sign (10). The tower is its
+ * footing 10 and plinth course 18, body 16, the blocks (about 370, varying
+ * with the courses the hash lays), slit recesses and streaks 20, ledge 28,
+ * parapet 36, eight merlons 80, pole 18 and door 50; its flag (36) is a
+ * separate mesh.
  */
 export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
-  warehouse: 458,
-  tavern: 610,
-  house: 458,
-  watchtower: 572,
+  warehouse: 466,
+  tavern: 618,
+  house: 466,
+  watchtower: 580,
 };
 
 const FOOTING_SHADE = 0.85;
@@ -172,9 +173,12 @@ const FOOTING_SHADE = 0.85;
  * building on a slope the exposed footing reads as a raised stone platform
  * (as colonial houses and churches on slopes were built) and not as a wall
  * sinking out of sight. Below ground contact, so the lean's pivot ring at
- * y = 0 is untouched.
+ * y = 0 is untouched. Its top band is a paler cap course, so where the
+ * course shows a crisp pale line marks the ground's contact with the wall
+ * (the grime and the ground occlusion darken the whole course alike).
  */
 const PLINTH_COURSE = { top: -0.012, bottom: -0.03, proud: 0.004 };
+const PLINTH_CAP = { height: 0.006, shade: 1.3 };
 const MORTAR_SHADE = 0.68;
 const WALKWAY_SHADE = 0.72;
 const WALL_JITTER = 0.04;
@@ -186,11 +190,13 @@ const SALT = 0x5a1d;
 
 const kindSeed = (kind: BuildingKind, part: number) => seedOf([BUILDING_KINDS.indexOf(kind), part], SALT);
 
-/** The stone footing below ground contact (10 triangles) with its proud plinth course (10 more). */
+/** The stone footing below ground contact (10 triangles) with its proud plinth course (8 more) under the course's paler cap (10 more). */
 function plinth(b: FacetBuilder, hw: number, hd: number, stone: Rgb) {
   b.box([-hw, -BUILDING_FOOTING, -hd], [hw, 0, hd], shadeRgb(stone, FOOTING_SHADE), { top: false });
   const p = PLINTH_COURSE.proud;
-  b.box([-hw - p, PLINTH_COURSE.bottom, -hd - p], [hw + p, PLINTH_COURSE.top, hd + p], stone, { bottom: false });
+  const capBottom = PLINTH_COURSE.top - PLINTH_CAP.height;
+  b.box([-hw - p, PLINTH_COURSE.bottom, -hd - p], [hw + p, capBottom, hd + p], stone, { bottom: false, top: false });
+  b.box([-hw - p, capBottom, -hd - p], [hw + p, PLINTH_COURSE.top, hd + p], shadeRgb(stone, PLINTH_CAP.shade), { bottom: false });
 }
 
 /** The window band on a wall whose roof underside is at `wallTop`: never into the roof. */
