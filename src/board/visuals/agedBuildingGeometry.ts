@@ -502,11 +502,13 @@ function addAgedTower(b: FacetBuilder, colors: AgedColors) {
 
 
 /**
- * A convex polygon in the xy plane (counter-clockwise seen from +z)
- * extruded from `z0` to `z1`: the front face at `z1`, the back at `z0`
- * (either may be left out) and a side per edge where `edges[i]` is not
- * false (edge `i` runs from point `i` to point `i + 1`). Faces that meet
- * a neighbouring piece on a shared plane are left out that way.
+ * A polygon in the xy plane (counter-clockwise seen from +z) extruded
+ * from `z0` to `z1`: the front face at `z1`, the back at `z0` (either may
+ * be left out) and a side per edge where `edges[i]` is not false (edge
+ * `i` runs from point `i` to point `i + 1`). Faces that meet a
+ * neighbouring piece on a shared plane are left out that way. The caps
+ * are fanned from point 0, so a concave outline must start at a corner
+ * that sees every other point, or a triangle comes out inside out.
  */
 function extrudedPolygon(
   b: FacetBuilder,
@@ -586,12 +588,13 @@ function addChurchBellGable(b: FacetBuilder, wallTop: number, cl: number, cr: nu
     b.quad([centre - r, f.sill, z1], [centre - r, f.sill, z0], [centre - r, f.spring, z0], [centre - r, f.spring, z1], shadeRgb(wall, 0.85));
     b.quad([centre + r, f.sill, z0], [centre + r, f.sill, z1], [centre + r, f.spring, z1], [centre + r, f.spring, z0], shadeRgb(wall, 0.85));
     // The arch head: a spandrel each side of the crown, its soffit in two facets (at 45° and the crown).
+    // Each spandrel is concave at its mid-arc point, so its fan must start at the outer corner (lt, rt).
     const k = Math.SQRT1_2;
     const lo: [number, number] = [centre - r, f.spring];
     const lm: [number, number] = [centre - r * k, f.spring + r * k];
     const crown: [number, number] = [centre, f.crown];
     const lt: [number, number] = [centre - r, f.crown];
-    extrudedPolygon(b, [lo, lm, crown, lt], z0, z1, wall, { edges: [true, true, false, false] });
+    extrudedPolygon(b, [lt, lo, lm, crown], z0, z1, wall, { edges: [false, true, true, false] });
     const ro: [number, number] = [centre + r, f.spring];
     const rm: [number, number] = [centre + r * k, f.spring + r * k];
     const rt: [number, number] = [centre + r, f.crown];
@@ -664,7 +667,11 @@ function addChurchQuoins(b: FacetBuilder, colors: AgedColors, seed: number) {
   const hw = c.w / 2;
   const hd = c.d / 2;
   const next = stream(seed);
-  // Each corner as the two faces that meet there (the first face's right-hand end meets the second's left-hand end), the blocks starting past the corner's worn cut.
+  // Each entry puts blocks at two opposite corners: even courses at the first face's right-hand end
+  // (seen from outside), odd courses at the second face's left-hand end. Over the four entries every
+  // corner is reached by both of its faces, once in each parity (front's right end is also right's left
+  // end, and so on round), so the courses alternate between the two faces at every corner. The blocks
+  // start past the corner's worn cut.
   const corners: [WallFace, WallFace, number][] = [
     ["front", "left", c.w],
     ["right", "front", c.d],

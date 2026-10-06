@@ -20,7 +20,7 @@ import {
 import { wornRingPoints, type WallFace } from "./agedKit";
 import { FLAG_HEIGHT, FLAG_WIDTH } from "./nationFlagGeometry";
 import { RIDGE_CAP_RISE, tileStripCount } from "./agedRoof";
-import { backfacingFirstHits } from "./facetVisibility";
+import { backfacingFirstHits, opposedCoplanarOverlaps } from "./facetVisibility";
 
 const colors: AgedColors = {
   wall: [0.8, 0.76, 0.68],
@@ -405,6 +405,13 @@ describe("buildAgedBuildingGeometry", () => {
       expect(hits.map((h) => `${kind} triangle ${h.triangle} at ${h.point.map((v) => v.toFixed(3)).join(", ")}`).slice(allowed)).toEqual([]);
     }
     // Nearly twenty thousand rays against up to 800 triangles per kind: a few seconds under a loaded suite.
+  }, 30_000);
+
+  it("has no triangle wound inside out under a sound one on the same plane (a concave outline fanned from the wrong corner)", () => {
+    for (const kind of BUILDING_KINDS) {
+      const overlaps = opposedCoplanarOverlaps(built[kind]);
+      expect(overlaps.map((o) => `${kind} triangles ${o.triangles.join(" and ")} facing ${o.normal.map((v) => v.toFixed(2)).join(", ")}, area ${o.area.toExponential(2)}`)).toEqual([]);
+    }
   }, 30_000);
 
   it("gives the church's two roof slopes their full rows of tile strips, each strip's top facing its own way", () => {

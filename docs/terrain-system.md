@@ -572,7 +572,12 @@ warehouse, the next-largest piece, is now rare. Triangles: 769 (budget
 the whole aged kit against inside-out or missing facets by casting rays
 from forty-nine directions and requiring every first hit to face the
 viewer; it caught the screen's side strips and the bells wound inside
-out during the build. Honest judgement from the screenshots: at ship
+out during the build. A ray tie with a sound coplanar face passes that
+test, so a sibling check lists any exposed pair of coplanar triangles
+that face opposite ways and overlap, which is what a concave outline
+fanned from the wrong corner leaves; it caught the arches' left
+spandrels, whose fan had to start at the outer corner. Honest
+judgement from the screenshots: at ship
 zoom the pale screen rising above the ridge reads as a church beside
 the tower, the cross a nub; at map zoom it is one more white block with
 a red roof and does not compete with the tower's dark upright and flag.
