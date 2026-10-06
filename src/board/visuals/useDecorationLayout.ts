@@ -10,6 +10,8 @@ import { usePalmTrees, type PalmTreesResources } from "./usePalmTrees";
 import { ROCK_UNIT_RADIUS } from "./rockGeometry";
 import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
 import { smallStones } from "./smallStones";
+import { pierOrigin } from "./pierPlacement";
+import { portBuildings, type PortBuilding } from "./portSettlement";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -36,7 +38,10 @@ export interface DecorationLayout {
   rocks: DecorationData[];
   /** Derived small stones, one per sand or grass cell without a rock (#49). */
   stones: DecorationData[];
+  /** Piers, with the origin at the land end where the beach meets the water (#49). */
   piers: DecorationData[];
+  /** Derived port buildings and watchtowers, from the port flag and the `pier`/`fort` decorations (#49). */
+  buildings: PortBuilding[];
   palms: PalmTreesResources;
 }
 
@@ -88,25 +93,29 @@ const decorationsOf = perMapCache((cells, wrap) => {
             if (rock) rocks.push(rock);
             break;
           }
-          // Fort disabled - port marker (octagon) in HexGrid serves this purpose
-          case "pier":
-            // Piers sit at water level, so only their XZ matters
+          // The fort becomes a watchtower among the port buildings (`portBuildings`, below).
+          case "pier": {
+            // Piers sit at water level; the land end starts where the beach meets the water.
+            const origin = pierOrigin(field, spot, deco.rotation);
             piers.push({
               type: deco.type,
-              worldX: spot.x,
+              worldX: origin.x,
               worldY: 0,
-              worldZ: spot.z,
+              worldZ: origin.z,
               rotation: deco.rotation,
               scale,
             });
             break;
+          }
         }
       }
     }
 
-    const stones = smallStones(cells, field, terrainSeedFromCells(cells));
+    const seed = terrainSeedFromCells(cells);
+    const stones = smallStones(cells, field, seed);
+    const buildings = portBuildings(cells, field, seed);
 
-    return { trees, rocks, stones, piers };
+    return { trees, rocks, stones, piers, buildings };
 });
 
 /** Places every decoration on the height field once per map (and wrap). */

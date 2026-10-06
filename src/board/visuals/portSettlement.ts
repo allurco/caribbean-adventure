@@ -1,5 +1,7 @@
 /**
  * Where each port's buildings stand (issue #49). Pure, no Three.js.
+ * (`PortBuildings.tsx` draws them; this file is named differently because
+ * a case-insensitive filesystem cannot tell the two apart.)
  *
  * The generator gives a port cell a `pier` (rotated towards the docking hex)
  * and a `fort` (which the layout used to drop). From those and the port flag

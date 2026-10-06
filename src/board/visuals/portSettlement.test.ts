@@ -23,7 +23,7 @@ import {
   PORT_BUILDING_YAW_JITTER,
   WATCHTOWER_SCALE_RANGE,
   type PortBuilding,
-} from "./portBuildings";
+} from "./portSettlement";
 
 const cells = generateMap(getMapPreset("small"), 11);
 const seed = terrainSeedFromCells(cells);
