@@ -6,7 +6,7 @@ import { RockVariantMesh, type RockInstance } from "./RockVariantMesh";
 import type { DecorationData } from "./useDecorationLayout";
 
 /** One shared geometry per faceted variant; the rocks never change shape. */
-const ROCK_GEOMETRIES: readonly BufferGeometry[] = Array.from({ length: ROCK_VARIANT_COUNT }, (_, i) => {
+export const ROCK_GEOMETRIES: readonly BufferGeometry[] = Array.from({ length: ROCK_VARIANT_COUNT }, (_, i) => {
   const data = buildRockGeometry(i);
   const geometry = new BufferGeometry();
   geometry.setAttribute("position", new BufferAttribute(data.positions, 3));
@@ -15,7 +15,7 @@ const ROCK_GEOMETRIES: readonly BufferGeometry[] = Array.from({ length: ROCK_VAR
 });
 
 // White, so `instanceColor` (the biome's base colour times the rock's tint) is the whole colour.
-const ROCK_MATERIAL = new MeshStandardMaterial({
+export const ROCK_MATERIAL = new MeshStandardMaterial({
   color: 0xffffff,
   roughness: 0.95,
   metalness: 0,
