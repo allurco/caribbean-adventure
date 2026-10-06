@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ShaderChunk } from "three";
 import { WAVE_CASCADES } from "./oceanWaves";
 import { refractedSunTravel, refractionFocusMatrix } from "./causticFocus";
-import { injectSeabedCaustics, SEABED_CAUSTIC_GLSL } from "./seabedCaustics";
+import { injectSeabedCaustics, SEABED_CAUSTIC_GLSL, SUN_CAUSTIC_MULTIPLY } from "./seabedCaustics";
 
 const SUN = [0.3, 0.8, 0.5] as const;
 
@@ -39,15 +39,15 @@ describe("injectSeabedCaustics", () => {
     expect(instanceAt).toBeLessThan(worldAt);
   });
 
-  it("scales only the directional light (the sun) by the caustic, before three's shading, leaving the sky term alone", () => {
+  it("scales only the sun by the caustic, before three's shading, leaving the sky term alone", () => {
     const shader = shaderStub();
     injectSeabedCaustics(shader, { sun: SUN, waveSlopes: textures });
     // The lights chunk is inlined with the sun's colour scaled right after it is read.
     expect(shader.fragmentShader).not.toContain("#include <lights_fragment_begin>");
-    expect(shader.fragmentShader).toContain("getDirectionalLightInfo( directionalLight, directLight );\n\t\tdirectLight.color *= causticFactor;");
+    expect(shader.fragmentShader).toContain(`getDirectionalLightInfo( directionalLight, directLight );\n\t\t${SUN_CAUSTIC_MULTIPLY}`);
     // Point and spot lights, and the indirect (sky) terms, are untouched.
     expect(shader.fragmentShader).toContain("getPointLightInfo( pointLight, geometryPosition, directLight );\n");
-    expect(shader.fragmentShader).not.toContain("getPointLightInfo( pointLight, geometryPosition, directLight );\n\t\tdirectLight.color *= causticFactor;");
+    expect(shader.fragmentShader).not.toContain("getPointLightInfo( pointLight, geometryPosition, directLight );\n\t\t#if UNROLLED_LOOP_INDEX");
     expect(shader.fragmentShader).toContain("#include <lights_fragment_end>");
     // The caustic is computed before the lights, in uniform control flow.
     const factorAt = shader.fragmentShader.indexOf("float causticFactor = seabedCaustic();");
@@ -58,6 +58,25 @@ describe("injectSeabedCaustics", () => {
 
   it("only patches what three's chunk contains", () => {
     expect(ShaderChunk.lights_fragment_begin).toContain("getDirectionalLightInfo( directionalLight, directLight );");
+  });
+
+  it("guards the multiply to directional light 0, the shadow-casting sun, so the fill light (#63) is not focused", () => {
+    const shader = shaderStub();
+    injectSeabedCaustics(shader, { sun: SUN, waveSlopes: textures });
+    // The multiply sits inside the unrolled loop, where three substitutes the
+    // literal index for UNROLLED_LOOP_INDEX (it guards its own shadow read with it).
+    // Point and spot lights unroll first in three's chunk; find the directional loop by its header.
+    const loopStart = shader.fragmentShader.indexOf("for ( int i = 0; i < NUM_DIR_LIGHTS; i ++ )");
+    const loopEnd = shader.fragmentShader.indexOf("#pragma unroll_loop_end", loopStart);
+    const multiplyAt = shader.fragmentShader.indexOf("directLight.color *= causticFactor;");
+    expect(multiplyAt).toBeGreaterThan(loopStart);
+    expect(multiplyAt).toBeLessThan(loopEnd);
+    const guarded = shader.fragmentShader.slice(loopStart, loopEnd);
+    expect(guarded).toMatch(/#if UNROLLED_LOOP_INDEX == 0\n\s*directLight\.color \*= causticFactor;[^\n]*\n\s*#endif/);
+    // The guard uses the same token three uses for its own per-index guard, so it is substituted the same way.
+    expect(ShaderChunk.lights_fragment_begin).toContain("UNROLLED_LOOP_INDEX < NUM_DIR_LIGHT_SHADOWS");
+    // Only one multiply: the fill light is never scaled.
+    expect(shader.fragmentShader.split("directLight.color *= causticFactor;").length - 1).toBe(1);
   });
 
   it("binds the cascade textures and the sun's refraction constants as uniforms", () => {

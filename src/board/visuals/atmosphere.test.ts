@@ -1,20 +1,72 @@
 import { describe, it, expect } from "vitest";
 import { PCFSoftShadowMap } from "three";
 import {
+  FILL_AZIMUTH_DEG,
+  FILL_DIRECTION,
+  FILL_ELEVATION_DEG,
+  FILL_INTENSITY,
+  FILL_OFFSET,
   SHADOW_CASTER_HEIGHT,
   SHADOW_EXTENT,
   SHADOW_EXTENT_MIN,
   SHADOW_MAP_TYPE,
+  SUN_AZIMUTH_DEG,
+  SUN_DIRECTION,
   SUN_DISTANCE,
   SUN_ELEVATION_DEG,
+  SUN_INTENSITY,
   SUN_SHADOW,
 } from "./atmosphere";
 import { SEABED_FLOOR_DEPTH } from "./seabedProfile";
 import { SEABED_FADE_END, seabedVisibility } from "./waterOptics";
 import { metresToUnits, unitsToMetres } from "./worldScale";
 import { WAVE_CREST_BOUND_UNITS } from "./waveDisplacement";
+import { viewDirectionXZ } from "./sunDirection";
 import { shadowDepthRange, shadowExtentFor, shadowTexel } from "../shadowFit";
-import { CAMERA_MAX_DISTANCE } from "../cameraBounds";
+import { CAMERA_MAX_DISTANCE, CAMERA_OFFSET } from "../cameraBounds";
+
+describe("the fill light (#63)", () => {
+  const view = viewDirectionXZ(CAMERA_OFFSET);
+  /** How much of a light's horizontal direction points the way the camera looks. */
+  const alongView = (direction: readonly [number, number, number]) =>
+    direction[0] * view[0] + direction[2] * view[1];
+
+  it("comes from behind the camera, where the sun is in front of it", () => {
+    // Every wall the player sees faces the camera, and so faces away from a
+    // sun in front of it; only a light from behind the camera reaches them.
+    expect(alongView(SUN_DIRECTION)).toBeGreaterThan(0);
+    expect(alongView(FILL_DIRECTION)).toBeLessThan(0);
+  });
+
+  it("swings to the opposite side of the view from the sun", () => {
+    expect(Math.sign(FILL_AZIMUTH_DEG)).toBe(-Math.sign(SUN_AZIMUTH_DEG));
+    expect(Math.sign(FILL_DIRECTION[0])).toBe(-Math.sign(SUN_DIRECTION[0]));
+  });
+
+  it("sits lower than the sun, as bounce light does", () => {
+    expect(FILL_ELEVATION_DEG).toBeLessThan(SUN_ELEVATION_DEG);
+    expect(FILL_ELEVATION_DEG).toBeGreaterThan(0);
+  });
+
+  it("is a fraction of the sun's strength, never a second key light", () => {
+    const ratio = FILL_INTENSITY / SUN_INTENSITY;
+    expect(ratio).toBeGreaterThanOrEqual(0.15);
+    expect(ratio).toBeLessThanOrEqual(0.4);
+  });
+
+  it("is mounted along its direction at the sun's distance", () => {
+    expect(Math.hypot(...FILL_OFFSET)).toBeCloseTo(SUN_DISTANCE, 6);
+    FILL_OFFSET.forEach((component, axis) => {
+      expect(component).toBeCloseTo(FILL_DIRECTION[axis] * SUN_DISTANCE, 6);
+    });
+    // Behind the camera on the right, above the target.
+    const elevation = (FILL_ELEVATION_DEG * Math.PI) / 180;
+    expect(FILL_OFFSET[1]).toBeCloseTo(SUN_DISTANCE * Math.sin(elevation), 6);
+    expect(Math.hypot(FILL_OFFSET[0], FILL_OFFSET[2])).toBeCloseTo(SUN_DISTANCE * Math.cos(elevation), 6);
+    expect(FILL_OFFSET[0]).toBeGreaterThan(0);
+    expect(FILL_OFFSET[2]).toBeGreaterThan(0);
+  });
+});
 
 describe("the sun's shadow camera", () => {
   const heights = { min: -metresToUnits(SEABED_FLOOR_DEPTH), max: SHADOW_CASTER_HEIGHT };

@@ -23,6 +23,7 @@ import { useLandTerrain } from "./visuals/useLandTerrain";
 import { TerrainDecorations } from "./visuals/TerrainDecorations";
 import { useDecorationLayout } from "./visuals/useDecorationLayout";
 import { SunLight } from "./visuals/SunLight";
+import { FillLight } from "./visuals/FillLight";
 import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import { useWaveCascades } from "./visuals/useWaveCascades";
 import { useTerrainFieldTexture } from "./visuals/useTerrainFieldTexture";
@@ -38,6 +39,9 @@ import {
   SUN_INTENSITY,
   SUN_OFFSET,
   SUN_SHADOW,
+  FILL_COLOR,
+  FILL_INTENSITY,
+  FILL_OFFSET,
   SHADOW_MAP_TYPE,
   BLOOM_INTENSITY,
   BLOOM_THRESHOLD,
@@ -313,6 +317,8 @@ function Scene({
 
       {/* High, warm mid-afternoon sun in front of the camera; shadow box follows the camera target and fits the view */}
       <SunLight color={SUN_COLOR} intensity={SUN_INTENSITY} offset={SUN_OFFSET} shadow={SUN_SHADOW} />
+      {/* Shadowless fill from behind the camera: stands in for the sand and whitewash bounce the sky map lacks (#63) */}
+      <FillLight color={FILL_COLOR} intensity={FILL_INTENSITY} offset={FILL_OFFSET} />
 
       {/* Ocean, coloured by depth from the same terrain height field: a grid
           of level-of-detail rings under the camera focus (oceanGrid.ts),
