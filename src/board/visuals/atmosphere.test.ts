@@ -10,6 +10,7 @@ import {
   SUN_SHADOW,
 } from "./atmosphere";
 import { SEABED_FLOOR_DEPTH } from "./seabedProfile";
+import { SEABED_FADE_END, seabedVisibility } from "./waterOptics";
 import { metresToUnits, unitsToMetres } from "./worldScale";
 import { shadowDepthRange, shadowExtentFor, shadowTexel } from "../shadowFit";
 import { CAMERA_MAX_DISTANCE } from "../cameraBounds";
@@ -31,8 +32,11 @@ describe("the sun's shadow camera", () => {
     expect(SUN_SHADOW.fit.maxExtent).toBe(25);
   });
 
-  it("fits the box around the seabed floor, which receives hull shadows through the water", () => {
-    expect(SUN_SHADOW.fit.receiverDepth).toBe(metresToUnits(SEABED_FLOOR_DEPTH));
+  it("fits the box around the deepest seabed that can still be seen through the water", () => {
+    expect(SUN_SHADOW.fit.receiverDepth).toBe(metresToUnits(SEABED_FADE_END));
+    // Nothing of the seabed reaches the surface from there down, so deeper shadows are never seen.
+    expect(seabedVisibility(SEABED_FADE_END)).toBe(0);
+    expect(SUN_SHADOW.fit.receiverDepth).toBeLessThan(metresToUnits(SEABED_FLOOR_DEPTH));
   });
 
   it("sits at the cap at full zoom-out and well under it at ship zoom", () => {
@@ -41,9 +45,9 @@ describe("the sun's shadow camera", () => {
     expect(shadowExtentFor(CAMERA_MAX_DISTANCE, 16 / 9, SUN_SHADOW.fit)).toBe(SHADOW_EXTENT);
     expect(texelMetres(CAMERA_MAX_DISTANCE)).toBeCloseTo(0.79, 2);
     // 4.3 is as close as the small map's minDistance allows; 3.5 is the ship-zoom design point.
-    expect(shadowExtentFor(4.3, 16 / 9, SUN_SHADOW.fit)).toBeLessThan(SHADOW_EXTENT * 0.55);
-    expect(texelMetres(4.3)).toBeLessThan(0.42);
-    expect(texelMetres(3.5)).toBeLessThan(0.38);
+    expect(shadowExtentFor(4.3, 16 / 9, SUN_SHADOW.fit)).toBeLessThan(SHADOW_EXTENT * 0.5);
+    expect(texelMetres(4.3)).toBeLessThan(0.38);
+    expect(texelMetres(3.5)).toBeLessThan(0.34);
   });
 
   it("does not ask for the deprecated PCFSoft filter, which three 0.182 replaces with PCF", () => {

@@ -14,7 +14,7 @@ import type { SunShadowSettings } from "../shadowFit";
 import { sunDirection, viewDirectionXZ } from "./sunDirection";
 import { downwardViewFactor, seaBounceAlbedo } from "./skyEnvironment";
 import { ELEVATION_HEIGHTS, RELIEF_AMPLITUDES } from "./terrainHeightField";
-import { SEABED_FLOOR_DEPTH } from "./seabedProfile";
+import { SEABED_FADE_END } from "./waterOptics";
 import { metresToUnits } from "./worldScale";
 
 /** Pale, slightly warm sky haze. Used for both the fog and the scene background. */
@@ -143,16 +143,16 @@ export const SHADOW_RADIUS = 1;
  * The box follows the camera target and is fitted to the view (#48,
  * `shadowFit.ts`): its half-extent covers the furthest visible point of the
  * sea plane plus a margin for receivers above it, and the furthest visible
- * point of the seabed floor plus a margin for that depth, whichever is
- * larger, clamped to [SHADOW_EXTENT_MIN, SHADOW_EXTENT]. At full zoom-out
- * (distance 28) the 16:9 view reaches ~43 units across the sea, so the box
- * sits at the cap, 50 units across at 4096 texels: ~82 texels per world
- * unit, a 0.8 m texel. At ship zoom (distance ~3.5) the seabed term fits it
- * to ~11.5 units, a 0.37 m texel, 2.2× finer than the fixed box gave (the
- * seabed, 1.9 units down, is hit ~5 units beyond the sea along the far
- * corner ray, which descends at only ~24°). The cap is where today's
- * resolution comes from, so the map stays at 4096: at 2048 the map-zoom
- * texel would double.
+ * point of the deepest visible seabed (SHADOW_RECEIVER_DEPTH) plus a margin
+ * for that depth, whichever is larger, clamped to [SHADOW_EXTENT_MIN,
+ * SHADOW_EXTENT]. At full zoom-out (distance 28) the 16:9 view reaches ~43
+ * units across the sea, so the box sits at the cap, 50 units across at 4096
+ * texels: ~82 texels per world unit, a 0.8 m texel. At ship zoom (distance
+ * ~3.5) the seabed term fits it to ~10.2 units, a 0.32 m texel, 2.5× finer
+ * than the fixed box gave (the seabed, 1.46 units down, is hit ~4 units
+ * beyond the sea along the far corner ray, which descends at only ~24°).
+ * The cap is where today's resolution comes from, so the map stays at 4096:
+ * at 2048 the map-zoom texel would double.
  */
 export const SHADOW_MAP_SIZE = 4096;
 export const SHADOW_EXTENT = 25;
@@ -166,10 +166,16 @@ export const SHADOW_EXTENT_MIN = 4;
  */
 export const SHADOW_CASTER_HEIGHT = ELEVATION_HEIGHTS[3] + RELIEF_AMPLITUDES[3] + 0.7;
 /**
- * Deepest receiver below the sea: the seabed floor (~1.9 units), which the
- * seabed prepass shadows so hull shadows show through the water.
+ * Deepest receiver below the sea whose shadow can be seen: the depth where
+ * the water shader has fully faded the seabed out (SEABED_FADE_END, 95 m,
+ * ~1.46 units). The seabed receives shadows through the water, but below
+ * this nothing of it reaches the surface (the seabed mesh itself stops even
+ * shallower, at VISIBLE_SEABED_DEPTH), so fitting the box to the floor
+ * (~1.9 units) would cover shadows no one can see and cost ship-zoom texels,
+ * the point of #48. The partly faded seabed between the fade start and end
+ * is covered.
  */
-export const SHADOW_RECEIVER_DEPTH = metresToUnits(SEABED_FLOOR_DEPTH);
+export const SHADOW_RECEIVER_DEPTH = metresToUnits(SEABED_FADE_END);
 /**
  * Growing refits at once (the box must cover the view); the box only shrinks
  * once the fitted extent has fallen this fraction of the current one below
