@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
-import { Caribbean, MOVES_PER_TURN, getMaxMoves } from "./Game";
+import { Caribbean, MOVES_PER_TURN, getMaxMoves, withSetupData } from "./Game";
 import type { CaribbeanState } from "./Game";
 import type { Game } from "boardgame.io";
 import { canonicalHex, hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
@@ -216,6 +216,32 @@ describe("Caribbean.setup", () => {
     const expected = new Set(hexRect(columns, rows).map((h) => `${h.q},${h.r}`));
     expect(G.cells).toHaveLength(columns * rows);
     for (const cell of G.cells) expect(expected.has(`${cell.hex.q},${cell.hex.r}`)).toBe(true);
+  });
+
+  it("generates the same map again for the same size and seed in setupData", () => {
+    const start = () => {
+      const client = Client<CaribbeanState>({ game: withSetupData(Caribbean, { mapSize: "small", mapSeed: 1 }), numPlayers: 2 });
+      client.start();
+      return client.getState()!.G;
+    };
+    const first = start();
+    const second = start();
+    expect(first.mapSize).toBe("small");
+    expect(first.cells).toEqual(second.cells);
+    expect(first.cells.some((c) => c.hasPort)).toBe(true);
+  });
+
+  it("keeps a different seed to a different map", () => {
+    const start = (mapSeed: number) => {
+      const client = Client<CaribbeanState>({ game: withSetupData(Caribbean, { mapSize: "small", mapSeed }), numPlayers: 2 });
+      client.start();
+      return client.getState()!.G;
+    };
+    expect(start(1).cells).not.toEqual(start(2).cells);
+  });
+
+  it("leaves the game as it is with no setupData", () => {
+    expect(withSetupData(Caribbean, undefined)).toBe(Caribbean);
   });
 });
 
