@@ -15,6 +15,10 @@ const flat = (height: number): GroundField => ({ sampleHeight: () => height });
 const tilted = (height: number, slopeX: number): GroundField => ({
   sampleHeight: (x) => height + slopeX * x,
 });
+/** A cone-shaped peak: `height` at the origin, falling `fall` per unit of distance. */
+const peak = (height: number, fall: number): GroundField => ({
+  sampleHeight: (x, z) => height - fall * Math.hypot(x, z),
+});
 
 const OPTIONS: GroundPlacementOptions = { footprintRadius: 0.1, sink: 0.02, maxSlope: 1 };
 
@@ -24,10 +28,53 @@ describe("placeOnGround", () => {
     expect(spot).toEqual({ x: 1, y: 0.5 - 0.02, z: 2 });
   });
 
-  it("rests on the lowest ground under its footprint on a gentle slope", () => {
+  it("rests on the lowest ground under its footprint on a gentle slope by default (a trunk must not float)", () => {
     const spot = placeOnGround(tilted(0.5, 0.5), { x: 0, z: 0 }, { x: 0, z: 0 }, OPTIONS);
     expect(spot).not.toBeNull();
     expect(spot!.y).toBeCloseTo(0.5 - 0.5 * 0.1 - 0.02);
+    const explicit = placeOnGround(tilted(0.5, 0.5), { x: 0, z: 0 }, { x: 0, z: 0 }, { ...OPTIONS, standOn: "lowest" });
+    expect(explicit).toEqual(spot);
+  });
+
+  it("stands on the ground at its centre when asked to, whatever the rim probes find", () => {
+    const spot = placeOnGround(tilted(0.5, 0.5), { x: 0, z: 0 }, { x: 0, z: 0 }, { ...OPTIONS, standOn: "centre" });
+    expect(spot).not.toBeNull();
+    expect(spot!.y).toBeCloseTo(0.5 - 0.02);
+  });
+
+  it("keeps a wide footprint on a steep peak at the summit height when standing on the centre", () => {
+    // The lowest rule sinks a 0.8-wide base by the whole fall to its rim; the centre rule does not.
+    const wide = { footprintRadius: 0.8, sink: 0.02, maxSlope: 1.6 } as const;
+    const lowest = placeOnGround(peak(1.4, 1.5), { x: 0, z: 0 }, { x: 0, z: 0 }, wide);
+    const centre = placeOnGround(peak(1.4, 1.5), { x: 0, z: 0 }, { x: 0, z: 0 }, { ...wide, standOn: "centre" });
+    expect(lowest!.y).toBeCloseTo(1.4 - 1.5 * 0.8 - 0.02);
+    expect(centre!.y).toBeCloseTo(1.4 - 0.02);
+  });
+
+  it("still rejects water and cliffs under the rim when standing on the centre", () => {
+    const wet = { sampleHeight: (x: number) => (x < 0.25 ? 0.4 : -0.3) };
+    const spot = placeOnGround(wet, { x: 0.6, z: 0 }, { x: 0, z: 0 }, { ...OPTIONS, standOn: "centre" });
+    expect(spot).not.toBeNull();
+    expect(spot!.x).toBeLessThan(0.25 - OPTIONS.footprintRadius);
+    expect(placeOnGround(tilted(5, 3), { x: 0.3, z: 0 }, { x: 0, z: 0 }, { ...OPTIONS, standOn: "centre" })).toBeNull();
+  });
+
+  it("probes all round the rim: land under the cross probes but water under a diagonal nudges the spot", () => {
+    // Land where x + z < 0.52. At (0.2, 0.2) with radius 0.1 the cross probes reach
+    // x + z = 0.5 (land) but the (+x, +z) diagonal rim reaches 0.4 + 0.1·√2 ≈ 0.54 (water).
+    const field: GroundField = { sampleHeight: (x, z) => (x + z < 0.52 ? 0.4 : -0.3) };
+    const spot = placeOnGround(field, { x: 0.2, z: 0.2 }, { x: 0, z: 0 }, OPTIONS);
+    expect(spot).not.toBeNull();
+    expect(spot!.x).toBeLessThan(0.2);
+  });
+
+  it("probes the rim closely enough that a coastal inlet narrower than a hex cannot slip between two probes", () => {
+    // Water in a wedge 0.3 units wide at a radius of 0.85 (the rock extent cap), between two probe directions.
+    const field: GroundField = {
+      sampleHeight: (x, z) => (Math.abs(Math.atan2(z, x) - 0.3) < 0.15 / 0.85 && Math.hypot(x, z) > 0.6 ? -0.3 : 0.4),
+    };
+    const wide = { footprintRadius: 0.85, sink: 0.02, maxSlope: 1.6, standOn: "centre" } as const;
+    expect(placeOnGround(field, { x: 0, z: 0 }, { x: 0, z: 0 }, wide)).toBeNull();
   });
 
   it("drops a spot whose ground is too steep everywhere", () => {
