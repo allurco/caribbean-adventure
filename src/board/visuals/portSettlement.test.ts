@@ -3,10 +3,11 @@ import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
-import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
+import { landSurface, landSurfaceHeight } from "./landMesh";
 import { PORT_MARKER_RADIUS } from "../useHexGrid";
-import { BUILDING_FOOTING, BUILDING_MAX_BURY, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
+import { BUILDING_FOOTING, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
@@ -14,10 +15,13 @@ import { QUAY_BACK, QUAY_COPING_THICKNESS, QUAY_SEA_FACE, QUAY_STEP_Z, QUAY_WIDT
 import { placeQuay, type QuayPlacement } from "./quayPlacement";
 import {
   buildingGroundY,
+  buildingMaxSpread,
   pierRootReserve,
   portBuildings,
   settlementGround,
   standBuilding,
+  BUILDING_FOOTING_MARGIN,
+  BUILDING_SINK,
   PIER_MOUTH_RESERVE,
   PIER_ROOT_RESERVE,
   PORT_BUILDING_GAP,
@@ -38,8 +42,12 @@ const maxReach = Math.max(...Object.values(AGED_BUILDING_HALF_DIAGONAL)) * PORT_
 const cells = generateMap(getMapPreset("small"), 11);
 const seed = terrainSeedFromCells(cells);
 const field = createTerrainHeightField(cells, seed);
-const buildings = portBuildings(cells, field, seed);
+/** The ground as it is drawn (the land mesh's lattice surface), which the layout hands the settlement. */
+const surface = landSurface(field);
+const buildings = portBuildings(cells, surface, seed);
 const ports = cells.filter((c) => c.hasPort);
+/** Slack on "no ground above the contact" between the placement's probes, in world units (3 mm here, about 20 cm at 65 m/unit). */
+const OVER_TERRAIN_SLACK = 0.003;
 
 const flat = (height: number): GroundField => ({ sampleHeight: () => height });
 
@@ -61,12 +69,18 @@ function portOf(b: PortBuilding): MapCell {
 const pierRotation = (cell: MapCell) => (cell.decorations ?? []).find((d) => d.type === "pier")?.rotation ?? 0;
 const angleDiff = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
-/** The centre and eight rim points of a plan circle, as the settlement probes a footprint. */
-function footprintPoints(x: number, z: number, reach: number): { x: number; z: number }[] {
+/** The centre and rings of a plan circle: `rim` points on the rim, half as many at half reach, a quarter at a quarter. */
+function footprintPoints(x: number, z: number, reach: number, rim = 16): { x: number; z: number }[] {
   const points = [{ x, z }];
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2;
-    points.push({ x: x + Math.cos(a) * reach, z: z + Math.sin(a) * reach });
+  for (const [n, r] of [
+    [rim, reach],
+    [rim / 2, reach / 2],
+    [rim / 4, reach / 4],
+  ]) {
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      points.push({ x: x + Math.cos(a) * r, z: z + Math.sin(a) * r });
+    }
   }
   return points;
 }
@@ -155,7 +169,7 @@ describe("standBuilding", () => {
     const d = Math.hypot(at.x - pierRoot.x, at.z - pierRoot.z);
     expect(d).toBeLessThan(PIER_ROOT_RESERVE + reach);
     expect(d).toBeGreaterThanOrEqual(PIER_MOUTH_RESERVE + reach);
-    const spot = standBuilding(ground, at, reach, pierRoot, []);
+    const spot = standBuilding(ground, at, reach, BUILDING_FOOTING, pierRoot, []);
     expect(spot).not.toBeNull();
     expect(spot!.x).toBe(at.x);
     expect(spot!.z).toBe(at.z);
@@ -166,7 +180,7 @@ describe("standBuilding", () => {
   it("never covers the pier's mouth: a footprint on the deck within the mouth reserve of the root is refused", () => {
     const at = quayPoint(quay, 0, -0.08);
     expect(Math.hypot(at.x - pierRoot.x, at.z - pierRoot.z)).toBeLessThan(PIER_MOUTH_RESERVE + reach);
-    expect(standBuilding(ground, at, reach, pierRoot, [])).toBeNull();
+    expect(standBuilding(ground, at, reach, BUILDING_FOOTING, pierRoot, [])).toBeNull();
   });
 
   it("refuses a footprint straddling the quay's edge, which the same sand without a quay takes", () => {
@@ -174,9 +188,9 @@ describe("standBuilding", () => {
     const probes = footprintPoints(at.x, at.z, reach).map((p) => ground.onQuay(p.x, p.z));
     expect(probes).toContain(true);
     expect(probes).toContain(false);
-    expect(standBuilding(ground, at, reach, pierRoot, [])).toBeNull();
+    expect(standBuilding(ground, at, reach, BUILDING_FOOTING, pierRoot, [])).toBeNull();
     const noQuay = settlementGround({ ...quayPort, decorations: [] }, sand, quaySeed);
-    const spot = standBuilding(noQuay, at, reach, pierRoot, []);
+    const spot = standBuilding(noQuay, at, reach, BUILDING_FOOTING, pierRoot, []);
     expect(spot).not.toBeNull();
     expect(spot!.y).toBeCloseTo(buildingGroundY(0.05), 9);
   });
@@ -201,8 +215,19 @@ describe("portBuildings", () => {
     expect(AGED_BUILDING_HEIGHT.watchtower * WATCHTOWER_SCALE_RANGE[1]).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
   });
 
+  it("stands on top of the ground: the contact a hair under the highest point, the footing covering the rest with a margin", () => {
+    expect(BUILDING_SINK).toBeGreaterThan(0);
+    expect(BUILDING_SINK).toBeLessThanOrEqual(0.003);
+    expect(BUILDING_FOOTING_MARGIN).toBeGreaterThan(0);
+    expect(BUILDING_FOOTING_MARGIN).toBeLessThanOrEqual(0.02);
+    expect(buildingGroundY(0.3)).toBeCloseTo(0.3 - BUILDING_SINK, 12);
+    // A footprint may span what the footing covers, less the sink and the margin: still most of a footing, so beaches stay buildable.
+    expect(buildingMaxSpread(BUILDING_FOOTING)).toBeCloseTo(BUILDING_FOOTING - BUILDING_SINK - BUILDING_FOOTING_MARGIN, 12);
+    expect(buildingMaxSpread(BUILDING_FOOTING * PORT_BUILDING_SCALE_RANGE[0])).toBeGreaterThan(0.09);
+  });
+
   it("is deterministic", () => {
-    expect(portBuildings(cells, field, seed)).toEqual(buildings);
+    expect(portBuildings(cells, surface, seed)).toEqual(buildings);
   });
 
   it("hashes the whole 32-bit seed: a seed differing only in a high bit gives a different layout", () => {
@@ -284,7 +309,9 @@ describe("portBuildings", () => {
     for (const b of onIslets) {
       const [px, , pz] = hexToWorld(portOf(b).hex);
       expect(Math.hypot(b.worldX - px, b.worldZ - pz)).toBeLessThan(1e-9);
-      expect(b.worldY).toBeCloseTo(groundTopY(islet, px, pz, AGED_BUILDING_HALF_DIAGONAL.watchtower * b.scale), 9);
+      // On the islet's highest ground (its top at the centre), never below the sea.
+      expect(b.worldY).toBeCloseTo(buildingGroundY(Math.max(SEA_LEVEL, 0.3)), 9);
+      expect(b.worldY).toBeLessThanOrEqual(groundTopY(islet, px, pz, AGED_BUILDING_HALF_DIAGONAL.watchtower * b.scale));
     }
   });
 
@@ -300,8 +327,8 @@ describe("portBuildings", () => {
       expect(d - reach).toBeGreaterThanOrEqual(PORT_SQUARE_RADIUS - 1e-9);
       // The quay stands where the pier meets the beach; no building covers the pier's land end,
       // from the sand by the deck's width, from the quay by the pier's mouth.
-      const root = pierOrigin(field, { x: px, z: pz }, pierRotation(port));
-      const ground = settlementGround(port, field, seed);
+      const root = pierOrigin(surface, { x: px, z: pz }, pierRotation(port));
+      const ground = settlementGround(port, surface, seed);
       const reserve = pierRootReserve(ground.onQuay(b.worldX, b.worldZ));
       expect(Math.hypot(b.worldX - root.x, b.worldZ - root.z) - reach).toBeGreaterThanOrEqual(reserve - 1e-9);
       for (const other of buildings) {
@@ -329,26 +356,49 @@ describe("portBuildings", () => {
     expect(mean).toBeLessThan(0.45);
   });
 
-  it("stands every building on the ground it sees, on land: the sand, or the quay's deck where it stands on the quay", () => {
+  it("stands every building on top of the drawn ground, on land: no ground above the contact, the footing under the lowest point", () => {
+    let worstAbove = -Infinity;
     for (const b of buildings) {
-      const settlement = settlementGround(portOf(b), field, seed);
-      const ground = settlement.sampleHeight(b.worldX, b.worldZ);
-      expect(ground).toBeGreaterThan(MIN_GROUND_HEIGHT);
-      // Everywhere under the footprint the ground lies between the bottom of the
-      // footing (so no wall floats) and the deepest allowed bury on the high side.
+      const settlement = settlementGround(portOf(b), surface, seed);
+      expect(settlement.sampleHeight(b.worldX, b.worldZ)).toBeGreaterThan(MIN_GROUND_HEIGHT);
       const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
-      const probes = footprintPoints(b.worldX, b.worldZ, reach);
+      const footing = BUILDING_FOOTING * b.scale;
+      // Probed far denser than the placement does (48 rim points and two inner rings), on the surface as drawn.
+      const probes = footprintPoints(b.worldX, b.worldZ, reach, 48);
       const heights = probes.map((p) => settlement.sampleHeight(p.x, p.z));
       // Wholly on the quay or wholly off it: a wall never steps down the quay's edge.
       const onQuay = probes.filter((p) => settlement.onQuay(p.x, p.z)).length;
       expect([0, probes.length]).toContain(onQuay);
-      for (const h of heights) {
-        expect(h).toBeGreaterThanOrEqual(b.worldY - BUILDING_FOOTING - 1e-9);
-        expect(h).toBeLessThanOrEqual(b.worldY + BUILDING_MAX_BURY + 1e-9);
-      }
-      // And it does rest on the ground: the lowest probe is within the footing of the origin.
-      expect(b.worldY - Math.min(...heights)).toBeLessThanOrEqual(BUILDING_FOOTING);
+      // Nothing under the footprint rises above the ground contact: the walls are never cut into.
+      const highest = Math.max(...heights);
+      worstAbove = Math.max(worstAbove, highest - b.worldY);
+      expect(highest).toBeLessThanOrEqual(b.worldY + OVER_TERRAIN_SLACK);
+      // The contact rests on the ground, not above it: the highest point is within the sink of the contact.
+      expect(b.worldY - highest).toBeLessThanOrEqual(BUILDING_SINK + 1e-9);
+      // And nothing floats: the footing's base is under the lowest ground, with the margin to spare.
+      expect(b.worldY - footing).toBeLessThanOrEqual(Math.min(...heights) - BUILDING_FOOTING_MARGIN + OVER_TERRAIN_SLACK);
     }
+    // The drawn surface against the field: the placement probes the same lattice surface, so the two never disagree by more than the slack.
+    for (const b of buildings) expect(Math.abs(landSurfaceHeight(field, b.worldX, b.worldZ) - surface.sampleHeight(b.worldX, b.worldZ))).toBeLessThan(1e-9);
+    expect(worstAbove).toBeLessThanOrEqual(OVER_TERRAIN_SLACK);
+  });
+
+  it("stands a sloped footprint with its contact at the top of the slope and refuses a slope the footing cannot cover", () => {
+    const noQuay = { ...quayPort, decorations: [] };
+    const [hx, , hz] = hexToWorld(quayPort.hex);
+    const pierRoot = { x: hx + 5, z: hz + 5 };
+    const reach = 0.1;
+    const ramp = (grade: number): GroundField => ({ sampleHeight: (x) => 0.1 + grade * (x - hx) });
+    // Grade 0.4 over a 0.2-wide footprint: a 0.08 spread, inside what the footing covers.
+    const gentle = standBuilding(settlementGround(noQuay, ramp(0.4), 0), { x: hx, z: hz }, reach, BUILDING_FOOTING, pierRoot, []);
+    expect(gentle).not.toBeNull();
+    expect(gentle!.y).toBeCloseTo(buildingGroundY(0.1 + 0.4 * reach), 9);
+    expect(gentle!.y - BUILDING_FOOTING).toBeLessThanOrEqual(0.1 - 0.4 * reach - BUILDING_FOOTING_MARGIN + 1e-9);
+    // Grade 0.8: a 0.16 spread, more than the footing less the sink and margin.
+    expect(0.8 * 2 * reach).toBeGreaterThan(buildingMaxSpread(BUILDING_FOOTING));
+    expect(standBuilding(settlementGround(noQuay, ramp(0.8), 0), { x: hx, z: hz }, reach, BUILDING_FOOTING, pierRoot, [])).toBeNull();
+    // A deeper footing (a larger building) takes it.
+    expect(standBuilding(settlementGround(noQuay, ramp(0.8), 0), { x: hx, z: hz }, reach, 0.2, pierRoot, [])).not.toBeNull();
   });
 
   it("keeps every roof under the port label's baseline", () => {

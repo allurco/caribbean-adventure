@@ -22,13 +22,20 @@
  * ramp running down to each, so each building looks round the landward arc
  * for the flat ground nearest its preferred slot, from the centre outwards:
  * `placeOnGround` rejects wet or steep spots, then the footprint is probed
- * and a spot is only taken if the ground under it spans little enough that,
- * with the origin half a footing above the lowest point, the high side is
- * buried no deeper than BUILDING_MAX_BURY.
+ * and a spot is only taken if the ground under it spans no more than the
+ * building's footing covers (`buildingMaxSpread`). The building then stands
+ * ON the ground: its ground contact a hair (`BUILDING_SINK`) under the
+ * highest point under the footprint, so no wall is cut into by rising
+ * sand, and its stone footing reaching down past the lowest point with
+ * `BUILDING_FOOTING_MARGIN` to spare, so nothing floats; on a slope the
+ * footing shows on the downhill side as a plinth.
  *
- * The ground the buildings probe is `settlementGround`: the terrain, with
- * the quay's flat top wherever a point is on the quay, so a building on the
- * quay stands on its deck and not on the sand under it. A footprint is
+ * The ground the buildings probe is `settlementGround`: the ground as it is
+ * drawn (the layout passes the land mesh's lattice surface, `landSurface`,
+ * which differs from the smooth field by up to a few hundredths between
+ * lattice points), with the quay's flat top wherever a point is on the
+ * quay, so a building on the quay stands on its deck and not on the sand
+ * under it. A footprint is
  * either wholly on the quay or wholly off it (one straddling the edge would
  * step a wall down the quay's side), and the reserve round the pier's land
  * end shrinks on the quay from the deck's width to the pier's mouth, so the
@@ -42,9 +49,10 @@ import { hexToWorld } from "../../game/hex";
 import type { MapCell, PortNation } from "../../game/types";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
-import { BUILDING_FOOTING, BUILDING_MAX_BURY, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
+import { BUILDING_FOOTING, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
-import { groundTopY, placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
+import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
+import { SEA_LEVEL } from "./terrainHeightField";
 import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
 import { lerpRange, seedOf, stream } from "./variationStream";
 
@@ -76,7 +84,7 @@ export const PIER_MOUTH_RESERVE = PIER_WIDTH / 2;
 /** The reserve a footprint's edge keeps from the pier root, by whether the footprint stands on the quay. */
 export const pierRootReserve = (onQuay: boolean) => (onQuay ? PIER_MOUTH_RESERVE : PIER_ROOT_RESERVE);
 /** Rings tried from the centre outwards, this far apart; `placeOnGround` nudges within a ring's step. */
-const RADIAL_STEP = 0.06;
+const RADIAL_STEP = 0.04;
 export const PORT_BUILDING_SCALE_RANGE: readonly [number, number] = [0.92, 1.08];
 /** The tower's range keeps AGED_BUILDING_HEIGHT.watchtower × scale (the flag's hoist) under BUILDING_MAX_HEIGHT. */
 export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING_MAX_HEIGHT / AGED_BUILDING_HEIGHT.watchtower];
@@ -89,10 +97,11 @@ export const PORT_BUILDING_GAP = 0.06;
 const OTHER_KINDS: readonly BuildingKind[] = ["warehouse", "tavern", "house"];
 /** Beaches slope at about 0.33 (0.3 over 0.9) plus relief; a building wants flatter ground than a rock. */
 const BUILDING_PLACEMENT: Omit<GroundPlacementOptions, "footprintRadius"> = { sink: 0, maxSlope: 0.6 };
-/** Candidate directions span the landward half at this step (radians, 12°). */
-const CANDIDATE_STEP = Math.PI / 15;
-const CANDIDATE_HALF_COUNT = 7;
-const FOOTPRINT_PROBES = 8;
+/** Candidate directions span the landward half at this step (radians, 7.5°), ±82.5° of straight inland. */
+const CANDIDATE_STEP = Math.PI / 24;
+const CANDIDATE_HALF_COUNT = 11;
+/** Probes round a footprint's rim; half as many at half reach and a quarter at a quarter, plus the centre. */
+const FOOTPRINT_PROBES = 24;
 const PORT_BUILDING_SALT = 0x3b9d2c57;
 
 const angleDiff = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
@@ -110,34 +119,52 @@ function shuffledKinds(next: () => number): BuildingKind[] {
 /** Where a footprint stands with respect to the quay: wholly on it, wholly off it, or across its edge. */
 type QuayStance = "on" | "off" | "edge";
 
-/** Lowest and highest ground at the centre and round the rim of a plan circle, and the footprint's stance to the quay. */
+/**
+ * Lowest and highest ground over a plan circle, and the footprint's stance to
+ * the quay. Probed at the centre, the rim and two inner rings, and at every
+ * crease of the ground inside the circle (the lattice vertices of the drawn
+ * surface), where a piecewise-flat surface takes its extremes.
+ */
 function footprintGround(ground: SettlementGround, x: number, z: number, reach: number): { min: number; max: number; quay: QuayStance } {
   let min = Infinity;
   let max = -Infinity;
   let onQuay = 0;
+  let probes = 0;
   const probe = (px: number, pz: number) => {
     const h = ground.sampleHeight(px, pz);
     min = Math.min(min, h);
     max = Math.max(max, h);
     if (ground.onQuay(px, pz)) onQuay++;
+    probes++;
   };
   probe(x, z);
-  for (let k = 0; k < FOOTPRINT_PROBES; k++) {
-    const a = (k / FOOTPRINT_PROBES) * Math.PI * 2;
-    probe(x + Math.cos(a) * reach, z + Math.sin(a) * reach);
+  for (const [count, r] of [
+    [FOOTPRINT_PROBES, reach],
+    [FOOTPRINT_PROBES / 2, reach / 2],
+    [FOOTPRINT_PROBES / 4, reach / 4],
+  ]) {
+    for (let k = 0; k < count; k++) {
+      const a = (k / count) * Math.PI * 2;
+      probe(x + Math.cos(a) * r, z + Math.sin(a) * r);
+    }
   }
-  const quay: QuayStance = onQuay === 0 ? "off" : onQuay === FOOTPRINT_PROBES + 1 ? "on" : "edge";
+  for (const p of ground.creasesWithin?.(x, z, reach) ?? []) probe(p.x, p.z);
+  const quay: QuayStance = onQuay === 0 ? "off" : onQuay === probes ? "on" : "edge";
   return { min, max, quay };
 }
 
 /**
- * The ground contact for a footprint spanning [min, max]: half a footing
- * above the lowest point, so the walls reach under the low side; the high
- * side is then buried by the rest of the spread.
+ * The ground contact sits this far below the highest ground under the
+ * footprint: the high side meets the wall rather than a sliver of air, and
+ * is never cut into by more.
  */
-export const buildingGroundY = (min: number) => min + BUILDING_FOOTING / 2;
-/** Widest height spread a footprint may take before the high side is buried past BUILDING_MAX_BURY. */
-export const BUILDING_MAX_SPREAD = BUILDING_FOOTING / 2 + BUILDING_MAX_BURY;
+export const BUILDING_SINK = 0.002;
+/** The footing's base stays at least this far under the lowest ground under the footprint, so nothing floats. */
+export const BUILDING_FOOTING_MARGIN = 0.01;
+/** The ground contact for a footprint whose highest ground is `max`. */
+export const buildingGroundY = (max: number) => max - BUILDING_SINK;
+/** Widest height spread a footprint may take: its footing (BUILDING_FOOTING at the building's scale) covers the low side with the margin to spare. */
+export const buildingMaxSpread = (footing: number) => footing - BUILDING_SINK - BUILDING_FOOTING_MARGIN;
 
 /** A building already placed: its plan circle. */
 export interface Footprint {
@@ -165,9 +192,12 @@ export interface SettlementGround extends GroundField {
  */
 export function settlementGround(cell: MapCell, field: GroundField, seed: number): SettlementGround {
   const quay = placeQuay(cell, field, seed);
-  if (!quay) return { quay, onQuay: () => false, sampleHeight: (x, z) => field.sampleHeight(x, z) };
+  // The ground's creases are the terrain's: the deck is flat, and where the sand drifts over the quay they are the sand's.
+  const creasesWithin = field.creasesWithin?.bind(field);
+  if (!quay) return { quay, creasesWithin, onQuay: () => false, sampleHeight: (x, z) => field.sampleHeight(x, z) };
   return {
     quay,
+    creasesWithin,
     onQuay: (x, z) => quayTopAt(quay, { x, z }) !== undefined,
     sampleHeight: (x, z) => {
       const terrain = field.sampleHeight(x, z);
@@ -178,16 +208,19 @@ export function settlementGround(cell: MapCell, field: GroundField, seed: number
 }
 
 /**
- * A building of plan radius `reach` standing at `at`, if the ground there
- * takes it: clear of the pier's land end (by the sand's reserve or, on the
- * quay, the pier's mouth), off its neighbours, wholly on or wholly off the
- * quay, and on ground spanning no more than BUILDING_MAX_SPREAD. Its Y is
- * `buildingGroundY` of the lowest ground under it.
+ * A building of plan radius `reach` whose walls reach `footing` below its
+ * ground contact, standing at `at`, if the ground there takes it: clear of
+ * the pier's land end (by the sand's reserve or, on the quay, the pier's
+ * mouth), off its neighbours, wholly on or wholly off the quay, and on
+ * ground spanning no more than `buildingMaxSpread(footing)`. Its Y is
+ * `buildingGroundY` of the highest ground under it: on the ground, never
+ * cut into it, the footing covering the low side.
  */
 export function standBuilding(
   ground: SettlementGround,
   at: { x: number; z: number },
   reach: number,
+  footing: number,
   pierRoot: { x: number; z: number },
   placed: readonly Footprint[]
 ): { x: number; y: number; z: number } | null {
@@ -195,8 +228,8 @@ export function standBuilding(
   const { min, max, quay } = footprintGround(ground, at.x, at.z, reach);
   if (quay === "edge") return null;
   if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") + reach) return null;
-  if (max - min > BUILDING_MAX_SPREAD) return null;
-  return { x: at.x, y: buildingGroundY(min), z: at.z };
+  if (max - min > buildingMaxSpread(footing)) return null;
+  return { x: at.x, y: buildingGroundY(max), z: at.z };
 }
 
 /** Candidate directions: the landward arc at CANDIDATE_STEP, or the whole circle, nearest `preferred` first. */
@@ -217,6 +250,7 @@ function standOnBeach(
   centre: { x: number; z: number },
   candidates: readonly number[],
   reach: number,
+  footing: number,
   pierRoot: { x: number; z: number },
   placed: readonly Footprint[]
 ): { x: number; y: number; z: number } | null {
@@ -231,7 +265,7 @@ function standOnBeach(
       const spot = { x: centre.x + dir.x * radius, z: centre.z + dir.z * radius };
       const dry = placeOnGround(ground, spot, anchor, { ...BUILDING_PLACEMENT, footprintRadius: reach });
       if (!dry) continue;
-      const stood = standBuilding(ground, dry, reach, pierRoot, placed);
+      const stood = standBuilding(ground, dry, reach, footing, pierRoot, placed);
       if (stood) return stood;
     }
   }
@@ -281,12 +315,13 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
-      let spot = standOnBeach(ground, centre, candidateAngles(landward, slot, false), reach, pierRoot, placed);
+      const footing = BUILDING_FOOTING * scale;
+      let spot = standOnBeach(ground, centre, candidateAngles(landward, slot, false), reach, footing, pierRoot, placed);
       if (!spot && kind === "watchtower") {
-        // The landmark is never dropped: any direction, then the hex centre on its highest ground.
+        // The landmark is never dropped: any direction, then the hex centre on its highest ground (never under the sea).
         spot =
-          standOnBeach(ground, centre, candidateAngles(landward, slot, true), reach, pierRoot, placed) ??
-          { x: centre.x, y: groundTopY(ground, centre.x, centre.z, reach), z: centre.z };
+          standOnBeach(ground, centre, candidateAngles(landward, slot, true), reach, footing, pierRoot, placed) ??
+          { x: centre.x, y: buildingGroundY(Math.max(SEA_LEVEL, footprintGround(ground, centre.x, centre.z, reach).max)), z: centre.z };
       }
       if (!spot) continue;
       placed.push({ x: spot.x, z: spot.z, reach });

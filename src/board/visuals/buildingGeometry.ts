@@ -30,13 +30,13 @@ export type BuildingGeometryData = FacetGeometryData;
 /** Nothing at a port stands taller than this (world units at scale 1, the label floats at 0.6). */
 export const BUILDING_MAX_HEIGHT = 0.5;
 /**
- * How far the walls carry on below the ground contact. `portBuildings` sets
- * the origin half a footing above the lowest ground under the footprint, so
- * the low side of a building on a beach ramp is always covered.
+ * How far the walls carry on below the ground contact, as a stone plinth.
+ * `portBuildings` sets the ground contact at the highest ground under the
+ * footprint, so the plinth shows on the downhill side of a beach ramp and
+ * reaches under its lowest point: a building stands on the ground, never
+ * cut into it.
  */
-export const BUILDING_FOOTING = 0.12;
-/** Deepest the walls may be buried on the high side of a slope (to a house's eaves at worst). */
-export const BUILDING_MAX_BURY = 0.1;
+export const BUILDING_FOOTING = 0.16;
 export const BUILDING_TRIANGLE_BUDGET = 120;
 
 interface GabledSpec {

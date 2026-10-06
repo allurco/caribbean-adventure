@@ -13,6 +13,7 @@ import { smallStones } from "./smallStones";
 import { pierOrigin } from "./pierPlacement";
 import { portBuildings, type PortBuilding } from "./portSettlement";
 import { portQuays, type QuayPlacement } from "./quayPlacement";
+import { landSurface } from "./landMesh";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -116,8 +117,12 @@ const decorationsOf = perMapCache((cells, wrap) => {
 
     const seed = terrainSeedFromCells(cells);
     const stones = smallStones(cells, field, seed);
-    const buildings = portBuildings(cells, field, seed);
-    const quays = portQuays(cells, field, seed);
+    // The settlement and its quays stand on the ground as the land mesh draws
+    // it (the lattice surface, up to a few hundredths off the smooth field
+    // between lattice points), so a wall is never cut into by the drawn sand.
+    const drawn = landSurface(field);
+    const buildings = portBuildings(cells, drawn, seed);
+    const quays = portQuays(cells, drawn, seed);
 
     return { trees, rocks, stones, piers, quays, buildings };
 });
