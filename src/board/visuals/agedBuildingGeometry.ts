@@ -97,8 +97,8 @@ export const AGED_CHURCH = {
     shoulder: 0.215,
     /** Half-width of the bell screen. */
     screenHalf: 0.07,
-    /** Where the sloped shoulders meet the screen's sides. */
-    screenFoot: 0.3,
+    /** Where the sloped shoulders meet the screen's sides: the shoulders run about parallel to the roof, 0.03 above the tiles. */
+    screenFoot: 0.25,
     /** The bell openings run from the sill up to the arch crown; the arch springs at `spring`. */
     sill: 0.31,
     spring: 0.345,
