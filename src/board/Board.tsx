@@ -357,6 +357,7 @@ function Scene({
           shipClass={ship.shipClass}
           wrapWidth={period}
           foamId={copy === 0 ? id : undefined}
+          foamPlayer
           onPointerEnter={() => onShipHover(id)}
           onPointerLeave={() => onShipHover(null)}
           onClick={() => onShipClick(id)}

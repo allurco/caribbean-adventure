@@ -465,7 +465,9 @@ bright as dry sand). `PALETTE_SURF` is gone.
   speed into a rendering-side registry from its frame callback (only in
   the canonical world copy; a sinking ship is a different component and
   stops); `Ocean.tsx` reads it into a uniform array of at most
-  `SHIP_FOAM_CAP` (24) ships. The hull is a segment of half the hull
+  `SHIP_FOAM_CAP` (24) ships. Nothing bounds the NPC count in the game, so
+  the fill order is fixed by id (players first, then NPCs) and the registry
+  warns once when ships are left out. The hull is a segment of half the hull
   length along the heading; foam falls off to nothing half a hull length
   out, extends astern with speed as a wake, and a ship at anchor keeps a
   light ring. Distances wrap east–west.

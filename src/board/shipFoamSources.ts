@@ -14,7 +14,13 @@
  * register) removes itself.
  */
 
-/** Ships the uniform array holds: six players plus their merchants and flotillas fit. */
+/**
+ * Ships the uniform array holds. A budget, not a bound: the game caps
+ * nothing on the NPC side (merchants spawn by chance each turn and go when
+ * they arrive; flotillas are at most one per nation per hunted player, up to
+ * 4 × 6 on their own), so more ships than this can be afloat. The fill then
+ * takes the players' ships first and the NPCs by id, and warns once.
+ */
 export const SHIP_FOAM_CAP = 24;
 /** Floats per ship in the first array: x, z, heading x, heading z. */
 export const SHIP_FOAM_FLOATS_A = 4;
@@ -32,6 +38,8 @@ export interface ShipFoamSource {
   hullLength: number;
   /** World units per second. */
   speed: number;
+  /** A player's ship: written ahead of every NPC when more than SHIP_FOAM_CAP ships register. */
+  player: boolean;
 }
 
 export interface ShipFoamRegistry {
@@ -40,31 +48,57 @@ export interface ShipFoamRegistry {
   /**
    * Writes the ships into `a` (SHIP_FOAM_FLOATS_A per ship: x, z, heading)
    * and `b` (SHIP_FOAM_FLOATS_B per ship: hull length, speed), at most
-   * SHIP_FOAM_CAP of them, and returns how many were written.
+   * SHIP_FOAM_CAP of them, and returns how many were written. The order is
+   * fixed by the ids alone: players first, then NPCs, each group by id, so
+   * which ships lose their foam past the cap never depends on when they
+   * registered. Past the cap it warns once.
    */
   fill: (a: Float32Array, b: Float32Array) => number;
 }
 
+/** Players first, then by id; plain code-point order, so it is the same everywhere. */
+function compareFoamOrder(sources: Map<string, ShipFoamSource>, idA: string, idB: string): number {
+  const playerA = sources.get(idA)?.player ?? false;
+  const playerB = sources.get(idB)?.player ?? false;
+  if (playerA !== playerB) return playerA ? -1 : 1;
+  return idA < idB ? -1 : idA > idB ? 1 : 0;
+}
+
 export function createShipFoamRegistry(): ShipFoamRegistry {
   const sources = new Map<string, ShipFoamSource>();
+  /** The ids in fill order; rebuilt only when the set of ids or a player flag changes. */
+  let order: string[] = [];
+  let orderStale = false;
+  let warned = false;
   return {
     set: (id, source) => {
+      const previous = sources.get(id);
+      if (!previous || previous.player !== source.player) orderStale = true;
       sources.set(id, source);
     },
     remove: (id) => {
-      sources.delete(id);
+      if (sources.delete(id)) orderStale = true;
     },
     fill: (a, b) => {
-      let n = 0;
-      for (const s of sources.values()) {
-        if (n >= SHIP_FOAM_CAP) break;
-        a[n * SHIP_FOAM_FLOATS_A] = s.x;
-        a[n * SHIP_FOAM_FLOATS_A + 1] = s.z;
-        a[n * SHIP_FOAM_FLOATS_A + 2] = s.headingX;
-        a[n * SHIP_FOAM_FLOATS_A + 3] = s.headingZ;
-        b[n * SHIP_FOAM_FLOATS_B] = s.hullLength;
-        b[n * SHIP_FOAM_FLOATS_B + 1] = s.speed;
-        n++;
+      if (orderStale) {
+        order = [...sources.keys()].sort((idA, idB) => compareFoamOrder(sources, idA, idB));
+        orderStale = false;
+      }
+      if (order.length > SHIP_FOAM_CAP && !warned) {
+        warned = true;
+        console.warn(
+          `Hull foam: ${order.length} ships registered but the water draws foam for at most ${SHIP_FOAM_CAP} (SHIP_FOAM_CAP); the last NPCs by id go without.`
+        );
+      }
+      const n = Math.min(order.length, SHIP_FOAM_CAP);
+      for (let i = 0; i < n; i++) {
+        const s = sources.get(order[i])!;
+        a[i * SHIP_FOAM_FLOATS_A] = s.x;
+        a[i * SHIP_FOAM_FLOATS_A + 1] = s.z;
+        a[i * SHIP_FOAM_FLOATS_A + 2] = s.headingX;
+        a[i * SHIP_FOAM_FLOATS_A + 3] = s.headingZ;
+        b[i * SHIP_FOAM_FLOATS_B] = s.hullLength;
+        b[i * SHIP_FOAM_FLOATS_B + 1] = s.speed;
       }
       return n;
     },

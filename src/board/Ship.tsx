@@ -32,6 +32,7 @@ export function Ship({
   onClick,
   wrapWidth = Infinity,
   foamId,
+  foamPlayer = false,
 }: {
   position: [number, number, number];
   color: string;
@@ -44,6 +45,8 @@ export function Ship({
    * copy of a wrapping world, so each ship is registered once.
    */
   foamId?: string;
+  /** A player's ship, which keeps its hull foam ahead of the NPCs when more than SHIP_FOAM_CAP register. */
+  foamPlayer?: boolean;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
   onClick?: () => void;
@@ -130,6 +133,7 @@ export function Ship({
         headingZ: Math.cos(rot),
         hullLength,
         speed: foamSpeed.current,
+        player: foamPlayer,
       });
     }
   });
