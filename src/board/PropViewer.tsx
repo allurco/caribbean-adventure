@@ -5,11 +5,15 @@ import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postp
 import { ToneMappingMode } from "postprocessing";
 import { BufferAttribute, BufferGeometry, MeshStandardMaterial } from "three";
 import { SunLight } from "./visuals/SunLight";
+import { FillLight } from "./visuals/FillLight";
 import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import {
   BLOOM_INTENSITY,
   BLOOM_SMOOTHING,
   BLOOM_THRESHOLD,
+  FILL_COLOR,
+  FILL_INTENSITY,
+  FILL_OFFSET,
   HAZE_COLOR,
   HAZE_FAR,
   HAZE_NEAR,
@@ -99,6 +103,8 @@ function Scene({ props, target }: { props: readonly PlacedProp[]; target: [numbe
       <color attach="background" args={[HAZE_COLOR]} />
       <fog attach="fog" args={[HAZE_COLOR, HAZE_NEAR, HAZE_FAR]} />
       <SunLight color={SUN_COLOR} intensity={SUN_INTENSITY} offset={SUN_OFFSET} shadow={SUN_SHADOW} />
+      {/* The game's fill (#63), so the kit is judged under its real lighting. */}
+      <FillLight color={FILL_COLOR} intensity={FILL_INTENSITY} offset={FILL_OFFSET} />
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[12, 12]} />

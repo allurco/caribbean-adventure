@@ -460,22 +460,35 @@ well as the main pass, so the posts show through the shallows. The old
 pier was pushed a fixed 0.7 units towards the docking hex, which buried
 it in the beach wherever the coast noise pulled the shoreline out (the
 shore lies 0.6–1.1 units from the centre along that line);
-`pierPlacement.ts` now walks the height field along the pier's line and
+`pierPlacement.ts` now walks the ground along the pier's line and
 starts the deck 0.12 inland of where the ground drops to the shore
 (clamped to 0.5–0.85 from the centre, so a 0.6 deck stays clear of a
-docked galleon). `buildingGeometry.ts` builds four kinds, origin at the
+docked galleon). The ground it walks is the drawn land surface
+(`landSurface`, as the quay and the settlement's pier-root reserve
+walk it, #59): on the smooth field the shore step landed 0.025–0.075
+away on about half of generated ports, which started the deck past
+the quay's coping or stood its first posts inside the quay body. `buildingGeometry.ts` builds four kinds, origin at the
 ground contact and the door on +z: a timber warehouse (gable to the
 water, ridge 0.24), a whitewashed two-storey tavern (0.27), a gabled
 house under dark shingles (0.19) and a masonry watchtower with a parapet
 and terracotta pyramid roof (0.46), all under a 0.5 cap so the label at
-0.6 stays clear; walls carry on 0.12 below ground as a footing.
+0.6 stays clear; walls carry on 0.12 below ground as a footing. (Those
+are the faceted kit's heights; the aged kit below raises the house and
+the warehouse.)
 `portSettlement.ts` places a watchtower on the fort's side and up to three
 other buildings (kind order, scale ±8%, tint ±8% and yaw jitter ±8° from
 a hash of the cell and the whole terrain seed) on the landward half of the
 hex, facing the docking hex. The `PortMarker` is an invisible hover volume
-(#59: `visible` false, radius 0.5, as tall as the 0.5 building cap, no
-shadow; R3F still raycasts it, like the water hexes), so the buildings
-use the whole hex: they form a crescent round an open square of radius
+(#59: `visible` false, no shadow; R3F still raycasts it, like the water
+hexes) sized by `portHover.ts` to the settlement as placed: the
+settlement radius in plan, and in height from the lowest building's foot
+to the tallest building's top (at least the 0.5 cap over the probed
+ground), with 0.05 to spare either way. A fixed cap's worth of air over
+the centre's ground was not enough: the buildings stand on the drawn
+surface out to 0.62, and on a beach rising inland a tower there can top
+out 0.7 above the ground probed round the centre, so hovering its upper
+half showed no tooltip. The buildings use the whole hex: they form a
+crescent round an open square of radius
 0.15 at the centre (a knot of buildings on the centre hid the ones
 behind the tower from the camera), each trying rings outwards from the
 square (0.06 apart, the first with its near corner on the square's edge,
@@ -522,8 +535,21 @@ the HUD's bands, 0.1 × 0.055, converted from sRGB without three). Every
 port gets its tower, fort decoration or not, at the end of the crescent
 on the fort's side (the slot nearest the water); if the landward arc has
 no room it takes any direction, and failing that the hex centre, so it is
-never dropped. Triangles: warehouse 448, tavern 600, house 448,
-watchtower 560 (+36 flag), budget 1000. Honest judgement from the
+never dropped. The gabled kinds keep the faceted footprints but not all
+the heights: the house's eave is at 0.14 under a 0.23 ridge (it was
+0.10 / 0.19, and read at ship zoom as a hut sunk to its sills) and the
+warehouse's at 0.16 under 0.27 (was 0.13 / 0.24), each at its old pitch;
+the tavern stays at 0.17 / 0.27. The warehouse's walls are
+`bleachedPlank` (sun-bleached, salt-greyed softwood) so they read apart
+from the dark timber of its door and hatch; the house and tavern keep
+the lime render. Every kind stands on a stone plinth: the footing
+(0.16 deep) in the stone colour, with a course standing 0.004 proud of
+the wall line from 0.03 to 0.012 below ground contact whose top 0.006 is
+a paler cap, so where the ground falls away under a piece on a slope the
+exposed footing reads as a raised platform with a crisp pale line at the
+wall's foot rather than a wall sinking out of sight. Triangles:
+warehouse 466, tavern 618, house 466, watchtower 580 (+36 flag), budget
+1000. Honest judgement from the
 screenshots: at ship zoom the pieces read as an old stone-and-tile port;
 at map zoom the tower is a small pale upright with a dot of flag colour,
 findable beside the label but not yet unmistakable on its own, because
@@ -586,8 +612,8 @@ the hex, and still drives `placeOnGround`'s wet/steep check. With it,
 each), above the 2.42 / 2.58 / 2.64 the rule gave before the church
 existed; every tower stays on its arc. The church's cross comes no
 nearer than 0.077 to the label (a church standing high on a slope).
-Triangles: 779 (budget 1000), the roof's 332 the largest share, the
-plinth's 20 included. `facetVisibility.ts` guards
+Triangles: 787 (budget 1000), the roof's 332 the largest share, the
+plinth's 28 (course and cap) included. `facetVisibility.ts` guards
 the whole aged kit against inside-out or missing facets by casting rays
 from forty-nine directions and requiring every first hit to face the
 viewer; it caught the screen's side strips and the bells wound inside

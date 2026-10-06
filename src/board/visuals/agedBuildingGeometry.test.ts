@@ -19,7 +19,7 @@ import {
 } from "./agedBuildingGeometry";
 import { wornRingPoints, type WallFace } from "./agedKit";
 import { FLAG_HEIGHT, FLAG_WIDTH } from "./nationFlagGeometry";
-import { RIDGE_CAP_RISE, tileStripCount } from "./agedRoof";
+import { RIDGE_CAP_RISE, roofEaveUnderside, tileStripCount } from "./agedRoof";
 import { backfacingFirstHits, opposedCoplanarOverlaps } from "./facetVisibility";
 
 const colors: AgedColors = {
@@ -115,6 +115,21 @@ describe("buildAgedBuildingGeometry", () => {
     expect(AGED_BUILDING_HEIGHT.watchtower).toBeGreaterThan(BUILDING_MAX_HEIGHT - 0.02);
   });
 
+  it("raises the house and warehouse eaves (#59) so neither reads as a sunk hut, keeping each roof's pitch and the tavern as it was", () => {
+    // Eave and ridge at scale 1: house 0.14 / 0.23, warehouse 0.16 / 0.27, tavern 0.17 / 0.27.
+    const spec = { house: { eave: 0.14, ridge: 0.23, halfU: 0.09, halfV: 0.07 }, warehouse: { eave: 0.16, ridge: 0.27, halfU: 0.13, halfV: 0.09 }, tavern: { eave: 0.17, ridge: 0.27, halfU: 0.09, halfV: 0.11 } };
+    for (const kind of ["house", "warehouse", "tavern"] as const) {
+      const s = { ...spec[kind], ridgeAlong: "z" as const };
+      expect(AGED_BUILDING_HEIGHT[kind]).toBeCloseTo(s.ridge + RIDGE_CAP_RISE, 9);
+      expect(AGED_BUILDING_WALL_TOP[kind]).toBeCloseTo(roofEaveUnderside(s), 9);
+    }
+    // The pitches the roofs had before the eaves rose: 1:1 on the house, 11:13 on the warehouse.
+    expect((spec.house.ridge - spec.house.eave) / spec.house.halfU).toBeCloseTo(1, 9);
+    expect((spec.warehouse.ridge - spec.warehouse.eave) / spec.warehouse.halfU).toBeCloseTo(0.11 / 0.13, 9);
+    // The house's eave now clears its door by more than the door's own height.
+    expect(AGED_BUILDING_WALL_TOP.house).toBeGreaterThan(0.062 * 1.8);
+  });
+
   it("winds its faces outwards (positive signed volume) and faces its footing down", () => {
     for (const kind of BUILDING_KINDS) {
       const g = built[kind];
@@ -172,13 +187,27 @@ describe("buildAgedBuildingGeometry", () => {
       let courseVertices = 0;
       let footingStone = 0;
       let footingVertices = 0;
+      // The course's top band (its cap) against the band below it, on the side faces.
+      let cap = 0;
+      let capCount = 0;
+      let lower = 0;
+      let lowerCount = 0;
       for (let i = 0; i < g.vertexCount; i++) {
         const [x, y, z] = vertex(g, i);
         const c = color(g, i);
+        const n = normal(g, i);
         if (Math.abs(y) < 1e-6) groundReach = Math.max(groundReach, Math.hypot(x, z));
         if (y > -0.031 && y < -0.011) {
           courseReach = Math.max(courseReach, Math.hypot(x, z));
           courseVertices++;
+          // The cap's top edge against the course's bottom edge (the edge they share belongs to both).
+          if (Math.abs(n[1]) < 0.5 && y > -0.015) {
+            cap += luminance(c);
+            capCount++;
+          } else if (Math.abs(n[1]) < 0.5 && y < -0.021) {
+            lower += luminance(c);
+            lowerCount++;
+          }
         }
         // The footing proper, below the plinth course's top (the door sill dips 0.011 under ground contact).
         if (y < -0.0125) {
@@ -192,6 +221,10 @@ describe("buildAgedBuildingGeometry", () => {
       expect(courseVertices).toBeGreaterThan(0);
       expect(courseReach).toBeGreaterThan(groundReach + 0.003);
       expect(footingStone).toBe(footingVertices);
+      // A paler cap course on top of the plinth: a crisp line where the ground meets the wall.
+      expect(capCount).toBeGreaterThan(0);
+      expect(lowerCount).toBeGreaterThan(0);
+      expect(cap / capCount).toBeGreaterThan((lower / lowerCount) * 1.2);
     }
   });
 
@@ -239,7 +272,7 @@ describe("buildAgedBuildingGeometry", () => {
         for (let k = 0; k < 3; k++) capTop = Math.max(capTop, vertex(g, t * 3 + k)[1]);
       }
       // Two triangles per strip top per slope, over the slab tops themselves.
-      const strips = tileStripCount({ halfU: 0.09, halfV: kind === "tavern" ? 0.11 : kind === "house" ? 0.07 : 0.09, eave: 0.1, ridge: 0.19, ridgeAlong: "z" });
+      const strips = tileStripCount({ halfU: 0.09, halfV: kind === "tavern" ? 0.11 : kind === "house" ? 0.07 : 0.09, eave: 0.14, ridge: 0.23, ridgeAlong: "z" });
       expect(raised).toBeGreaterThanOrEqual(strips * 2 * 2);
       expect(capTop).toBeCloseTo(AGED_BUILDING_HEIGHT[kind], 6);
     }
@@ -401,8 +434,14 @@ describe("buildAgedBuildingGeometry", () => {
       const hits = backfacingFirstHits(built[kind]);
       // The tower's chipped proud blocks have one non-planar side each, which can fold a sliver inwards
       // at the foot; a few grazing rays of nearly twenty thousand meet one of two such slivers in the
-      // bottom course. Everything else is clean.
-      const tolerated = kind === "watchtower" ? hits.filter((h) => h.point[1] < 0.05) : [];
+      // bottom course. The roofs' tile strips have no underside (they lie on the slab), so where a
+      // strip overshoots the slab's eave edge a ray climbing from below the horizon can enter the open
+      // underside and leave through the strip's end; the camera's pitch is fixed well above the
+      // horizon, so the game never sees it. Everything else is clean.
+      const tolerated =
+        kind === "watchtower"
+          ? hits.filter((h) => h.point[1] < 0.05)
+          : hits.filter((h) => h.direction[1] > 0 && h.point[1] < AGED_BUILDING_WALL_TOP[kind]);
       expect(new Set(tolerated.map((h) => h.triangle)).size).toBeLessThanOrEqual(2);
       const rest = hits.filter((h) => !tolerated.includes(h));
       expect(rest.map((h) => `${kind} triangle ${h.triangle} at ${h.point.map((v) => v.toFixed(3)).join(", ")}`)).toEqual([]);
