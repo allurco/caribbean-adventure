@@ -31,7 +31,9 @@ import {
   QUAY_TOP,
   QUAY_TRIANGLE_BUDGET,
   QUAY_TRIANGLES,
+  QUAY_TYPICAL_LIFT,
   QUAY_WALL_BLOCKS,
+  QUAY_WATERLINE,
   QUAY_WET_HEIGHT,
   QUAY_WIDTH,
   type QuayColors,
@@ -306,10 +308,19 @@ describe("buildQuayGeometry", () => {
     expect(stepFaces).toBe(2);
   });
 
+  it("models its waterline below the sea by the typical lift, with the footing reaching from the base up to it", () => {
+    expect(QUAY_TYPICAL_LIFT).toBeGreaterThan(0);
+    expect(QUAY_WATERLINE).toBeCloseTo(SEA_LEVEL - QUAY_TYPICAL_LIFT, 9);
+    expect(QUAY_WATERLINE).toBeGreaterThan(QUAY_BASE);
+    const footingTops = vertices("footing").map((i) => vertex(quay, i)[1]);
+    expect(Math.max(...footingTops)).toBeCloseTo(QUAY_WATERLINE, 6);
+    expect(Math.min(...footingTops)).toBeCloseTo(QUAY_BASE, 6);
+  });
+
   it("lays the wall above the waterline in two tall battered courses: a ledge at each course line, the foot flush with the base's edge", () => {
     expect(QUAY_COURSE_COUNT).toBe(2);
     expect(QUAY_COURSE_HEIGHT).toBeGreaterThan(0.025);
-    expect(QUAY_COURSE_LEDGES).toEqual([SEA_LEVEL, SEA_LEVEL + QUAY_COURSE_HEIGHT]);
+    expect(QUAY_COURSE_LEDGES).toEqual([QUAY_WATERLINE, QUAY_WATERLINE + QUAY_COURSE_HEIGHT]);
     for (const y of QUAY_COURSE_LEDGES) {
       let frontLedges = 0;
       for (const t of partTriangles("wall")) {
@@ -324,7 +335,7 @@ describe("buildQuayGeometry", () => {
     for (const i of vertices("wall")) {
       const [, y, z] = vertex(quay, i);
       if (normal(quay, i)[2] < 0.99 || z > WALL_FOOT + EPS) continue;
-      if (Math.abs(y - SEA_LEVEL) < EPS) footZ = Math.max(footZ, z);
+      if (Math.abs(y - QUAY_WATERLINE) < EPS) footZ = Math.max(footZ, z);
       if (Math.abs(y - QUAY_STEP_TOP) < EPS) topCourseZ = Math.max(topCourseZ, z);
     }
     expect(footZ).toBeCloseTo(QUAY_SEA_FACE + QUAY_COPING_PROUD / 2, 6);
@@ -405,7 +416,7 @@ describe("buildQuayGeometry", () => {
       expect(count).toBeGreaterThan(0);
       return sum.map((v) => v / count);
     };
-    const wet = at(SEA_LEVEL, SEA_LEVEL + 0.008);
+    const wet = at(QUAY_WATERLINE, QUAY_WATERLINE + 0.008);
     const dry = at(QUAY_COURSE_LEDGES[1] + 0.012, QUAY_STEP_TOP);
     expect(luminance(wet as Vec3)).toBeLessThan(luminance(dry as Vec3) * 0.75);
     expect(wet[1] / dry[1]).toBeGreaterThan(wet[0] / dry[0]);
@@ -415,7 +426,7 @@ describe("buildQuayGeometry", () => {
     expect(QUAY_STAIR.steps).toBe(3);
     expect(QUAY_STAIR.rises).toHaveLength(3);
     expect(spread(QUAY_STAIR.rises)).toBeGreaterThan(1.1);
-    expect(QUAY_STAIR.rises.reduce((a, b) => a + b, 0)).toBeCloseTo(QUAY_STAIR.topTread - SEA_LEVEL, 9);
+    expect(QUAY_STAIR.rises.reduce((a, b) => a + b, 0)).toBeCloseTo(QUAY_STAIR.topTread - QUAY_WATERLINE, 9);
     expect(QUAY_STAIR.back).toBeGreaterThan(QUAY_SEA_FACE + QUAY_COPING_PROUD / 2 + QUAY_BLOCK_PROUD[1][1]);
     expect(QUAY_STAIR.back - WALL_FOOT).toBeLessThan(0.002);
     expect(QUAY_STAIR.x0).toBeGreaterThan(PIER_WIDTH / 2);
@@ -423,7 +434,7 @@ describe("buildQuayGeometry", () => {
     let y = QUAY_STAIR.topTread;
     for (let k = 0; k < QUAY_STAIR.steps; k++) {
       expect(y).toBeLessThan(QUAY_STEP_TOP);
-      expect(y).toBeGreaterThan(SEA_LEVEL);
+      expect(y).toBeGreaterThan(QUAY_WATERLINE);
       let treads = 0;
       for (const t of partTriangles("stair")) {
         const tri = [vertex(quay, t * 3), vertex(quay, t * 3 + 1), vertex(quay, t * 3 + 2)];

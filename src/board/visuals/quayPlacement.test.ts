@@ -6,7 +6,17 @@ import type { MapCell } from "../../game/types";
 import type { GroundField } from "./groundPlacement";
 import { PIER_DECK_TOP } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
-import { QUAY_BACK, QUAY_BASE, QUAY_COPING_THICKNESS, QUAY_SEA_FACE, QUAY_STEP_Z, QUAY_TOP, QUAY_WIDTH } from "./quayGeometry";
+import {
+  QUAY_BACK,
+  QUAY_BASE,
+  QUAY_COPING_THICKNESS,
+  QUAY_SEA_FACE,
+  QUAY_STEP_Z,
+  QUAY_TOP,
+  QUAY_TYPICAL_LIFT,
+  QUAY_WATERLINE,
+  QUAY_WIDTH,
+} from "./quayGeometry";
 import {
   placeQuay,
   portQuays,
@@ -168,6 +178,28 @@ describe("placeQuay", () => {
         }
       });
     }
+  });
+
+  it("models the waterline where the typical lift lands it: at the sea on the median port, never above it by more than a block", () => {
+    // The tide mark, the course line and the stair foot are baked into the
+    // shared mesh at QUAY_WATERLINE, so they can only be right for one lift.
+    const lifts: number[] = [];
+    for (const mapSeed of [11, 23, 47, 61, 83]) {
+      const cells = generateMap(getMapPreset("small"), mapSeed);
+      const terrainSeed = terrainSeedFromCells(cells);
+      const field = createTerrainHeightField(cells, terrainSeed);
+      for (const q of portQuays(cells, field, terrainSeed)) lifts.push(q.worldY);
+    }
+    lifts.sort((a, b) => a - b);
+    const median = lifts[Math.floor(lifts.length / 2)];
+    expect(lifts.length).toBeGreaterThan(20);
+    expect(Math.abs(median + QUAY_WATERLINE - SEA_LEVEL), `median lift ${median.toFixed(4)} of ${lifts.length}`).toBeLessThan(0.012);
+    expect(QUAY_WATERLINE).toBeLessThan(SEA_LEVEL);
+    expect(QUAY_TYPICAL_LIFT).toBeCloseTo(SEA_LEVEL - QUAY_WATERLINE, 9);
+    // The highest lift the placement allows puts the mark no more than a block above the water.
+    const cap = PIER_DECK_TOP + QUAY_MAX_STEP - QUAY_TOP;
+    expect(cap + QUAY_WATERLINE - SEA_LEVEL).toBeLessThanOrEqual(0.03 + 1e-9);
+    expect(lifts[lifts.length - 1]).toBeLessThanOrEqual(cap + 1e-9);
   });
 });
 

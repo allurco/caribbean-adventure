@@ -87,11 +87,22 @@ export const QUAY_COPING_THICKNESS = 0.03;
 export const QUAY_STEP_TOP = QUAY_TOP - QUAY_COPING_THICKNESS;
 /** How far the base overhangs the wall below it; the battered wall's foot is flush with its edge. */
 export const QUAY_COPING_PROUD = 0.015;
+/**
+ * How far `quayAt` lifts a typical port's quay above the pier's frame (the
+ * median over generated maps; `quayPlacement.test.ts` pins it). The mesh is
+ * shared by every instance, so its waterline is modelled this far below the
+ * sea: the lift lands the tide mark, the course line and the stair foot at
+ * the water on a typical port, a little under it on a low beach and at most
+ * a block above it at the lift's cap.
+ */
+export const QUAY_TYPICAL_LIFT = 0.055;
+/** The waterline in the mesh's own frame. */
+export const QUAY_WATERLINE = SEA_LEVEL - QUAY_TYPICAL_LIFT;
 /** Courses between the waterline and the base; each steps out `QUAY_COPING_PROUD / count` going down. */
 export const QUAY_COURSE_COUNT = 2;
-export const QUAY_COURSE_HEIGHT = (QUAY_STEP_TOP - SEA_LEVEL) / QUAY_COURSE_COUNT;
+export const QUAY_COURSE_HEIGHT = (QUAY_STEP_TOP - QUAY_WATERLINE) / QUAY_COURSE_COUNT;
 /** The course lines: the height of the ledge under each course, from the waterline up. */
-export const QUAY_COURSE_LEDGES: readonly number[] = Array.from({ length: QUAY_COURSE_COUNT }, (_, i) => SEA_LEVEL + i * QUAY_COURSE_HEIGHT);
+export const QUAY_COURSE_LEDGES: readonly number[] = Array.from({ length: QUAY_COURSE_COUNT }, (_, i) => QUAY_WATERLINE + i * QUAY_COURSE_HEIGHT);
 /** The wet band fades out this far above the waterline: most of the lower course. */
 export const QUAY_WET_HEIGHT = QUAY_COURSE_HEIGHT * 0.75;
 /** The paving's nominal thickness; the joints between the stones go down to the base's top. */
@@ -334,7 +345,7 @@ export const QUAY_STAIR = (() => {
   const topTread = QUAY_STEP_TOP - 0.002;
   const weights = Array.from({ length: steps }, () => lerpRange([0.75, 1.25], next()));
   const total = weights.reduce((a, b) => a + b, 0);
-  const rises = weights.map((w) => ((topTread - SEA_LEVEL) * w) / total);
+  const rises = weights.map((w) => ((topTread - QUAY_WATERLINE) * w) / total);
   const treads = Array.from({ length: steps }, () => lerpRange([0.032, 0.046], next()));
   const run = treads.reduce((a, b) => a + b, 0);
   return { steps, topTread, rises, treads, x0: BASE_HALF_WIDTH - run, back: outlineOf(QUAY_COURSE_COUNT - 1).front + LOWER_PROUD_MAX + 0.001, depth: 0.05, chip: 0.012 };
@@ -359,7 +370,7 @@ export interface QuayBuild {
 
 /** Ground-contact and under-base shading meet at one ring of the wall, AO_REACH up from the waterline. */
 const AO_REACH = 0.025;
-const AO_GROUND_HEIGHT = QUAY_STEP_TOP - SEA_LEVEL - AO_REACH;
+const AO_GROUND_HEIGHT = QUAY_STEP_TOP - QUAY_WATERLINE - AO_REACH;
 const AO_GROUND_STRENGTH = 0.2;
 const AO_COPING_STRENGTH = 0.35;
 /** The wall at the waterline, as a factor on the stone: green-black. */
@@ -468,7 +479,7 @@ export function buildQuayParts(colors: QuayColors): QuayBuild {
     [foot.hw, y, foot.front],
     [foot.hw, y, QUAY_BACK],
   ];
-  b.prism(ring(QUAY_BASE), ring(SEA_LEVEL), colors.stone, { top: false });
+  b.prism(ring(QUAY_BASE), ring(QUAY_WATERLINE), colors.stone, { top: false });
   part("footing");
 
   // The courses, from the waterline up: each a vertical band on its own
@@ -553,7 +564,7 @@ export function buildQuayParts(colors: QuayColors): QuayBuild {
     to: b.vertexCount(),
   });
   b.tintColors(0, b.vertexCount(), ([, y]) => {
-    const t = Math.max(0, Math.min(1, 1 - (y - SEA_LEVEL) / QUAY_WET_HEIGHT));
+    const t = Math.max(0, Math.min(1, 1 - (y - QUAY_WATERLINE) / QUAY_WET_HEIGHT));
     return [lerpRange([1, WET_TINT[0]], t), lerpRange([1, WET_TINT[1]], t), lerpRange([1, WET_TINT[2]], t)];
   });
 
