@@ -282,7 +282,49 @@ A ship whose move crosses the seam starts its animation a wrap width over
 
 Cost: the copies add ~25 draw calls and roughly double the triangle count
 (palms, rocks, piers and the grid lines are not frustum-culled), with no
-measurable change in frame time on an Apple M4.
+measurable change in frame time on an Apple M4. The faceted rocks (#49)
+added two instanced draws per copy (three rock variants where there was one
+sphere).
+
+**Props: rocks (#49).** Like the palms, rocks are hand-built faceted
+geometry, placed from the existing decoration data; `src/game/` is
+untouched. `rockGeometry.ts` builds three variants (a rounded boulder, a
+long low slab and a tall angular spur: 36, 42 and 40 triangles) as jittered
+polar lattices, non-indexed with face normals; the widest ring sits at the
+origin and the underside is squashed to a shallow buried base, so a rock
+placed on a slope sinks in instead of floating. `rockVariation.ts` derives
+each rock's look from a hash of its placement (the `palmVariation.ts`
+pattern): variant, a base colour by biome with a tint within ±15% of it, a
+per-axis stretch, a small tilt, a bury depth and a size class by the cell's
+biome (large outcrops on `ROCK`, medium on `GRASS`, small on `SAND`; the
+ground-placement footprint grows with the class). `smallStones.ts` adds one
+derived stone per `SAND`/`GRASS` cell without a rock or port, from a
+per-cell hash of its coordinates and the terrain seed, through
+`placeOnGround` so it stays on land; the densities are named constants.
+`Rocks.tsx` draws one `InstancedMesh` per variant on a white material, with
+`instanceColor` carrying the base colour times the tint. Instance counts
+(10-seed average, generator rocks + stones): small 26 + 32, medium 61 + 81,
+large 124 + 152.
+
+Size and colour were retuned after an A/B at ship zoom where the rocks could
+not be found. `ROCK_UNIT_RADIUS` is 0.22 (was 0.12; a palm canopy is ~0.24),
+the size classes are large 2.2 / medium 1.5 / small 1 (were 1.5 / 1 / 0.65)
+and stones scale within [0.6, 1] (was [0.3, 0.5]). The rocks used to be
+painted with `highlandRock`, the summit's own colour, so outcrops vanished on
+the ground they sat on; `ROCK_BASE_COLOR` now gives each biome a colour
+darker and less warm than its ground: grey-brown 0x665f55 on sand, a neutral
+grey 0x5a5c5a on grass and a slate 0x565c64 on `ROCK` (a darker slate read
+as a hole beside the summit's shaded faces). Known follow-up: `placeOnGround`
+puts a rock's origin at the lowest ground under its footprint, and with the
+bigger footprints most large outcrops on steep summits (and about half the
+grass rocks) now end up fully below the surface. The same fit fails the
+other way on coasts: the probed footprint is the unit radius times the size
+class and decoration scale (at most about 0.77 units), but the drawn rock is
+that times the per-axis stretch (up to 1.3) times the variant's own
+ellipsoid radii, so a large slab reaches ~1.3-1.5 units from its origin and
+can overhang a lower neighbour or the water on a coastal `ROCK` cell. Both
+halves are one placement problem (the probed footprint is not the drawn
+extent) and are tracked as a follow-up.
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
