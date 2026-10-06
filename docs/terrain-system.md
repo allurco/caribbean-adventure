@@ -363,12 +363,12 @@ beach with water on one
 to three sides and a shore ramp down to each, and higher jungle neighbours
 pull its field up, so a footprint commonly spans 0.1–0.2 in height; a
 fixed arc of slots lost half the buildings. Each building instead looks
-round the arc (12° steps) for the ground nearest its preferred slot that
-`placeOnGround` accepts, that overlaps no neighbour, and whose footprint
-spans at most 0.16, then stands with its origin half a footing above the
-lowest probe (never floating) and the high side buried at most 0.1. The
-ground the buildings probe goes through one function, `settlementGround`,
-which lays the quay's flat top over the terrain. `PortBuildings.tsx` draws one
+round the arc (7.5° steps) and outwards in rings 0.04 apart for the ground
+nearest its preferred slot that `placeOnGround` accepts, that overlaps no
+neighbour, and whose footprint the building's footing can cover (see
+**standing on the ground** below). The ground the buildings probe goes
+through one function, `settlementGround`, which lays the quay's flat top
+over the ground as it is drawn. `PortBuildings.tsx` draws one
 `InstancedMesh` per kind on a white `vertexColors` material with
 `instanceColor` carrying the tint, plus one per nation present for the
 flags over the towers (same matrices, untinted).
@@ -471,6 +471,46 @@ prepass layer too. `quayTopAt(quay, point)` is the seam for the
 settlement: the deck or step height under a world point over a placed
 quay, or undefined off it; `quayTopY(cell, field, seed, point)` is the
 same for a cell, placing the quay first.
+
+**Standing on the ground (#59).** A building stands ON the ground, never
+cut into it. Two things make that true. First, what it stands on is the
+ground as drawn: the land is a lattice mesh (`landMesh.ts`, 0.15 steps)
+whose vertices sample the field, so between lattice points the drawn
+surface is the triangle's plane, not the smooth field. Measured at the
+buildings' footprints over 12 generated maps (328 buildings, 5,576
+probes) the two differ by 0.006 on average, 0.013 at the 90th percentile
+and up to 0.039 (the drawn surface lies under the field two times in
+three, the lattice cutting the relief's bumps). A rule evaluated on the
+field would therefore still let the drawn sand rise through a wall by a
+few hundredths, so `useDecorationLayout` hands the settlement and the
+quays `landSurface(field)`: the lattice surface as a `GroundField`, the
+same triangulation `buildLandMesh` emits (pinned against its triangles),
+with each lattice vertex sampled once. Second, the standing rule in
+`standBuilding`: the footprint is probed at its centre, 24 rim points,
+two inner rings, and at every crease of the drawn surface under it (`creasesWithin`: the
+lattice vertices inside the footprint and the lattice edges' crossings of
+its rim, where a piecewise-flat surface takes its extremes; a ring of
+probes alone missed kinks by up to 5 mm). The ground contact is set
+`BUILDING_SINK` (0.002) under the HIGHEST probe, so the high side meets
+the wall and nothing cuts in, and the spot is only taken if the spread of
+the probes is at most `buildingMaxSpread(footing)` = footing − sink −
+`BUILDING_FOOTING_MARGIN` (0.01), so the footing (`BUILDING_FOOTING` × the
+building's scale) reaches under the lowest point with the margin to spare
+and nothing floats. On a
+slope the footing shows on the downhill side, so the aged kinds' footing
+is a stone plinth: the stone colour (not the wall's render) with a course
+0.004 proud of the wall line just below ground contact (`PLINTH_COURSE`),
+10 triangles per kind, so the exposed part reads as a raised platform, as
+colonial houses on slopes were built. The footing is 0.16 deep: at 0.12
+the allowed spread (about 0.1) refused most beach-ramp spots and the
+settlements fell from 2.65 / 2.65 / 2.76 buildings per port
+(small / medium / large, 8 seeds each) to 1.85 / 1.78 / 1.88 even with the
+finer search, warehouses all but vanished and one tower fell back to its
+hex centre; at 0.16 they stand at 2.45 / 2.54 / 2.65 with every tower on
+its arc. (Before this rule the contact sat half a footing above the lowest
+probe and the high side was buried up to 0.1, which cut the back walls of
+houses into rising sand; 320 of those 328 buildings had ground above their
+contact, by up to 0.12.)
 
 **Settlement on the quay (#59).** `settlementGround(cell, field, seed)`
 in `portSettlement.ts` is the ground the buildings probe: it places the
