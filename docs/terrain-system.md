@@ -530,9 +530,54 @@ findable beside the label but not yet unmistakable on its own, because
 the 0.5 cap keeps it to about twenty pixels tall at the default zoom. Instance counts (10-seed average):
 small 5 piers + 17.3 buildings (every port gets its tower; 3.5 per port,
 up from 2.9 while the marker held them to the outer ring), medium 10 +
-34.6, large 15 + 50.6. Draw calls: five instanced meshes per copy where
-the pier box was one; the marker's 32-triangle cylinder per port is no
-longer drawn.
+34.6, large 15 + 50.6 (before the church, below). Draw calls: five
+instanced meshes per copy where the pier box was one; the marker's
+32-triangle cylinder per port is no longer drawn.
+
+**The church (#59).** Every port now gets a parish church of the early
+colonial type, the fifth `BuildingKind` (`AGED_CHURCH` in
+`agedBuildingGeometry.ts`): a single nave 0.2 across by 0.3 long, ridge
+along z and the door on +z, in the aged kit's worn panelled walls under
+the aged tile roof (eave 0.18, ridge 0.3), whitewashed a coat fresher
+than the houses' lime render (`churchLime`, warm, not a clean cool
+white) with grey-ochre quoin blocks at the corners in alternating
+courses, a tall planked door (0.085) in a stone surround of two jambs
+and a three-facet round arch over a dark tympanum, and three slit
+windows high on each long wall as deep recesses with their staining
+runs; no shutters. The front wall rises above the roof as an espadaña:
+a full-width base to 0.215, shoulders sloping parallel to the roof
+(0.03 above the tiles) to a screen 0.14 wide and 0.035 thick, pierced
+by two round-headed openings (sill 0.31, crown 0.361, the arch heads in
+two facets) each holding a bronze bell, under a band, a small pediment
+and an iron cross whose top at 0.42 is the church's height. The roof
+tucks into the screen at the front (it ends a hair inside the screen's
+back plane, so the eaves' end faces sit flush with the gable) and
+overhangs the back gable as usual. The height rule: the tower stays the
+port's one tallest landmark, so the church has its own scale range,
+`CHURCH_SCALE_RANGE` 0.96–1.04, and `portSettlement.test.ts` pins its
+top at the largest scale (0.437) under the cap and more than 0.02 under
+the smallest tower's pole (0.466). Placement: a fifth slot straight
+landward of the square is the church's (under the Laws of the Indies
+the church fronts the plaza); it is placed second, after the tower and
+before the shuffled others, looks round the whole hex if the landward
+arc has no room, and is dropped only where no ground takes its 0.23
+footprint (about one port in eight: 86–90 % of ports get one over ten
+seeds of each size). The slots either side of it moved from ±0.45 to
+±0.8 so a house beside the church clears it on flat ground; the ring
+search makes the exact value immaterial to how many buildings fit. The
+church's footprint in the middle of the arc leaves room for about one
+more small building: 2.4–2.8 buildings per port (3.5 before), so the
+warehouse, the next-largest piece, is now rare. Triangles: 769 (budget
+1000), the roof's 332 the largest share. `facetVisibility.ts` guards
+the whole aged kit against inside-out or missing facets by casting rays
+from forty-nine directions and requiring every first hit to face the
+viewer; it caught the screen's side strips and the bells wound inside
+out during the build. Honest judgement from the screenshots: at ship
+zoom the pale screen rising above the ridge reads as a church beside
+the tower, the cross a nub; at map zoom it is one more white block with
+a red roof and does not compete with the tower's dark upright and flag.
+Instance counts (10-seed average): small 5 piers + 13.9 buildings,
+medium 10 + 26.9, large 15 + 41.4; six instanced meshes per copy.
 
 **Port kit: the stone quay (#59, slice 3).** `quayGeometry.ts` builds a
 stone platform at the pier root in the pier's local frame (749 triangles,
