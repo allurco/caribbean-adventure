@@ -78,9 +78,58 @@ export const SUN_OFFSET: [number, number, number] = [
 ];
 
 /**
+ * Shadowless fill, a deliberate grade standing in for ground bounce (#63).
+ *
+ * The sky map below carries the sea's bounce albedo (SEA_BOUNCE_ALBEDO), which
+ * is right for open water and island slopes. The port pieces stand on bright
+ * sand and whitewash, which bounce far more light back onto walls than the
+ * sea does; with the aged kit's baked grime and plinth shading on top, the
+ * shadow-side walls land near black under ACES. This light lifts them. It is
+ * not physics: it is the bounce the sky map cannot carry, graded by eye.
+ *
+ * Cool and pale: it stands for sky light and sand bounce together, so it is
+ * bluer than the sun without being a blue cast. Its strength is a fraction of
+ * the sun's so it never reads as a second key light or doubles the sky;
+ * it is tuned from screenshot comparisons of a shadow-side house wall.
+ */
+export const FILL_COLOR = "#cfdcea";
+export const FILL_INTENSITY = 0.5;
+/**
+ * Fill placement, relative to the camera's view like the sun's.
+ *
+ * The sun sits in front of the camera (azimuth −48°, elevation 55°) for its
+ * glint, so every wall face the player can see faces the camera and away from
+ * the sun: at the game's fixed pitch every visible wall is a shadow face. A
+ * fill in front of the camera next to the sun would light the same hidden
+ * faces and change nothing (measured). It has to come from behind the camera,
+ * on the right so it balances the sun's swing to the left: azimuth +132°.
+ *
+ * Elevation 35°, lower than the sun: bounce comes from the ground, so a lower
+ * light grazes the walls rather than the roofs and leaves the sunlit tops to
+ * the sun. It is mounted along its direction at the sun's distance, which
+ * puts it about (42.6, 40.2, 38.4) from the camera target.
+ */
+export const FILL_ELEVATION_DEG = 35;
+export const FILL_AZIMUTH_DEG = 132;
+export const FILL_DIRECTION = sunDirection(
+  viewDirectionXZ(CAMERA_OFFSET),
+  FILL_ELEVATION_DEG,
+  FILL_AZIMUTH_DEG
+);
+export const FILL_OFFSET: [number, number, number] = [
+  FILL_DIRECTION[0] * SUN_DISTANCE,
+  FILL_DIRECTION[1] * SUN_DISTANCE,
+  FILL_DIRECTION[2] * SUN_DISTANCE,
+];
+
+/**
  * Sky (three's Preetham model), baked to an environment map that lights the
- * whole scene. It replaces the old hemisphere and fill lights, which were
- * stand-ins for the same sky light; keeping them would light everything twice.
+ * whole scene with blue sky light and, below the horizon, the sea's bounce.
+ * It replaced the old hemisphere and fill lights, which were stand-ins for the
+ * same sky light. The one fill light that remains (FILL_COLOR above) is not a
+ * stand-in for the sky: it carries the bounce from sand and whitewash under
+ * the port pieces, which a physically clear sky over sea cannot supply, so
+ * the two do not light anything twice.
  *
  * - Turbidity 3: Preetham's "clear" sky; 2 is very clear, 6 humid haze.
  *   Caribbean air is clear but moist.
