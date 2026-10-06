@@ -15,6 +15,7 @@ import { agedBuildingColors as agedColors } from "./visuals/agedBuildingColors";
 import { buildNationFlagGeometry } from "./visuals/nationFlagGeometry";
 import type { FacetGeometryData } from "./visuals/facetBuilder";
 import type { PortNation } from "../game/types";
+import { buildQuayGeometry, type QuayColors } from "./visuals/quayGeometry";
 
 /** Any prop builder's output; `colors` is optional (the faceted rock has none and draws white). */
 export interface PropGeometryData {
@@ -55,6 +56,20 @@ export function concatGeometry(a: FacetGeometryData, b: FacetGeometryData): Face
 const towerWithFlag = (nation: PortNation) => () =>
   concatGeometry(buildAgedBuildingGeometry("watchtower", agedColors("watchtower")), buildNationFlagGeometry(nation, AGED_TOWER_FLAG_HOIST));
 
+/** The quay's palette, as `Quays.tsx` picks it: weathered masonry, near-black mortar, timber, iron, rope and the beach sand. */
+const QUAY_COLORS: QuayColors = (() => {
+  const masonry = rgb("masonry");
+  const stone: [number, number, number] = [masonry[0] * 0.95, masonry[1] * 0.86, masonry[2] * 0.72];
+  return {
+    stone,
+    mortar: [stone[0] * 0.28, stone[1] * 0.26, stone[2] * 0.24],
+    timber: rgb("timber"),
+    iron: [0.045, 0.04, 0.038],
+    rope: [0.42, 0.34, 0.22],
+    sand: rgb("drySand"),
+  };
+})();
+
 /** A medium (grass) rock, the commonest size class; the boulder variant. */
 const ROCK_SCALE = ROCK_SIZE_CLASS_SCALE.medium;
 const ROCK_VARIANT = 0;
@@ -69,4 +84,5 @@ export const PROP_ENTRIES: readonly PropEntry[] = [
   { label: "tavern, aged", build: () => buildAgedBuildingGeometry("tavern", agedColors("tavern")), color: 0xffffff, roughness: 0.9 },
   { label: "warehouse, aged", build: () => buildAgedBuildingGeometry("warehouse", agedColors("warehouse")), color: 0xffffff, roughness: 0.9 },
   { label: "watchtower, aged (England)", build: towerWithFlag("England"), color: 0xffffff, roughness: 0.9 },
+  { label: "quay, notch up", build: () => buildQuayGeometry(QUAY_COLORS), color: 0xffffff, roughness: 0.95 },
 ];

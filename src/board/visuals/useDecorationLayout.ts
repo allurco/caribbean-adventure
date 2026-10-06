@@ -12,6 +12,7 @@ import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
 import { smallStones } from "./smallStones";
 import { pierOrigin } from "./pierPlacement";
 import { portBuildings, type PortBuilding } from "./portSettlement";
+import { portQuays, type QuayPlacement } from "./quayPlacement";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -40,6 +41,8 @@ export interface DecorationLayout {
   stones: DecorationData[];
   /** Piers, with the origin at the land end where the beach meets the water (#49). */
   piers: DecorationData[];
+  /** Derived stone quays, one at each pier's root (#59). */
+  quays: QuayPlacement[];
   /** Derived port buildings and watchtowers, from the port flag and the `pier`/`fort` decorations (#49). */
   buildings: PortBuilding[];
   palms: PalmTreesResources;
@@ -114,8 +117,9 @@ const decorationsOf = perMapCache((cells, wrap) => {
     const seed = terrainSeedFromCells(cells);
     const stones = smallStones(cells, field, seed);
     const buildings = portBuildings(cells, field, seed);
+    const quays = portQuays(cells, field, seed);
 
-    return { trees, rocks, stones, piers, buildings };
+    return { trees, rocks, stones, piers, quays, buildings };
 });
 
 /** Places every decoration on the height field once per map (and wrap). */

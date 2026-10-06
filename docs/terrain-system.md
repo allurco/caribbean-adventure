@@ -411,6 +411,66 @@ up from 2.9 while the marker held them to the outer ring), medium 10 +
 the pier box was one; the marker's 32-triangle cylinder per port is no
 longer drawn.
 
+**Port kit: the stone quay (#59, slice 3).** `quayGeometry.ts` builds a
+stone platform at the pier root in the pier's local frame (749 triangles,
+budget 1000; one per port, so cheap), in the port kit's art direction: an
+old Spanish-Caribbean port that has stood a century in salt air, still
+in the stylised mid-poly register (faceted, vertex colour only, no
+textures), with nothing on a perfect grid. The mesh is shared by every
+port but `quayAt` lifts each instance by its own amount (0 on a low
+beach, 0.085 at the cap, a median of 0.055 over generated maps), so the
+mesh's waterline is modelled `QUAY_TYPICAL_LIFT` (0.055) below the sea
+and the lift lands the tide mark, the course line and the stair foot at
+the water on a typical port, a little under it on a low beach and at
+most 0.03 above it at the cap (`quayPlacement.test.ts` pins the lift to
+the maps). A footing from as deep as the pier posts up to that waterline;
+above it two tall battered courses (each 0.0075
+further out than the one above, the foot flush with the base's edge, an
+up-facing ledge at the course line) whose sea face and seaward sides are
+a near-black mortar plane set with rough-cut blocks laid out once from
+the variation stream (`QUAY_WALL_BLOCKS`): unequal widths, joints of
+0.004–0.010, each block proud by its own 0.002–0.010 (0.007 on the lower
+course so it stays under the base's edge), beds that wobble, a few
+chipped corners, two blocks missing to show the rubble behind, tones
+±15 % with an ochre drift, and the blocks under the bollards and the
+mooring ring stained dark. A green-black wet band over three quarters of
+the lower course (a `tintColors` gradient to the waterline). The deck is a
+square-edged stone base 0.018 thick overhanging the wall by 0.015, its
+top the mortar the paving's joints show, carrying twelve unbevelled
+paving stones in three rows of 4/3/5 (`QUAY_PAVING`): unequal widths,
+joints of 0.004–0.010, every corner at its own height within ±0.003 of
+`QUAY_TOP`, a fifth of them sunk 0.004, and the five that carry a prop
+flat; sand drifts over the landward row, a damp patch darkens the
+middle, and the outer edge is salt-pale. A step down a coping's thickness
+behind z = −0.2 so the back reads as a stair into the beach; a
+three-tread stair on the +x end of the sea wall with uneven rises and a
+chipped top tread, a hair seaward of the proudest block so it touches
+nothing. Props: two tapered octagonal timber posts leaning 4° (the top
+ring pushed over, the foot flat on its stone) and worn dark at the foot,
+an iron mooring ring on the upper course, a rope coil, an aged crate and
+a barrel with alternating stave tones and two iron hoops. `QUAY_TOP`,
+the footprint and the placement are unchanged from the first slice. The sea face stands 0.04 seaward of the pier's
+land end, so the pier's root is embedded in it. Parts meet on shared
+planes with the hidden face dropped (the body open on top, the coping open
+underneath with its exposed overhang drawn as three strips, the bollards
+open at their feet); the tests check that no face overlaps another in its
+plane and none passes through another, and that the top is flat at
+`QUAY_TOP` (0.085, a 0.015 lip above the pier deck). Occlusion is baked
+along the waterline and under the coping, the stone carries a 5 % colour
+jitter. `quayPlacement.ts` puts one at every pier origin, turned with the
+pier: the beach at a pier root is anything from the waterline to 0.15
+high and higher to either side, so the deck is lifted until it stands
+0.04 above the highest sand along its sea face, between the lip and
+0.1 above the pier deck (past that the back is left buried). The body's
+footprint is probed as `placeOnGround` does and the whole quay is lowered
+onto the lowest point should the ground fall away, so it never floats
+(on generated maps it never has to). Width and depth vary ±10–15 % per
+port from a hash of the cell and the whole terrain seed, as instance
+scale. `Quays.tsx` draws one `InstancedMesh` per world copy, on the seabed
+prepass layer too. `quayTopY(cell, field, seed, point)` is the seam for
+the settlement: the deck or step height under a world point, or
+undefined off the quay.
+
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
