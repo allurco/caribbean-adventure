@@ -50,12 +50,8 @@ import {
   CAMERA_FOV,
   CAMERA_MAX_DISTANCE,
   CAMERA_OFFSET,
-  CAMERA_PITCH,
-  MAX_VIEW_ASPECT,
   cameraBoundsFromHexes,
   clampToCameraBounds,
-  groundViewReach,
-  oceanPlaneSize,
 } from "./cameraBounds";
 import {
   clampFocusToBand,
@@ -191,16 +187,6 @@ function Scene({
   );
 
 
-  // The ocean is a finite square centred under the camera focus, so its edge
-  // must stay off screen. Fog alone can't hide it: at full zoom-out the top
-  // corners of the view hit the sea only ~46 units deep, well short of
-  // HAZE_FAR (85). From the focus the frustum reaches at most
-  // `groundViewReach` across the sea (fixed pitch since rotation is off, max
-  // zoom, widest aspect), so a plane that far out on every side covers it.
-  const oceanSize = oceanPlaneSize(
-    groundViewReach(CAMERA_MAX_DISTANCE, CAMERA_PITCH, CAMERA_FOV, MAX_VIEW_ASPECT)
-  );
-
   /** The focus nearest (x, z) the camera may have: x as is on a wrapping map. */
   const clampFocus = useCallback(
     (x: number, z: number): { x: number; z: number } => {
@@ -322,13 +308,14 @@ function Scene({
       {/* High, warm mid-afternoon sun in front of the camera; shadow box follows the camera target and fits the view */}
       <SunLight color={SUN_COLOR} intensity={SUN_INTENSITY} offset={SUN_OFFSET} shadow={SUN_SHADOW} />
 
-      {/* Ocean, coloured by depth from the same terrain height field, under
-          the camera focus and sized so its edge is never on screen. One plane
-          for every copy of the world. Waits for the sky it reflects. */}
+      {/* Ocean, coloured by depth from the same terrain height field: a grid
+          of level-of-detail rings under the camera focus (oceanGrid.ts),
+          displaced by the large wave cascades and sized so its edge is never
+          on screen. One grid for every copy of the world. Waits for the sky
+          it reflects. */}
       {skyEnvironment && (
         <Ocean
           terrainField={terrainField}
-          size={oceanSize}
           sun={SUN_DIRECTION}
           sunColor={SUN_COLOR}
           sunIntensity={SUN_INTENSITY}
@@ -337,6 +324,7 @@ function Scene({
           skyIntensity={skyEnvironment.intensity}
           waveSlopes={waveSlopes}
           waveWhitecaps={waves.whitecaps}
+          waveDisplacements={waves.displacements}
         />
       )}
 

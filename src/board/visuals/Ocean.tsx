@@ -1,18 +1,20 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
+  BufferAttribute,
+  BufferGeometry,
   Color,
   ShaderMaterial,
-  PlaneGeometry,
   Vector2,
   Vector3,
   Vector4,
-  Mesh,
   Matrix4,
   UniformsLib,
   UniformsUtils,
 } from "three";
-import type { Texture } from "three";
+import type { Group, Mesh, Texture } from "three";
+import { OCEAN_GRID_BASE_CELL, OCEAN_GRID_RINGS, buildOceanGrid, oceanGridSnapCell, snapToCell } from "./oceanGrid";
+import { WAVE_CREST_BOUND_UNITS, WAVE_DISPLACEMENT_GLSL, bindWaveDisplacementTextures } from "./waveDisplacement";
 import { wrapWorldWidth } from "../../game/hex";
 import { controlsTarget } from "../controlsTarget";
 import { cubeUvDefines } from "./skyEnvironment";
@@ -37,13 +39,26 @@ import { SHIP_FOAM_CAP, SHIP_FOAM_FLOATS_A, SHIP_FOAM_FLOATS_B, shipFoamSources 
 /** After the cascades have drawn this frame's whitecaps, before the seabed prepass (0.5). */
 const WHITECAP_BIND_PRIORITY = CASCADE_PRIORITY + 0.05;
 
+// Geometry (#38 step 8): the mesh is the camera-centred grid of
+// oceanGrid.ts, and each vertex is moved off sea level by the large
+// cascades' height and choppy pull (waveDisplacement.ts: damped in the
+// shallows, faded with distance, read at the mip level its ring's cell
+// calls for). vWorld is the displaced surface point, which the fragment
+// stage sees, refracts from and measures the water's depth from; vRestXZ is
+// the rest point, which the wave look-ups keep so the slope and foam
+// textures stay attached to the surface the displacement moved.
 const vertexShader = `
+  attribute float gridCell; // the ring's cell at this vertex, world units (oceanGrid.ts)
   varying vec3 vWorld;
+  varying vec2 vRestXZ;
   #include <fog_pars_vertex>
+  ${WAVE_DISPLACEMENT_GLSL}
 
   void main () {
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
+    vec3 rest = (modelMatrix * vec4(position, 1.0)).xyz;
+    vRestXZ = rest.xz;
+    vWorld = rest + waveSurfaceDisplacement(rest.xz, gridCell);
+    vec4 mvPosition = viewMatrix * vec4(vWorld, 1.0);
     gl_Position = projectionMatrix * mvPosition;
     #include <fog_vertex>
   }
@@ -122,7 +137,8 @@ const fragmentShader = `
   uniform vec4 mapBounds; // minX, maxX, minZ, maxZ
   ${TERRAIN_FIELD_GLSL}
 
-  varying vec3 vWorld;
+  varying vec3 vWorld;  // the displaced surface point
+  varying vec2 vRestXZ; // its rest point, for the wave look-ups
   #include <fog_pars_fragment>
 
   // Hull foam coverage at worldXZ: the strongest of the ships' patches,
@@ -237,6 +253,12 @@ const fragmentShader = `
     return vec3(clip.xy / clip.w * 0.5 + 0.5, clip.w);
   }
 
+  // How far the seabed at world Y \`seabedWorldY\` lies below the displaced
+  // surface here, world units, bounded for the refraction look-up.
+  float depthBelowSurface(float seabedWorldY) {
+    return clamp(vWorld.y - seabedWorldY, 0.0, REFRACTION_MAX_DEPTH_UNITS);
+  }
+
   // Refraction (#38 step 6). The prepass holds the seabed each pixel sees
   // along its straight view ray; the real view ray bends at the wave facet
   // (Snell) and meets the seabed where that refracted ray hits it, so the
@@ -260,8 +282,8 @@ const fragmentShader = `
     travel *= min(1.0, MAX_REFRACTED_TRAVEL / max(length(travel), 1e-6));
     refracted = normalize(vec3(travel.x, -1.0, travel.y));
 
-    float depth0 = clamp(-straightY, 0.0, REFRACTION_MAX_DEPTH_UNITS);
-    float depth1 = clamp(-seabedHeight(refractedHitUv(refracted, depth0).xy), 0.0, REFRACTION_MAX_DEPTH_UNITS);
+    float depth0 = depthBelowSurface(straightY);
+    float depth1 = depthBelowSurface(seabedHeight(refractedHitUv(refracted, depth0).xy));
     vec3 hit = refractedHitUv(refracted, depth1);
     vec2 hitUv = hit.xy;
     vec3 hitColour;
@@ -279,14 +301,14 @@ const fragmentShader = `
 
   // Light from the water body: the prepass seabed (\`seabed\`, at world Y
   // \`seabedWorldY\`) seen through the water along the refracted view ray,
-  // plus the deep-water glow, for the surface point at this pixel.
+  // plus the deep-water glow, for the displaced surface point at this pixel.
   // \`sunFacet\` is the local facet's share of the direct sun (facetSunlight);
   // \`skyDiffuse\` the sky's downwelling term.
-  // Returns the colour; \`depth\` gets the seabed's depth in metres.
-  vec3 waterBody(vec3 seabed, float seabedWorldY, vec3 refracted, float sunFacet, vec3 skyDiffuse, out float depth) {
-    // The seabed's depth below the surface, and the path down to it along the
+  vec3 waterBody(vec3 seabed, float seabedWorldY, vec3 refracted, float sunFacet, vec3 skyDiffuse) {
+    // The seabed's depth below the displaced surface (a crest looks through
+    // more water than a trough), and the path down to it along the
     // refracted view ray, in metres.
-    depth = max(-seabedWorldY, 0.0) * METRES_PER_UNIT;
+    float depth = max(vWorld.y - seabedWorldY, 0.0) * METRES_PER_UNIT;
     float viewPath = depth / max(-refracted.y, 0.05);
 
     // Sunlight reaches the seabed along the refracted sun ray, then the light
@@ -332,9 +354,9 @@ const fragmentShader = `
     for (int i = 0; i < WAVE_CASCADE_COUNT; i++) cascadeWeights[i] = 1.0;
     vec2 slope;
     float slopeVariance;
-    sumCascadeSlopes(vWorld.xz, footprintMetres, distanceFade, cascadeWeights, 0.0, slope, slopeVariance);
+    sumCascadeSlopes(vRestXZ, footprintMetres, distanceFade, cascadeWeights, 0.0, slope, slopeVariance);
     // The whitecaps, through the same tile transforms and fades.
-    float whitecapCoverage = sumCascadeWhitecaps(vWorld.xz, footprintMetres, distanceFade, cascadeWeights);
+    float whitecapCoverage = sumCascadeWhitecaps(vRestXZ, footprintMetres, distanceFade, cascadeWeights);
     // The glint sees the drawn slopes, so the sun path stays narrow ...
     vec3 n = normalize(vec3(-slope.x, 1.0, -slope.y));
     float alpha2 = GLINT_BASE_ROUGHNESS2 + slopeVariance;
@@ -361,9 +383,13 @@ const fragmentShader = `
     // reflected sky.
     vec3 skyDiffuse = textureCubeUV(skyEnv, vec3(0.0, 1.0, 0.0), 1.0).rgb * skyIntensity;
     float fresnel = schlickFresnel(dot(nShade, -dir));
-    float seabedDepthMetres;
-    vec3 seaColor = waterBody(seabed, seabedWorldY, refracted, facetSunlight(nShade, light), skyDiffuse, seabedDepthMetres) * (1.0 - fresnel)
+    vec3 seaColor = waterBody(seabed, seabedWorldY, refracted, facetSunlight(nShade, light), skyDiffuse) * (1.0 - fresnel)
       + getSkyColor(reflect(dir, nShade), skyRoughness) * fresnel;
+    // The shore bands are contours of the seabed (the breaker line is where
+    // the bathymetry breaks the waves, the wash where the sand meets sea
+    // level), so they read the seabed's depth below sea level, not below the
+    // heaving surface, and hold still while it moves.
+    float seabedDepthMetres = max(-seabedWorldY, 0.0) * METRES_PER_UNIT;
     // The sun's own reflection (the sky map has no solar disc): GGX, HDR and
     // unclamped so its brightest sparkles bloom.
     seaColor += sunGlintRadiance(n, -dir, light, alpha2, sunIrradiance);
@@ -391,10 +417,8 @@ const fragmentShader = `
 `;
 
 interface OceanProps {
-  /** The map's baked terrain field (useTerrainFieldTexture): depth, coast distance, reefs. */
+  /** The map's baked terrain field (useTerrainFieldTexture): depth, coast distance, reefs; damps the displacement in the shallows. */
   terrainField: TerrainFieldTexture;
-  /** Side of the square plane, centred under the camera focus. */
-  size?: number;
   /** Unit vector towards the sun (the scene's SUN_DIRECTION). */
   sun: Vec3;
   /** The directional sun's colour (sRGB) and intensity, so the glint matches it. */
@@ -414,11 +438,27 @@ interface OceanProps {
    * so they are rebound each frame, not captured at material creation.
    */
   waveWhitecaps: readonly Texture[];
+  /** The displacing cascades' (h, Dx, Dz) textures (useWaveCascades), in DISPLACEMENT_CASCADES order; stable objects. */
+  waveDisplacements: readonly Texture[];
+}
+
+/** The rings of the sea's mesh (oceanGrid.ts) as geometries, with culling bounds padded for the displacement. */
+function oceanRingGeometries(): BufferGeometry[] {
+  return buildOceanGrid(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL).map((ring) => {
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(ring.positions, 3));
+    geo.setAttribute("gridCell", new BufferAttribute(ring.cells, 1));
+    geo.setIndex(new BufferAttribute(ring.indices, 1));
+    geo.computeBoundingSphere();
+    // The vertices move up to a crest bound vertically and about as far
+    // sideways (the choppy pull is λ times a wave's amplitude).
+    if (geo.boundingSphere) geo.boundingSphere.radius += 2 * WAVE_CREST_BOUND_UNITS;
+    return geo;
+  });
 }
 
 export function Ocean({
   terrainField,
-  size = 1024,
   sun,
   sunColor,
   sunIntensity,
@@ -427,14 +467,11 @@ export function Ocean({
   skyIntensity,
   waveSlopes,
   waveWhitecaps,
+  waveDisplacements,
 }: OceanProps) {
-  const geometry = useMemo(() => {
-    const geo = new PlaneGeometry(size, size);
-    geo.rotateX(-Math.PI / 2);
-    return geo;
-  }, [size]);
-
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  const rings = useMemo(() => oceanRingGeometries(), []);
+  useEffect(() => () => rings.forEach((geo) => geo.dispose()), [rings]);
+  const snapCell = oceanGridSnapCell(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL);
 
   // The seabed under the water, rendered each frame before the main pass.
   const seabed = useSeabedPrepass();
@@ -478,8 +515,9 @@ export function Ocean({
     mat.uniforms.shipFoamB = { value: new Float32Array(SHIP_FOAM_CAP * SHIP_FOAM_FLOATS_B) };
     bindWaveSlopeTextures(mat.uniforms, waveSlopes);
     bindWhitecapTextures(mat.uniforms, waveWhitecaps);
+    bindWaveDisplacementTextures(mat.uniforms, waveDisplacements);
     return mat;
-  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, terrainField, seabed, waveSlopes, waveWhitecaps]);
+  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, terrainField, seabed, waveSlopes, waveWhitecaps, waveDisplacements]);
   useEffect(() => () => material.dispose(), [material]);
 
   // The whitecap accumulators ping-pong, so the current one is rebound after
@@ -488,28 +526,40 @@ export function Ocean({
     bindWhitecapTextures(material.uniforms, waveWhitecaps);
   }, WHITECAP_BIND_PRIORITY);
 
-  const meshRef = useRef<Mesh>(null);
+  const gridRef = useRef<Group>(null);
+  const innerRingRef = useRef<Mesh>(null);
   const controls = useThree((state) => state.controls);
 
   useFrame(({ gl, camera }, delta) => {
-    if (meshRef.current) {
-      // The plane is centred under the camera focus, so it covers the view
-      // wherever the camera pans (east–west forever on a wrapping map). All
-      // shading is in world space, so moving the plane changes no pixel.
-      const focus = controlsTarget(controls);
-      if (focus) meshRef.current.position.set(focus.x, 0, focus.z);
-      const mat = meshRef.current.material as ShaderMaterial;
-      gl.getDrawingBufferSize(mat.uniforms.screenSize.value);
-      mat.uniforms.seabedSize.value.set(seabed.width, seabed.height);
-      mat.uniforms.cameraProjectionInverse.value.copy(camera.projectionMatrixInverse);
-      mat.uniforms.cameraWorld.value.copy(camera.matrixWorld);
-      mat.uniforms.cameraViewProjection.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-      // The one surf clock, shared with the land's shoreline foam.
-      surfTimeUniform.value = advanceSurfTime(surfTimeUniform.value, delta, reducedMotion);
-      // This frame's animated ship positions (written by Ship.tsx) for the hull foam.
-      mat.uniforms.shipFoamCount.value = shipFoamSources.fill(mat.uniforms.shipFoamA.value, mat.uniforms.shipFoamB.value);
+    // The grid is centred under the camera focus, so it covers the view
+    // wherever the camera pans (east–west forever on a wrapping map), and
+    // moves only in whole coarse cells so its vertices stay on one world
+    // lattice and the displacement they sample does not swim (oceanGrid.ts).
+    // All shading is in world space, so moving the grid changes no pixel.
+    const focus = controlsTarget(controls);
+    if (focus && gridRef.current) {
+      gridRef.current.position.set(snapToCell(focus.x, snapCell), 0, snapToCell(focus.z, snapCell));
     }
+    if (!innerRingRef.current) return;
+    // The one material, shared by every ring.
+    const mat = innerRingRef.current.material as ShaderMaterial;
+    gl.getDrawingBufferSize(mat.uniforms.screenSize.value);
+    mat.uniforms.seabedSize.value.set(seabed.width, seabed.height);
+    mat.uniforms.cameraProjectionInverse.value.copy(camera.projectionMatrixInverse);
+    mat.uniforms.cameraWorld.value.copy(camera.matrixWorld);
+    mat.uniforms.cameraViewProjection.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    // The one surf clock, shared with the land's shoreline foam.
+    surfTimeUniform.value = advanceSurfTime(surfTimeUniform.value, delta, reducedMotion);
+    // This frame's animated ship positions (written by Ship.tsx) for the hull foam.
+    mat.uniforms.shipFoamCount.value = shipFoamSources.fill(mat.uniforms.shipFoamA.value, mat.uniforms.shipFoamB.value);
   });
 
-  return <mesh ref={meshRef} geometry={geometry} material={material} frustumCulled={false} />;
+  // One mesh per ring, so the rings off screen at ship zoom are culled.
+  return (
+    <group ref={gridRef}>
+      {rings.map((geometry, i) => (
+        <mesh key={i} ref={i === 0 ? innerRingRef : undefined} geometry={geometry} material={material} />
+      ))}
+    </group>
+  );
 }
