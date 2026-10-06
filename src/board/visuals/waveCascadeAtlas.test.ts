@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { packCascadeAtlas } from "./waveCascadeAtlas";
+import { atlasBlockCount, displacementBlockColumn, packCascadeAtlas } from "./waveCascadeAtlas";
+
+describe("the working atlas layout (#38 step 8)", () => {
+  it("holds one block per cascade and one more per displaced cascade", () => {
+    expect(atlasBlockCount(3, [0, 1])).toBe(5);
+    expect(atlasBlockCount(3, [])).toBe(3);
+  });
+
+  it("puts displaced cascade d's block after every cascade's own", () => {
+    expect(displacementBlockColumn(3, 0, 256)).toBe(3 * 256);
+    expect(displacementBlockColumn(3, 1, 256)).toBe(4 * 256);
+  });
+});
 
 /** A 2×2 RGBA grid whose texel (x, z) holds (tag, x, z, 0). */
 const grid = (tag: number) => {

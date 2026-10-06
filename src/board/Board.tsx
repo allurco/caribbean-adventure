@@ -27,6 +27,7 @@ import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import { useWaveCascades } from "./visuals/useWaveCascades";
 import { useTerrainFieldTexture } from "./visuals/useTerrainFieldTexture";
 import { WAVE_CASCADES, WHITECAP_CASCADES } from "./visuals/oceanWaves";
+import { DISPLACEMENT_CASCADES } from "./visuals/waveDisplacement";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
 import {
   HAZE_COLOR,
@@ -157,9 +158,11 @@ function Scene({
   const skyEnvironment = useSkyEnvironment(SUN_DIRECTION);
   // The sea's wave slopes, rebuilt on the GPU each frame (frozen under
   // reduced motion). The water shades its surface with them and the seabed
-  // focuses its sunlight through them (#38 step 6), so they live here.
+  // focuses its sunlight through them (#38 step 6), so they live here; the
+  // large cascades' displacement moves the water's mesh and the grid lines
+  // on it (#38 step 8).
   const reducedMotion = usePrefersReducedMotion();
-  const waves = useWaveCascades(WAVE_CASCADES, WHITECAP_CASCADES, reducedMotion);
+  const waves = useWaveCascades(WAVE_CASCADES, WHITECAP_CASCADES, DISPLACEMENT_CASCADES, reducedMotion);
   const waveSlopes = waves.slopes;
   // The baked terrain field, read by the water (depth, coast, reefs) and by
   // the land's shoreline foam (#38 step 7).

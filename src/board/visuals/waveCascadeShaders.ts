@@ -4,11 +4,16 @@
  * inputs with texelFetch, so texel (x, z) is grid index z · size + x, as in
  * waveCascade.ts and fftButterfly.ts.
  *
- * Working textures hold two complex numbers per texel (RG and BA). RG is the
- * packed slope spectrum (∂h/∂x + i ∂h/∂z); BA is the packed stretch spectrum
- * (∂Du/∂u + i ∂Dv/∂v along and across the wind, #38 step 7), which the
- * output pass turns into the surface Jacobian for the whitecaps, at no extra
- * FFT pass (waveCascade.ts, whitecapFoam.ts).
+ * Working textures hold two complex numbers per texel (RG and BA). In a
+ * cascade's own block RG is the packed slope spectrum (∂h/∂x + i ∂h/∂z) and
+ * BA the packed stretch spectrum (∂Du/∂u + i ∂Dv/∂v along and across the
+ * wind, #38 step 7), which the output pass turns into the surface Jacobian
+ * for the whitecaps, at no extra FFT pass (waveCascade.ts, whitecapFoam.ts).
+ * In a displacement block (#38 step 8, one per displacing cascade after all
+ * the cascades' own, waveCascadeAtlas.ts) RG is P = h̃ (1 − λ kx/|k|), whose
+ * inverse FFT is the height and the x displacement, and BA is
+ * Q = i λ kz/|k| h̃, the z displacement; the displacement output pass writes
+ * them as (h, Dx, Dz) for the water's vertex stage (waveDisplacement.ts).
  */
 import { WAVE_CHOPPINESS } from "./oceanWaves";
 import { windInTile, type WaveCascade } from "./waveCascade";
@@ -30,14 +35,24 @@ const COMPLEX_GLSL = `
 `;
 
 /**
- * The slope spectrum at the current time, the GPU mirror of
- * `evolvedAmplitude` × (i·kx − kz) in waveCascade.ts, over the cascades'
- * atlas (waveCascadeAtlas.ts): cascade c is atlas columns [c·size, (c + 1)·size).
- * All cascades must share one size.
+ * The spectra at the current time over the working atlas (waveCascadeAtlas.ts).
+ * In cascade c's own block (atlas columns [c·size, (c + 1)·size)) the GPU
+ * mirror of `evolvedAmplitude` × (i·kx − kz) and of the stretch spectrum in
+ * waveCascade.ts; in the displacement block of displaced cascade d (block
+ * `cascades.length + d`) the packed height and displacement spectra. The
+ * initial spectrum texture holds only the cascades' own blocks, so a
+ * displacement block reads its cascade's h0. All cascades must share one size.
  */
-export function spectrumFragment(cascades: readonly WaveCascade[], loopSeconds: number): string {
+export function spectrumFragment(
+  cascades: readonly WaveCascade[],
+  loopSeconds: number,
+  displaced: readonly number[]
+): string {
   const size = cascades[0].size;
   if (cascades.some((c) => c.size !== size)) throw new RangeError("Batched cascades must share one grid size.");
+  if (displaced.some((d) => !Number.isInteger(d) || d < 0 || d >= cascades.length)) {
+    throw new RangeError(`Displaced cascades ${displaced.join(", ")} must index the ${cascades.length} cascades.`);
+  }
   const tiles = cascades.map((c) => f(c.tileMetres)).join(", ");
   const winds = cascades
     .map((c) => {
@@ -45,10 +60,15 @@ export function spectrumFragment(cascades: readonly WaveCascade[], loopSeconds: 
       return `vec2(${f(x)}, ${f(z)})`;
     })
     .join(", ");
+  const displacedDeclaration =
+    displaced.length > 0 ? `const int DISPLACED[${displaced.length}] = int[${displaced.length}](${displaced.join(", ")});` : "";
+  const cascadeOfBlock = displaced.length > 0 ? "displacement ? DISPLACED[block - CASCADES] : block" : "block";
   return `
   uniform sampler2D initialSpectrum; // (h0(k), conj(h0(−k))), the cascades side by side
   uniform float cycles;              // wave time / loop, in [0, 1)
   const int SIZE = ${size};
+  const int CASCADES = ${cascades.length};
+  ${displacedDeclaration}
   const float TILE_METRES[${cascades.length}] = float[${cascades.length}](${tiles});
   const vec2 WIND_IN_TILE[${cascades.length}] = vec2[${cascades.length}](${winds});
   const float CHOPPINESS = ${f(WAVE_CHOPPINESS)};
@@ -59,22 +79,32 @@ export function spectrumFragment(cascades: readonly WaveCascade[], loopSeconds: 
 
   void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
-    int cascade = p.x / SIZE;
-    vec2 n = vec2(p.x - cascade * SIZE, p.y);
+    int block = p.x / SIZE;
+    bool displacement = block >= CASCADES;
+    int cascade = ${cascadeOfBlock};
+    ivec2 t = ivec2(p.x - block * SIZE, p.y);
+    vec2 n = vec2(t);
     n -= float(SIZE) * step(float(SIZE) * 0.5, n); // standard FFT order
     vec2 k = TAU * n / TILE_METRES[cascade];
+    float kLen = max(length(k), 1e-6);
     // Whole cycles per loop (wavePeriodMultiple), so phase stays small and exact.
     float m = floor(sqrt(GRAVITY * length(k)) * LOOP_SECONDS / TAU + 0.5);
     float phase = TAU * fract(m * cycles);
     vec2 e = vec2(cos(phase), sin(phase));
-    vec4 h0 = texelFetch(initialSpectrum, p, 0);
+    vec4 h0 = texelFetch(initialSpectrum, ivec2(cascade * SIZE, 0) + t, 0);
     vec2 h = cmul(h0.xy, vec2(e.x, -e.y)) + cmul(h0.zw, e);
+    if (displacement) {
+      // Height with the x pull, and the z pull (waveCascade.ts): the pull is
+      // toward the crests, so the coefficients are real and even in k.
+      gl_FragColor = vec4(h * (1.0 - CHOPPINESS * k.x / kLen), cmul(h, vec2(0.0, CHOPPINESS * k.y / kLen)));
+      return;
+    }
     // The choppy stretch along and across the wind (waveCascade.ts): real
     // coefficients, so the pair packs like the slopes. The mean (k = 0) is 0.
     vec2 u = WIND_IN_TILE[cascade];
     float along = dot(k, u);
     float across = dot(k, vec2(-u.y, u.x));
-    vec2 stretch = -CHOPPINESS * vec2(along * along, across * across) / max(length(k), 1e-6);
+    vec2 stretch = -CHOPPINESS * vec2(along * along, across * across) / kLen;
     gl_FragColor = vec4(cmul(h, vec2(-k.y, k.x)), cmul(h, stretch));
   }
 `;
@@ -120,6 +150,23 @@ export const SLOPE_OUTPUT_FRAGMENT = `
   void main() {
     vec4 texel = texelFetch(source, ivec2(gl_FragCoord.xy) + ivec2(column, 0), 0);
     gl_FragColor = vec4(texel.xy, dot(texel.xy, texel.xy), surfaceJacobian(texel.zw));
+  }
+`;
+
+/**
+ * The displacement texture the water's vertex stage samples, mipmapped
+ * (#38 step 8): (h, Dx, Dz, 0) in metres in the tile's axes, from a
+ * displacement block of the atlas whose first column is `column`. The
+ * imaginary part of the z pair (the texel's w) is zero up to rounding and is
+ * dropped. One draw per displaced cascade.
+ */
+export const DISPLACEMENT_OUTPUT_FRAGMENT = `
+  uniform sampler2D source;
+  uniform int column;
+
+  void main() {
+    vec4 texel = texelFetch(source, ivec2(gl_FragCoord.xy) + ivec2(column, 0), 0);
+    gl_FragColor = vec4(texel.xyz, 0.0);
   }
 `;
 
