@@ -7,8 +7,8 @@ import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./ter
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { landSurface, landSurfaceHeight } from "./landMesh";
 import { PORT_GROUND_PROBE_RADIUS as PORT_MARKER_RADIUS } from "./portHover";
-import { BUILDING_FOOTING, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
-import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
+import { BUILDING_FOOTING, BUILDING_KINDS, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
+import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
 import { QUAY_BACK, QUAY_COPING_THICKNESS, QUAY_SEA_FACE, QUAY_STEP_Z, QUAY_WIDTH } from "./quayGeometry";
@@ -16,14 +16,20 @@ import { placeQuay, type QuayPlacement } from "./quayPlacement";
 import {
   buildingGroundY,
   buildingMaxSpread,
+  CHURCH_SCALE_RANGE,
+  PORT_CHURCH_SLOT_INDEX,
   pierRootReserve,
+  planFootprint,
+  planProbePoints,
   portBuildings,
+  scaleRangeOf,
   settlementGround,
   standBuilding,
   BUILDING_FOOTING_MARGIN,
   BUILDING_SINK,
   PIER_MOUTH_RESERVE,
   PIER_ROOT_RESERVE,
+  PLAN_FOOTPRINT_MARGIN,
   PORT_BUILDING_GAP,
   PORT_BUILDING_MAX_RADIUS,
   PORT_SETTLEMENT_RADIUS,
@@ -38,7 +44,7 @@ import {
 
 /** Inradius of a flat-top hex of size 1: the nearest any edge comes to the centre. */
 const HEX_INRADIUS = Math.sqrt(3) / 2;
-const maxReach = Math.max(...Object.values(AGED_BUILDING_HALF_DIAGONAL)) * PORT_BUILDING_SCALE_RANGE[1];
+const maxReach = Math.max(...BUILDING_KINDS.map((kind) => AGED_BUILDING_HALF_DIAGONAL[kind] * scaleRangeOf(kind)[1]));
 
 const cells = generateMap(getMapPreset("small"), 11);
 const seed = terrainSeedFromCells(cells);
@@ -198,9 +204,13 @@ describe("standBuilding", () => {
 });
 
 describe("portBuildings", () => {
-  it("names its layout constants: four slots on the landward arc, small scale and tint spreads", () => {
-    expect(PORT_BUILDING_SLOT_ANGLES).toHaveLength(4);
+  it("names its layout constants: five slots on the landward arc, the middle one straight landward for the church, small scale and tint spreads", () => {
+    expect(PORT_BUILDING_SLOT_ANGLES).toHaveLength(5);
     for (const a of PORT_BUILDING_SLOT_ANGLES) expect(Math.abs(a)).toBeLessThan(Math.PI / 2);
+    expect(PORT_BUILDING_SLOT_ANGLES[PORT_CHURCH_SLOT_INDEX]).toBe(0);
+    // Symmetric about the landward ray, the ends unchanged.
+    expect(PORT_BUILDING_SLOT_ANGLES.map((a) => 0 - a || 0).reverse()).toEqual([...PORT_BUILDING_SLOT_ANGLES]);
+    expect(PORT_BUILDING_SLOT_ANGLES[0]).toBe(-1.3);
     // The reserve at the pier's land end is at least half the deck's width, so the deck's root stays clear.
     expect(PIER_ROOT_RESERVE).toBeGreaterThanOrEqual(PIER_WIDTH / 2);
     // The widest building at the farthest slot still lies inside the hex, and the settlement's
@@ -219,6 +229,17 @@ describe("portBuildings", () => {
     expect(PORT_BUILDING_YAW_JITTER).toBeLessThanOrEqual(0.2);
     // The watchtower never breaks the height cap at its largest scale.
     expect(AGED_BUILDING_HEIGHT.watchtower * WATCHTOWER_SCALE_RANGE[1]).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
+    expect(scaleRangeOf("watchtower")).toBe(WATCHTOWER_SCALE_RANGE);
+    expect(scaleRangeOf("church")).toBe(CHURCH_SCALE_RANGE);
+    expect(scaleRangeOf("house")).toBe(PORT_BUILDING_SCALE_RANGE);
+  });
+
+  it("keeps the church's top, at its largest scale, under the cap and clearly under the smallest tower's, so the tower stays the one landmark", () => {
+    const churchTop = AGED_BUILDING_HEIGHT.church * CHURCH_SCALE_RANGE[1];
+    expect(churchTop).toBeLessThan(BUILDING_MAX_HEIGHT);
+    expect(churchTop).toBeLessThan(AGED_BUILDING_HEIGHT.watchtower * WATCHTOWER_SCALE_RANGE[0] - 0.02);
+    expect(CHURCH_SCALE_RANGE[0]).toBeGreaterThanOrEqual(0.9);
+    expect(CHURCH_SCALE_RANGE[1]).toBeLessThanOrEqual(PORT_BUILDING_SCALE_RANGE[1]);
   });
 
   it("stands on top of the ground: the contact a hair under the highest point, the footing covering the rest with a margin", () => {
@@ -244,19 +265,21 @@ describe("portBuildings", () => {
     }
   });
 
-  it("gives every port a watchtower and up to three other buildings, four to five instances at most", () => {
+  it("gives every port a watchtower, a church where the ground takes one, and up to three other buildings, five at most", () => {
     expect(ports.length).toBeGreaterThan(0);
     for (const port of ports) {
       const mine = buildings.filter((b) => portOf(b) === port);
       expect(mine.length).toBeGreaterThanOrEqual(1);
       expect(mine.length).toBeLessThanOrEqual(5);
       expect(mine.filter((b) => b.kind === "watchtower")).toHaveLength(1);
+      expect(mine.filter((b) => b.kind === "church").length).toBeLessThanOrEqual(1);
       // The other kinds appear at most once each.
       const kinds = mine.map((b) => b.kind);
       expect(new Set(kinds).size).toBe(kinds.length);
     }
-    // Most slots are filled; a cramped beach with water on three sides drops a building or two.
-    expect(buildings.length).toBeGreaterThanOrEqual(ports.length * 2.5);
+    // The tower, the church and one or two more: about three per port (2.97 to 3.08 over eight seeds of
+    // each size) now the ground is probed under the walls rather than over the whole plan circle.
+    expect(buildings.length).toBeGreaterThanOrEqual(ports.length * 2.6);
   });
 
   it("puts no building on a cell without a port, but a watchtower on every port, fort decoration or not", () => {
@@ -302,6 +325,59 @@ describe("portBuildings", () => {
       const [px, , pz] = hexToWorld(portOf(b).hex);
       expect(Math.hypot(b.worldX - px, b.worldZ - pz)).toBeGreaterThan(PORT_SQUARE_RADIUS);
     }
+  });
+
+  it("fronts the church on the square from straight landward, placed second so it gets the ground after the tower", () => {
+    const onFlat = portBuildings(cells, flat(0.3), seed);
+    for (const port of ports) {
+      const mine = onFlat.filter((b) => portOf(b) === port);
+      expect(mine[0].kind).toBe("watchtower");
+      expect(mine[1].kind).toBe("church");
+      const [px, , pz] = hexToWorld(port.hex);
+      const landward = pierRotation(port) + Math.PI;
+      const direction = Math.atan2(mine[1].worldX - px, mine[1].worldZ - pz);
+      // On flat ground the church takes the centre slot exactly: straight landward of the square.
+      expect(angleDiff(direction, landward)).toBeLessThan(1e-6);
+      // Its door faces the square and the water, like the others.
+      expect(angleDiff(mine[1].yaw, pierRotation(port))).toBeLessThanOrEqual(PORT_BUILDING_YAW_JITTER + 1e-9);
+      expect(mine[1].nation).toBeUndefined();
+    }
+  });
+
+  it("gives nearly every port a church over seeded maps of every size, and keeps every top under the label", () => {
+    let portsSeen = 0;
+    let churches = 0;
+    let slack = Infinity;
+    let churchSlack = Infinity;
+    for (const size of ["small", "medium", "large"] as const) {
+      for (const mapSeed of [3, 11, 42]) {
+        const someCells = generateMap(getMapPreset(size), mapSeed);
+        const someSeed = terrainSeedFromCells(someCells);
+        const someField = createTerrainHeightField(someCells, someSeed);
+        const placed = portBuildings(someCells, someField, someSeed);
+        const somePorts = someCells.filter((c) => c.hasPort);
+        portsSeen += somePorts.length;
+        for (const port of somePorts) {
+          const [px, , pz] = hexToWorld(port.hex);
+          const labelBase = groundTopY(someField, px, pz, PORT_MARKER_RADIUS) + 0.6;
+          const mine = placed.filter((b) => Math.hypot(b.worldX - px, b.worldZ - pz) < 1);
+          if (mine.some((b) => b.kind === "church")) churches++;
+          for (const b of mine) {
+            const s = labelBase - (b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale);
+            slack = Math.min(slack, s);
+            if (b.kind === "church") churchSlack = Math.min(churchSlack, s);
+          }
+        }
+      }
+    }
+    expect(portsSeen).toBeGreaterThan(50);
+    // A church is dropped only where no ground on the hex takes its walls' plan: 97–100 % of ports get
+    // one over eight seeds of each size (60–68 % when the whole plan circle had to fit the footing's spread).
+    expect(churches / portsSeen).toBeGreaterThanOrEqual(0.95);
+    // Everything stays under the label; the tower sets the minimum (0.027 here, as before the church),
+    // the church's cross never comes within 0.05 of it (0.077 at the closest, a church standing high on a slope).
+    expect(slack).toBeGreaterThan(0);
+    expect(churchSlack).toBeGreaterThan(0.05);
   });
 
   it("never drops the tower: on a beach too small for any footprint it stands at the hex centre on the highest ground there", () => {
@@ -369,10 +445,10 @@ describe("portBuildings", () => {
     for (const b of buildings) {
       const settlement = settlementGround(portOf(b), surface, seed);
       expect(settlement.sampleHeight(b.worldX, b.worldZ)).toBeGreaterThan(MIN_GROUND_HEIGHT);
-      const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
       const footing = BUILDING_FOOTING * b.scale;
-      // Probed far denser than the placement does (48 rim points and two inner rings), on the surface as drawn.
-      const probes = footprintPoints(b.worldX, b.worldZ, reach, 48);
+      // The ground under the walls (their plan rectangle with the margin, at the building's yaw), probed far
+      // denser than the placement does (25 × 37 against 9 × 13), on the surface as drawn.
+      const probes = planProbePoints(b.worldX, b.worldZ, planFootprint(b.kind, b.scale, b.yaw), 25, 37);
       const heights = probes.map((p) => settlement.sampleHeight(p.x, p.z));
       // Wholly on the quay or wholly off it: a wall never steps down the quay's edge.
       const onQuay = probes.filter((p) => settlement.onQuay(p.x, p.z)).length;
@@ -389,6 +465,53 @@ describe("portBuildings", () => {
     // The drawn surface against the field: the placement probes the same lattice surface, so the two never disagree by more than the slack.
     for (const b of buildings) expect(Math.abs(landSurfaceHeight(field, b.worldX, b.worldZ) - surface.sampleHeight(b.worldX, b.worldZ))).toBeLessThan(1e-9);
     expect(worstAbove).toBeLessThanOrEqual(OVER_TERRAIN_SLACK);
+  });
+
+  it("probes the ground under the walls' plan, not the plan circle: a long nave across a ramp stands where its circle would not", () => {
+    const noQuay = { ...quayPort, decorations: [] };
+    const [hx, , hz] = hexToWorld(quayPort.hex);
+    const pierRoot = { x: hx + 5, z: hz + 5 };
+    const scale = 1;
+    const reach = AGED_BUILDING_HALF_DIAGONAL.church * scale;
+    const footing = BUILDING_FOOTING * scale;
+    // The plan with its margin stays inside the circle (its corners included: the creases probed are
+    // those within the circle, and the circle is what keeps neighbours and the pier root clear), and
+    // the margin is a fraction of the eave's overhang.
+    for (const kind of BUILDING_KINDS) {
+      const plan = planFootprint(kind, scale, 0);
+      expect(Math.hypot(plan.halfW, plan.halfD)).toBeLessThanOrEqual(AGED_BUILDING_HALF_DIAGONAL[kind] * scale + 1e-9);
+      expect(plan.halfW).toBeGreaterThan(AGED_BUILDING_PLAN[kind].halfW * scale);
+      expect(plan.halfD).toBeGreaterThan(AGED_BUILDING_PLAN[kind].halfD * scale);
+    }
+    expect(PLAN_FOOTPRINT_MARGIN).toBeLessThanOrEqual(0.025);
+    expect(planFootprint("church", scale, 0)).toEqual({ halfW: 0.1 + PLAN_FOOTPRINT_MARGIN, halfD: 0.15 + PLAN_FOOTPRINT_MARGIN, yaw: 0 });
+    // The tower's square plan (0.1 half-base) under its 0.15 reach has no room for the full margin: its
+    // corner with the margin would stand at 0.17. It takes the largest margin whose corner stays on the
+    // circle, still past the plinth course (0.004 proud).
+    const tower = planFootprint("watchtower", scale, 0);
+    expect(tower.halfW).toBeCloseTo(tower.halfD, 12);
+    expect(Math.hypot(tower.halfW, tower.halfD)).toBeCloseTo(AGED_BUILDING_HALF_DIAGONAL.watchtower * scale, 9);
+    expect(tower.halfW - AGED_BUILDING_PLAN.watchtower.halfW).toBeGreaterThan(0.004);
+    expect(tower.halfW - AGED_BUILDING_PLAN.watchtower.halfW).toBeLessThan(PLAN_FOOTPRINT_MARGIN);
+    // The margin scales with the piece.
+    expect(planFootprint("watchtower", 1.05, 0).halfW).toBeCloseTo(tower.halfW * 1.05, 12);
+    // A ramp rising along x: the plan circle spans 0.46, the nave across the ramp (front to +z, yaw 0) only 0.24.
+    const grade = 0.5;
+    const ramp: GroundField = { sampleHeight: (x) => 0.1 + grade * (x - hx) };
+    const ground = settlementGround(noQuay, ramp, 0);
+    const circle = standBuilding(ground, { x: hx, z: hz }, reach, footing, pierRoot, []);
+    expect(circle).toBeNull();
+    const across = standBuilding(ground, { x: hx, z: hz }, reach, footing, pierRoot, [], planFootprint("church", scale, 0));
+    expect(across).not.toBeNull();
+    expect(across!.y).toBeCloseTo(buildingGroundY(0.1 + grade * (0.1 + PLAN_FOOTPRINT_MARGIN)), 9);
+    // Turned a quarter, the nave runs up the ramp and spans 0.34: too much for the footing.
+    expect(0.34 * grade).toBeGreaterThan(buildingMaxSpread(footing));
+    expect(standBuilding(ground, { x: hx, z: hz }, reach, footing, pierRoot, [], planFootprint("church", scale, Math.PI / 2))).toBeNull();
+    // The grid covers the rectangle's corners and edges, turned with the plan.
+    const pts = planProbePoints(hx, hz, { halfW: 0.1, halfD: 0.2, yaw: Math.PI / 2 }, 3, 3);
+    expect(pts).toHaveLength(9);
+    expect(Math.max(...pts.map((p) => Math.abs(p.x - hx)))).toBeCloseTo(0.2, 9);
+    expect(Math.max(...pts.map((p) => Math.abs(p.z - hz)))).toBeCloseTo(0.1, 9);
   });
 
   it("stands a sloped footprint with its contact at the top of the slope and refuses a slope the footing cannot cover", () => {
@@ -432,7 +555,7 @@ describe("portBuildings", () => {
 
   it("varies scale and tint within their spreads", () => {
     for (const b of buildings) {
-      const range = b.kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE;
+      const range = scaleRangeOf(b.kind);
       expect(b.scale).toBeGreaterThanOrEqual(range[0]);
       expect(b.scale).toBeLessThanOrEqual(range[1]);
       expect(Math.abs(b.tint - 1)).toBeLessThanOrEqual(PORT_BUILDING_TINT_SPREAD);

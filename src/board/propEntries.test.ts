@@ -14,7 +14,12 @@ describe("PROP_ENTRIES", () => {
       expect(g.normals).toHaveLength(g.vertexCount * 3);
       if (g.colors) expect(g.colors).toHaveLength(g.vertexCount * 3);
     }
-    for (const piece of ["house, aged", "tavern, aged", "warehouse, aged", "watchtower, aged (Spain)"]) expect(labels).toContain(piece);
+    for (const piece of ["house, aged", "tavern, aged", "warehouse, aged", "watchtower, aged (Spain)", "church, aged"]) expect(labels).toContain(piece);
+  });
+
+  it("shows the aged church at its recorded triangle count", () => {
+    const church = PROP_ENTRIES.find((e) => e.label === "church, aged")!.build();
+    expect(church.vertexCount / 3).toBe(AGED_BUILDING_TRIANGLES.church);
   });
 
   it("shows the aged tower with its flag as one piece", () => {

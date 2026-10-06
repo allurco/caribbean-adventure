@@ -21,9 +21,12 @@
  * A port hex is a small beach with water on one to three sides and a shore
  * ramp running down to each, so each building looks round the landward arc
  * for the flat ground nearest its preferred slot, from the centre outwards:
- * `placeOnGround` rejects wet or steep spots, then the footprint is probed
- * and a spot is only taken if the ground under it spans no more than the
- * building's footing covers (`buildingMaxSpread`). The building then stands
+ * `placeOnGround` rejects wet or steep spots over the plan circle, then the
+ * ground under the walls is probed (the walls' plan rectangle turned to the
+ * building's yaw with `PLAN_FOOTPRINT_MARGIN` round it, not the circle,
+ * which circumscribes the eaves and the lean and spans up to twice the
+ * walls' width) and a spot is only taken if the ground there spans no more
+ * than the building's footing covers (`buildingMaxSpread`). The building then stands
  * ON the ground: its ground contact a hair (`BUILDING_SINK`) under the
  * highest point under the footprint, so no wall is cut into by rising
  * sand, and its stone footing reaching down past the lowest point with
@@ -49,8 +52,8 @@ import { hexToWorld } from "../../game/hex";
 import type { MapCell, PortNation } from "../../game/types";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
-import { BUILDING_FOOTING, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
-import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
+import { BUILDING_FOOTING, BUILDING_KINDS, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
+import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
 import { SEA_LEVEL } from "./terrainHeightField";
 import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
@@ -71,8 +74,17 @@ export interface PortBuilding {
   nation?: PortNation;
 }
 
-/** Preferred slots on the landward arc, as turns from straight away from the water (radians). */
-export const PORT_BUILDING_SLOT_ANGLES: readonly number[] = [-1.3, -0.45, 0.45, 1.3];
+/**
+ * Preferred slots on the landward arc, as turns from straight away from
+ * the water (radians). The middle slot, straight landward, is the church's:
+ * it fronts the square (#59). The slots either side of it were at ±0.45
+ * for four small buildings; with the church's 0.23 footprint between them
+ * they stand at ±0.8, or a house beside the church would be pushed to the
+ * outer ring before it cleared it.
+ */
+export const PORT_BUILDING_SLOT_ANGLES: readonly number[] = [-1.3, -0.8, 0, 0.8, 1.3];
+/** The slot the church takes, straight landward of the square. */
+export const PORT_CHURCH_SLOT_INDEX = 2;
 /** The open square at the hex centre that no building corner enters: the crescent forms round it. */
 export const PORT_SQUARE_RADIUS = 0.15;
 /** Farthest a building's origin stands from the hex centre: the widest building then still lies inside the hex. */
@@ -88,12 +100,18 @@ const RADIAL_STEP = 0.04;
 export const PORT_BUILDING_SCALE_RANGE: readonly [number, number] = [0.92, 1.08];
 /** The tower's range keeps AGED_BUILDING_HEIGHT.watchtower × scale (the flag's hoist) under BUILDING_MAX_HEIGHT. */
 export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING_MAX_HEIGHT / AGED_BUILDING_HEIGHT.watchtower];
+/**
+ * The church's range is narrower than the houses': its cross at the top of
+ * the range stays under the cap and clearly under the smallest tower's pole
+ * top, so the tower remains the port's one tallest landmark (pinned in
+ * `portSettlement.test.ts`).
+ */
+export const CHURCH_SCALE_RANGE: readonly [number, number] = [0.96, 1.04];
+/** The scale range a kind is drawn at. */
+export const scaleRangeOf = (kind: BuildingKind): readonly [number, number] =>
+  kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : kind === "church" ? CHURCH_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE;
 /** The largest plan reach any kind can have, at its largest scale. */
-const maxPlanReach = Math.max(
-  ...Object.entries(AGED_BUILDING_HALF_DIAGONAL).map(
-    ([kind, reach]) => reach * (kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE)[1]
-  )
-);
+const maxPlanReach = Math.max(...BUILDING_KINDS.map((kind) => AGED_BUILDING_HALF_DIAGONAL[kind] * scaleRangeOf(kind)[1]));
 /**
  * The settlement's envelope: no building's corner stands farther than this
  * from the hex centre (the farthest origin plus the widest plan reach), and
@@ -131,13 +149,91 @@ function shuffledKinds(next: () => number): BuildingKind[] {
 /** Where a footprint stands with respect to the quay: wholly on it, wholly off it, or across its edge. */
 type QuayStance = "on" | "off" | "edge";
 
+/** The walls' plan in the world: half-extents across (x) and along (z) before the turn, and the turn about y. */
+export interface PlanFootprint {
+  halfW: number;
+  halfD: number;
+  yaw: number;
+}
+
 /**
- * Lowest and highest ground over a plan circle, and the footprint's stance to
- * the quay. Probed at the centre, the rim and two inner rings, and at every
- * crease of the ground inside the circle (the lattice vertices of the drawn
- * surface), where a piecewise-flat surface takes its extremes.
+ * How far past the wall line the ground is probed, at scale 1: over the
+ * plinth course (0.004 proud), the lean's shift of the walls at the eaves
+ * (under 0.01) and some of the eave's overhang (0.025). Beyond, the ground
+ * is beside the building, not under it, and may rise above the contact as
+ * it does round any building on a slope. A kind whose plan corner with
+ * this margin would stand outside its plan circle takes a smaller one
+ * (`planMargin`).
  */
-function footprintGround(ground: SettlementGround, x: number, z: number, reach: number): { min: number; max: number; quay: QuayStance } {
+export const PLAN_FOOTPRINT_MARGIN = 0.02;
+/** Probes across and along a plan rectangle, edges included. */
+const PLAN_PROBES = { across: 9, along: 13 };
+
+/**
+ * The margin round a kind's walls, at scale 1: `PLAN_FOOTPRINT_MARGIN`,
+ * or less where that would put the rectangle's corners outside the plan
+ * circle (`AGED_BUILDING_HALF_DIAGONAL`). The rectangle must stay inside
+ * the circle: the creases probed under it are the ones within the circle,
+ * and the circle is what keeps neighbours and the pier root clear and
+ * drives the wet/steep check, so ground outside it is not the building's
+ * to stand on or be rejected for. The tower's square plan (0.1 half-base)
+ * under its 0.15 reach would reach 0.17 at the corner with the full
+ * margin; it takes the largest margin whose corner lies on the circle,
+ * about 0.006, still past its plinth course.
+ */
+export function planMargin(kind: BuildingKind): number {
+  const { halfW, halfD } = AGED_BUILDING_PLAN[kind];
+  const reach = AGED_BUILDING_HALF_DIAGONAL[kind];
+  // The largest m with (halfW + m)² + (halfD + m)² = reach²: 2m² + 2(halfW + halfD)m + (halfW² + halfD² − reach²) = 0.
+  const b = halfW + halfD;
+  const c = halfW * halfW + halfD * halfD - reach * reach;
+  const onCircle = (-b + Math.sqrt(b * b - 2 * c)) / 2;
+  return Math.max(0, Math.min(PLAN_FOOTPRINT_MARGIN, onCircle));
+}
+
+/** The walls' plan footprint of a kind at a scale and yaw, with the margin round it. */
+export function planFootprint(kind: BuildingKind, scale: number, yaw: number): PlanFootprint {
+  const plan = AGED_BUILDING_PLAN[kind];
+  const margin = planMargin(kind);
+  return { halfW: (plan.halfW + margin) * scale, halfD: (plan.halfD + margin) * scale, yaw };
+}
+
+/** A point of a plan rectangle, from local (across, along) to the world. */
+const planPoint = (x: number, z: number, plan: PlanFootprint, lx: number, lz: number) => {
+  const c = Math.cos(plan.yaw);
+  const s = Math.sin(plan.yaw);
+  return { x: x + lx * c + lz * s, z: z - lx * s + lz * c };
+};
+
+/** Whether a world point lies within a plan rectangle. */
+const inPlan = (x: number, z: number, plan: PlanFootprint, px: number, pz: number) => {
+  const c = Math.cos(plan.yaw);
+  const s = Math.sin(plan.yaw);
+  const dx = px - x;
+  const dz = pz - z;
+  return Math.abs(dx * c - dz * s) <= plan.halfW && Math.abs(dx * s + dz * c) <= plan.halfD;
+};
+
+/** A grid of `across` × `along` points over a plan rectangle, its edges and corners included. */
+export function planProbePoints(x: number, z: number, plan: PlanFootprint, across = PLAN_PROBES.across, along = PLAN_PROBES.along): { x: number; z: number }[] {
+  const points: { x: number; z: number }[] = [];
+  for (let i = 0; i < across; i++) {
+    for (let j = 0; j < along; j++) {
+      points.push(planPoint(x, z, plan, (i / (across - 1) - 0.5) * 2 * plan.halfW, (j / (along - 1) - 0.5) * 2 * plan.halfD));
+    }
+  }
+  return points;
+}
+
+/**
+ * Lowest and highest ground under a footprint, and its stance to the quay.
+ * With a `plan`, the footprint is the walls' rectangle: probed on a grid
+ * over it and at every crease of the ground inside it (the lattice vertices
+ * of the drawn surface), where a piecewise-flat surface takes its extremes.
+ * Without one, it is the plan circle of radius `reach`: the centre, the rim
+ * and two inner rings, and the creases inside the circle.
+ */
+function footprintGround(ground: SettlementGround, x: number, z: number, reach: number, plan?: PlanFootprint): { min: number; max: number; quay: QuayStance } {
   let min = Infinity;
   let max = -Infinity;
   let onQuay = 0;
@@ -149,18 +245,23 @@ function footprintGround(ground: SettlementGround, x: number, z: number, reach: 
     if (ground.onQuay(px, pz)) onQuay++;
     probes++;
   };
-  probe(x, z);
-  for (const [count, r] of [
-    [FOOTPRINT_PROBES, reach],
-    [FOOTPRINT_PROBES / 2, reach / 2],
-    [FOOTPRINT_PROBES / 4, reach / 4],
-  ]) {
-    for (let k = 0; k < count; k++) {
-      const a = (k / count) * Math.PI * 2;
-      probe(x + Math.cos(a) * r, z + Math.sin(a) * r);
+  if (plan) {
+    for (const p of planProbePoints(x, z, plan)) probe(p.x, p.z);
+    for (const p of ground.creasesWithin?.(x, z, reach) ?? []) if (inPlan(x, z, plan, p.x, p.z)) probe(p.x, p.z);
+  } else {
+    probe(x, z);
+    for (const [count, r] of [
+      [FOOTPRINT_PROBES, reach],
+      [FOOTPRINT_PROBES / 2, reach / 2],
+      [FOOTPRINT_PROBES / 4, reach / 4],
+    ]) {
+      for (let k = 0; k < count; k++) {
+        const a = (k / count) * Math.PI * 2;
+        probe(x + Math.cos(a) * r, z + Math.sin(a) * r);
+      }
     }
+    for (const p of ground.creasesWithin?.(x, z, reach) ?? []) probe(p.x, p.z);
   }
-  for (const p of ground.creasesWithin?.(x, z, reach) ?? []) probe(p.x, p.z);
   const quay: QuayStance = onQuay === 0 ? "off" : onQuay === probes ? "on" : "edge";
   return { min, max, quay };
 }
@@ -224,9 +325,10 @@ export function settlementGround(cell: MapCell, field: GroundField, seed: number
  * ground contact, standing at `at`, if the ground there takes it: clear of
  * the pier's land end (by the sand's reserve or, on the quay, the pier's
  * mouth), off its neighbours, wholly on or wholly off the quay, and on
- * ground spanning no more than `buildingMaxSpread(footing)`. Its Y is
- * `buildingGroundY` of the highest ground under it: on the ground, never
- * cut into it, the footing covering the low side.
+ * ground spanning no more than `buildingMaxSpread(footing)`. The ground
+ * under it is the walls' `plan` rectangle when given, else the plan circle.
+ * Its Y is `buildingGroundY` of the highest ground under it: on the ground,
+ * never cut into it, the footing covering the low side.
  */
 export function standBuilding(
   ground: SettlementGround,
@@ -234,10 +336,11 @@ export function standBuilding(
   reach: number,
   footing: number,
   pierRoot: { x: number; z: number },
-  placed: readonly Footprint[]
+  placed: readonly Footprint[],
+  plan?: PlanFootprint
 ): { x: number; y: number; z: number } | null {
   if (placed.some((p) => Math.hypot(p.x - at.x, p.z - at.z) < p.reach + reach + PORT_BUILDING_GAP)) return null;
-  const { min, max, quay } = footprintGround(ground, at.x, at.z, reach);
+  const { min, max, quay } = footprintGround(ground, at.x, at.z, reach, plan);
   if (quay === "edge") return null;
   if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") + reach) return null;
   if (max - min > buildingMaxSpread(footing)) return null;
@@ -264,7 +367,8 @@ function standOnBeach(
   reach: number,
   footing: number,
   pierRoot: { x: number; z: number },
-  placed: readonly Footprint[]
+  placed: readonly Footprint[],
+  plan: PlanFootprint
 ): { x: number; y: number; z: number } | null {
   for (const angle of candidates) {
     const dir = { x: Math.sin(angle), z: Math.cos(angle) };
@@ -277,7 +381,7 @@ function standOnBeach(
       const spot = { x: centre.x + dir.x * radius, z: centre.z + dir.z * radius };
       const dry = placeOnGround(ground, spot, anchor, { ...BUILDING_PLACEMENT, footprintRadius: reach });
       if (!dry) continue;
-      const stood = standBuilding(ground, dry, reach, footing, pierRoot, placed);
+      const stood = standBuilding(ground, dry, reach, footing, pierRoot, placed, plan);
       if (stood) return stood;
     }
   }
@@ -313,8 +417,13 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
       fortDirection === null
         ? ends[next() < 0.5 ? 0 : 1]
         : ends.reduce((best, i) => (angleDiff(slots[i], fortDirection) < angleDiff(slots[best], fortDirection) ? i : best), ends[0]);
-    const order: { kind: BuildingKind; slot: number }[] = [{ kind: "watchtower", slot: slots[towerSlot] }];
+    // The church fronts the square from straight landward and is placed second, before the shuffled others.
+    const order: { kind: BuildingKind; slot: number }[] = [
+      { kind: "watchtower", slot: slots[towerSlot] },
+      { kind: "church", slot: slots[PORT_CHURCH_SLOT_INDEX] },
+    ];
     slots.splice(towerSlot, 1);
+    slots.splice(slots.indexOf(landward + PORT_BUILDING_SLOT_ANGLES[PORT_CHURCH_SLOT_INDEX]), 1);
     for (const kind of shuffledKinds(next)) {
       const slot = slots.shift();
       if (slot === undefined) break;
@@ -323,18 +432,17 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
 
     const placed: Footprint[] = [];
     for (const { kind, slot } of order) {
-      const scale = lerpRange(kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE, next());
+      const scale = lerpRange(scaleRangeOf(kind), next());
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
       const footing = BUILDING_FOOTING * scale;
-      let spot = standOnBeach(ground, centre, candidateAngles(landward, slot, false), reach, footing, pierRoot, placed);
-      if (!spot && kind === "watchtower") {
-        // The landmark is never dropped: any direction, then the hex centre on its highest ground (never under the sea).
-        spot =
-          standOnBeach(ground, centre, candidateAngles(landward, slot, true), reach, footing, pierRoot, placed) ??
-          { x: centre.x, y: buildingGroundY(Math.max(SEA_LEVEL, footprintGround(ground, centre.x, centre.z, reach).max)), z: centre.z };
-      }
+      const plan = planFootprint(kind, scale, yaw);
+      let spot = standOnBeach(ground, centre, candidateAngles(landward, slot, false), reach, footing, pierRoot, placed, plan);
+      // The landmark and the church look round the whole hex if the landward arc has no room; the tower
+      // is never dropped and takes the hex centre on its highest ground (never under the sea), the church is dropped.
+      if (!spot && (kind === "watchtower" || kind === "church")) spot = standOnBeach(ground, centre, candidateAngles(landward, slot, true), reach, footing, pierRoot, placed, plan);
+      if (!spot && kind === "watchtower") spot = { x: centre.x, y: buildingGroundY(Math.max(SEA_LEVEL, footprintGround(ground, centre.x, centre.z, reach, plan).max)), z: centre.z };
       if (!spot) continue;
       placed.push({ x: spot.x, z: spot.z, reach });
       const building: PortBuilding = { kind, worldX: spot.x, worldY: spot.y, worldZ: spot.z, yaw, scale, tint };

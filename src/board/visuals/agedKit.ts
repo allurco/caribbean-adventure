@@ -29,6 +29,8 @@ export interface AgedColors {
   timber: Rgb;
   stone: Rgb;
   iron: Rgb;
+  /** The church bells (unused by the other kinds). */
+  bronze: Rgb;
 }
 
 export type WallFace = "front" | "back" | "left" | "right";

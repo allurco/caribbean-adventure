@@ -3,7 +3,10 @@
  * (`PortBuildings.tsx`) and the prop viewer: lime render under weathered
  * terracotta, salt-greyed timber, rough stone for the tower, near-black
  * iron. The warehouse is plank-walled in sun-bleached softwood, well
- * clear of the dark timber of its door, hatch and beams.
+ * clear of the dark timber of its door, hatch and beams. The church is
+ * whitewashed a coat fresher than the houses (warm, never a clean cool
+ * white), its quoins and door surround a grey-ochre stone, its bells a
+ * dark bronze.
  */
 import { paletteColor, type PaletteName } from "./palette";
 import type { Rgb } from "./palmGeometry";
@@ -15,8 +18,15 @@ const rgb = (name: PaletteName): Rgb => {
   return [c.r, c.g, c.b];
 };
 
+/** The quoin stone against the tower's grey-brown blocks: a touch warmer and more ochre. */
+const CHURCH_STONE_TINT: Rgb = [1.02, 0.97, 0.86];
+
 export function agedBuildingColors(kind: BuildingKind): AgedColors {
-  const base: AgedColors = { wall: rgb("limewash"), roof: rgb("oldTerracotta"), timber: rgb("oldTimber"), stone: rgb("roughStone"), iron: rgb("ironwork") };
+  const stone = rgb("roughStone");
+  const base: AgedColors = { wall: rgb("limewash"), roof: rgb("oldTerracotta"), timber: rgb("oldTimber"), stone, iron: rgb("ironwork"), bronze: rgb("bellBronze") };
   if (kind === "warehouse") return { ...base, wall: rgb("bleachedPlank") };
+  if (kind === "church") {
+    return { ...base, wall: rgb("churchLime"), stone: [stone[0] * CHURCH_STONE_TINT[0], stone[1] * CHURCH_STONE_TINT[1], stone[2] * CHURCH_STONE_TINT[2]] };
+  }
   return base;
 }
