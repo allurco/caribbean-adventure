@@ -326,6 +326,47 @@ can overhang a lower neighbour or the water on a coastal `ROCK` cell. Both
 halves are one placement problem (the probed footprint is not the drawn
 extent) and are tracked as a follow-up.
 
+**Props: port buildings and pier (#49).** A port is identified at map zoom
+by a small faceted settlement, all derived on the board from the existing
+`pier` and `fort` decorations and the port flag; `src/game/` is untouched.
+`pierGeometry.ts` replaces the single box with a plank pier (six posts,
+two stringers, eight banded planks; 192 triangles) built with the shared
+`facetBuilder.ts`: the deck top sits at +0.07, the posts reach to −0.3, and
+`Piers.tsx` draws the one instanced mesh on the seabed prepass layer as
+well as the main pass, so the posts show through the shallows. The old
+pier was pushed a fixed 0.7 units towards the docking hex, which buried
+it in the beach wherever the coast noise pulled the shoreline out (the
+shore lies 0.6–1.1 units from the centre along that line);
+`pierPlacement.ts` now walks the height field along the pier's line and
+starts the deck 0.12 inland of where the ground drops to the shore
+(clamped to 0.5–0.85 from the centre, so a 0.6 deck stays clear of a
+docked galleon). `buildingGeometry.ts` builds four kinds, origin at the
+ground contact and the door on +z: a timber warehouse (gable to the
+water, ridge 0.24), a whitewashed two-storey tavern (0.27), a gabled
+house under dark shingles (0.19) and a masonry watchtower with a parapet
+and terracotta pyramid roof (0.46), all under a 0.5 cap so the label at
+0.6 stays clear; walls carry on 0.12 below ground as a footing.
+`portSettlement.ts` places a watchtower on the fort's side and up to three
+other buildings (kind order, scale ±8%, tint ±8% and yaw jitter ±8° from
+a hash of the cell and the whole terrain seed) on the landward half of the
+hex, facing the docking hex, with the nearest corner at least 0.04 outside
+the `PortMarker` hover cylinder's 0.35 radius, which guarantees hovering
+and the label keep working. A port hex is a small beach with water on one
+to three sides and a shore ramp down to each, and higher jungle neighbours
+pull its field up, so a footprint commonly spans 0.1–0.2 in height; a
+fixed arc of slots lost half the buildings. Each building instead looks
+round the arc (12° steps) for the ground nearest its preferred slot that
+`placeOnGround` accepts, that overlaps no neighbour, and whose footprint
+spans at most 0.16, then stands with its origin half a footing above the
+lowest probe (never floating) and the high side buried at most 0.1.
+`PortBuildings.tsx` draws one `InstancedMesh` per kind on a white
+`vertexColors` material with `instanceColor` carrying the tint. Instance
+counts (10-seed average): small 5 piers + 14.7 buildings (every port gets
+its tower; 2.9 per port), medium 10 + 30.8, large 15 + 42.9. Draw calls:
+five instanced meshes per copy where the pier box was one. The `PortMarker`
+cylinder is still drawn; making it an invisible hover volume now that the
+buildings are the port's visual is a follow-up.
+
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
