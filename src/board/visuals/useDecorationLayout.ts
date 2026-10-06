@@ -10,6 +10,7 @@ import { usePalmTrees, type PalmTreesResources } from "./usePalmTrees";
 import { ROCK_UNIT_RADIUS } from "./rockGeometry";
 import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
 import { smallStones } from "./smallStones";
+import { useSwayClock } from "./useSwayClock";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -113,6 +114,8 @@ const decorationsOf = perMapCache((cells, wrap) => {
 export function useDecorationLayout(cells: MapCell[], wrap: MapWrap): DecorationLayout {
   // Collect all decorations with their world positions
   const decorationsByType = decorationsOf(cells, wrap);
-  const palms = usePalmTrees(decorationsByType.trees);
+  // One clock for everything that sways, so reduced motion stops palms and shrubs together.
+  const sway = useSwayClock();
+  const palms = usePalmTrees(decorationsByType.trees, sway);
   return useMemo(() => ({ ...decorationsByType, palms }), [decorationsByType, palms]);
 }
