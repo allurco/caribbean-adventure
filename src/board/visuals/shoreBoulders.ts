@@ -13,7 +13,10 @@
  * or offshore, thinned by the hash, and kept only where the field's signed
  * coast distance falls in a band straddling the waterline, so the boulders
  * follow the noisy coastline rather than the hex edge. The edge a pier faces
- * is left clear.
+ * is left clear. Only the coasts of `SHORE_BOULDER_BIOMES` land cells (rock
+ * and grass) get boulders: a sandy beach meets the sea clean, emergent and
+ * submerged alike. Each edge hashes on its own, so skipping the sand coasts
+ * leaves the boulders on the others exactly where they were.
  *
  * Two placement rules keep the sea lanes open. A ship sits at a water hex's
  * centre, ~0.87 units from the land hex's edge, with a hull ~0.4 units long
@@ -32,7 +35,7 @@
  * surface counts as emergent.
  */
 import { canonicalHex, hexToWorld, nearestImage, neighbors, type Hex, type MapWrap } from "../../game/hex";
-import type { MapCell } from "../../game/types";
+import type { Biome, MapCell } from "../../game/types";
 import { ROCK_VARIANT_REACH } from "./rockGeometry";
 import { rockVariation, type RockSizeClass, type RockVariation } from "./rockVariation";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
@@ -57,9 +60,12 @@ export interface ShoreBoulder {
   coastDistance: number;
 }
 
+/** Biomes of the land cells whose coasts get boulders; sandy beaches get none. */
+export const SHORE_BOULDER_BIOMES: readonly Biome[] = ["ROCK", "GRASS"];
 /**
- * Boulders per coastal edge the layout is tuned to (`BOULDER_KEEP_SHARE`):
- * about 120 on a small map (~205 coast edges) and 600 on a large one (~990).
+ * Boulders per allowed coastal edge the layout is tuned to (`BOULDER_KEEP_SHARE`):
+ * about 55 on a small map (~93 rock/grass coast edges of ~205) and 270 on a
+ * large one (~450 of ~990).
  */
 export const BOULDERS_PER_COAST_EDGE = 0.6;
 /** Candidate points per coastal edge; `BOULDER_KEEP_SHARE` of them are tried. */
@@ -124,6 +130,10 @@ export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap
   const boulders: ShoreBoulder[] = [];
   for (const cell of cells) {
     if (cell.terrain !== "island") continue;
+    // Every edge of a cell shares its biome, so the sand gate is per cell; it
+    // comes before any sampling, and each edge's hash stream is its own, so
+    // the other coasts' boulders are unaffected.
+    if (cell.biome === undefined || !SHORE_BOULDER_BIOMES.includes(cell.biome)) continue;
     const ring = neighbors(cell.hex);
     const waterEdges = ring.map((n) => !isLand(n));
     if (!waterEdges.some(Boolean)) continue;

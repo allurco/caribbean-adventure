@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { canonicalHex, createWrap, hexToWorld, neighbors, type Hex, type MapWrap } from "../../game/hex";
-import type { MapCell } from "../../game/types";
+import type { Biome, MapCell } from "../../game/types";
 import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
 import { ROCK_VARIANT_REACH } from "./rockGeometry";
 import { metresToUnits } from "./worldScale";
@@ -12,6 +12,7 @@ import {
   MAX_OFFSHORE_REACH,
   SHIP_HULL_CLEARANCE,
   SHORE_BAND,
+  SHORE_BOULDER_BIOMES,
   SUBMERGED_CROWN_DEPTH_METRES,
   WET_BAND,
   WET_DARKENING,
@@ -32,6 +33,11 @@ const key = (h: Hex) => `${h.q},${h.r}`;
 const landKeys = new Set(cells.filter((c) => c.terrain === "island").map((c) => key(c.hex)));
 const isLand = (h: Hex, w: MapWrap) => landKeys.has(key(canonicalHex(h, w)));
 const cellOf = (h: Hex) => cells.find((c) => c.hex.q === h.q && c.hex.r === h.r)!;
+/** A land cell whose coasts get boulders. */
+const bouldered = (c: MapCell) => c.terrain === "island" && c.biome !== undefined && SHORE_BOULDER_BIOMES.includes(c.biome);
+/** The same cells with every land cell's biome set to `biome` (the field does not read biomes). */
+const rebiomed = (list: readonly MapCell[], biome: Biome): MapCell[] =>
+  list.map((c) => (c.terrain === "island" ? { ...c, biome } : c));
 
 /** World centres of the water hexes a ship could sit in near a land hex: its ring-1 and ring-2 neighbours. */
 function waterCentresNear(h: Hex, w: MapWrap): [number, number][] {
@@ -59,14 +65,50 @@ function pastEdge(x: number, z: number, h: Hex, n: Hex): number {
 }
 
 const coastal = cells.filter((c) => c.terrain === "island" && neighbors(c.hex).some((n) => !isLand(n, wrap)));
+const coastEdges = (list: readonly MapCell[]) =>
+  list.reduce((sum, c) => sum + neighbors(c.hex).filter((n) => !isLand(n, wrap)).length, 0);
 
 describe("shoreBoulders", () => {
-  it("places about BOULDERS_PER_COAST_EDGE boulders per coastal edge", () => {
-    const edges = coastal.reduce((sum, c) => sum + neighbors(c.hex).filter((n) => !isLand(n, wrap)).length, 0);
-    expect(edges).toBeGreaterThan(50);
+  it("places about BOULDERS_PER_COAST_EDGE boulders per rock or grass coastal edge", () => {
+    const edges = coastEdges(coastal.filter(bouldered));
+    expect(edges).toBeGreaterThan(30);
     expect(boulders.length).toBeGreaterThan(edges * BOULDERS_PER_COAST_EDGE * 0.7);
     expect(boulders.length).toBeLessThan(edges * BOULDERS_PER_COAST_EDGE * 1.3);
     expect(boulders.length).toBeLessThanOrEqual(edges * BOULDER_SAMPLES_PER_EDGE);
+  });
+
+  it("only allows rock and grass coasts, never sand", () => {
+    expect([...SHORE_BOULDER_BIOMES].sort()).toEqual(["GRASS", "ROCK"]);
+  });
+
+  it("places nothing on a map whose only coasts are sand", () => {
+    expect(coastal.some((c) => c.biome === "SAND")).toBe(true);
+    expect(shoreBoulders(rebiomed(cells, "SAND"), field, wrap, seed)).toEqual([]);
+  });
+
+  it("places boulders on rock coasts and on grass coasts", () => {
+    for (const biome of ["ROCK", "GRASS"] as const) {
+      const list = shoreBoulders(rebiomed(cells, biome), field, wrap, seed);
+      expect(list.length).toBeGreaterThan(coastEdges(coastal) * BOULDERS_PER_COAST_EDGE * 0.7);
+    }
+  });
+
+  it("belongs only to rock or grass cells on a mixed map", () => {
+    expect(coastal.filter((c) => c.biome === "SAND").length).toBeGreaterThan(0);
+    expect(coastal.filter(bouldered).length).toBeGreaterThan(0);
+    expect(boulders.length).toBeGreaterThan(0);
+    for (const b of boulders) expect(bouldered(cellOf(b.hex))).toBe(true);
+  });
+
+  it("skipping the sand coasts leaves the kept boulders exactly where they were", () => {
+    // Each coastal edge draws its own hash stream, so the boulders on the rock and
+    // grass coasts are the same ones as on the map with every coast allowed (only
+    // the sand cells' base colour differs there, and they have no boulders here).
+    const allAllowed = shoreBoulders(rebiomed(cells, "ROCK"), field, wrap, seed);
+    const strip = (b: ShoreBoulder) => ({ ...b, variation: { ...b.variation, baseColor: 0 } });
+    const kept = allAllowed.filter((b) => bouldered(cellOf(b.hex))).map(strip);
+    expect(kept.length).toBeLessThan(allAllowed.length);
+    expect(boulders.map(strip)).toEqual(kept);
   });
 
   it("is deterministic", () => {
@@ -194,14 +236,19 @@ describe("shoreBoulders", () => {
   });
 
   it("leaves the edge a pier faces clear", () => {
-    const ports = cells.filter((c) => c.hasPort && c.decorations?.some((d) => d.type === "pier"));
+    // Ports are generated on beach (sand) cells, which get no boulders; give
+    // them rock coasts so the rule is exercised.
+    const rockPorts = cells.map((c) => (c.hasPort ? { ...c, biome: "ROCK" as const } : c));
+    const portBoulders = shoreBoulders(rockPorts, field, wrap, seed);
+    const ports = rockPorts.filter((c) => c.hasPort && c.decorations?.some((d) => d.type === "pier"));
     expect(ports.length).toBeGreaterThan(0);
+    expect(portBoulders.some((b) => ports.some((p) => p.hex.q === b.hex.q && p.hex.r === b.hex.r))).toBe(true);
     for (const port of ports) {
       const pier = port.decorations!.find((d) => d.type === "pier")!;
       const dirX = Math.sin(pier.rotation);
       const dirZ = Math.cos(pier.rotation);
       const [cx, , cz] = hexToWorld(port.hex);
-      for (const b of boulders.filter((b) => b.hex.q === port.hex.q && b.hex.r === port.hex.r)) {
+      for (const b of portBoulders.filter((b) => b.hex.q === port.hex.q && b.hex.r === port.hex.r)) {
         const dx = b.worldX - cx;
         const dz = b.worldZ - cz;
         const along = (dx * dirX + dz * dirZ) / Math.hypot(dx, dz);
@@ -219,8 +266,8 @@ describe("shoreBoulders", () => {
       hex: { q, r, s: -q - r },
       terrain: "island",
       hasPort: false,
-      elevation: 1,
-      biome: "SAND",
+      elevation: 3,
+      biome: "ROCK",
     });
     const water = (q: number, r: number): MapCell => ({ hex: { q, r, s: -q - r }, terrain: "water", hasPort: false, elevation: 0 });
     const row: MapCell[] = [];
