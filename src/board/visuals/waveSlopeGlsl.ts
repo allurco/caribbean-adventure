@@ -50,6 +50,20 @@ const WHITECAP_SUM = WHITECAP_CASCADES.map(
     foam += weights[${c}] * distanceFade * cascadeLodFade(footprintMetres, WAVE_K_MIN_${c}) * texture2D(waveWhitecaps${c}, cascadeTileUv(worldXZ, WAVE_TURN_${c}, WAVE_TILE_UNITS_${c})).r;`
 ).join("");
 
+/**
+ * The tile transform on its own, for shader stages that read the cascades
+ * without the slope sum (the displacement in the vertex stage,
+ * waveDisplacement.ts). Included by WAVE_SLOPE_GLSL; never paste both into
+ * one stage.
+ */
+export const CASCADE_TILE_GLSL = `
+  // Where worldXZ falls on a cascade's tile: turned by Rᵀ into the tile's axes, in tiles.
+  vec2 cascadeTileUv(vec2 worldXZ, vec2 turn, float tileUnits) {
+    vec2 p = worldXZ / tileUnits;
+    return vec2(turn.x * p.x + turn.y * p.y, -turn.y * p.x + turn.x * p.y);
+  }
+`;
+
 export const WAVE_SLOPE_GLSL = `
   const int WAVE_CASCADE_COUNT = ${WAVE_CASCADES.length};
   // Gain on the drawn slopes for shading and refraction (oceanWaves.ts).
@@ -57,12 +71,7 @@ export const WAVE_SLOPE_GLSL = `
   ${CASCADE_DECLARATIONS}
   ${WHITECAP_DECLARATIONS}
   ${WAVE_NORMAL_FILTER_GLSL}
-
-  // Where worldXZ falls on a cascade's tile: turned by Rᵀ into the tile's axes, in tiles.
-  vec2 cascadeTileUv(vec2 worldXZ, vec2 turn, float tileUnits) {
-    vec2 p = worldXZ / tileUnits;
-    return vec2(turn.x * p.x + turn.y * p.y, -turn.y * p.x + turn.x * p.y);
-  }
+  ${CASCADE_TILE_GLSL}
 
   // The sea's slope at worldXZ (world axes) and the slope variance the
   // look-ups left out, summed over the cascades: each is filtered to the
