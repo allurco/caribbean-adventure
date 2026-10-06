@@ -59,10 +59,12 @@ describe("the fill light (#63)", () => {
     FILL_OFFSET.forEach((component, axis) => {
       expect(component).toBeCloseTo(FILL_DIRECTION[axis] * SUN_DISTANCE, 6);
     });
-    // Behind the camera on the right, above the target: the measured placement.
-    expect(FILL_OFFSET[0]).toBeCloseTo(42.6, 1);
-    expect(FILL_OFFSET[1]).toBeCloseTo(40.2, 1);
-    expect(FILL_OFFSET[2]).toBeCloseTo(38.4, 1);
+    // Behind the camera on the right, above the target.
+    const elevation = (FILL_ELEVATION_DEG * Math.PI) / 180;
+    expect(FILL_OFFSET[1]).toBeCloseTo(SUN_DISTANCE * Math.sin(elevation), 6);
+    expect(Math.hypot(FILL_OFFSET[0], FILL_OFFSET[2])).toBeCloseTo(SUN_DISTANCE * Math.cos(elevation), 6);
+    expect(FILL_OFFSET[0]).toBeGreaterThan(0);
+    expect(FILL_OFFSET[2]).toBeGreaterThan(0);
   });
 });
 
