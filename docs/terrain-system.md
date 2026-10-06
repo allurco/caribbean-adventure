@@ -367,6 +367,34 @@ five instanced meshes per copy where the pier box was one. The `PortMarker`
 cylinder is still drawn; making it an invisible hover volume now that the
 buildings are the port's visual is a follow-up.
 
+**Port kit: the stone quay (#59, slice 3).** `quayGeometry.ts` builds a
+flat stone platform at the pier root in the pier's local frame (124
+triangles, budget 160): a body as deep as the pier posts in three bands,
+its sea wall battered above the waterline, a coping slab 0.03 thick that
+overhangs the wall by 0.015 with chamfered edges, a step down a coping's
+thickness behind z = −0.2 so the back reads as a stair into the beach,
+and two timber bollards. The sea face stands 0.04 seaward of the pier's
+land end, so the pier's root is embedded in it. Parts meet on shared
+planes with the hidden face dropped (the body open on top, the coping open
+underneath with its exposed overhang drawn as three strips, the bollards
+open at their feet); the tests check that no face overlaps another in its
+plane and none passes through another, and that the top is flat at
+`QUAY_TOP` (0.085, a 0.015 lip above the pier deck). Occlusion is baked
+along the waterline and under the coping, the stone carries a 5 % colour
+jitter. `quayPlacement.ts` puts one at every pier origin, turned with the
+pier: the beach at a pier root is anything from the waterline to 0.15
+high and higher to either side, so the deck is lifted until it stands
+0.04 above the highest sand along its sea face, between the lip and
+0.1 above the pier deck (past that the back is left buried). The body's
+footprint is probed as `placeOnGround` does and the whole quay is lowered
+onto the lowest point should the ground fall away, so it never floats
+(on generated maps it never has to). Width and depth vary ±10–15 % per
+port from a hash of the cell and the whole terrain seed, as instance
+scale. `Quays.tsx` draws one `InstancedMesh` per world copy, on the seabed
+prepass layer too. `quayTopY(cell, field, seed, point)` is the seam for
+the settlement: the deck or step height under a world point, or
+undefined off the quay.
+
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
