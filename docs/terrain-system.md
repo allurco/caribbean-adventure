@@ -349,23 +349,30 @@ and terracotta pyramid roof (0.46), all under a 0.5 cap so the label at
 `portSettlement.ts` places a watchtower on the fort's side and up to three
 other buildings (kind order, scale ±8%, tint ±8% and yaw jitter ±8° from
 a hash of the cell and the whole terrain seed) on the landward half of the
-hex, facing the docking hex, with the nearest corner at least 0.04 outside
-the `PortMarker` hover cylinder's 0.35 radius, which guarantees hovering
-and the label keep working. A port hex is a small beach with water on one
+hex, facing the docking hex. The `PortMarker` is an invisible hover volume
+(#59: `visible` false, radius 0.5, as tall as the 0.5 building cap, no
+shadow; R3F still raycasts it, like the water hexes), so the buildings
+use the whole hex: each tries rings from the centre outwards (0.06 apart,
+the first with its near corner at the centre, the last at 0.62 so the
+widest building stays inside the hex's 0.866 inradius) and keeps only a
+reserve of one pier width round `pierOrigin`, the pier's land end, where
+the quay will stand. A port hex is a small beach with water on one
 to three sides and a shore ramp down to each, and higher jungle neighbours
 pull its field up, so a footprint commonly spans 0.1–0.2 in height; a
 fixed arc of slots lost half the buildings. Each building instead looks
 round the arc (12° steps) for the ground nearest its preferred slot that
 `placeOnGround` accepts, that overlaps no neighbour, and whose footprint
 spans at most 0.16, then stands with its origin half a footing above the
-lowest probe (never floating) and the high side buried at most 0.1.
-`PortBuildings.tsx` draws one `InstancedMesh` per kind on a white
-`vertexColors` material with `instanceColor` carrying the tint. Instance
-counts (10-seed average): small 5 piers + 14.7 buildings (every port gets
-its tower; 2.9 per port), medium 10 + 30.8, large 15 + 42.9. Draw calls:
-five instanced meshes per copy where the pier box was one. The `PortMarker`
-cylinder is still drawn; making it an invisible hover volume now that the
-buildings are the port's visual is a follow-up.
+lowest probe (never floating) and the high side buried at most 0.1. The
+ground the buildings probe goes through one function, `settlementGround`,
+where the quay's flat top plugs in. `PortBuildings.tsx` draws one
+`InstancedMesh` per kind on a white `vertexColors` material with
+`instanceColor` carrying the tint. Instance counts (10-seed average):
+small 5 piers + 19.6 buildings (every port gets its tower; 3.9 per port,
+up from 2.9 while the marker held them to the outer ring), medium 10 +
+39.5, large 15 + 57.9. Draw calls: five instanced meshes per copy where
+the pier box was one; the marker's 32-triangle cylinder per port is no
+longer drawn.
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
