@@ -64,6 +64,13 @@ export const PALETTE_HEX = {
   seabedSand: 0xc6b49d, // Shallow seabed: clean coral sand (Maritorena et al. 1994)
   coral: 0x4d442b, // Reef coral heads (brown-algae spectrum as a stand-in)
   deepSeabed: 0xa0a27b, // Seabed down the drop-off: half sand, half green algae
+  // Port buildings and pier (issue #49): picked to read against sand and
+  // grass at map zoom. Terracotta roofs against the green and the pale sand,
+  // whitewashed walls against the grass, dark timber against the sand.
+  whitewash: 0xf2ead8, // Lime-washed walls
+  terracotta: 0xb4553a, // Clay roof tiles
+  timber: 0x5c4431, // Weathered timber: pier posts, doors, the house's shingles
+  masonry: 0x8c8375, // The watchtower's stone
 } as const;
 
 export type PaletteName = keyof typeof PALETTE_HEX;
