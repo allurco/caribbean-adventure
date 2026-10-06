@@ -25,7 +25,26 @@ describe("palette", () => {
       terracotta: 0xb4553a,
       timber: 0x5c4431,
       masonry: 0x8c8375,
+      limewash: 0xe4dac6,
+      oldTerracotta: 0x96503a,
+      oldTimber: 0x4b3f35,
+      roughStone: 0x776b5e,
+      ironwork: 0x1b1816,
     });
+  });
+
+  it("ages the settlement's colours (#59): dimmer render, browner tiles, greyer timber, stone darker and greyer than the sand", () => {
+    const luminance = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const saturation = (c: Color) => (Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b)) / Math.max(c.r, c.g, c.b);
+    const sand = paletteColor("drySand");
+    expect(luminance(paletteColor("limewash"))).toBeLessThan(luminance(paletteColor("whitewash")));
+    expect(luminance(paletteColor("limewash"))).toBeGreaterThan(luminance(sand) * 1.1);
+    expect(luminance(paletteColor("oldTerracotta"))).toBeLessThan(luminance(paletteColor("terracotta")));
+    expect(saturation(paletteColor("oldTimber"))).toBeLessThan(saturation(paletteColor("timber")));
+    const stone = paletteColor("roughStone");
+    expect(luminance(stone)).toBeLessThan(luminance(sand) * 0.4);
+    expect(saturation(stone)).toBeLessThan(saturation(sand));
+    expect(luminance(paletteColor("ironwork"))).toBeLessThan(0.01);
   });
 
   it("gives the port buildings colours that read against sand and grass at map zoom (#49)", () => {

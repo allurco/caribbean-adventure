@@ -13,7 +13,9 @@
  * `jitterColors` breaks up a flat colour and `tintColors` grades colours
  * by position. Passes act on a vertex range
  * `[from, to)` of what has been collected so far (`vertexCount()`), so a
- * piece can be smoothed or shaded part by part before `build()`.
+ * piece can be smoothed or shaded part by part before `build()`. `shear`
+ * leans a range (the aged port pieces, #59) with its normals kept exact;
+ * `outwardQuad` and `outwardTriangle` wind a face away from a centre.
  */
 import type { Rgb } from "./palmGeometry";
 import { seedOf, stream } from "./variationStream";
@@ -421,6 +423,24 @@ export function createFacetBuilder() {
     for (let i = from; i < to; i++) for (let k = 0; k < 3; k++) positions[i * 3 + k] += delta[k];
   };
 
+  /**
+   * Leans the vertices in `[from, to)`: each `axis` coordinate shifts by
+   * `amount` times the `byAxis` coordinate (x by y leans a wall over). The
+   * normals go through the inverse transpose of the same shear, so flat and
+   * smooth normals alike stay exact on the leaning faces.
+   */
+  const shear = (from: number, to: number, axis: Axis, byAxis: Axis, amount: number) => {
+    const a = AXIS_INDEX[axis];
+    const by = AXIS_INDEX[byAxis];
+    if (a === by) return;
+    for (let i = from; i < to; i++) {
+      positions[i * 3 + a] += amount * positions[i * 3 + by];
+      normals[i * 3 + by] -= amount * normals[i * 3 + a];
+      const n = normalize([normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]]);
+      for (let k = 0; k < 3; k++) normals[i * 3 + k] = n[k];
+    }
+  };
+
   const build = (): FacetGeometryData => ({
     positions: new Float32Array(positions),
     normals: new Float32Array(normals),
@@ -432,6 +452,8 @@ export function createFacetBuilder() {
     triangle,
     triangleWithNormals,
     quad,
+    outwardTriangle,
+    outwardQuad,
     prism,
     box,
     bevelledBox,
@@ -443,6 +465,7 @@ export function createFacetBuilder() {
     tintColors,
     rotate,
     translate,
+    shear,
     vertexCount,
     build,
   };

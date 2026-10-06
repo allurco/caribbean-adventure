@@ -472,3 +472,42 @@ describe("rotate and translate", () => {
     }
   });
 });
+
+describe("shear", () => {
+  it("leans a vertex range: one coordinate shifts in proportion to another, and the normals follow exactly", () => {
+    const b = createFacetBuilder();
+    b.box([0, 0, 0], [1, 1, 1], [1, 1, 1]);
+    const from = b.vertexCount();
+    b.box([-1, 0, -1], [1, 2, 1], [1, 1, 1]);
+    b.shear(from, b.vertexCount(), "x", "y", 0.5);
+    const g = b.build();
+    expectUnitNormals(g);
+    for (let i = 0; i < from; i++) expect(vertex(g, i)[0]).toBeLessThanOrEqual(1);
+    // The top of the second box has moved +x by half its height; the bottom has not.
+    for (let i = from; i < g.vertexCount; i++) {
+      const [x, y] = vertex(g, i);
+      if (y === 0) expect(Math.abs(x)).toBe(1);
+      if (y === 2) expect(x === 0 || x === 2).toBe(true);
+    }
+    // Every stored normal still matches its (now tilted) face: a leaning wall faces a little up or down.
+    for (let t = from / 3; t < g.vertexCount / 3; t++) {
+      const n = triangleNormal(g.positions, t);
+      expect(dot(n, normal(g, t * 3))).toBeCloseTo(1, 6);
+    }
+  });
+});
+
+describe("outwardQuad and outwardTriangle", () => {
+  it("wind a face away from a centre whichever way its corners are listed", () => {
+    const b = createFacetBuilder();
+    const centre: Vec3 = [0, 0, 0];
+    b.outwardQuad([1, -1, -1], [1, 1, -1], [1, 1, 1], [1, -1, 1], centre, [1, 1, 1]);
+    b.outwardQuad([1, -1, -1], [1, -1, 1], [1, 1, 1], [1, 1, -1], centre, [1, 1, 1]);
+    b.outwardTriangle([-1, -1, 0], [-1, 1, 0], [-1, 0, 1], centre, [1, 1, 1]);
+    b.outwardTriangle([-1, -1, 0], [-1, 0, 1], [-1, 1, 0], centre, [1, 1, 1]);
+    const g = b.build();
+    expect(g.vertexCount).toBe(4 * 3 + 2 * 3);
+    for (let i = 0; i < 12; i++) expect(normal(g, i)[0]).toBeCloseTo(1, 6);
+    for (let i = 12; i < 18; i++) expect(normal(g, i)[0]).toBeCloseTo(-1, 6);
+  });
+});

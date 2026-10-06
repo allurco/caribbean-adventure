@@ -71,6 +71,15 @@ export const PALETTE_HEX = {
   terracotta: 0xb4553a, // Clay roof tiles
   timber: 0x5c4431, // Weathered timber: pier posts, doors, the house's shingles
   masonry: 0x8c8375, // The watchtower's stone
+  // The aged settlement (#59): a Spanish-Caribbean port a century in salt
+  // air. Lime render off-white, not bright; tiles muted brick to brown;
+  // timber weathered grey-brown; rough-cut stone darker and greyer than the
+  // beige sand; ironwork near black.
+  limewash: 0xe4dac6, // Old lime render
+  oldTerracotta: 0x96503a, // Weathered clay tiles
+  oldTimber: 0x4b3f35, // Salt-greyed timber: doors, shutters, beams
+  roughStone: 0x776b5e, // Rough-cut blocks, warm grey-brown
+  ironwork: 0x1b1816, // Hinges, straps and the flagpole's finial
 } as const;
 
 export type PaletteName = keyof typeof PALETTE_HEX;
