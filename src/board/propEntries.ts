@@ -83,6 +83,7 @@ export const PROP_ENTRIES: readonly PropEntry[] = [
   { label: "watchtower, aged (Spain)", build: towerWithFlag("Spain"), color: 0xffffff, roughness: 0.9 },
   { label: "tavern, aged", build: () => buildAgedBuildingGeometry("tavern", agedColors("tavern")), color: 0xffffff, roughness: 0.9 },
   { label: "warehouse, aged", build: () => buildAgedBuildingGeometry("warehouse", agedColors("warehouse")), color: 0xffffff, roughness: 0.9 },
+  { label: "church, aged", build: () => buildAgedBuildingGeometry("church", agedColors("church")), color: 0xffffff, roughness: 0.9 },
   { label: "watchtower, aged (England)", build: towerWithFlag("England"), color: 0xffffff, roughness: 0.9 },
   { label: "quay, notch up", build: () => buildQuayGeometry(QUAY_COLORS), color: 0xffffff, roughness: 0.95 },
 ];
