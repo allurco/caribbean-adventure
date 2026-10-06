@@ -61,10 +61,10 @@ export const AGED_LEAN = 0.026;
 export const CORNER_CUT_RANGE: readonly [number, number] = [0.004, 0.012];
 /** Fraction of a wall's height over which damp darkens it. */
 export const GRIME_BAND = 0.2;
-export const GRIME_STRENGTH = 0.3;
+export const GRIME_STRENGTH = 0.38;
 /** Fraction of wall cells that flake darker. */
 export const FLAKE_FRACTION = 0.18;
-export const FLAKE_SHADE = 0.9;
+export const FLAKE_SHADE = 0.86;
 export const STREAK_SHADE = 0.72;
 /** A second plank tone against the first. */
 export const PLANK_ALT_SHADE = 0.82;
@@ -434,7 +434,7 @@ export function stoneCourses(b: FacetBuilder, face: StoneFace, stone: Rgb, seed:
       const s1 = s + w - options.mortar / 2;
       const yb = y + options.mortar / 2 + wobble * ((s0 - left) / width - 0.5);
       const yt = top - options.mortar / 2 + wobble * ((s1 - left) / width - 0.5);
-      let color = shadeRgb(stone, 0.86 + next() * 0.24);
+      let color = shadeRgb(stone, 0.8 + next() * 0.36);
       if (next() < options.ochreFraction) color = [Math.min(1, color[0] * OCHRE[0]), color[1] * OCHRE[1], color[2] * OCHRE[2]];
       const proud = next() < options.proudFraction ? 0.004 + next() * 0.003 : 0;
       const chipped = next();

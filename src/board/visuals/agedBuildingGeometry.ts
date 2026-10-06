@@ -76,12 +76,12 @@ const GABLED: Readonly<Record<Exclude<BuildingKind, "watchtower">, AgedGabledSpe
 
 /** The landmark tower at scale 1: a tapering body, a string course, a parapet with merlons, the pole. */
 export const AGED_TOWER = {
-  halfBase: 0.09,
-  halfTop: 0.076,
+  halfBase: 0.1,
+  halfTop: 0.085,
   bodyTop: 0.36,
-  ledge: { bottom: 0.36, top: 0.372, half: 0.088 },
-  parapet: { bottom: 0.372, top: 0.415, half: 0.082 },
-  merlon: { top: 0.44, width: 0.03, depth: 0.018, offset: 0.04 },
+  ledge: { bottom: 0.36, top: 0.372, half: 0.098 },
+  parapet: { bottom: 0.372, top: 0.405, half: 0.092 },
+  merlon: { top: 0.428, width: 0.032, depth: 0.018, offset: 0.045 },
   pole: { radius: 0.006, topRadius: 0.0045, top: 0.49 },
 } as const;
 
@@ -148,7 +148,7 @@ export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
  * 4 × 18 panels + 8 corner facets, two gables of 3, four eave streaks of
  * 2, the roof (`agedRoofTriangles`: 244 house and warehouse, 312 tavern),
  * a door 50, and its windows (62 each), hatch (22) or sign (10). The tower
- * is its footing 10, body 16, the blocks (about 330, varying with the
+ * is its footing 10, body 16, the blocks (about 370, varying with the
  * courses the hash lays), slit recesses and streaks 20, ledge 28, parapet
  * 36, eight merlons 80, pole 18 and door 50; its flag (36) is a separate
  * mesh.
@@ -157,11 +157,11 @@ export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
   warehouse: 448,
   tavern: 600,
   house: 448,
-  watchtower: 520,
+  watchtower: 560,
 };
 
 const FOOTING_SHADE = 0.8;
-const MORTAR_SHADE = 0.55;
+const MORTAR_SHADE = 0.68;
 const WALKWAY_SHADE = 0.72;
 const WALL_JITTER = 0.04;
 const DOOR = { halfWidth: 0.022, height: 0.062, proud: 0.008 };
@@ -384,7 +384,8 @@ function addAgedTower(b: FacetBuilder, colors: AgedColors) {
   b.bakeAmbientOcclusion({
     groundHeight: AO.groundHeight * 1.4,
     groundStrength: AO.groundStrength,
-    concavityStrength: AO.concavity,
+    // A tall body's walls all point a little away from its mid-height centroid; the concavity term would grime it all over.
+    concavityStrength: 0,
     centroid: [0, t.bodyTop / 2, 0],
     overhangs: [{ y: t.ledge.bottom, reach: AO.eaveReach, strength: AO.eaveStrength }],
   });

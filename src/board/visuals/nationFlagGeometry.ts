@@ -17,8 +17,8 @@ import type { PortNation } from "../../game/types";
 import { createFacetBuilder, type FacetGeometryData, type Vec3 } from "./facetBuilder";
 import type { Rgb } from "./palmGeometry";
 
-export const FLAG_WIDTH = 0.07;
-export const FLAG_HEIGHT = 0.042;
+export const FLAG_WIDTH = 0.1;
+export const FLAG_HEIGHT = 0.055;
 /** Ripple amplitude across the fly, world units. */
 export const FLAG_RIPPLE = 0.004;
 /** Nine cells, two triangles each, both sides. */

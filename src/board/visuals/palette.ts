@@ -78,7 +78,7 @@ export const PALETTE_HEX = {
   limewash: 0xe4dac6, // Old lime render
   oldTerracotta: 0x96503a, // Weathered clay tiles
   oldTimber: 0x4b3f35, // Salt-greyed timber: doors, shutters, beams
-  roughStone: 0x776b5e, // Rough-cut blocks, warm grey-brown
+  roughStone: 0xa89b8b, // Rough-cut blocks, warm grey-brown
   ironwork: 0x1b1816, // Hinges, straps and the flagpole's finial
 } as const;
 

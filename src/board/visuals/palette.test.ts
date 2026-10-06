@@ -28,7 +28,7 @@ describe("palette", () => {
       limewash: 0xe4dac6,
       oldTerracotta: 0x96503a,
       oldTimber: 0x4b3f35,
-      roughStone: 0x776b5e,
+      roughStone: 0xa89b8b,
       ironwork: 0x1b1816,
     });
   });
@@ -42,7 +42,7 @@ describe("palette", () => {
     expect(luminance(paletteColor("oldTerracotta"))).toBeLessThan(luminance(paletteColor("terracotta")));
     expect(saturation(paletteColor("oldTimber"))).toBeLessThan(saturation(paletteColor("timber")));
     const stone = paletteColor("roughStone");
-    expect(luminance(stone)).toBeLessThan(luminance(sand) * 0.4);
+    expect(luminance(stone)).toBeLessThan(luminance(sand) * 0.55);
     expect(saturation(stone)).toBeLessThan(saturation(sand));
     expect(luminance(paletteColor("ironwork"))).toBeLessThan(0.01);
   });
