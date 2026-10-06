@@ -317,7 +317,14 @@ grey 0x5a5c5a on grass and a slate 0x565c64 on `ROCK` (a darker slate read
 as a hole beside the summit's shaded faces). Known follow-up: `placeOnGround`
 puts a rock's origin at the lowest ground under its footprint, and with the
 bigger footprints most large outcrops on steep summits (and about half the
-grass rocks) now end up fully below the surface.
+grass rocks) now end up fully below the surface. The same fit fails the
+other way on coasts: the probed footprint is the unit radius times the size
+class and decoration scale (at most about 0.77 units), but the drawn rock is
+that times the per-axis stretch (up to 1.3) times the variant's own
+ellipsoid radii, so a large slab reaches ~1.3-1.5 units from its origin and
+can overhang a lower neighbour or the water on a coastal `ROCK` cell. Both
+halves are one placement problem (the probed footprint is not the drawn
+extent) and are tracked as a follow-up.
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,

@@ -49,7 +49,9 @@ export function smallStones(cells: readonly MapCell[], field: GroundField, seed:
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     const anchor = { x: hexX, z: hexZ };
-    const next = stream(seedOf([cell.hex.q, cell.hex.r, seed], STONE_SALT));
+    // The seed goes in through the salt: seedOf quantises its values by 4096 (a
+    // 12-bit shift into int32), which would drop a 32-bit seed's top 12 bits.
+    const next = stream(seedOf([cell.hex.q, cell.hex.r], STONE_SALT ^ seed));
 
     for (let i = 0; i < count; i++) {
       const angle = next() * TAU;

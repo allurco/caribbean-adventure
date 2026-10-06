@@ -40,6 +40,16 @@ describe("smallStones", () => {
     expect(other.map((s) => s.worldX)).not.toEqual(stones.map((s) => s.worldX));
   });
 
+  it("hashes the whole 32-bit seed: a seed differing only in a high bit gives a different layout", () => {
+    // seedOf quantises its values by 4096 (a 12-bit shift into int32), which would
+    // drop the seed's top 12 bits if the seed were passed as a value.
+    for (const bit of [20, 25, 30, 31]) {
+      const other = smallStones(cells, field, seed ^ (1 << bit));
+      expect(other.length).toBeGreaterThan(0);
+      expect(other.map((s) => s.worldX)).not.toEqual(stones.map((s) => s.worldX));
+    }
+  });
+
   it("puts a stone on nearly every sand or grass cell that has no rock and no port", () => {
     const eligible = cells.filter(takesStones);
     expect(eligible.length).toBeGreaterThan(5);
