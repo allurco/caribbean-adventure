@@ -6,13 +6,8 @@ import type { MapCell } from "../../game/types";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { PORT_MARKER_RADIUS } from "../useHexGrid";
-import {
-  BUILDING_FOOTING,
-  BUILDING_HALF_DIAGONAL,
-  BUILDING_HEIGHT,
-  BUILDING_MAX_BURY,
-  BUILDING_MAX_HEIGHT,
-} from "./buildingGeometry";
+import { BUILDING_FOOTING, BUILDING_MAX_BURY, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
+import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
 import {
@@ -31,7 +26,7 @@ import {
 
 /** Inradius of a flat-top hex of size 1: the nearest any edge comes to the centre. */
 const HEX_INRADIUS = Math.sqrt(3) / 2;
-const maxReach = Math.max(...Object.values(BUILDING_HALF_DIAGONAL)) * PORT_BUILDING_SCALE_RANGE[1];
+const maxReach = Math.max(...Object.values(AGED_BUILDING_HALF_DIAGONAL)) * PORT_BUILDING_SCALE_RANGE[1];
 
 const cells = generateMap(getMapPreset("small"), 11);
 const seed = terrainSeedFromCells(cells);
@@ -75,7 +70,7 @@ describe("portBuildings", () => {
     expect(PORT_BUILDING_TINT_SPREAD).toBeLessThanOrEqual(0.1);
     expect(PORT_BUILDING_YAW_JITTER).toBeLessThanOrEqual(0.2);
     // The watchtower never breaks the height cap at its largest scale.
-    expect(BUILDING_HEIGHT.watchtower * WATCHTOWER_SCALE_RANGE[1]).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
+    expect(AGED_BUILDING_HEIGHT.watchtower * WATCHTOWER_SCALE_RANGE[1]).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
   });
 
   it("is deterministic", () => {
@@ -105,14 +100,64 @@ describe("portBuildings", () => {
     expect(buildings.length).toBeGreaterThanOrEqual(ports.length * 2.5);
   });
 
-  it("puts no building on a cell without a port, and no watchtower on a port without a fort", () => {
+  it("puts no building on a cell without a port, but a watchtower on every port, fort decoration or not", () => {
     const noForts = cells.map((c) =>
       c.hasPort ? { ...c, decorations: (c.decorations ?? []).filter((d) => d.type !== "fort") } : c
     );
     const towers = portBuildings(noForts, field, seed).filter((b) => b.kind === "watchtower");
-    expect(towers).toHaveLength(0);
+    expect(towers).toHaveLength(ports.length);
     const noPorts = cells.map((c) => ({ ...c, hasPort: false }));
     expect(portBuildings(noPorts, flat(0.3), seed)).toEqual([]);
+  });
+
+  it("flies the port's nation on the watchtower and on nothing else", () => {
+    for (const b of buildings) {
+      if (b.kind === "watchtower") expect(b.nation).toBe(portOf(b).nation);
+      else expect(b.nation).toBeUndefined();
+    }
+    expect(new Set(buildings.filter((b) => b.kind === "watchtower").map((b) => b.nation)).size).toBeGreaterThan(1);
+  });
+
+  it("stands the tower at an end of the crescent, the slot nearest the water on the fort's side, so it reads against the sea", () => {
+    const onFlat = portBuildings(cells, flat(0.3), seed);
+    const endSlots = [PORT_BUILDING_SLOT_ANGLES[0], PORT_BUILDING_SLOT_ANGLES[PORT_BUILDING_SLOT_ANGLES.length - 1]];
+    for (const b of onFlat) {
+      if (b.kind !== "watchtower") continue;
+      const port = portOf(b);
+      const [px, , pz] = hexToWorld(port.hex);
+      const landward = pierRotation(port) + Math.PI;
+      const direction = Math.atan2(b.worldX - px, b.worldZ - pz);
+      const offLandward = Math.atan2(Math.sin(direction - landward), Math.cos(direction - landward));
+      // On flat ground the tower takes its slot exactly (the first candidate), give or take a candidate step.
+      expect(Math.min(...endSlots.map((a) => Math.abs(offLandward - a)))).toBeLessThan(Math.PI / 15 + 1e-9);
+      const fort = (port.decorations ?? []).find((d) => d.type === "fort");
+      if (fort) {
+        const fortDirection = Math.atan2(fort.position[0], fort.position[2]);
+        const other = endSlots.find((a) => Math.abs(offLandward - a) > 1)!;
+        expect(angleDiff(direction, fortDirection)).toBeLessThanOrEqual(angleDiff(landward + other, fortDirection) + 1e-9);
+      }
+    }
+    // On the real map no tower falls back to the hex centre.
+    for (const b of buildings) {
+      if (b.kind !== "watchtower") continue;
+      const [px, , pz] = hexToWorld(portOf(b).hex);
+      expect(Math.hypot(b.worldX - px, b.worldZ - pz)).toBeGreaterThan(PORT_SQUARE_RADIUS);
+    }
+  });
+
+  it("never drops the tower: on a beach too small for any footprint it stands at the hex centre on the highest ground there", () => {
+    const centres = ports.map((p) => hexToWorld(p.hex));
+    const islet: GroundField = {
+      sampleHeight: (x, z) => (centres.some(([cx, , cz]) => Math.hypot(x - cx, z - cz) < 0.1) ? 0.3 : -1),
+    };
+    const onIslets = portBuildings(cells, islet, seed);
+    expect(onIslets.filter((b) => b.kind === "watchtower")).toHaveLength(ports.length);
+    expect(onIslets.filter((b) => b.kind !== "watchtower")).toHaveLength(0);
+    for (const b of onIslets) {
+      const [px, , pz] = hexToWorld(portOf(b).hex);
+      expect(Math.hypot(b.worldX - px, b.worldZ - pz)).toBeLessThan(1e-9);
+      expect(b.worldY).toBeCloseTo(groundTopY(islet, px, pz, AGED_BUILDING_HALF_DIAGONAL.watchtower * b.scale), 9);
+    }
   });
 
   it("keeps every building inside the hex, off its neighbours and clear of the pier's land end", () => {
@@ -120,7 +165,7 @@ describe("portBuildings", () => {
       const port = portOf(b);
       const [px, , pz] = hexToWorld(port.hex);
       const d = Math.hypot(b.worldX - px, b.worldZ - pz);
-      const reach = BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
+      const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
       expect(d).toBeLessThanOrEqual(PORT_BUILDING_MAX_RADIUS + 1e-9);
       expect(d + reach).toBeLessThan(HEX_INRADIUS);
       // The buildings ring an open square at the centre; no footprint intrudes on it.
@@ -130,7 +175,7 @@ describe("portBuildings", () => {
       expect(Math.hypot(b.worldX - root.x, b.worldZ - root.z) - reach).toBeGreaterThanOrEqual(PIER_ROOT_RESERVE - 1e-9);
       for (const other of buildings) {
         if (other === b) continue;
-        const gap = Math.hypot(other.worldX - b.worldX, other.worldZ - b.worldZ) - reach - BUILDING_HALF_DIAGONAL[other.kind] * other.scale;
+        const gap = Math.hypot(other.worldX - b.worldX, other.worldZ - b.worldZ) - reach - AGED_BUILDING_HALF_DIAGONAL[other.kind] * other.scale;
         expect(gap).toBeGreaterThanOrEqual(PORT_BUILDING_GAP - 1e-9);
       }
     }
@@ -141,7 +186,7 @@ describe("portBuildings", () => {
     const nearest = ports.map((port) => {
       const [px, , pz] = hexToWorld(port.hex);
       return Math.min(
-        ...buildings.filter((b) => portOf(b) === port).map((b) => Math.hypot(b.worldX - px, b.worldZ - pz) - BUILDING_HALF_DIAGONAL[b.kind] * b.scale)
+        ...buildings.filter((b) => portOf(b) === port).map((b) => Math.hypot(b.worldX - px, b.worldZ - pz) - AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale)
       );
     });
     const overFootprint = nearest.filter((d) => d < PORT_MARKER_RADIUS).length;
@@ -159,7 +204,7 @@ describe("portBuildings", () => {
       expect(ground).toBeGreaterThan(MIN_GROUND_HEIGHT);
       // Everywhere under the footprint the ground lies between the bottom of the
       // footing (so no wall floats) and the deepest allowed bury on the high side.
-      const reach = BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
+      const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
       const heights = [ground];
       for (let k = 0; k < 8; k++) {
         const a = (k / 8) * Math.PI * 2;
@@ -178,8 +223,8 @@ describe("portBuildings", () => {
     for (const b of buildings) {
       const [px, , pz] = hexToWorld(portOf(b).hex);
       const labelBase = groundTopY(field, px, pz, PORT_MARKER_RADIUS) + 0.6;
-      expect(b.worldY + BUILDING_HEIGHT[b.kind] * b.scale).toBeLessThan(labelBase);
-      expect(BUILDING_HEIGHT[b.kind] * b.scale).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
+      expect(b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale).toBeLessThan(labelBase);
+      expect(AGED_BUILDING_HEIGHT[b.kind] * b.scale).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
     }
   });
 

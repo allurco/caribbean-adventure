@@ -13,6 +13,7 @@ import {
   shutteredWindow,
   stoneCourses,
   streak,
+  taperedFace,
   tintGrime,
   wornCuts,
   wornPrism,
@@ -31,7 +32,7 @@ const colors: AgedColors = {
 const vertex = (g: FacetGeometryData, i: number): Vec3 => [g.positions[i * 3], g.positions[i * 3 + 1], g.positions[i * 3 + 2]];
 const normal = (g: FacetGeometryData, i: number): Vec3 => [g.normals[i * 3], g.normals[i * 3 + 1], g.normals[i * 3 + 2]];
 const color = (g: FacetGeometryData, i: number): Vec3 => [g.colors[i * 3], g.colors[i * 3 + 1], g.colors[i * 3 + 2]];
-const luminance = (c: Vec3) => (c[0] + c[1] + c[2]) / 3;
+const luminance = (c: readonly [number, number, number]) => (c[0] + c[1] + c[2]) / 3;
 
 function triangleNormal(g: FacetGeometryData, t: number): Vec3 {
   const [a, b, c] = [vertex(g, t * 3), vertex(g, t * 3 + 1), vertex(g, t * 3 + 2)];
@@ -261,7 +262,7 @@ describe("face frames and fixtures", () => {
     expect(g.vertexCount / 3).toBe(50);
     const tones = new Set<number>();
     let iron = 0;
-    let lintelDepths = new Set<number>();
+    const lintelDepths = new Set<number>();
     for (let i = 0; i < g.vertexCount; i++) {
       const c = color(g, i);
       const [, y, z] = vertex(g, i);
@@ -413,5 +414,42 @@ describe("the lean", () => {
   it("is a degree or two", () => {
     expect(Math.atan(AGED_LEAN) * (180 / Math.PI)).toBeGreaterThan(1);
     expect(Math.atan(AGED_LEAN) * (180 / Math.PI)).toBeLessThan(2.5);
+  });
+});
+
+describe("taperedFace and openings", () => {
+  it("runs a tapering face's s at each height's width, with the normal tilted by the taper", () => {
+    const halfAt = (y: number) => 0.09 - 0.014 * (y / 0.36);
+    const front = taperedFace("front", halfAt, 0, 0.36);
+    expect(front.at(0, 0)).toEqual([-0.09, 0, 0.09]);
+    expect(front.at(0, 0.36)[0]).toBeCloseTo(-0.076, 9);
+    expect(front.at(0, 0.36)[2]).toBeCloseTo(0.076, 9);
+    expect(front.normal[2]).toBeGreaterThan(0.99);
+    expect(front.normal[1]).toBeGreaterThan(0);
+    expect(Math.hypot(...front.normal)).toBeCloseTo(1, 9);
+    for (const face of ["back", "left", "right"] as const) {
+      const frame = taperedFace(face, halfAt, 0, 0.36);
+      const p = frame.at(0.05, 0.1);
+      expect(p[0] * frame.normal[0] + p[2] * frame.normal[2]).toBeGreaterThan(0);
+      expect(frame.normal[1]).toBeGreaterThan(0);
+    }
+  });
+
+  it("leaves no block over an opening", () => {
+    const frame = boxFace("front", 0.09, 0.09);
+    const face = { frame, widthAt: () => ({ left: 0.008, right: 0.172 }), y0: 0, y1: 0.36 };
+    const opening = { s0: 0.07, s1: 0.11, y0: 0, y1: 0.07 };
+    const b = createFacetBuilder();
+    const all = stoneCourses(b, face, colors.stone, 3);
+    const b2 = createFacetBuilder();
+    const left = stoneCourses(b2, { ...face, openings: [opening] }, colors.stone, 3);
+    expect(left).toBeLessThan(all);
+    const g = b2.build();
+    for (let i = 0; i < g.vertexCount; i++) {
+      const [x, y] = vertex(g, i);
+      const s = x + 0.09;
+      const inside = s > opening.s0 + 1e-9 && s < opening.s1 - 1e-9 && y > opening.y0 + 1e-9 && y < opening.y1 - 1e-9;
+      expect(inside).toBe(false);
+    }
   });
 });

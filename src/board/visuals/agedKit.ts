@@ -189,6 +189,39 @@ export function boxFace(face: WallFace, hw: number, hd: number): FaceFrame {
   }
 }
 
+/**
+ * The frame of one face of a square body whose half-size varies with
+ * height (a tapering tower): `s` runs along the face from its left end
+ * seen from outside, at that height's width. The normal tilts with the
+ * taper.
+ */
+export function taperedFace(face: WallFace, halfAt: (y: number) => number, y0: number, y1: number): FaceFrame {
+  const at = (s: number, y: number): Vec3 => {
+    const h = halfAt(y);
+    switch (face) {
+      case "front":
+        return [-h + s, y, h];
+      case "back":
+        return [h - s, y, -h];
+      case "right":
+        return [h, y, h - s];
+      case "left":
+        return [-h, y, -h + s];
+    }
+  };
+  const a = at(0, y0);
+  const along = sub3(at(0.01, y0), a);
+  const up = sub3(at(0, y1), a);
+  return { at, normal: normalize3(cross3(along, up)) };
+}
+
+const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const cross3 = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const normalize3 = (v: Vec3): Vec3 => {
+  const len = Math.hypot(v[0], v[1], v[2]);
+  return [v[0] / len, v[1] / len, v[2] / len];
+};
+
 /** A quad on a face, `proud` of the wall plane, facing out: `s0 < s1` along the face, `y0 < y1` up. */
 export function faceQuad(b: FacetBuilder, frame: FaceFrame, s0: number, s1: number, y0: number, y1: number, proud: number, color: Rgb) {
   const off = scale(frame.normal, proud);
@@ -338,12 +371,21 @@ function alignToFace(b: FacetBuilder, from: number, to: number, frame: FaceFrame
   b.translate(from, to, pivot);
 }
 
+export interface FaceOpening {
+  s0: number;
+  s1: number;
+  y0: number;
+  y1: number;
+}
+
 export interface StoneFace {
   frame: FaceFrame;
   /** Width of the face along `s` at a height, and the cut at each end there. */
   widthAt: (y: number) => { left: number; right: number };
   y0: number;
   y1: number;
+  /** A block overlapping an opening (a door, a slit) is left out, so the mortar body shows there as the recess. */
+  openings?: readonly FaceOpening[];
 }
 
 export interface StoneOptions {
@@ -394,9 +436,14 @@ export function stoneCourses(b: FacetBuilder, face: StoneFace, stone: Rgb, seed:
       const yt = top - options.mortar / 2 + wobble * ((s1 - left) / width - 0.5);
       let color = shadeRgb(stone, 0.86 + next() * 0.24);
       if (next() < options.ochreFraction) color = [Math.min(1, color[0] * OCHRE[0]), color[1] * OCHRE[1], color[2] * OCHRE[2]];
-      if (next() < options.proudFraction) proudBlock(b, face.frame, s0, s1, yb, yt, 0.004 + next() * 0.003, color, next);
-      else faceQuad(b, face.frame, s0, s1, yb, yt, 0.0015, color);
-      blocks++;
+      const proud = next() < options.proudFraction ? 0.004 + next() * 0.003 : 0;
+      const chipped = next();
+      const open = face.openings?.some((o) => s1 > o.s0 && s0 < o.s1 && yt > o.y0 && yb < o.y1) ?? false;
+      if (!open) {
+        if (proud > 0) proudBlock(b, face.frame, s0, s1, yb, yt, proud, color, chipped);
+        else faceQuad(b, face.frame, s0, s1, yb, yt, 0.0015, color);
+        blocks++;
+      }
       s += w;
     }
     y = top;
@@ -409,7 +456,7 @@ export function stoneCourses(b: FacetBuilder, face: StoneFace, stone: Rgb, seed:
  * A block standing proud with bevelled edges: its face is inset from its
  * footprint on the wall, one corner chipped further than the others.
  */
-function proudBlock(b: FacetBuilder, frame: FaceFrame, s0: number, s1: number, y0: number, y1: number, proud: number, color: Rgb, next: () => number) {
+function proudBlock(b: FacetBuilder, frame: FaceFrame, s0: number, s1: number, y0: number, y1: number, proud: number, color: Rgb, chippedAt: number) {
   const off = scale(frame.normal, proud);
   const chip = 0.003;
   const back: Vec3[] = [frame.at(s0, y0), frame.at(s1, y0), frame.at(s1, y1), frame.at(s0, y1)];
@@ -419,7 +466,7 @@ function proudBlock(b: FacetBuilder, frame: FaceFrame, s0: number, s1: number, y
     [s1 - chip, y1 - chip],
     [s0 + chip, y1 - chip],
   ];
-  const chipped = Math.floor(next() * 4);
+  const chipped = Math.min(3, Math.floor(chippedAt * 4));
   const extra = chip * 1.5;
   insets[chipped][0] += chipped === 0 || chipped === 3 ? extra : -extra;
   insets[chipped][1] += chipped < 2 ? extra : -extra;

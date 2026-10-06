@@ -5,13 +5,18 @@
  *
  * The generator gives a port cell a `pier` (rotated towards the docking hex)
  * and a `fort` (which the layout used to drop). From those and the port flag
- * this derives a small settlement: a watchtower on the fort's side and up to
- * three other buildings, behind the pier on the landward half of the hex,
- * facing the water. The `PortMarker` at the hex centre is an invisible hover
- * volume (#59), so the buildings may use the whole hex: they form a crescent
- * round a small open square at the centre, each as near the square as the
- * ground and its neighbours allow, keeping clear too of a small reserve at
- * the pier's land end (`pierOrigin`), where the quay will land.
+ * this derives a small settlement: the watchtower, the port's landmark
+ * (#59), and up to three other buildings, behind the pier on the landward
+ * half of the hex, facing the water. The `PortMarker` at the hex centre is
+ * an invisible hover volume (#59), so the buildings may use the whole hex:
+ * they form a crescent round a small open square at the centre, each as
+ * near the square as the ground and its neighbours allow, keeping clear too
+ * of a small reserve at the pier's land end (`pierOrigin`), where the quay
+ * will land. The tower takes the end of the crescent on the fort's side,
+ * the slot nearest the water, so it reads against the sea; it flies the
+ * port's nation and every port gets one, with or without a fort: if no spot
+ * on the landward arc takes it, any direction will do, and failing that it
+ * stands at the hex centre.
  *
  * A port hex is a small beach with water on one to three sides and a shore
  * ramp running down to each, so each building looks round the landward arc
@@ -26,18 +31,12 @@
  * the same instances.
  */
 import { hexToWorld } from "../../game/hex";
-import type { MapCell } from "../../game/types";
+import type { MapCell, PortNation } from "../../game/types";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
-import {
-  BUILDING_FOOTING,
-  BUILDING_HALF_DIAGONAL,
-  BUILDING_HEIGHT,
-  BUILDING_MAX_BURY,
-  BUILDING_MAX_HEIGHT,
-  type BuildingKind,
-} from "./buildingGeometry";
-import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
+import { BUILDING_FOOTING, BUILDING_MAX_BURY, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
+import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
+import { groundTopY, placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
 import { lerpRange, seedOf, stream } from "./variationStream";
 
 export interface PortBuilding {
@@ -51,6 +50,8 @@ export interface PortBuilding {
   scale: number;
   /** Multiplier on the vertex colours, within 1 ± PORT_BUILDING_TINT_SPREAD. */
   tint: number;
+  /** The watchtower flies this nation's flag (the port cell's nation); unset on the other kinds. */
+  nation?: PortNation;
 }
 
 /** Preferred slots on the landward arc, as turns from straight away from the water (radians). */
@@ -64,8 +65,8 @@ export const PIER_ROOT_RESERVE = PIER_WIDTH;
 /** Rings tried from the centre outwards, this far apart; `placeOnGround` nudges within a ring's step. */
 const RADIAL_STEP = 0.06;
 export const PORT_BUILDING_SCALE_RANGE: readonly [number, number] = [0.92, 1.08];
-/** The tower's range keeps BUILDING_HEIGHT.watchtower × scale under BUILDING_MAX_HEIGHT. */
-export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING_MAX_HEIGHT / BUILDING_HEIGHT.watchtower];
+/** The tower's range keeps AGED_BUILDING_HEIGHT.watchtower × scale (the flag's hoist) under BUILDING_MAX_HEIGHT. */
+export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING_MAX_HEIGHT / AGED_BUILDING_HEIGHT.watchtower];
 export const PORT_BUILDING_TINT_SPREAD = 0.08;
 /** Buildings face the water give or take this (radians, about 8°). */
 export const PORT_BUILDING_YAW_JITTER = 0.14;
@@ -136,6 +137,14 @@ function settlementGround(field: GroundField): GroundField {
   return field;
 }
 
+/** Candidate directions: the landward arc at CANDIDATE_STEP, or the whole circle, nearest `preferred` first. */
+function candidateAngles(landward: number, preferred: number, wholeCircle: boolean): number[] {
+  const candidates: number[] = [];
+  const half = wholeCircle ? Math.round(Math.PI / CANDIDATE_STEP) : CANDIDATE_HALF_COUNT;
+  for (let k = -half; k < (wholeCircle ? half : half + 1); k++) candidates.push(landward + k * CANDIDATE_STEP);
+  return candidates.sort((a, b) => angleDiff(a, preferred) - angleDiff(b, preferred) || a - b);
+}
+
 /**
  * Ground for a building of plan radius `reach`, as near as the land allows
  * to the ray at `preferred` from the hex centre and as near the square as
@@ -144,16 +153,11 @@ function settlementGround(field: GroundField): GroundField {
 function standOnBeach(
   field: GroundField,
   centre: { x: number; z: number },
-  landward: number,
-  preferred: number,
+  candidates: readonly number[],
   reach: number,
   pierRoot: { x: number; z: number },
   placed: readonly Footprint[]
 ): { x: number; y: number; z: number } | null {
-  const candidates: number[] = [];
-  for (let k = -CANDIDATE_HALF_COUNT; k <= CANDIDATE_HALF_COUNT; k++) candidates.push(landward + k * CANDIDATE_STEP);
-  candidates.sort((a, b) => angleDiff(a, preferred) - angleDiff(b, preferred) || a - b);
-
   for (const angle of candidates) {
     const dir = { x: Math.sin(angle), z: Math.cos(angle) };
     // Rings from the square outwards, the first with the near corner on the square's edge;
@@ -194,19 +198,18 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
     // 12-bit shift into int32), which would drop a 32-bit seed's top 12 bits.
     const next = stream(seedOf([cell.hex.q, cell.hex.r], PORT_BUILDING_SALT ^ seed));
 
-    // The watchtower takes the slot nearest the fort decoration's side of the
-    // hex and is placed first, so it gets the pick of the ground.
+    // The watchtower takes the end of the crescent on the fort decoration's
+    // side (either end if there is no fort) and is placed first, so it gets
+    // the pick of the ground.
     const slots = PORT_BUILDING_SLOT_ANGLES.map((a) => landward + a);
-    const order: { kind: BuildingKind; slot: number }[] = [];
-    if (fort) {
-      const fortDirection = Math.atan2(fort.position[0], fort.position[2]);
-      const towerSlot = slots.reduce(
-        (best, angle, i) => (angleDiff(angle, fortDirection) < angleDiff(slots[best], fortDirection) ? i : best),
-        0
-      );
-      order.push({ kind: "watchtower", slot: slots[towerSlot] });
-      slots.splice(towerSlot, 1);
-    }
+    const ends = [0, slots.length - 1];
+    const fortDirection = fort ? Math.atan2(fort.position[0], fort.position[2]) : null;
+    const towerSlot =
+      fortDirection === null
+        ? ends[next() < 0.5 ? 0 : 1]
+        : ends.reduce((best, i) => (angleDiff(slots[i], fortDirection) < angleDiff(slots[best], fortDirection) ? i : best), ends[0]);
+    const order: { kind: BuildingKind; slot: number }[] = [{ kind: "watchtower", slot: slots[towerSlot] }];
+    slots.splice(towerSlot, 1);
     for (const kind of shuffledKinds(next)) {
       const slot = slots.shift();
       if (slot === undefined) break;
@@ -218,11 +221,19 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
       const scale = lerpRange(kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE, next());
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
-      const reach = BUILDING_HALF_DIAGONAL[kind] * scale;
-      const spot = standOnBeach(ground, centre, landward, slot, reach, pierRoot, placed);
+      const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
+      let spot = standOnBeach(ground, centre, candidateAngles(landward, slot, false), reach, pierRoot, placed);
+      if (!spot && kind === "watchtower") {
+        // The landmark is never dropped: any direction, then the hex centre on its highest ground.
+        spot =
+          standOnBeach(ground, centre, candidateAngles(landward, slot, true), reach, pierRoot, placed) ??
+          { x: centre.x, y: groundTopY(ground, centre.x, centre.z, reach), z: centre.z };
+      }
       if (!spot) continue;
       placed.push({ x: spot.x, z: spot.z, reach });
-      buildings.push({ kind, worldX: spot.x, worldY: spot.y, worldZ: spot.z, yaw, scale, tint });
+      const building: PortBuilding = { kind, worldX: spot.x, worldY: spot.y, worldZ: spot.z, yaw, scale, tint };
+      if (kind === "watchtower" && cell.nation) building.nation = cell.nation;
+      buildings.push(building);
     }
   }
   return buildings;
