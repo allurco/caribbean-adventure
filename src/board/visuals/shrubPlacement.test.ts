@@ -17,6 +17,7 @@ import {
   SHRUB_CLEARANCE,
   SHRUB_GROUND_FOOTPRINT,
   SHRUB_KIND_BY_BIOME,
+  SHRUB_MAX_BURY,
   SHRUB_PORT_CLEARANCE,
   SHRUB_SCALE_RANGE,
   SHRUB_SPREAD,
@@ -130,16 +131,16 @@ describe("placeShrubs", () => {
   });
 
   it("stands every shrub on the ground: never floating, buried no deeper than its base probe allows", () => {
-    // The probe is the stem/mound base, so a slope buries a shrub by about
-    // maxSlope × probe radius plus the sink (~0.07); ridged relief can dip a
-    // little further under one rim point. Either way the foliage stays clear.
+    // The probe is the stem/mound base, not the foliage, and placement rejects
+    // any spot that would bury it below SHRUB_MAX_BURY at the shrub's centre
+    // (ridged relief can dip further under one rim probe than the slope check
+    // sees), so the bound is enforced, not hoped for.
     expect(SHRUB_GROUND_FOOTPRINT).toBeLessThanOrEqual(0.05);
-    const maxBury = 0.1;
     for (const shrub of shrubs) {
       const ground = field.sampleHeight(shrub.worldX, shrub.worldZ);
       expect(ground).toBeGreaterThan(MIN_GROUND_HEIGHT);
       expect(shrub.worldY).toBeLessThanOrEqual(ground);
-      expect(shrub.worldY).toBeGreaterThan(ground - maxBury);
+      expect(shrub.worldY).toBeGreaterThanOrEqual(ground - SHRUB_MAX_BURY - 1e-9);
     }
   });
 

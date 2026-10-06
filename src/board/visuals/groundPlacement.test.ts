@@ -5,6 +5,7 @@ import { getMapPreset } from "../../game/mapConfig";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
 import {
   placeOnGround,
+  standOnGround,
   groundTopY,
   MIN_GROUND_HEIGHT,
   type GroundField,
@@ -18,6 +19,13 @@ const tilted = (height: number, slopeX: number): GroundField => ({
 /** A cone-shaped peak: `height` at the origin, falling `fall` per unit of distance. */
 const peak = (height: number, fall: number): GroundField => ({
   sampleHeight: (x, z) => height - fall * Math.hypot(x, z),
+});
+/**
+ * Flat ground at `height` with one round pit `depth` deep and 0.03 across,
+ * centred at (px, pz): small enough to sit under a single rim probe.
+ */
+const pitted = (height: number, px: number, pz: number, depth: number): GroundField => ({
+  sampleHeight: (x, z) => (Math.hypot(x - px, z - pz) < 0.03 ? height - depth : height),
 });
 
 const OPTIONS: GroundPlacementOptions = { footprintRadius: 0.1, sink: 0.02, maxSlope: 1 };
@@ -101,6 +109,46 @@ describe("placeOnGround", () => {
     const spot = placeOnGround(field, { x: 0.45, z: 0 }, { x: 0, z: 0 }, OPTIONS);
     expect(spot).not.toBeNull();
     expect(spot!.x).toBeLessThan(0.3);
+  });
+
+  describe("maxBury", () => {
+    // Flat ground at 0.5 with a pit under the 45° rim probe of a footprint at
+    // (0.5, 0): the ±x/±z probes see level ground, so the slope check passes,
+    // but the lowest rule would sink the base by the pit's depth plus the sink.
+    const diagonal = Math.SQRT1_2 * OPTIONS.footprintRadius;
+    const spot = { x: 0.5, z: 0 };
+    const anchor = { x: 0, z: 0 };
+    const bounded = { ...OPTIONS, maxBury: 0.05 };
+
+    it("rejects a spot whose rim dips deeper under the centre than allowed, and nudges it to level ground", () => {
+      const field = pitted(0.5, spot.x + diagonal, spot.z + diagonal, 0.08);
+      expect(standOnGround(field, spot.x, spot.z, bounded)).toBeNull();
+      const placed = placeOnGround(field, spot, anchor, bounded);
+      expect(placed).not.toBeNull();
+      expect(placed!.x).toBeLessThan(spot.x);
+      expect(placed!.y).toBeCloseTo(0.5 - 0.02);
+    });
+
+    it("without a bound still rests on the lowest probe minus the sink", () => {
+      const field = pitted(0.5, spot.x + diagonal, spot.z + diagonal, 0.08);
+      const stood = standOnGround(field, spot.x, spot.z, OPTIONS);
+      expect(stood).not.toBeNull();
+      expect(stood!.y).toBeCloseTo(0.5 - 0.08 - 0.02);
+      expect(placeOnGround(field, spot, anchor, OPTIONS)).toEqual(stood);
+    });
+
+    it("accepts a dip that keeps the base within the bound", () => {
+      const field = pitted(0.5, spot.x + diagonal, spot.z + diagonal, 0.02);
+      const stood = standOnGround(field, spot.x, spot.z, bounded);
+      expect(stood).not.toBeNull();
+      expect(stood!.y).toBeCloseTo(0.5 - 0.02 - 0.02);
+      expect(placeOnGround(field, spot, anchor, bounded)).toEqual(stood);
+    });
+
+    it("counts the sink towards the bound: flat ground buries the base by the sink alone", () => {
+      expect(standOnGround(flat(0.5), spot.x, spot.z, { ...OPTIONS, maxBury: 0.03 })).not.toBeNull();
+      expect(standOnGround(flat(0.5), spot.x, spot.z, { ...OPTIONS, maxBury: 0.01 })).toBeNull();
+    });
   });
 });
 
