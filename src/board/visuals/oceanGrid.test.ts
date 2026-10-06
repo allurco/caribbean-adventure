@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   OCEAN_GRID_BASE_CELL,
   OCEAN_GRID_RINGS,
+  OCEAN_GRID_CELL_GLSL,
   buildOceanGrid,
   buildOceanRing,
+  oceanGridCellAt,
+  oceanGridCellGlsl,
   oceanGridCoverage,
   oceanGridReach,
   oceanGridSnapCell,
@@ -174,6 +177,58 @@ describe("OCEAN_GRID_RINGS", () => {
     const reach = groundViewReach(4.3, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
     const fine = OCEAN_GRID_RINGS[0].halfSize * OCEAN_GRID_BASE_CELL - oceanGridSnapCell(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL) / 2;
     expect(fine).toBeGreaterThan(reach);
+  });
+});
+
+describe("oceanGridCellAt", () => {
+  const base = 0.1;
+  const rings: OceanGridRing[] = [
+    { halfSize: 8, cell: 1 },
+    { halfSize: 16, cell: 2 },
+    { halfSize: 32, cell: 4 },
+  ];
+
+  it("gives a point the cell of the ring it falls in, by its furthest axis from the origin", () => {
+    expect(oceanGridCellAt(rings, base, 0, 0)).toBeCloseTo(0.1, 12);
+    expect(oceanGridCellAt(rings, base, 0.5, -0.3)).toBeCloseTo(0.1, 12);
+    expect(oceanGridCellAt(rings, base, 1.2, 0)).toBeCloseTo(0.2, 12);
+    expect(oceanGridCellAt(rings, base, 0.1, -1.2)).toBeCloseTo(0.2, 12);
+    expect(oceanGridCellAt(rings, base, 2.0, 2.0)).toBeCloseTo(0.4, 12);
+    // Square rings: a point on the diagonal is in the ring its larger coordinate reaches.
+    expect(oceanGridCellAt(rings, base, 0.7, 0.7)).toBeCloseTo(0.1, 12);
+  });
+
+  it("gives a ring's boundary the finer ring's cell, as the shared vertices carry it", () => {
+    expect(oceanGridCellAt(rings, base, 0.8, 0.2)).toBeCloseTo(0.1, 12);
+    expect(oceanGridCellAt(rings, base, -0.2, 1.6)).toBeCloseTo(0.2, 12);
+  });
+
+  it("gives the coarsest cell past the outermost ring", () => {
+    expect(oceanGridCellAt(rings, base, 3.2, 0)).toBeCloseTo(0.4, 12);
+    expect(oceanGridCellAt(rings, base, 50, -50)).toBeCloseTo(0.4, 12);
+  });
+
+  it("agrees with every vertex's cell in the built rings", () => {
+    const meshes = buildOceanGrid(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL);
+    for (const mesh of meshes) {
+      for (let v = 0; v < mesh.vertexCount; v++) {
+        const [x, z] = vertex(mesh, v);
+        expect(oceanGridCellAt(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL, x, z), `vertex at ${x}, ${z}`).toBeCloseTo(mesh.cells[v], 6);
+      }
+    }
+  });
+
+  it("is mirrored in GLSL, one threshold per ring from the same constants", () => {
+    const glsl = oceanGridCellGlsl(rings, base);
+    expect(glsl).toContain("float oceanGridCellAt(vec2 offsetXZ)");
+    expect(glsl).toContain("max(abs(offsetXZ.x), abs(offsetXZ.y))");
+    const thresholds = [...glsl.matchAll(/if \(reach <= ([\d.]+)\) return ([\d.]+);/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    expect(thresholds).toEqual([
+      [0.8, 0.1],
+      [1.6, 0.2],
+    ]);
+    expect(glsl).toMatch(/return 0\.4(0*);\s*}\s*$/);
+    expect(OCEAN_GRID_CELL_GLSL).toBe(oceanGridCellGlsl(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL));
   });
 });
 

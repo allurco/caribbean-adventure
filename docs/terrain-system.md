@@ -593,8 +593,15 @@ displace.
   meet the land's wash there.
 - *Grid lines.* The water hex grid sits 0.01 units (0.65 m) above sea level,
   lower than most swell crests, so its lines ride the same displacement
-  (`hexOutlineMaterial.ts`, at the level of detail of one 8 m line segment;
-  edges went from 4 to 8 segments). Reduced motion freezes the wave clock,
+  (`hexOutlineMaterial.ts`; edges went from 4 to 8 segments, so a line
+  follows the swell between its vertices). Each line vertex reads it at the
+  level of detail of the sea ring under it (`oceanGridCellAt`, from the
+  rings' snapped origin), not of its own 8 m segment: a coarse ring averages
+  away the swell its cell cannot carry (the 0.8-unit ring keeps about a
+  quarter of a 48 m wave's height, an 8 m segment nine tenths), so a line
+  read at its own segment rode a swell the water there
+  did not draw, dipped under the opaque surface in the troughs and floated
+  above it on the crests at map zoom. Reduced motion freezes the wave clock,
   which freezes the cascade textures, and with them the displacement.
 - *Shadows.* The sea neither casts nor receives, and the crest bound is
   under a tenth of the shadow box's caster and receiver margins

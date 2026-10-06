@@ -3,6 +3,8 @@ import { useEffect, useMemo } from "react";
 import { BufferAttribute, BufferGeometry, Plane, Ray, Vector3 } from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { MapCell } from "../game/types";
+import { controlsTarget } from "./controlsTarget";
+import { OCEAN_GRID_BASE_CELL, OCEAN_GRID_RINGS, oceanGridSnapCell, snapToCell } from "./visuals/oceanGrid";
 import { perMapCache } from "./visuals/perMapCache";
 import { sharedTerrainField } from "./visuals/sharedTerrainField";
 import {
@@ -23,23 +25,16 @@ import { createHexOutlineMaterial, setHexOutlineFade, type WaveSurface } from ".
 const OUTLINE_Y = 0.01;
 // Segments per hex edge, so the shore fade follows the coast along each edge
 // and the lines follow the swell they float on (#38 step 8: a 1-unit edge
-// in 8 segments of ~8 m rides a 48 m wave within a few centimetres).
+// in 8 segments of ~8 m rides a 48 m wave within a few centimetres). Each
+// vertex reads the displacement at the sea mesh's own level of detail
+// there, not the segment's, so the lines ride the surface the water draws.
 const EDGE_SUBDIVISIONS = 8;
-/** A hex edge is one unit (hex.ts: circumradius 1), so a segment is this long. */
-const SEGMENT_UNITS = 1 / EDGE_SUBDIVISIONS;
+/** The sea mesh snaps its origin to this cell (Ocean.tsx); the lines read the rings from the same origin. */
+const GRID_SNAP_CELL = oceanGridSnapCell(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL);
 
 const groundPlane = new Plane(new Vector3(0, 1, 0), 0);
 const ray = new Ray();
 const hit = new Vector3();
-
-function hasTarget(controls: unknown): controls is { target: Vector3 } {
-  return (
-    typeof controls === "object" &&
-    controls !== null &&
-    "target" in controls &&
-    controls.target instanceof Vector3
-  );
-}
 
 /** The water cells and their grid lines, CPU-side. */
 export interface GridLineData {
@@ -71,7 +66,7 @@ export interface WaterGridLinesOptions {
   /** Hex index (into `data.waterCells`) -> minimum opacity, for hexes the player is acting on. */
   emphasis: ReadonlyMap<number, number>;
   /** The displaced sea the lines float on (#38 step 8); a new object rebuilds the material. */
-  surface: Omit<WaveSurface, "segmentUnits">;
+  surface: WaveSurface;
 }
 
 /** The grid lines' geometry and material, shared by every world copy. */
@@ -91,7 +86,7 @@ export interface WaterGridLines {
 export function useWaterGridLines({ data, emphasis, surface }: WaterGridLinesOptions): WaterGridLines {
   const controls = useThree((s) => s.controls);
   const material = useMemo(
-    () => createHexOutlineMaterial(GRID_LINE_COLOR, GRID_EMPHASIS_COLOR, GRID_FADE, { ...surface, segmentUnits: SEGMENT_UNITS }),
+    () => createHexOutlineMaterial(GRID_LINE_COLOR, GRID_EMPHASIS_COLOR, GRID_FADE, surface),
     [surface]
   );
 
@@ -122,10 +117,14 @@ export function useWaterGridLines({ data, emphasis, surface }: WaterGridLinesOpt
 
   useFrame(({ camera }) => {
     const focus = material.uniforms.uFocus.value;
+    const target = controlsTarget(controls);
     let distance: number;
-    if (hasTarget(controls)) {
-      focus.set(controls.target.x, controls.target.z);
-      distance = camera.position.distanceTo(controls.target);
+    if (target) {
+      focus.set(target.x, target.z);
+      distance = camera.position.distanceTo(target);
+      // The sea mesh's rings are centred on the focus snapped to the coarsest
+      // cell (Ocean.tsx); the lines pick their ring from the same origin.
+      material.uniforms.uGridOrigin.value.set(snapToCell(target.x, GRID_SNAP_CELL), snapToCell(target.z, GRID_SNAP_CELL));
     } else {
       // Fallback: where the view direction meets the sea plane.
       camera.getWorldDirection(ray.direction);

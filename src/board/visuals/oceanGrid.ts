@@ -87,6 +87,42 @@ export function snapToCell(value: number, cell: number): number {
 }
 
 /**
+ * The cell, world units, of the ring under the point `(dx, dz)` from the
+ * grid's origin: the rings are squares, so the first whose half-side reaches
+ * the point's furthest axis. A ring's boundary gets the finer ring's cell, as
+ * the vertices the two rings share carry it (`buildOceanRing`); past the
+ * outermost ring, its cell. Anything drawn on the sea at its own level of
+ * detail (the grid lines, hexOutlineMaterial.ts) reads the displacement at
+ * this cell, so it rides the same surface the mesh draws there.
+ */
+export function oceanGridCellAt(rings: readonly OceanGridRing[], baseCell: number, dx: number, dz: number): number {
+  const reach = Math.max(Math.abs(dx), Math.abs(dz));
+  const ring = rings.find((r) => reach <= r.halfSize * baseCell) ?? rings[rings.length - 1];
+  return ring.cell * baseCell;
+}
+
+/** `oceanGridCellAt` in GLSL: `float oceanGridCellAt(vec2 offsetXZ)`, the thresholds unrolled from `rings`. */
+export function oceanGridCellGlsl(rings: readonly OceanGridRing[], baseCell: number): string {
+  const glslFloat = (x: number) => x.toFixed(6);
+  const inner = rings.slice(0, -1);
+  const outermost = rings[rings.length - 1];
+  const thresholds = inner
+    .map((r) => `
+    if (reach <= ${glslFloat(r.halfSize * baseCell)}) return ${glslFloat(r.cell * baseCell)};`)
+    .join("");
+  return `
+  // The sea mesh's cell at offsetXZ from the grid origin, world units (oceanGrid.ts).
+  float oceanGridCellAt(vec2 offsetXZ) {
+    float reach = max(abs(offsetXZ.x), abs(offsetXZ.y));${thresholds}
+    return ${glslFloat(outermost.cell * baseCell)};
+  }
+`;
+}
+
+/** `oceanGridCellAt` for the sea's rings, for a vertex stage that floats on the displaced sea. */
+export const OCEAN_GRID_CELL_GLSL = oceanGridCellGlsl(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL);
+
+/**
  * The geometry of `ring`, with a hole for `inner` (the ring inside it;
  * undefined for the innermost) stitched to that ring's vertices.
  */
