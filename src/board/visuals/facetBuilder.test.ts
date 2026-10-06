@@ -419,6 +419,32 @@ describe("jitterColors", () => {
   });
 });
 
+describe("tintColors", () => {
+  it("multiplies each vertex colour by a per-channel factor of its position, within a range, clamped", () => {
+    const b = createFacetBuilder();
+    b.box([0, 0, 0], [1, 1, 1], [0.5, 0.5, 0.5]);
+    const from = b.vertexCount();
+    b.box([0, 0, 0], [1, 2, 1], [0.5, 0.5, 0.5]);
+    // Dark and green at the ground, untouched at y = 1 and above.
+    b.tintColors(from, b.vertexCount(), ([, y]) => {
+      const t = Math.max(0, 1 - y);
+      return [1 - 0.5 * t, 1 - 0.2 * t, 1 - 0.5 * t];
+    });
+    const g = b.build();
+    for (let i = 0; i < from; i++) expect(color(g, i)).toEqual([0.5, 0.5, 0.5]);
+    for (let i = from; i < g.vertexCount; i++) {
+      const y = g.positions[i * 3 + 1];
+      const c = color(g, i);
+      if (y === 0) {
+        expect(c[0]).toBeCloseTo(0.25, 6);
+        expect(c[1]).toBeCloseTo(0.4, 6);
+      } else expect(c).toEqual([0.5, 0.5, 0.5]);
+    }
+    b.tintColors(0, from, () => [3, 3, 3]);
+    for (let i = 0; i < from; i++) for (const v of color(b.build(), i)) expect(v).toBe(1);
+  });
+});
+
 describe("rotate and translate", () => {
   it("turns a vertex range about an axis, normals included, and moves it", () => {
     const b = createFacetBuilder();
