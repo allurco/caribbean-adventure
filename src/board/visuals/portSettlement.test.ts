@@ -8,7 +8,7 @@ import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlaceme
 import { landSurface, landSurfaceHeight } from "./landMesh";
 import { PORT_GROUND_PROBE_RADIUS as PORT_MARKER_RADIUS } from "./portHover";
 import { BUILDING_FOOTING, BUILDING_KINDS, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
-import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
+import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
 import { QUAY_BACK, QUAY_COPING_THICKNESS, QUAY_SEA_FACE, QUAY_STEP_Z, QUAY_WIDTH } from "./quayGeometry";
@@ -474,15 +474,27 @@ describe("portBuildings", () => {
     const scale = 1;
     const reach = AGED_BUILDING_HALF_DIAGONAL.church * scale;
     const footing = BUILDING_FOOTING * scale;
-    // The plan with its margin stays well inside the circle, and the margin is a fraction of the eave's overhang.
+    // The plan with its margin stays inside the circle (its corners included: the creases probed are
+    // those within the circle, and the circle is what keeps neighbours and the pier root clear), and
+    // the margin is a fraction of the eave's overhang.
     for (const kind of BUILDING_KINDS) {
       const plan = planFootprint(kind, scale, 0);
-      expect(Math.hypot(plan.halfW - PLAN_FOOTPRINT_MARGIN, plan.halfD - PLAN_FOOTPRINT_MARGIN)).toBeLessThanOrEqual(AGED_BUILDING_HALF_DIAGONAL[kind] * scale + 1e-9);
-      expect(plan.halfW).toBeGreaterThan(PLAN_FOOTPRINT_MARGIN);
-      expect(plan.halfD).toBeGreaterThan(PLAN_FOOTPRINT_MARGIN);
+      expect(Math.hypot(plan.halfW, plan.halfD)).toBeLessThanOrEqual(AGED_BUILDING_HALF_DIAGONAL[kind] * scale + 1e-9);
+      expect(plan.halfW).toBeGreaterThan(AGED_BUILDING_PLAN[kind].halfW * scale);
+      expect(plan.halfD).toBeGreaterThan(AGED_BUILDING_PLAN[kind].halfD * scale);
     }
     expect(PLAN_FOOTPRINT_MARGIN).toBeLessThanOrEqual(0.025);
     expect(planFootprint("church", scale, 0)).toEqual({ halfW: 0.1 + PLAN_FOOTPRINT_MARGIN, halfD: 0.15 + PLAN_FOOTPRINT_MARGIN, yaw: 0 });
+    // The tower's square plan (0.1 half-base) under its 0.15 reach has no room for the full margin: its
+    // corner with the margin would stand at 0.17. It takes the largest margin whose corner stays on the
+    // circle, still past the plinth course (0.004 proud).
+    const tower = planFootprint("watchtower", scale, 0);
+    expect(tower.halfW).toBeCloseTo(tower.halfD, 12);
+    expect(Math.hypot(tower.halfW, tower.halfD)).toBeCloseTo(AGED_BUILDING_HALF_DIAGONAL.watchtower * scale, 9);
+    expect(tower.halfW - AGED_BUILDING_PLAN.watchtower.halfW).toBeGreaterThan(0.004);
+    expect(tower.halfW - AGED_BUILDING_PLAN.watchtower.halfW).toBeLessThan(PLAN_FOOTPRINT_MARGIN);
+    // The margin scales with the piece.
+    expect(planFootprint("watchtower", 1.05, 0).halfW).toBeCloseTo(tower.halfW * 1.05, 12);
     // A ramp rising along x: the plan circle spans 0.46, the nave across the ramp (front to +z, yaw 0) only 0.24.
     const grade = 0.5;
     const ramp: GroundField = { sampleHeight: (x) => 0.1 + grade * (x - hx) };

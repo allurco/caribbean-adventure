@@ -602,7 +602,13 @@ got a church (8 seeds of each size) and settlements stood at
 is the walls' rectangle (`AGED_BUILDING_PLAN`: 0.1 × 0.15 for the church,
 the gabled kinds' and the tower's half-widths otherwise) with
 `PLAN_FOOTPRINT_MARGIN` (0.02, over the plinth course and the lean,
-under the eave's 0.025 overhang) round it, turned to the building's yaw;
+under the eave's 0.025 overhang) round it, turned to the building's yaw.
+The rectangle with its margin stays inside the plan circle, since the
+creases probed are those within the circle and the circle is what keeps
+neighbours and the pier root clear: the tower's square plan has no room
+for the full margin under its 0.15 reach (its corner would stand at
+0.17), so `planMargin` gives it the largest margin whose corner lies on
+the circle, about 0.006, still past its plinth course.
 `footprintGround` probes it on a 9 × 13 grid plus the drawn surface's
 creases inside it, and the same rectangle decides the quay stance. The
 plan circle still keeps buildings apart, off the pier root and inside

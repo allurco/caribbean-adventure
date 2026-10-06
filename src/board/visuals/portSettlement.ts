@@ -161,16 +161,41 @@ export interface PlanFootprint {
  * plinth course (0.004 proud), the lean's shift of the walls at the eaves
  * (under 0.01) and some of the eave's overhang (0.025). Beyond, the ground
  * is beside the building, not under it, and may rise above the contact as
- * it does round any building on a slope.
+ * it does round any building on a slope. A kind whose plan corner with
+ * this margin would stand outside its plan circle takes a smaller one
+ * (`planMargin`).
  */
 export const PLAN_FOOTPRINT_MARGIN = 0.02;
 /** Probes across and along a plan rectangle, edges included. */
 const PLAN_PROBES = { across: 9, along: 13 };
 
+/**
+ * The margin round a kind's walls, at scale 1: `PLAN_FOOTPRINT_MARGIN`,
+ * or less where that would put the rectangle's corners outside the plan
+ * circle (`AGED_BUILDING_HALF_DIAGONAL`). The rectangle must stay inside
+ * the circle: the creases probed under it are the ones within the circle,
+ * and the circle is what keeps neighbours and the pier root clear and
+ * drives the wet/steep check, so ground outside it is not the building's
+ * to stand on or be rejected for. The tower's square plan (0.1 half-base)
+ * under its 0.15 reach would reach 0.17 at the corner with the full
+ * margin; it takes the largest margin whose corner lies on the circle,
+ * about 0.006, still past its plinth course.
+ */
+export function planMargin(kind: BuildingKind): number {
+  const { halfW, halfD } = AGED_BUILDING_PLAN[kind];
+  const reach = AGED_BUILDING_HALF_DIAGONAL[kind];
+  // The largest m with (halfW + m)² + (halfD + m)² = reach²: 2m² + 2(halfW + halfD)m + (halfW² + halfD² − reach²) = 0.
+  const b = halfW + halfD;
+  const c = halfW * halfW + halfD * halfD - reach * reach;
+  const onCircle = (-b + Math.sqrt(b * b - 2 * c)) / 2;
+  return Math.max(0, Math.min(PLAN_FOOTPRINT_MARGIN, onCircle));
+}
+
 /** The walls' plan footprint of a kind at a scale and yaw, with the margin round it. */
 export function planFootprint(kind: BuildingKind, scale: number, yaw: number): PlanFootprint {
   const plan = AGED_BUILDING_PLAN[kind];
-  return { halfW: (plan.halfW + PLAN_FOOTPRINT_MARGIN) * scale, halfD: (plan.halfD + PLAN_FOOTPRINT_MARGIN) * scale, yaw };
+  const margin = planMargin(kind);
+  return { halfW: (plan.halfW + margin) * scale, halfD: (plan.halfD + margin) * scale, yaw };
 }
 
 /** A point of a plan rectangle, from local (across, along) to the world. */
