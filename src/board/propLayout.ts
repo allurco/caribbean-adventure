@@ -17,6 +17,8 @@ export interface PropExtent {
 export const PROP_ROW_MIN_GAP = 0.3;
 /** Shadow length as a multiple of the caster's height (cot of the sun's elevation, rounded up). */
 export const PROP_SHADOW_REACH = 0.75;
+/** Clear sand between a piece's front edge and the top of its label, world units. */
+export const PROP_LABEL_MARGIN = 0.1;
 
 export function propExtent(data: PropGeometryData, scale: number): PropExtent {
   let radius = 0;
@@ -26,6 +28,14 @@ export function propExtent(data: PropGeometryData, scale: number): PropExtent {
     height = Math.max(height, data.positions[i * 3 + 1]);
   }
   return { radius: radius * scale, height: height * scale };
+}
+
+/**
+ * How far in front of a piece's origin (+z, towards the camera) its label
+ * starts, so no part of the piece, however wide, lies over the text.
+ */
+export function propLabelOffset(extent: PropExtent): number {
+  return extent.radius + PROP_LABEL_MARGIN;
 }
 
 /** The x of each piece's origin, in order, the row centred on the origin. */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutRow, propExtent, PROP_ROW_MIN_GAP, PROP_SHADOW_REACH } from "./propLayout";
+import { layoutRow, propExtent, propLabelOffset, PROP_LABEL_MARGIN, PROP_ROW_MIN_GAP, PROP_SHADOW_REACH } from "./propLayout";
 
 const box = (hw: number, h: number) => ({
   positions: new Float32Array([-hw, 0, -hw, hw, 0, hw, hw, h, 0, -hw, h, -hw]),
@@ -15,6 +15,28 @@ describe("propExtent", () => {
     const two = propExtent(box(0.1, 0.3), 2);
     expect(two.radius).toBeCloseTo(2 * Math.hypot(0.1, 0.1), 6);
     expect(two.height).toBeCloseTo(0.6, 6);
+  });
+});
+
+describe("propLabelOffset", () => {
+  it("places the label clear of the piece's front edge by the margin, whatever its radius", () => {
+    const small = propLabelOffset({ radius: 0.1, height: 0.2 });
+    const boulder = propLabelOffset({ radius: 0.36, height: 0.3 });
+    const slab = propLabelOffset({ radius: 0.43, height: 0.2 });
+    expect(small).toBeCloseTo(0.1 + PROP_LABEL_MARGIN, 9);
+    expect(boulder).toBeCloseTo(0.36 + PROP_LABEL_MARGIN, 9);
+    expect(slab).toBeCloseTo(0.43 + PROP_LABEL_MARGIN, 9);
+    expect(boulder).toBeGreaterThan(0.36);
+    expect(slab).toBeGreaterThan(0.43);
+  });
+
+  it("measures the offset from a built piece at its scale", () => {
+    const offset = propLabelOffset(propExtent(box(0.2, 0.3), 1.5));
+    expect(offset).toBeCloseTo(1.5 * Math.hypot(0.2, 0.2) + PROP_LABEL_MARGIN, 6);
+  });
+
+  it("keeps a readable margin", () => {
+    expect(PROP_LABEL_MARGIN).toBeGreaterThan(0);
   });
 });
 

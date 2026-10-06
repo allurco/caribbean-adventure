@@ -25,7 +25,7 @@ import {
 import { CAMERA_FOV, CAMERA_OFFSET } from "./cameraBounds";
 import { paletteColor } from "./visuals/palette";
 import { PROP_ENTRIES, type PropEntry, type PropGeometryData } from "./propEntries";
-import { layoutRow, propExtent } from "./propLayout";
+import { layoutRow, propExtent, propLabelOffset } from "./propLayout";
 
 /**
  * The prop viewer (issue #59): `?view=props` shows hand-built props side
@@ -52,16 +52,19 @@ interface PlacedProp {
   entry: PropEntry;
   data: PropGeometryData;
   x: number;
+  /** Where the label starts in front of the origin, clear of the piece's measured radius. */
+  labelZ: number;
 }
 
-/** Builds every entry once and spaces the row by what was built. */
+/** Builds every entry once and spaces the row (and each label) by what was built. */
 function placeProps(entries: readonly PropEntry[]): PlacedProp[] {
   const data = entries.map((entry) => entry.build());
-  const xs = layoutRow(data.map((d, i) => propExtent(d, entries[i].scale ?? 1)));
-  return entries.map((entry, i) => ({ entry, data: data[i], x: xs[i] }));
+  const extents = data.map((d, i) => propExtent(d, entries[i].scale ?? 1));
+  const xs = layoutRow(extents);
+  return entries.map((entry, i) => ({ entry, data: data[i], x: xs[i], labelZ: propLabelOffset(extents[i]) }));
 }
 
-function Prop({ entry, data, x }: PlacedProp) {
+function Prop({ entry, data, x, labelZ }: PlacedProp) {
   const { geometry, material } = useMemo(
     () => ({
       geometry: toGeometry(data),
@@ -76,7 +79,7 @@ function Prop({ entry, data, x }: PlacedProp) {
       <mesh geometry={geometry} material={material} scale={[scale, scale, scale]} castShadow receiveShadow />
       {/* Flat on the sand in front of the prop, reading the right way up from the game's southward camera. */}
       <Text
-        position={[0, 0.002, 0.3]}
+        position={[0, 0.002, labelZ]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={LABEL_SIZE}
         color={LABEL_COLOR}
