@@ -460,10 +460,14 @@ well as the main pass, so the posts show through the shallows. The old
 pier was pushed a fixed 0.7 units towards the docking hex, which buried
 it in the beach wherever the coast noise pulled the shoreline out (the
 shore lies 0.6–1.1 units from the centre along that line);
-`pierPlacement.ts` now walks the height field along the pier's line and
+`pierPlacement.ts` now walks the ground along the pier's line and
 starts the deck 0.12 inland of where the ground drops to the shore
 (clamped to 0.5–0.85 from the centre, so a 0.6 deck stays clear of a
-docked galleon). `buildingGeometry.ts` builds four kinds, origin at the
+docked galleon). The ground it walks is the drawn land surface
+(`landSurface`, as the quay and the settlement's pier-root reserve
+walk it, #59): on the smooth field the shore step landed 0.025–0.075
+away on about half of generated ports, which started the deck past
+the quay's coping or stood its first posts inside the quay body. `buildingGeometry.ts` builds four kinds, origin at the
 ground contact and the door on +z: a timber warehouse (gable to the
 water, ridge 0.24), a whitewashed two-storey tavern (0.27), a gabled
 house under dark shingles (0.19) and a masonry watchtower with a parapet
