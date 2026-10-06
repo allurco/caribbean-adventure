@@ -1,8 +1,9 @@
 import { useRef, useEffect } from "react";
-import { InstancedMesh, Object3D, BoxGeometry, MeshStandardMaterial, Color } from "three";
+import { InstancedMesh, Object3D, BoxGeometry, MeshStandardMaterial, Color, type Texture } from "three";
 import { PalmTrees } from "./PalmTrees";
 import { Rocks } from "./Rocks";
 import { Shrubs } from "./Shrubs";
+import { ShoreBoulderMeshes } from "./ShoreBoulderMeshes";
 import type { DecorationLayout } from "./useDecorationLayout";
 
 const pierGeometry = new BoxGeometry(0.15, 0.05, 0.6);
@@ -14,8 +15,12 @@ const pierMaterial = new MeshStandardMaterial({ color: new Color(0.45, 0.35, 0.2
 
 const tempObject = new Object3D();
 
-/** Trees, rocks, stones, shrubs and piers for one world copy, from the shared `layout` (`useDecorationLayout`). */
-export function TerrainDecorations({ layout: decorationsByType }: { layout: DecorationLayout }) {
+/**
+ * Trees, rocks, stones, shrubs, shore boulders and piers for one world copy,
+ * from the shared `layout` (`useDecorationLayout`); `waveSlopes` light the
+ * submerged boulders through the waves (ShoreBoulderMeshes).
+ */
+export function TerrainDecorations({ layout: decorationsByType, waveSlopes }: { layout: DecorationLayout; waveSlopes?: readonly Texture[] }) {
   const pierRef = useRef<InstancedMesh>(null!);
 
   // Update pier instances
@@ -46,6 +51,8 @@ export function TerrainDecorations({ layout: decorationsByType }: { layout: Deco
       <Rocks rocks={decorationsByType.rocks} stones={decorationsByType.stones} />
 
       <Shrubs resources={decorationsByType.shrubs} />
+
+      <ShoreBoulderMeshes boulders={decorationsByType.shoreBoulders} waveSlopes={waveSlopes} />
 
       {/* Piers */}
       {decorationsByType.piers.length > 0 && (

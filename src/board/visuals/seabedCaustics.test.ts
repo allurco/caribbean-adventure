@@ -22,8 +22,21 @@ describe("injectSeabedCaustics", () => {
     const shader = shaderStub();
     injectSeabedCaustics(shader, { sun: SUN, waveSlopes: textures });
     expect(shader.vertexShader).toContain("varying vec3 vCausticWorld;");
-    expect(shader.vertexShader).toContain("vCausticWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    expect(shader.vertexShader).toContain("vCausticWorld = (modelMatrix * causticLocal).xyz;");
     expect(shader.fragmentShader).toContain("varying vec3 vCausticWorld;");
+  });
+
+  it("applies the instance matrix before the model matrix on instanced meshes (three's `transformed` is not instance-transformed)", () => {
+    const shader = shaderStub();
+    injectSeabedCaustics(shader, { sun: SUN, waveSlopes: textures });
+    const body = shader.vertexShader.slice(shader.vertexShader.indexOf("#include <project_vertex>"));
+    expect(body).toContain("vec4 causticLocal = vec4(transformed, 1.0);");
+    expect(body).toContain("#ifdef USE_INSTANCING\n  causticLocal = instanceMatrix * causticLocal;\n  #endif");
+    // Instance first, then model, then the varying: the non-instanced path is unchanged.
+    const instanceAt = body.indexOf("causticLocal = instanceMatrix * causticLocal;");
+    const worldAt = body.indexOf("vCausticWorld = (modelMatrix * causticLocal).xyz;");
+    expect(instanceAt).toBeGreaterThan(0);
+    expect(instanceAt).toBeLessThan(worldAt);
   });
 
   it("scales only the directional light (the sun) by the caustic, before three's shading, leaving the sky term alone", () => {

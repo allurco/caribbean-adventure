@@ -68,6 +68,23 @@ export function rockVariantRadii(index: number): readonly [number, number, numbe
 /** The largest horizontal radius multiple over all variants (the slab's long axis). */
 export const ROCK_VARIANT_MAX_RADIUS_XZ = Math.max(...VARIANTS.map((v) => Math.max(v.radii[0], v.radii[2])));
 
+/** How far a variant can reach from its origin at scale 1, world units: the farthest any vertex lies horizontally, and the highest any rises. */
+export interface RockReach {
+  horizontal: number;
+  top: number;
+}
+
+/**
+ * Per variant, a bound on the drawn extent at scale 1 (world units): the
+ * ellipsoid radii pushed out by the widest radial jitter. Placement rules that
+ * must keep a rock's rim clear of something (the shore boulders' offshore cap,
+ * #49) scale these by the instance's scale instead of probing the mesh.
+ */
+export const ROCK_VARIANT_REACH: readonly RockReach[] = VARIANTS.map((v) => ({
+  horizontal: ROCK_UNIT_RADIUS * Math.max(v.radii[0], v.radii[2]) * (1 + v.jitter),
+  top: ROCK_UNIT_RADIUS * v.radii[1] * (1 + v.jitter),
+}));
+
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
