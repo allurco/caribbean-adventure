@@ -27,6 +27,7 @@ const colors: AgedColors = {
   timber: [0.12, 0.09, 0.07],
   stone: [0.3, 0.27, 0.23],
   iron: [0.01, 0.01, 0.01],
+  bronze: [0.2, 0.14, 0.05],
 };
 
 const vertex = (g: FacetGeometryData, i: number): Vec3 => [g.positions[i * 3], g.positions[i * 3 + 1], g.positions[i * 3 + 2]];

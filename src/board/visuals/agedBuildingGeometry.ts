@@ -72,6 +72,7 @@ const GABLED: Readonly<Record<Exclude<BuildingKind, "watchtower">, AgedGabledSpe
   warehouse: { w: 0.26, d: 0.18, eave: 0.13, ridge: 0.24, ridgeAlong: "z", windows: 0, hatch: true },
   tavern: { w: 0.22, d: 0.18, eave: 0.17, ridge: 0.27, ridgeAlong: "x", windows: 2, sign: true },
   house: { w: 0.18, d: 0.14, eave: 0.1, ridge: 0.19, ridgeAlong: "z", windows: 1 },
+  church: { w: 0.2, d: 0.3, eave: 0.18, ridge: 0.3, ridgeAlong: "z", windows: 0 },
 };
 
 /** The landmark tower at scale 1: a tapering body, a string course, a parapet with merlons, the pole. */
@@ -91,6 +92,7 @@ export const AGED_LEAN_OF: Readonly<Record<BuildingKind, readonly [number, numbe
   tavern: [-AGED_LEAN * 0.7, AGED_LEAN * 0.6],
   house: [AGED_LEAN * 0.9, AGED_LEAN * 0.4],
   watchtower: [0.012, -0.006],
+  church: [AGED_LEAN * 0.4, -AGED_LEAN * 0.3],
 };
 
 /** The pole top, where the flag's hoist corner goes, in the tower's leaning frame. */
@@ -114,6 +116,7 @@ export const AGED_BUILDING_HEIGHT: Readonly<Record<BuildingKind, number>> = {
   tavern: roofTop(roofSpec(GABLED.tavern)),
   house: roofTop(roofSpec(GABLED.house)),
   watchtower: AGED_TOWER.pole.top,
+  church: roofTop(roofSpec(GABLED.church)),
 };
 
 /** Top of each kind's walls at scale 1: where the roof's underside meets them, or the tower body's top. */
@@ -122,11 +125,13 @@ export const AGED_BUILDING_WALL_TOP: Readonly<Record<BuildingKind, number>> = {
   tavern: roofEaveUnderside(roofSpec(GABLED.tavern)),
   house: roofEaveUnderside(roofSpec(GABLED.house)),
   watchtower: AGED_TOWER.bodyTop,
+  church: roofEaveUnderside(roofSpec(GABLED.church)),
 };
 
-const gabledHalfDiagonal = (s: AgedGabledSpec): number => {
+const gabledHalfDiagonal = (kind: Exclude<BuildingKind, "watchtower">): number => {
+  const s = GABLED[kind];
   const r = roofSpec(s);
-  const [lx, lz] = AGED_LEAN_OF[s === GABLED.warehouse ? "warehouse" : s === GABLED.tavern ? "tavern" : "house"];
+  const [lx, lz] = AGED_LEAN_OF[kind];
   // The farthest corner is at the eave, so the lean counts at that height.
   const u = roofReachU(r) + Math.abs(s.ridgeAlong === "z" ? lx : lz) * s.eave;
   const v = r.halfV + AGED_ROOF_OVERHANG + Math.abs(s.ridgeAlong === "z" ? lz : lx) * s.eave;
@@ -135,9 +140,10 @@ const gabledHalfDiagonal = (s: AgedGabledSpec): number => {
 
 /** Farthest any vertex reaches from the origin in plan, at scale 1 (the ground-placement footprint). */
 export const AGED_BUILDING_HALF_DIAGONAL: Readonly<Record<BuildingKind, number>> = {
-  warehouse: gabledHalfDiagonal(GABLED.warehouse),
-  tavern: gabledHalfDiagonal(GABLED.tavern),
-  house: gabledHalfDiagonal(GABLED.house),
+  warehouse: gabledHalfDiagonal("warehouse"),
+  tavern: gabledHalfDiagonal("tavern"),
+  house: gabledHalfDiagonal("house"),
+  church: gabledHalfDiagonal("church"),
   watchtower:
     Math.ceil((Math.hypot(AGED_TOWER.halfBase, AGED_TOWER.halfBase) + Math.hypot(...AGED_LEAN_OF.watchtower) * AGED_TOWER.ledge.top) * 200) / 200,
 };
@@ -158,6 +164,7 @@ export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
   tavern: 610,
   house: 458,
   watchtower: 572,
+  church: 546,
 };
 
 const FOOTING_SHADE = 0.85;

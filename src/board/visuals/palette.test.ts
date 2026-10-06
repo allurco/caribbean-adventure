@@ -30,6 +30,8 @@ describe("palette", () => {
       oldTimber: 0x4b3f35,
       roughStone: 0xa89b8b,
       ironwork: 0x1b1816,
+      churchLime: 0xeee4d0,
+      bellBronze: 0x7a6238,
     });
   });
 

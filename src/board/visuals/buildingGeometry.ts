@@ -1,8 +1,10 @@
 /**
  * Faceted port building mesh data (issue #49). Pure, no Three.js.
  *
- * Four kinds: a warehouse (long, gable to the water), a tavern (two storeys,
- * long side to the water), a gabled house and a watchtower, the tallest.
+ * Five kinds: a warehouse (long, gable to the water), a tavern (two storeys,
+ * long side to the water), a gabled house, a watchtower, the tallest, and a
+ * church (a long nave, gable to the water; its bell gable belongs to the
+ * aged generation in `agedBuildingGeometry.ts`, the one the game draws).
  * Local space: Y up, the ground contact at the origin, the front (door) on
  * +Z, so a yaw of the pier's rotation turns it to face the docking hex.
  * Walls carry on below the ground as a footing, so a building on a slope is
@@ -12,9 +14,9 @@
 import { createFacetBuilder, shadeRgb, type FacetBuilder, type FacetGeometryData, type Vec3 } from "./facetBuilder";
 import type { Rgb } from "./palmGeometry";
 
-export type BuildingKind = "warehouse" | "tavern" | "house" | "watchtower";
+export type BuildingKind = "warehouse" | "tavern" | "house" | "watchtower" | "church";
 
-export const BUILDING_KINDS: readonly BuildingKind[] = ["warehouse", "tavern", "house", "watchtower"];
+export const BUILDING_KINDS: readonly BuildingKind[] = ["warehouse", "tavern", "house", "watchtower", "church"];
 
 export interface BuildingColors {
   wall: Rgb;
@@ -54,6 +56,8 @@ const GABLED: Readonly<Record<Exclude<BuildingKind, "watchtower">, GabledSpec>> 
   warehouse: { w: 0.26, d: 0.18, eave: 0.13, ridge: 0.24, ridgeAlong: "z", windows: 0 },
   tavern: { w: 0.22, d: 0.18, eave: 0.17, ridge: 0.27, ridgeAlong: "x", windows: 2 },
   house: { w: 0.18, d: 0.14, eave: 0.1, ridge: 0.19, ridgeAlong: "z", windows: 1 },
+  // The aged generation gives the church its bell gable; here it is a plain long nave (prop viewer only).
+  church: { w: 0.2, d: 0.3, eave: 0.18, ridge: 0.3, ridgeAlong: "z", windows: 0 },
 };
 
 const TOWER = {
@@ -88,6 +92,7 @@ export const BUILDING_WALL_TOP: Readonly<Record<BuildingKind, number>> = {
   tavern: GABLED.tavern.eave,
   house: GABLED.house.eave,
   watchtower: TOWER.bodyTop,
+  church: GABLED.church.eave,
 };
 
 /** Top of each kind at scale 1 (the ridge or the tower's apex). */
@@ -96,6 +101,7 @@ export const BUILDING_HEIGHT: Readonly<Record<BuildingKind, number>> = {
   tavern: GABLED.tavern.ridge,
   house: GABLED.house.ridge,
   watchtower: TOWER.apex,
+  church: GABLED.church.ridge,
 };
 
 const gabledHalfDiagonal = (s: GabledSpec) => Math.hypot(s.w / 2 + ROOF_OVERHANG, s.d / 2 + ROOF_OVERHANG);
@@ -106,6 +112,7 @@ export const BUILDING_HALF_DIAGONAL: Readonly<Record<BuildingKind, number>> = {
   tavern: Math.ceil(gabledHalfDiagonal(GABLED.tavern) * 200) / 200,
   house: Math.ceil(gabledHalfDiagonal(GABLED.house) * 200) / 200,
   watchtower: Math.ceil(Math.hypot(TOWER.roofBase / 2, TOWER.roofBase / 2) * 200) / 200,
+  church: Math.ceil(gabledHalfDiagonal(GABLED.church) * 200) / 200,
 };
 
 /** A square ring of half-size `h` at height `y`, counter-clockwise from above. */

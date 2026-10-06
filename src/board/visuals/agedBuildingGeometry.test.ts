@@ -25,6 +25,7 @@ const colors: AgedColors = {
   timber: [0.12, 0.09, 0.07],
   stone: [0.3, 0.27, 0.23],
   iron: [0.01, 0.01, 0.01],
+  bronze: [0.2, 0.14, 0.05],
 };
 
 const built = Object.fromEntries(BUILDING_KINDS.map((k) => [k, buildAgedBuildingGeometry(k, colors)])) as Record<BuildingKind, FacetGeometryData>;
@@ -101,10 +102,11 @@ describe("buildAgedBuildingGeometry", () => {
       expect(reach).toBeGreaterThan(AGED_BUILDING_HALF_DIAGONAL[kind] * 0.85);
       // The wider eaves and the lean grow the footprint a little past the faceted kind's.
       expect(AGED_BUILDING_HALF_DIAGONAL[kind]).toBeGreaterThanOrEqual(BUILDING_HALF_DIAGONAL[kind]);
-      expect(AGED_BUILDING_HALF_DIAGONAL[kind]).toBeLessThan(0.22);
+      // The church's long nave reaches 0.23; nothing else past 0.22.
+      expect(AGED_BUILDING_HALF_DIAGONAL[kind]).toBeLessThan(kind === "church" ? 0.24 : 0.22);
     }
     for (const kind of BUILDING_KINDS) {
-      if (kind !== "watchtower") expect(AGED_BUILDING_HEIGHT.watchtower).toBeGreaterThan(AGED_BUILDING_HEIGHT[kind] + 0.2);
+      if (kind !== "watchtower" && kind !== "church") expect(AGED_BUILDING_HEIGHT.watchtower).toBeGreaterThan(AGED_BUILDING_HEIGHT[kind] + 0.2);
     }
     // The tower rises to within a hair of the cap.
     expect(AGED_BUILDING_HEIGHT.watchtower).toBeGreaterThan(BUILDING_MAX_HEIGHT - 0.02);

@@ -36,8 +36,25 @@ function color(g: BuildingGeometryData, i: number): [number, number, number] {
 const sameColor = (a: readonly number[], b: readonly number[]) => a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
 
 describe("buildBuildingGeometry", () => {
-  it("offers a warehouse, a tavern, a house and a watchtower", () => {
-    expect(BUILDING_KINDS).toEqual(["warehouse", "tavern", "house", "watchtower"]);
+  it("offers a warehouse, a tavern, a house, a watchtower and a church", () => {
+    expect(BUILDING_KINDS).toEqual(["warehouse", "tavern", "house", "watchtower", "church"]);
+  });
+
+  it("gives the church a long nave, gable to the water, taller than the tavern and under the tower", () => {
+    expect(BUILDING_HEIGHT.church).toBe(0.3);
+    expect(BUILDING_HEIGHT.church).toBeGreaterThan(BUILDING_HEIGHT.tavern);
+    expect(BUILDING_HEIGHT.church).toBeLessThan(BUILDING_HEIGHT.watchtower);
+    expect(BUILDING_WALL_TOP.church).toBe(0.18);
+    let maxX = 0;
+    let maxZ = 0;
+    for (let i = 0; i < built.church.vertexCount; i++) {
+      const [x, , z] = vertex(built.church, i);
+      maxX = Math.max(maxX, Math.abs(x));
+      maxZ = Math.max(maxZ, Math.abs(z));
+    }
+    // 0.2 across by 0.3 along z, plus the roof overhang.
+    expect(maxX).toBeCloseTo(0.115, 6);
+    expect(maxZ).toBeCloseTo(0.165, 6);
   });
 
   it("builds flat-shaded non-degenerate triangles with unit face normals and a colour per vertex", () => {
@@ -102,7 +119,8 @@ describe("buildBuildingGeometry", () => {
       expect(reach).toBeLessThanOrEqual(BUILDING_HALF_DIAGONAL[kind] + 1e-6);
       // Not wastefully generous either.
       expect(reach).toBeGreaterThan(BUILDING_HALF_DIAGONAL[kind] * 0.8);
-      expect(BUILDING_HALF_DIAGONAL[kind]).toBeLessThan(0.2);
+      // The church's long nave reaches a little past 0.2; nothing else does.
+      expect(BUILDING_HALF_DIAGONAL[kind]).toBeLessThan(kind === "church" ? 0.21 : 0.2);
     }
   });
 

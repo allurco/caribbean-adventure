@@ -49,7 +49,7 @@ import { hexToWorld } from "../../game/hex";
 import type { MapCell, PortNation } from "../../game/types";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
-import { BUILDING_FOOTING, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
+import { BUILDING_FOOTING, BUILDING_KINDS, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
 import { SEA_LEVEL } from "./terrainHeightField";
@@ -88,12 +88,18 @@ const RADIAL_STEP = 0.04;
 export const PORT_BUILDING_SCALE_RANGE: readonly [number, number] = [0.92, 1.08];
 /** The tower's range keeps AGED_BUILDING_HEIGHT.watchtower × scale (the flag's hoist) under BUILDING_MAX_HEIGHT. */
 export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING_MAX_HEIGHT / AGED_BUILDING_HEIGHT.watchtower];
+/**
+ * The church's range is narrower than the houses': its cross at the top of
+ * the range stays under the cap and clearly under the smallest tower's pole
+ * top, so the tower remains the port's one tallest landmark (pinned in
+ * `portSettlement.test.ts`).
+ */
+export const CHURCH_SCALE_RANGE: readonly [number, number] = [0.96, 1.04];
+/** The scale range a kind is drawn at. */
+export const scaleRangeOf = (kind: BuildingKind): readonly [number, number] =>
+  kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : kind === "church" ? CHURCH_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE;
 /** The largest plan reach any kind can have, at its largest scale. */
-const maxPlanReach = Math.max(
-  ...Object.entries(AGED_BUILDING_HALF_DIAGONAL).map(
-    ([kind, reach]) => reach * (kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE)[1]
-  )
-);
+const maxPlanReach = Math.max(...BUILDING_KINDS.map((kind) => AGED_BUILDING_HALF_DIAGONAL[kind] * scaleRangeOf(kind)[1]));
 /**
  * The settlement's envelope: no building's corner stands farther than this
  * from the hex centre (the farthest origin plus the widest plan reach), and
@@ -323,7 +329,7 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
 
     const placed: Footprint[] = [];
     for (const { kind, slot } of order) {
-      const scale = lerpRange(kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE, next());
+      const scale = lerpRange(scaleRangeOf(kind), next());
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;

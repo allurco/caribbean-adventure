@@ -7,7 +7,7 @@ import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./ter
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { landSurface, landSurfaceHeight } from "./landMesh";
 import { PORT_MARKER_RADIUS } from "../useHexGrid";
-import { BUILDING_FOOTING, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
+import { BUILDING_FOOTING, BUILDING_KINDS, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
@@ -16,8 +16,10 @@ import { placeQuay, type QuayPlacement } from "./quayPlacement";
 import {
   buildingGroundY,
   buildingMaxSpread,
+  CHURCH_SCALE_RANGE,
   pierRootReserve,
   portBuildings,
+  scaleRangeOf,
   settlementGround,
   standBuilding,
   BUILDING_FOOTING_MARGIN,
@@ -38,7 +40,7 @@ import {
 
 /** Inradius of a flat-top hex of size 1: the nearest any edge comes to the centre. */
 const HEX_INRADIUS = Math.sqrt(3) / 2;
-const maxReach = Math.max(...Object.values(AGED_BUILDING_HALF_DIAGONAL)) * PORT_BUILDING_SCALE_RANGE[1];
+const maxReach = Math.max(...BUILDING_KINDS.map((kind) => AGED_BUILDING_HALF_DIAGONAL[kind] * scaleRangeOf(kind)[1]));
 
 const cells = generateMap(getMapPreset("small"), 11);
 const seed = terrainSeedFromCells(cells);
@@ -219,6 +221,17 @@ describe("portBuildings", () => {
     expect(PORT_BUILDING_YAW_JITTER).toBeLessThanOrEqual(0.2);
     // The watchtower never breaks the height cap at its largest scale.
     expect(AGED_BUILDING_HEIGHT.watchtower * WATCHTOWER_SCALE_RANGE[1]).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
+    expect(scaleRangeOf("watchtower")).toBe(WATCHTOWER_SCALE_RANGE);
+    expect(scaleRangeOf("church")).toBe(CHURCH_SCALE_RANGE);
+    expect(scaleRangeOf("house")).toBe(PORT_BUILDING_SCALE_RANGE);
+  });
+
+  it("keeps the church's top, at its largest scale, under the cap and clearly under the smallest tower's, so the tower stays the one landmark", () => {
+    const churchTop = AGED_BUILDING_HEIGHT.church * CHURCH_SCALE_RANGE[1];
+    expect(churchTop).toBeLessThan(BUILDING_MAX_HEIGHT);
+    expect(churchTop).toBeLessThan(AGED_BUILDING_HEIGHT.watchtower * WATCHTOWER_SCALE_RANGE[0] - 0.02);
+    expect(CHURCH_SCALE_RANGE[0]).toBeGreaterThanOrEqual(0.9);
+    expect(CHURCH_SCALE_RANGE[1]).toBeLessThanOrEqual(PORT_BUILDING_SCALE_RANGE[1]);
   });
 
   it("stands on top of the ground: the contact a hair under the highest point, the footing covering the rest with a margin", () => {
@@ -432,7 +445,7 @@ describe("portBuildings", () => {
 
   it("varies scale and tint within their spreads", () => {
     for (const b of buildings) {
-      const range = b.kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE;
+      const range = scaleRangeOf(b.kind);
       expect(b.scale).toBeGreaterThanOrEqual(range[0]);
       expect(b.scale).toBeLessThanOrEqual(range[1]);
       expect(Math.abs(b.tint - 1)).toBeLessThanOrEqual(PORT_BUILDING_TINT_SPREAD);
