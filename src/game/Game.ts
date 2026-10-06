@@ -67,16 +67,20 @@ export type { CaribbeanState, CaribbeanSetupData } from "./types";
 export const MOVES_PER_TURN = 3;
 
 /**
- * The game with its `setupData` fixed, for a client that creates matches
- * without any (the local boardgame.io client). A server passes `setupData`
- * from match creation instead. No setupData: the game as it is.
+ * The game with `setupData` pinned, for a client that creates matches
+ * without any (the local boardgame.io client). What match creation passes
+ * (a server's setupData) is kept for every key the pin leaves out; the pin
+ * wins only for the keys it sets. No pin: the game as it is.
  */
 export function withSetupData(
   game: Game<CaribbeanState>,
   setupData: CaribbeanSetupData | undefined
 ): Game<CaribbeanState> {
   if (!setupData) return game;
-  return { ...game, setup: (ctx) => game.setup!(ctx, setupData) };
+  return {
+    ...game,
+    setup: (ctx, matchSetupData?: CaribbeanSetupData) => game.setup!(ctx, { ...matchSetupData, ...setupData }),
+  };
 }
 
 export function getMaxMoves(ship: {

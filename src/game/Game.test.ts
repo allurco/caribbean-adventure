@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import { Caribbean, MOVES_PER_TURN, getMaxMoves, withSetupData } from "./Game";
-import type { CaribbeanState } from "./Game";
+import type { CaribbeanState, CaribbeanSetupData } from "./Game";
 import type { Game } from "boardgame.io";
 import { canonicalHex, hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
 import type { MapCell } from "./mapGenerator";
@@ -242,6 +242,23 @@ describe("Caribbean.setup", () => {
 
   it("leaves the game as it is with no setupData", () => {
     expect(withSetupData(Caribbean, undefined)).toBe(Caribbean);
+  });
+
+  it("keeps what a match provides for the keys the pinned setupData leaves out", () => {
+    // A server passes the match's own setupData to setup(); the pin only
+    // sets the size here, so the match's seed must survive.
+    const start = (game: Game<CaribbeanState>, matchSetupData: CaribbeanSetupData) => {
+      const client = Client<CaribbeanState>({ game: { ...game, setup: (ctx) => game.setup!(ctx, matchSetupData) }, numPlayers: 2 });
+      client.start();
+      return client.getState()!.G;
+    };
+    const pinned = start(withSetupData(Caribbean, { mapSize: "small" }), { mapSeed: 1 });
+    const reference = start(Caribbean, { mapSize: "small", mapSeed: 1 });
+    expect(pinned.mapSize).toBe("small");
+    expect(pinned.cells).toEqual(reference.cells);
+    // The pin still wins for the keys it sets.
+    const overridden = start(withSetupData(Caribbean, { mapSize: "small", mapSeed: 2 }), { mapSize: "small", mapSeed: 1 });
+    expect(overridden.cells).toEqual(start(Caribbean, { mapSize: "small", mapSeed: 2 }).cells);
   });
 });
 
