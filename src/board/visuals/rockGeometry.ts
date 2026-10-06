@@ -53,6 +53,21 @@ const VARIANTS: readonly RockVariantSpec[] = [
   { sides: 5, rings: 4, radii: [0.85, 1.15, 0.8], jitter: 0.26, twist: 0.3, seed: 0x7e39 }, // 40 triangles
 ];
 
+const variantOf = (index: number): RockVariantSpec =>
+  VARIANTS[((index % ROCK_VARIANT_COUNT) + ROCK_VARIANT_COUNT) % ROCK_VARIANT_COUNT];
+
+/**
+ * A variant's ellipsoid radii as multiples of `ROCK_UNIT_RADIUS`: [x, y, z].
+ * The jitter moves single vertices in or out of these; the placement uses
+ * them as the rock's nominal extent.
+ */
+export function rockVariantRadii(index: number): readonly [number, number, number] {
+  return variantOf(index).radii;
+}
+
+/** The largest horizontal radius multiple over all variants (the slab's long axis). */
+export const ROCK_VARIANT_MAX_RADIUS_XZ = Math.max(...VARIANTS.map((v) => Math.max(v.radii[0], v.radii[2])));
+
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[1] * b[2] - a[2] * b[1],
@@ -120,7 +135,7 @@ function latticeOf(spec: RockVariantSpec): { top: Vec3; rings: Vec3[][]; bottom:
  * count). Positions are in world units at scale 1.
  */
 export function buildRockGeometry(index: number): RockGeometryData {
-  const spec = VARIANTS[((index % ROCK_VARIANT_COUNT) + ROCK_VARIANT_COUNT) % ROCK_VARIANT_COUNT];
+  const spec = variantOf(index);
   const { top, rings, bottom } = latticeOf(spec);
   const b = createBuilder();
   const sides = spec.sides;

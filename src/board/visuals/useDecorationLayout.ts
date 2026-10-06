@@ -5,10 +5,10 @@ import type { Biome, MapCell, Decoration } from "../../game/types";
 import { hexToWorld, type MapWrap } from "../../game/hex";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { terrainSeedFromCells } from "./terrainHeightField";
-import { placeOnGround, type GroundPlacementOptions } from "./groundPlacement";
+import { placeOnGround, type GroundPlacementOptions, type GroundSpot } from "./groundPlacement";
 import { usePalmTrees, type PalmTreesResources } from "./usePalmTrees";
 import { ROCK_UNIT_RADIUS } from "./rockGeometry";
-import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
+import { placeRock } from "./rockPlacement";
 import { smallStones } from "./smallStones";
 import { placeShrubs } from "./shrubPlacement";
 import { useShrubs, type ShrubsResources } from "./useShrubs";
@@ -19,7 +19,6 @@ export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
 
 // Ground fit at scale 1. The footprint covers the trunk base plus its lean.
 const TREE_PLACEMENT: GroundPlacementOptions = { footprintRadius: 0.06, sink: 0.03, maxSlope: 0.9 };
-const ROCK_PLACEMENT: GroundPlacementOptions = { footprintRadius: ROCK_RADIUS, sink: 0.02, maxSlope: 1.6 };
 
 export interface DecorationData {
   type: Decoration["type"];
@@ -64,13 +63,8 @@ const decorationsOf = perMapCache((cells, wrap) => {
 
         // Trees and rocks stand on the height field: nudged off water and
         // cliffs towards the cell centre, or dropped if nowhere fits.
-        const onGround = (placement: GroundPlacementOptions, footprintScale: number): DecorationData | null => {
-          const ground = placeOnGround(field, spot, anchor, {
-            ...placement,
-            footprintRadius: placement.footprintRadius * footprintScale,
-          });
-          if (!ground) return null;
-          return {
+        const standing = (ground: GroundSpot | null): DecorationData | null =>
+          ground && {
             type: deco.type,
             worldX: ground.x,
             worldY: ground.y + deco.position[1],
@@ -79,17 +73,19 @@ const decorationsOf = perMapCache((cells, wrap) => {
             scale,
             biome: cell.biome,
           };
-        };
 
         switch (deco.type) {
           case "tree": {
-            const tree = onGround(TREE_PLACEMENT, scale);
+            // A trunk rests on the lowest ground under its base so it never floats.
+            const tree = standing(
+              placeOnGround(field, spot, anchor, { ...TREE_PLACEMENT, footprintRadius: TREE_PLACEMENT.footprintRadius * scale })
+            );
             if (tree) trees.push(tree);
             break;
           }
           case "rock": {
-            // The footprint covers the rock at its biome's size class.
-            const rock = onGround(ROCK_PLACEMENT, scale * ROCK_SIZE_CLASS_SCALE[rockSizeClass(cell.biome)]);
+            // Rocks stand on the centre height, probed out to their drawn radius (#53).
+            const rock = standing(placeRock(field, spot, anchor, { scale, rotation: deco.rotation, biome: cell.biome }));
             if (rock) rocks.push(rock);
             break;
           }

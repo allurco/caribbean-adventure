@@ -3,18 +3,23 @@ import type { Biome } from "../../game/types";
 import {
   ROCK_BASE_COLOR,
   ROCK_BURY_RANGE,
+  ROCK_MAX_EXTENT,
   ROCK_SIZE_CLASS_SCALE,
   ROCK_STRETCH_RANGE,
   ROCK_TILT_RANGE,
   ROCK_TINT_SPREAD,
+  rockDrawnHeight,
+  rockDrawnRadius,
   rockSizeClass,
   rockVariation,
   type RockPlacement,
 } from "./rockVariation";
-import { ROCK_VARIANT_COUNT } from "./rockGeometry";
+import { ROCK_UNIT_RADIUS, ROCK_VARIANT_COUNT, rockVariantRadii } from "./rockGeometry";
 import { PALETTE_HEX } from "./palette";
 
 const BIOMES: readonly Biome[] = ["SAND", "GRASS", "ROCK"];
+/** Inradius of a flat-top hex of size 1 (`hexToWorld`): the distance from its centre to an edge. */
+const HEX_INRADIUS = Math.sqrt(3) / 2;
 
 /** Relative luminance of an sRGB hex, good enough to order colours by brightness. */
 function luminance(hex: number): number {
@@ -63,8 +68,55 @@ describe("rockSizeClass", () => {
     expect(ROCK_SIZE_CLASS_SCALE.small).toBeGreaterThanOrEqual(1);
     expect(ROCK_SIZE_CLASS_SCALE.medium).toBeGreaterThanOrEqual(1.4);
     expect(ROCK_SIZE_CLASS_SCALE.large).toBeGreaterThanOrEqual(2);
-    // A large outcrop stays within a hex: unit radius × class × the generator's biggest scale (1.6).
-    expect(ROCK_SIZE_CLASS_SCALE.large * 1.6).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("drawn extent", () => {
+  // The generator's biggest decoration scale is 1.6 (summits); every large-class
+  // placement at it, whatever its hash gives for variant and stretch.
+  const biggest = Array.from({ length: 60 }, (_, i) => rockVariation({ ...placement(i, "ROCK"), scale: 1.6 }));
+
+  it("caps a drawn rock inside a hex: the cap is under the hex inradius", () => {
+    expect(ROCK_MAX_EXTENT).toBeLessThan(HEX_INRADIUS);
+    expect(ROCK_MAX_EXTENT).toBeGreaterThan(0.5);
+  });
+
+  it("is the per-axis scale times the variant's radii times the unit radius, in the ground plane", () => {
+    for (const v of variations) {
+      const [rx, ry, rz] = rockVariantRadii(v.variant);
+      expect(rockDrawnRadius(v)).toBeCloseTo(Math.max(v.scale[0] * rx, v.scale[2] * rz) * ROCK_UNIT_RADIUS);
+      expect(rockDrawnHeight(v)).toBeCloseTo(v.scale[1] * ry * ROCK_UNIT_RADIUS);
+    }
+  });
+
+  it("keeps a large outcrop at the generator's biggest scale within a hex, stretch and variant radii included", () => {
+    // Before the cap: 0.22 × 1.6 × 2.2 × 1.3 (stretch) × 1.3 (slab radius) ≈ 1.31 units on a hex of inradius 0.87.
+    for (const v of [...biggest, ...variations]) expect(rockDrawnRadius(v)).toBeLessThanOrEqual(ROCK_MAX_EXTENT + 1e-9);
+    // The cap bites on the biggest slabs, so it is doing something.
+    expect(biggest.some((v) => Math.abs(rockDrawnRadius(v) - ROCK_MAX_EXTENT) < 1e-9)).toBe(true);
+  });
+
+  it("shrinks a capped rock uniformly, keeping its silhouette", () => {
+    const capped = biggest.filter((v) => Math.abs(rockDrawnRadius(v) - ROCK_MAX_EXTENT) < 1e-9);
+    expect(capped.length).toBeGreaterThan(0);
+    for (const v of capped) {
+      // Each axis ratio still lies within the stretch range's ratio span.
+      const span = ROCK_STRETCH_RANGE[1] / ROCK_STRETCH_RANGE[0];
+      expect(v.scale[1] / v.scale[0]).toBeGreaterThanOrEqual(1 / span - 1e-9);
+      expect(v.scale[1] / v.scale[0]).toBeLessThanOrEqual(span + 1e-9);
+      // And the rock is smaller than its uncapped nominal size on every axis.
+      const base = 1.6 * ROCK_SIZE_CLASS_SCALE.large;
+      for (const axis of v.scale) expect(axis).toBeLessThan(base * ROCK_STRETCH_RANGE[1]);
+    }
+  });
+
+  it("leaves small and medium rocks uncapped", () => {
+    for (const biome of ["SAND", "GRASS"] as const) {
+      for (let i = 0; i < 30; i++) {
+        const v = rockVariation({ ...placement(i, biome), scale: 1.4 });
+        expect(rockDrawnRadius(v)).toBeLessThan(ROCK_MAX_EXTENT);
+      }
+    }
   });
 });
 
@@ -120,14 +172,18 @@ describe("rockVariation", () => {
   });
 
   it("scales rocks non-uniformly, by the decoration scale and the size class", () => {
+    let uncapped = 0;
     rocks.forEach((rock, i) => {
       const v = variations[i];
       const base = rock.scale * ROCK_SIZE_CLASS_SCALE[v.sizeClass];
-      for (const axis of v.scale) {
-        expect(axis).toBeGreaterThanOrEqual(base * ROCK_STRETCH_RANGE[0] - 1e-9);
-        expect(axis).toBeLessThanOrEqual(base * ROCK_STRETCH_RANGE[1] + 1e-9);
+      for (const axis of v.scale) expect(axis).toBeLessThanOrEqual(base * ROCK_STRETCH_RANGE[1] + 1e-9);
+      // A rock the extent cap did not shrink keeps the full stretch range.
+      if (rockDrawnRadius(v) < ROCK_MAX_EXTENT - 1e-9) {
+        uncapped++;
+        for (const axis of v.scale) expect(axis).toBeGreaterThanOrEqual(base * ROCK_STRETCH_RANGE[0] - 1e-9);
       }
     });
+    expect(uncapped).toBeGreaterThan(variations.length / 2);
     const anisotropic = variations.filter((v) => Math.abs(v.scale[0] - v.scale[2]) > 0.01 * v.scale[0]);
     expect(anisotropic.length).toBeGreaterThan(variations.length / 2);
   });

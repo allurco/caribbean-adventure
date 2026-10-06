@@ -5,6 +5,7 @@ import { hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
 import { MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
+import { rockDrawnRadius, rockVariation } from "./rockVariation";
 import {
   smallStones,
   STONE_SCALE_RANGE,
@@ -91,6 +92,37 @@ describe("smallStones", () => {
     expect(STONE_SCALE_RANGE[0]).toBeGreaterThanOrEqual(0.6);
     expect(STONE_SCALE_RANGE[1]).toBeLessThanOrEqual(1);
     expect(STONE_SCALE_RANGE[0]).toBeLessThan(STONE_SCALE_RANGE[1]);
+  });
+
+  it("stands each stone on the ground at its centre, not the lowest point under it (#53)", () => {
+    // On a 0.5 slope the lowest-probe rule sank a 0.22-wide stone by ~0.1, burying most of it.
+    const slope: GroundField = { sampleHeight: (x) => 0.6 + 0.5 * x };
+    const onSlope = smallStones(cells, slope, seed);
+    expect(onSlope.length).toBeGreaterThan(0);
+    for (const stone of onSlope) {
+      expect(stone.worldY).toBeCloseTo(slope.sampleHeight(stone.worldX, stone.worldZ) - 0.01, 5);
+    }
+  });
+
+  it("probes each stone's ground out to the small radius Rocks.tsx draws it at (#53)", () => {
+    // On flat land every stone stands at its first candidate, so the probes come
+    // in equal runs per stone, in stone order: the centre first, then the rim.
+    const probes: { x: number; z: number }[] = [];
+    const recording: GroundField = {
+      sampleHeight: (x, z) => {
+        probes.push({ x, z });
+        return 0.5;
+      },
+    };
+    const placed = smallStones(cells, recording, seed);
+    expect(placed.length).toBeGreaterThan(0);
+    const perStone = probes.length / placed.length;
+    expect(Number.isInteger(perStone)).toBe(true);
+    placed.forEach((stone, k) => {
+      const rim = probes[k * perStone + 1];
+      const probed = Math.hypot(rim.x - stone.worldX, rim.z - stone.worldZ);
+      expect(probed).toBeCloseTo(rockDrawnRadius(rockVariation(stone, "small")), 9);
+    });
   });
 
   it("places nothing on a map with no eligible cells", () => {

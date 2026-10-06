@@ -296,15 +296,44 @@ placed on a slope sinks in instead of floating. `rockVariation.ts` derives
 each rock's look from a hash of its placement (the `palmVariation.ts`
 pattern): variant, a base colour by biome with a tint within ±15% of it, a
 per-axis stretch, a small tilt, a bury depth and a size class by the cell's
-biome (large outcrops on `ROCK`, medium on `GRASS`, small on `SAND`; the
-ground-placement footprint grows with the class). `smallStones.ts` adds one
-derived stone per `SAND`/`GRASS` cell without a rock or port, from a
-per-cell hash of its coordinates and the terrain seed, through
-`placeOnGround` so it stays on land; the densities are named constants.
-`Rocks.tsx` draws one `InstancedMesh` per variant on a white material, with
-`instanceColor` carrying the base colour times the tint. Instance counts
-(10-seed average, generator rocks + stones): small 26 + 32, medium 61 + 81,
-large 124 + 152.
+biome (large outcrops on `ROCK`, medium on `GRASS`, small on `SAND`). The
+hash covers the rock's X, Z, rotation and scale but never its Y, so the
+placement can derive the same variation before it knows the ground height.
+`smallStones.ts` adds one derived stone per `SAND`/`GRASS` cell without a
+rock or port, from a per-cell hash of its coordinates and the terrain seed;
+the densities are named constants. `Rocks.tsx` draws one `InstancedMesh`
+per variant on a white material, with `instanceColor` carrying the base
+colour times the tint. Instance counts (10-seed average, generator rocks +
+stones): small 26 + 32, medium 61 + 81, large 124 + 152.
+
+**Rock placement (#53).** Rocks and stones go through `rockPlacement.ts`,
+not straight through `placeOnGround`, and differ from trees in two ways.
+They stand on the ground at their own **centre** (`standOn: "centre"` in
+`groundPlacement.ts`; trees and port markers keep the default lowest-probe
+rule, since a trunk must not float): a boulder's base is wide, and on a
+summit the lowest probe under it was so far below the middle that most
+large outcrops, and about half the grass rocks, ended up fully below the
+surface. The squashed underside and the bury depth cover the downhill side
+instead. And the probed footprint is the rock's **drawn radius**: `placeRock`
+derives the variation at each nudge candidate (so a candidate that re-hashes
+to a smaller rock may fit where the requested one would not) and probes the
+ground out to `rockDrawnRadius` (per-axis scale × the variant's ellipsoid
+radii × the unit radius), at the centre and 16 points round the rim, so a
+slab can neither hang over the water nor over a lower neighbour the probe
+missed. Stones ask for the small class they are drawn at (`sizeClass` on
+the request), not their cell's; a grass stone probed at the medium class
+was pushed back from edges it fitted on. `ROCK_MAX_EXTENT` (0.85, just inside the hex inradius of 0.87) caps
+that radius: a rock that would reach further is shrunk uniformly in
+`rockVariation`, which only touches the biggest slabs (a large slab at the
+generator's top scale would otherwise reach 1.31 units). Probe over small-map
+seeds 11-13: fully buried rocks went from 30/33 on `ROCK`, 27/44 on `GRASS`,
+1/15 on `SAND` and 43/101 stones to 0 everywhere; rims over water from 9 to
+1 (`ROCK`) and 2 to 0 (`GRASS`). The cost of the centre rule is on ridges:
+`ROCK` summits are knife-edged (the ground falls about a unit on both flanks
+within a large rock's radius while the rock is about half a unit tall), so a
+rock perched on the crest shows air under its flanks. The cross-probe slope
+check is blind to that symmetric drop, and sinking the rock halfway back only
+trades the gap for the burial, so it is left as it is for the visual review.
 
 Size and colour were retuned after an A/B at ship zoom where the rocks could
 not be found. `ROCK_UNIT_RADIUS` is 0.22 (was 0.12; a palm canopy is ~0.24),
@@ -314,17 +343,7 @@ painted with `highlandRock`, the summit's own colour, so outcrops vanished on
 the ground they sat on; `ROCK_BASE_COLOR` now gives each biome a colour
 darker and less warm than its ground: grey-brown 0x665f55 on sand, a neutral
 grey 0x5a5c5a on grass and a slate 0x565c64 on `ROCK` (a darker slate read
-as a hole beside the summit's shaded faces). Known follow-up: `placeOnGround`
-puts a rock's origin at the lowest ground under its footprint, and with the
-bigger footprints most large outcrops on steep summits (and about half the
-grass rocks) now end up fully below the surface. The same fit fails the
-other way on coasts: the probed footprint is the unit radius times the size
-class and decoration scale (at most about 0.77 units), but the drawn rock is
-that times the per-axis stretch (up to 1.3) times the variant's own
-ellipsoid radii, so a large slab reaches ~1.3-1.5 units from its origin and
-can overhang a lower neighbour or the water on a coastal `ROCK` cell. Both
-halves are one placement problem (the probed footprint is not the drawn
-extent) and are tracked as a follow-up.
+as a hole beside the summit's shaded faces).
 
 **Props: vegetation (#49).** Between the palms the islands grow two kinds of
 derived ground cover, hand-built and faceted like the palms and placed on
