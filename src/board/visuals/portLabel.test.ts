@@ -9,6 +9,8 @@ import {
   PORT_LABEL_MIN_HEIGHT,
   PORT_LABEL_HUD_GAP,
   PORT_LABEL_MIN_OPACITY,
+  PORT_LABEL_TOWN_FADE_FAR,
+  PORT_LABEL_TOWN_FADE_NEAR,
   PORT_LABEL_VIEWPORT_MARGIN,
   portLabelBaseY,
   portLabelOpacity,
@@ -146,6 +148,34 @@ describe("portLabelOpacity", () => {
 
   it("stays readable while the port is hovered", () => {
     expect(portLabelOpacity(4.3, true)).toBe(1);
+  });
+
+  describe("at town zoom (#90)", () => {
+    it("keeps the faint floor at the old ship-zoom floor, where the label is about 3.8 from the camera", () => {
+      expect(PORT_LABEL_TOWN_FADE_FAR).toBeLessThan(3.8);
+      expect(portLabelOpacity(PORT_LABEL_TOWN_FADE_FAR, false)).toBeCloseTo(PORT_LABEL_MIN_OPACITY, 10);
+    });
+
+    it("fades out entirely, so no faint name hangs over the streets", () => {
+      expect(PORT_LABEL_TOWN_FADE_NEAR).toBeLessThan(PORT_LABEL_TOWN_FADE_FAR);
+      expect(portLabelOpacity(PORT_LABEL_TOWN_FADE_NEAR, false)).toBe(0);
+      expect(portLabelOpacity(0.8, false)).toBe(0);
+    });
+
+    it("stays out while hovered: one hex fills the screen there, so the pointer is nearly always on the port", () => {
+      expect(portLabelOpacity(PORT_LABEL_TOWN_FADE_NEAR, true)).toBe(0);
+      expect(portLabelOpacity(0.8, true)).toBe(0);
+      expect(portLabelOpacity(PORT_LABEL_TOWN_FADE_FAR, true)).toBe(1);
+    });
+
+    it("eases monotonically between the two", () => {
+      let prev = -Infinity;
+      for (let d = PORT_LABEL_TOWN_FADE_NEAR; d <= PORT_LABEL_TOWN_FADE_FAR; d += 0.05) {
+        const o = portLabelOpacity(d, false);
+        expect(o).toBeGreaterThanOrEqual(prev - 1e-12);
+        prev = o;
+      }
+    });
   });
 });
 

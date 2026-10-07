@@ -75,6 +75,22 @@ describe("shadowExtentFor", () => {
     });
   });
 
+  describe("with the focus lifted onto the ground (town zoom, #90)", () => {
+    const seabed: ShadowFit = { ...fit, receiverDepth: 1.46, maxExtent: 100, minExtent: 0 };
+
+    it("is unchanged with the focus on the sea", () => {
+      expect(shadowExtentFor(2, 16 / 9, seabed, 0)).toBe(shadowExtentFor(2, 16 / 9, seabed));
+    });
+
+    it("covers the sea and the seabed seen from a focus that high over them", () => {
+      const h = 1.4;
+      const sea = groundViewReach(1, CAMERA_PITCH, CAMERA_FOV, 16 / 9, h) + margin;
+      const bed = groundViewReach(1, CAMERA_PITCH, CAMERA_FOV, 16 / 9, h + 1.46) + 1.46 * cosElevation;
+      expect(shadowExtentFor(1, 16 / 9, seabed, h)).toBeCloseTo(Math.max(sea, bed), 10);
+      expect(shadowExtentFor(1, 16 / 9, seabed, h)).toBeGreaterThan(shadowExtentFor(1, 16 / 9, seabed));
+    });
+  });
+
   it("never exceeds the maximum: at full zoom-out the box stays today's size", () => {
     expect(shadowExtentFor(CAMERA_MAX_DISTANCE, 16 / 9, fit)).toBe(fit.maxExtent);
     expect(shadowExtentFor(1000, 4, fit)).toBe(fit.maxExtent);

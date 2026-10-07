@@ -63,11 +63,11 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `size=small\|medium\|large` | Map size (random otherwise) |
 | `seed=<integer>` | Map generation seed: a plain decimal integer from -2147483648 to 2147483647 (random otherwise) |
 | `cx=<x>&cz=<z>` | Where the camera looks on the first frame, in world units (both needed; the map's middle otherwise) |
-| `dist=<positive number>` | How far the camera starts from its target, in world units (the map's iso distance otherwise); the zoom limits still apply |
+| `dist=<positive number>` | How far the camera starts from its target, in world units (the map's iso distance otherwise); the zoom limits still apply: 0.8 (town zoom) to 28. Below 4.32 the target settles onto the ground, so a hilltop is framed without lifting it by hand |
 | `view=props` | The prop viewer instead of the game, with `focus=<n>` to start close up on entry n |
 | `view=sound` | The sound lab instead of the game: every registered sound with play/stop, a loop toggle, its volume and its source, for approving sounds by ear |
 
-The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=3.55` opens the same small map every time, at ship zoom over its middle port. The size and seed become the game's boardgame.io `setupData` (merged over whatever match creation passes, so a pin overrides only the keys it sets); the camera values go to the board. Captains and NPCs stay random.
+The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=4.32` opens the same small map every time, at ship zoom over its middle port, and `/?size=small&seed=1&cx=15.5&cz=24.45&dist=0.8` at town zoom over Crescent Harbor's tower. The size and seed become the game's boardgame.io `setupData` (merged over whatever match creation passes, so a pin overrides only the keys it sets); the camera values go to the board. Captains and NPCs stay random.
 
 ## Project structure
 

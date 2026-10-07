@@ -134,6 +134,8 @@ function PortLabel({ site: { cell, groundY, labelBaseY }, hovered }: { site: Por
     const opacity = portLabelOpacity(distance, hovered);
     text.fillOpacity = opacity;
     text.outlineOpacity = opacity;
+    // Gone at town zoom (#90): skip drawing it at all
+    group.visible = opacity > 0;
 
     // Bring the label back inside the top edge if the lift carried it off
     const shift = portLabelScreenShift({

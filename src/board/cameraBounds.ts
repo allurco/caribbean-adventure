@@ -38,12 +38,33 @@ export const CAMERA_FOV = 45;
 export const CAMERA_MAX_DISTANCE = 28;
 /**
  * MapControls zoom-in limit (camera-to-target distance), the same world
- * distance on every map size so medium and large maps reach the small map's
- * ship zoom (#62). It is the small map's old floor, 0.15 of its old iso
- * distance (0.8 × 36). A larger hex scale may want it lower; the fine ring of
- * the ocean grid must still cover the view there (oceanGrid.test.ts).
+ * distance on every map size (#62): a town zoom (#90), close enough to walk
+ * the eye down a port's street, across its square and up to its fort. The
+ * #84 village and fort were approved from dist 1.0 to 1.2 in the units before
+ * #78 (0.82 to 0.99 now); 0.8 reaches the closest of those views. Below
+ * `OLD_CAMERA_MIN_DISTANCE` the focus follows the ground (`groundFollow.ts`)
+ * and the near plane closes in (`cameraNearFor`); the fine ring of the ocean
+ * grid must still cover the view here (oceanGrid.test.ts).
  */
-export const CAMERA_MIN_DISTANCE = 4.32;
+export const CAMERA_MIN_DISTANCE = 0.8;
+/**
+ * The zoom floor before the town zoom (#90): the small map's old ship-zoom
+ * floor, 0.15 of its old iso distance (0.8 × 36). Every view from here out
+ * behaves as it did before the town zoom.
+ */
+export const OLD_CAMERA_MIN_DISTANCE = 4.32;
+/** The camera's near plane from `OLD_CAMERA_MIN_DISTANCE` out, world units. */
+export const CAMERA_NEAR = 0.1;
+/**
+ * Near plane for a camera `distance` from its focus: `CAMERA_NEAR` from the
+ * old floor out, and closer in the same share of the distance, so at town
+ * zoom roofs, palms and the fort's flag a few metres from the lens are not
+ * cut away, while the depth buffer keeps the precision it had at the old
+ * floor relative to what is on screen.
+ */
+export function cameraNearFor(distance: number): number {
+  return CAMERA_NEAR * Math.min(1, distance / OLD_CAMERA_MIN_DISTANCE);
+}
 /** How far past the outermost cell centre the focus may go: one hex. */
 export const CAMERA_BOUNDS_PADDING = Math.sqrt(3);
 /**
