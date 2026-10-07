@@ -4,11 +4,14 @@ import { CaribbeanBoard } from "./board/Board";
 import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { parseDevUrlParams } from "./board/devUrlParams";
+import { setSharedTerrainFieldOptions } from "./board/visuals/sharedTerrainField";
 
 // Dev URL parameters (#74), read once: a map size and seed pin the generated
 // map, cx/cz/dist pin the camera's first view, view=props opens the prop
 // viewer. Absent, nothing changes. See "Dev URL parameters" in the README.
 const devParams = parseDevUrlParams(window.location.search);
+// The #83 prototype's massifs are a field option; every consumer shares the field.
+setSharedTerrainFieldOptions({ massifs: devParams.massifs });
 
 const CaribbeanClient = Client({
   // The local client creates its match without setupData, so the pinned map
@@ -27,5 +30,11 @@ export default function App() {
   if (devParams.propViewer) {
     return <PropViewer focus={devParams.propViewer.focus} />;
   }
-  return <CaribbeanClient cameraTarget={devParams.cameraTarget} cameraDistance={devParams.cameraDistance} />;
+  return (
+    <CaribbeanClient
+      cameraTarget={devParams.cameraTarget}
+      cameraDistance={devParams.cameraDistance}
+      houseBoxes={devParams.houseBoxes}
+    />
+  );
 }

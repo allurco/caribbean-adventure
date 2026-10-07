@@ -77,7 +77,7 @@ type GabledKind = Exclude<BuildingKind, "watchtower" | "church">;
  * kinds' at the same pitch: with the eave at 0.10 the house read as a hut
  * sunk to its sills (#59).
  */
-const GABLED: Readonly<Record<GabledKind, AgedGabledSpec>> = {
+export const GABLED: Readonly<Record<GabledKind, AgedGabledSpec>> = {
   warehouse: { w: 0.26, d: 0.18, eave: 0.16, ridge: 0.27, ridgeAlong: "z", windows: 0, hatch: true },
   tavern: { w: 0.22, d: 0.18, eave: 0.17, ridge: 0.27, ridgeAlong: "x", windows: 2, sign: true },
   house: { w: 0.18, d: 0.14, eave: 0.14, ridge: 0.23, ridgeAlong: "z", windows: 1 },

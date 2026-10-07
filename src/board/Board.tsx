@@ -21,6 +21,7 @@ import { Ocean } from "./visuals/Ocean";
 import { LandTerrain } from "./visuals/LandTerrain";
 import { useLandTerrain } from "./visuals/useLandTerrain";
 import { TerrainDecorations } from "./visuals/TerrainDecorations";
+import { HouseScaleBoxes } from "./visuals/HouseScaleBoxes";
 import { useDecorationLayout } from "./visuals/useDecorationLayout";
 import { SunLight } from "./visuals/SunLight";
 import { FillLight } from "./visuals/FillLight";
@@ -126,9 +127,12 @@ function Scene({
   onShipHover,
   onShipClick,
   onPortHover,
+  houseBoxes,
 }: {
   G: CaribbeanState;
   currentPlayer: string;
+  /** The #83 prototype's tiny-house scale boxes (dev). */
+  houseBoxes?: boolean;
   /** The map's iso distance (sets the zoom floor) and the first target. */
   cam: { isoDistance: number; target: [number, number, number] };
   movesRemaining: number;
@@ -351,6 +355,8 @@ function Scene({
       {/* Terrain decorations: trees, rocks, shore boulders, piers */}
       <TerrainDecorations layout={decorations} waveSlopes={waveSlopes} />
 
+      {houseBoxes && <HouseScaleBoxes cells={G.cells} wrap={G.wrap} />}
+
       <HexGrid grid={grid} copy={copy} />
 
       {Object.entries(G.ships).map(([id, ship]) => (
@@ -474,10 +480,12 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   cameraTarget?: [number, number, number];
   /** How far from its target the camera starts instead of the map's iso distance (dev, #74). */
   cameraDistance?: number;
+  /** Draw the #83 prototype's tiny-house scale boxes on every port hex (dev). */
+  houseBoxes?: boolean;
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance } = props;
+  const { G, ctx, cameraTarget, cameraDistance, houseBoxes } = props;
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
   const [sinkingShips, setSinkingShips] = useState<SinkingShipData[]>([]);
@@ -733,6 +741,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       >
         <Scene
           G={G}
+          houseBoxes={houseBoxes}
           currentPlayer={currentPlayer}
           cam={{ isoDistance: cam.isoDistance, target: start.target }}
           movesRemaining={movesRemaining}
