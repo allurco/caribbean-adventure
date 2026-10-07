@@ -36,6 +36,14 @@ export const CAMERA_PITCH = Math.atan2(
 export const CAMERA_FOV = 45;
 /** MapControls zoom-out limit (camera-to-target distance). */
 export const CAMERA_MAX_DISTANCE = 28;
+/**
+ * MapControls zoom-in limit (camera-to-target distance), the same world
+ * distance on every map size so medium and large maps reach the small map's
+ * ship zoom (#62). It is the small map's old floor, 0.15 of its old iso
+ * distance (0.8 × 36). A larger hex scale may want it lower; the fine ring of
+ * the ocean grid must still cover the view there (oceanGrid.test.ts).
+ */
+export const CAMERA_MIN_DISTANCE = 4.32;
 /** How far past the outermost cell centre the focus may go: one hex. */
 export const CAMERA_BOUNDS_PADDING = Math.sqrt(3);
 /**

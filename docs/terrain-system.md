@@ -1162,8 +1162,8 @@ things also widen the depth range, which `shadowDepthRange` checks against
 the near and far planes (0.5 and 150) in `atmosphere.test.ts`. At full
 zoom-out (distance 28) the 16:9 view reaches ~43 units across the sea, so
 the box sits at the 25-unit cap, as before: 50 units across, a 0.79 m texel.
-From ship zoom (distance 3.5–4.3; 4.3 is as close as the small map's
-`minDistance` allows) the seabed term sets the box: it fits to 10.2–11.4
+From ship zoom (distance 3.5–4.3; `CAMERA_MIN_DISTANCE`, 4.32, is as close
+as the zoom allows on every map size) the seabed term sets the box: it fits to 10.2–11.4
 units, a 0.32–0.36 m texel, 2.2–2.5× finer than the cap. The top-corner ray
 descends at only ~24°, so the 1.46 units of seabed depth add ~4 units of
 reach; without the seabed the box would be 6.8–8.1 units. From ship zoom up

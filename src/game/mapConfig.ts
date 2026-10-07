@@ -60,8 +60,6 @@ export interface CameraConfig {
   frustumSize: number;
   /** Camera-to-target distance of the first view. */
   isoDistance: number;
-  /** Closest camera-to-target distance the zoom allows. */
-  zoomFloor: number;
   /** World point the camera looks at to start with: the centre of the map. */
   target: [number, number, number];
 }
@@ -85,9 +83,6 @@ export function computeCameraConfig(dimensions: MapDimensions): CameraConfig {
   // 0.66 keeps the old view: it was configured as 0.8 but placed along a
   // vector of length √0.68 ≈ 0.8246 (#78).
   const isoDistance = worldSpan * 0.66;
-  // Closest the camera may zoom in (MapControls minDistance), the old
-  // `isoDistance × 0.15`, which MapControls always took as a real distance.
-  const zoomFloor = worldSpan * 0.12;
 
   const bounds = mapWorldBounds(dimensions);
   const target: [number, number, number] = [
@@ -96,5 +91,5 @@ export function computeCameraConfig(dimensions: MapDimensions): CameraConfig {
     (bounds.minZ + bounds.maxZ) / 2,
   ];
 
-  return { height, offset, minDistance, maxDistance, frustumSize, isoDistance, zoomFloor, target };
+  return { height, offset, minDistance, maxDistance, frustumSize, isoDistance, target };
 }

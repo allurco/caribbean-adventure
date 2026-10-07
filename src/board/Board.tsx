@@ -54,6 +54,7 @@ import {
   CAMERA_FOV,
   CAMERA_DIRECTION,
   CAMERA_MAX_DISTANCE,
+  CAMERA_MIN_DISTANCE,
   cameraBoundsFromHexes,
   clampToCameraBounds,
 } from "./cameraBounds";
@@ -129,8 +130,8 @@ function Scene({
 }: {
   G: CaribbeanState;
   currentPlayer: string;
-  /** The map's zoom floor and the first target. */
-  cam: { zoomFloor: number; target: [number, number, number] };
+  /** The first target. */
+  cam: { target: [number, number, number] };
   movesRemaining: number;
   attackMode: boolean;
   spyglassMode: boolean;
@@ -449,9 +450,10 @@ function Scene({
         // side, looking back across the map (labels read mirrored).
         target={cam.target}
         enableRotate={false}
-        minDistance={Math.min(cam.zoomFloor, CAMERA_MAX_DISTANCE)}
-        // The same on every map size (Civ style); the focus clamp above keeps
-        // the view on the map, with open sea past the rows on a small map.
+        // Both limits are the same on every map size (Civ style); the focus
+        // clamp above keeps the view on the map, with open sea past the rows
+        // on a small map.
+        minDistance={CAMERA_MIN_DISTANCE}
         maxDistance={CAMERA_MAX_DISTANCE}
       />
 
@@ -659,9 +661,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const preset = getMapPreset(G.mapSize);
   const cam = computeCameraConfig(preset);
   // The first view: the map's middle from its iso distance unless pinned.
-  // Only the start changes; the zoom floor (minDistance, cam.zoomFloor)
-  // and the focus clamp stay as they are, so a pinned view off the map is
-  // pulled back onto it like any other.
+  // Only the start changes; the zoom limits and the focus clamp stay as they
+  // are, so a pinned view off the map is pulled back onto it like any other.
   const start = {
     target: cameraTarget ?? cam.target,
     distance: cameraDistance ?? cam.isoDistance,
@@ -734,7 +735,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         <Scene
           G={G}
           currentPlayer={currentPlayer}
-          cam={{ zoomFloor: cam.zoomFloor, target: start.target }}
+          cam={{ target: start.target }}
           movesRemaining={movesRemaining}
           attackMode={attackMode}
           spyglassMode={spyglassMode}

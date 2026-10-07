@@ -142,11 +142,6 @@ describe("computeCameraConfig", () => {
     }
   });
 
-  it("keeps the old zoom floor, 0.15 of the old iso distance", () => {
-    expect(computeCameraConfig(getMapPreset("small")).zoomFloor).toBeCloseTo(36 * 0.8 * 0.15);
-    expect(computeCameraConfig(getMapPreset("large")).zoomFloor).toBeCloseTo(75 * 0.8 * 0.15);
-  });
-
   it("targets the centre of the map", () => {
     for (const preset of MAP_PRESETS) {
       const bounds = mapWorldBounds(preset);

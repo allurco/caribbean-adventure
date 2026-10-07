@@ -3,6 +3,7 @@ import { PerspectiveCamera, Vector3 } from "three";
 import {
   CAMERA_FOV,
   CAMERA_MAX_DISTANCE,
+  CAMERA_MIN_DISTANCE,
   CAMERA_DIRECTION,
   CAMERA_PITCH,
   cameraBoundsFromHexes,
@@ -27,6 +28,13 @@ describe("the game camera", () => {
     expect(CAMERA_DIRECTION[0]).toBe(0);
     expect(CAMERA_DIRECTION[1]).toBeGreaterThan(0);
     expect(CAMERA_DIRECTION[2]).toBeGreaterThan(0);
+  });
+
+  it("zooms in to one world distance on every map size: the small map's old floor (#62)", () => {
+    // The old floor was 0.15 of the old iso distance, 0.8 × the map's world span (36 on the small map).
+    expect(CAMERA_MIN_DISTANCE).toBeCloseTo(36 * 0.8 * 0.15, 12);
+    expect(CAMERA_MIN_DISTANCE).toBeGreaterThan(0);
+    expect(CAMERA_MIN_DISTANCE).toBeLessThan(CAMERA_MAX_DISTANCE);
   });
 
   it("is placed along a unit direction, so a configured distance is the real camera-to-focus distance (#78)", () => {

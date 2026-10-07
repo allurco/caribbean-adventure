@@ -14,7 +14,14 @@ import {
   type OceanGridRing,
   type OceanRingMesh,
 } from "./oceanGrid";
-import { CAMERA_FOV, CAMERA_MAX_DISTANCE, CAMERA_PITCH, MAX_VIEW_ASPECT, groundViewReach } from "../cameraBounds";
+import {
+  CAMERA_FOV,
+  CAMERA_MAX_DISTANCE,
+  CAMERA_MIN_DISTANCE,
+  CAMERA_PITCH,
+  MAX_VIEW_ASPECT,
+  groundViewReach,
+} from "../cameraBounds";
 
 const vertex = (mesh: OceanRingMesh, i: number): [number, number] => [mesh.positions[i * 3], mesh.positions[i * 3 + 2]];
 
@@ -173,8 +180,8 @@ describe("OCEAN_GRID_RINGS", () => {
   });
 
   it("keeps the fine ring under the whole view at the closest ship zoom on a 16:9 screen", () => {
-    // The small map's minDistance (4.3) is the furthest the closest zoom gets; the fine ring must still cover the view there.
-    const reach = groundViewReach(4.3, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
+    // The closest zoom is the same on every map size (#62); the fine ring must still cover the view there.
+    const reach = groundViewReach(CAMERA_MIN_DISTANCE, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
     const fine = OCEAN_GRID_RINGS[0].halfSize * OCEAN_GRID_BASE_CELL - oceanGridSnapCell(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL) / 2;
     expect(fine).toBeGreaterThan(reach);
   });

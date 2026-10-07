@@ -47,7 +47,7 @@ describe("WAVE_CASCADES", () => {
   });
 
   it("reaches waves two pixels long at the closest ship zoom", () => {
-    // Small map, closest zoom: the camera is ~4.3 units (280 m) from its
+    // Closest zoom, on any map size: the camera is ~4.3 units (280 m) from its
     // target, so a 1080-px, 45° view covers 0.21 m per pixel there.
     expect(ripple.kMax).toBeGreaterThanOrEqual((2 * Math.PI) / (2 * 0.21));
   });

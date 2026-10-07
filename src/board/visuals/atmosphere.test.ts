@@ -23,7 +23,7 @@ import { metresToUnits, unitsToMetres } from "./worldScale";
 import { WAVE_CREST_BOUND_UNITS } from "./waveDisplacement";
 import { viewDirectionXZ } from "./sunDirection";
 import { shadowDepthRange, shadowExtentFor, shadowTexel } from "../shadowFit";
-import { CAMERA_MAX_DISTANCE, CAMERA_DIRECTION } from "../cameraBounds";
+import { CAMERA_DIRECTION, CAMERA_MAX_DISTANCE, CAMERA_MIN_DISTANCE } from "../cameraBounds";
 
 describe("the fill light (#63)", () => {
   const view = viewDirectionXZ(CAMERA_DIRECTION);
@@ -106,9 +106,9 @@ describe("the sun's shadow camera", () => {
       unitsToMetres(shadowTexel(shadowExtentFor(distance, 16 / 9, SUN_SHADOW.fit), SUN_SHADOW.mapSize));
     expect(shadowExtentFor(CAMERA_MAX_DISTANCE, 16 / 9, SUN_SHADOW.fit)).toBe(SHADOW_EXTENT);
     expect(texelMetres(CAMERA_MAX_DISTANCE)).toBeCloseTo(0.79, 2);
-    // 4.3 is as close as the small map's minDistance allows; 3.5 is the ship-zoom design point.
-    expect(shadowExtentFor(4.3, 16 / 9, SUN_SHADOW.fit)).toBeLessThan(SHADOW_EXTENT * 0.5);
-    expect(texelMetres(4.3)).toBeLessThan(0.38);
+    // CAMERA_MIN_DISTANCE is as close as the zoom allows; 3.5 is the ship-zoom design point.
+    expect(shadowExtentFor(CAMERA_MIN_DISTANCE, 16 / 9, SUN_SHADOW.fit)).toBeLessThan(SHADOW_EXTENT * 0.5);
+    expect(texelMetres(CAMERA_MIN_DISTANCE)).toBeLessThan(0.38);
     expect(texelMetres(3.5)).toBeLessThan(0.34);
   });
 
