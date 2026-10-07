@@ -194,6 +194,8 @@ export interface TerrainHeightField {
   bounds: TerrainBounds;
   /** The world width the field repeats over in x (the wrap width), or null. */
   periodX: number | null;
+  /** The massifs the field was built with (#83 prototype); empty or absent with the flag off. */
+  massifs?: readonly Massif[];
 }
 
 /** Seeded PRNG (mulberry32), same as the map generator's. */
@@ -508,8 +510,9 @@ export function createTerrainHeightField(
   // by hex like the coast segments; ports likewise, for the shore-ramp fade.
   const massifsNear = new Map<number, Massif[]>();
   const portsNear = new Map<number, number[]>();
+  const massifs: Massif[] = options.massifs ? placeMassifs(cells, rng, options.wrap ?? null) : [];
   if (options.massifs) {
-    for (const m of placeMassifs(cells, rng, options.wrap ?? null)) {
+    for (const m of massifs) {
       const [q, r] = worldToHex(m.x, m.z);
       forEachHexWithin(q, r, MASSIF_INDEX_RADIUS, (hq, hr) => {
         const k = hexKey(hq, hr);
@@ -672,5 +675,6 @@ export function createTerrainHeightField(
     isNearSeabed: (x, z) => isNearSeabed(inStrip(x), z),
     bounds,
     periodX: strip ? strip.width : null,
+    massifs,
   };
 }

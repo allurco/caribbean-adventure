@@ -31,19 +31,21 @@ export interface Massif {
   facets: number;
   /** Elevation of the host hex (2 or 3). */
   elevation: number;
+  /** True when a port's view line capped the top below its drawn height. */
+  capped: boolean;
 }
 
 /** Massifs per island with at least one elevation 2–3 hex. */
 export const MASSIF_COUNT = { min: 2, max: 5 } as const;
 /** Plan radius range (world units); the hex inradius is 0.866. */
-export const MASSIF_RADIUS = { min: 0.45, max: 0.8 } as const;
+export const MASSIF_RADIUS = { min: 0.5, max: 0.95 } as const;
 /** Rise of the plateau above the host hex's elevation height, by elevation. */
 export const MASSIF_RISE: Readonly<Record<2 | 3, { min: number; max: number }>> = {
-  2: { min: 0.35, max: 0.65 },
-  3: { min: 0.45, max: 0.9 },
+  2: { min: 0.5, max: 0.9 },
+  3: { min: 0.6, max: 1.1 },
 };
 /** Fraction of the radius that is flat top; the flank takes the rest. */
-export const MASSIF_PLATEAU = 0.5;
+export const MASSIF_PLATEAU = 0.55;
 /** Amplitude of the plan facets, as a fraction of the radius. */
 export const MASSIF_FACET_AMPLITUDE = 0.14;
 /** How far a massif centre may wander from its host hex centre. */
@@ -53,7 +55,7 @@ export const MASSIF_PORT_CLEARANCE = 1.05;
 /** The shore ramp beside a massif pulls in to this (world units; the normal ramp is 0.9). */
 export const MASSIF_SHORE_RAMP = 0.4;
 /** How far past its rim a massif pulls the shore ramp in (fades to nothing). */
-export const MASSIF_SHORE_REACH = 0.9;
+export const MASSIF_SHORE_REACH = 1.3;
 /** A massif's own ramp from the coast: it reaches full height this far inland. */
 export const MASSIF_COAST_RAMP = 0.45;
 /** Smooth-max width where a massif meets the relief (world units). */
@@ -67,8 +69,12 @@ export const VIEW_LINE_SLOPE = CAMERA_OFFSET[1] / Math.hypot(CAMERA_OFFSET[0], C
 export const VIEW_CONE_HALF_WIDTH = 1.0;
 /** How much wider the cone gets per unit south of the port. */
 export const VIEW_CONE_SPREAD = 0.35;
-/** Margin kept under the line of sight (world units). */
-export const VIEW_MARGIN = 0.15;
+/**
+ * Margin kept under the line of sight (world units): a palm standing on the
+ * massif's top (~0.5 tall) must stay under the line too, or it hides the
+ * port the massif was kept out of the way of.
+ */
+export const VIEW_MARGIN = 0.55;
 /** Height the line of sight starts at over the port centre: the beach's elevation height. */
 export const VIEW_EYE_HEIGHT = ELEVATION_HEIGHTS[1];
 
@@ -154,7 +160,7 @@ export function placeMassifs(cells: readonly MapCell[], rng: () => number, wrap:
     }
     const hosts = island.filter((c) => c.elevation >= 2 && !c.hasPort);
     if (hosts.length === 0) continue;
-    const count = Math.min(MASSIF_COUNT.max, Math.max(MASSIF_COUNT.min, hosts.length + 1));
+    const count = Math.min(MASSIF_COUNT.max, Math.max(MASSIF_COUNT.min, hosts.length + 2));
     let placed = 0;
     for (let attempt = 0; attempt < count * 6 && placed < count; attempt++) {
       // Mountains host more often than jungle.
@@ -183,11 +189,13 @@ export function placeMassifs(cells: readonly MapCell[], rng: () => number, wrap:
       if (!clear) continue;
       // View line: cap the top, or drop the massif if the cap leaves it flat.
       const cap = viewLineCap({ x, z, radius: rim }, ports);
+      let capped = false;
       if (cap !== null) {
         if (cap < ELEVATION_HEIGHTS[elevation] + MASSIF_MIN_RISE) continue;
+        capped = cap < top;
         top = Math.min(top, cap);
       }
-      const massif: Massif = { x, z, radius, top, yaw, facets, elevation };
+      const massif: Massif = { x, z, radius, top, yaw, facets, elevation, capped };
       massifs.push(massif);
       if (wrap) massifs.push({ ...massif, x: x - width }, { ...massif, x: x + width });
       placed++;
