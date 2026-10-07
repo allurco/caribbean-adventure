@@ -17,8 +17,13 @@ import { type SoundId, soundById, soundUrl } from "./soundRegistry";
  * `installAudioUnlock`); until then `play` is a silent no-op.
  */
 export interface AudioEngine {
-  /** Create and resume the audio context; call from a pointerdown/keydown handler. */
-  unlock(): void;
+  /**
+   * Create and resume the audio context; call from a user gesture. Resolves
+   * once the browser has answered: a gesture that is not a user activation
+   * (a touch pointerdown, Escape) leaves the context suspended.
+   */
+  unlock(): Promise<void>;
+  /** True once the audio context is actually running. */
   isUnlocked(): boolean;
   /** Carry the listener on `object` (the camera); returns a detach function. */
   attachTo(object: Object3D): () => void;
@@ -70,10 +75,11 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
         listener.setMasterVolume(masterGain(settings));
         host?.add(listener);
       }
-      if (listener.context.state === "suspended") void listener.context.resume();
+      if (listener.context.state === "running") return Promise.resolve();
+      return listener.context.resume().catch(() => undefined);
     },
 
-    isUnlocked: () => listener !== null,
+    isUnlocked: () => listener?.context.state === "running",
 
     attachTo(object) {
       host = object;
@@ -89,11 +95,14 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
       const entry = soundById(id);
       const audio = new Audio(listener);
       let stopped = false;
+      // A first play waits on its buffer; it counts as playing meanwhile
+      let loading = true;
       audio.setLoop(options.loop ?? entry.loop);
       audio.setVolume(options.volume ?? entry.volume);
 
       buffer(id)
         .then((data) => {
+          loading = false;
           if (stopped) return;
           audio.setBuffer(data);
           audio.play();
@@ -101,7 +110,10 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
           audio.source?.addEventListener("ended", () => audio.gain.disconnect());
           if (import.meta.env.DEV) console.info(`[audio] play ${id} (context ${listener?.context.state})`);
         })
-        .catch((error: unknown) => console.warn(`[audio] could not load ${id}`, error));
+        .catch((error: unknown) => {
+          loading = false;
+          console.warn(`[audio] could not load ${id}`, error);
+        });
 
       return {
         stop() {
@@ -111,7 +123,7 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
           if (audio.isPlaying) audio.stop();
           else audio.gain.disconnect();
         },
-        isPlaying: () => !stopped && audio.isPlaying,
+        isPlaying: () => !stopped && (loading || audio.isPlaying),
         setVolume: (volume) => void audio.setVolume(volume),
         setLoop: (loop) => void audio.setLoop(loop),
       };
@@ -134,17 +146,19 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
 }
 
 /**
- * Unlock `engine` on the page's first pointerdown or keydown (in a game, the
- * draft pick), the gesture browsers require before audio may start. Returns
- * a function that removes the handlers if that never happened.
+ * Unlock `engine` on the page's gestures (in a game, the draft pick), which
+ * browsers require before audio may start. Not every gesture counts: a touch
+ * pointerdown or an Escape keydown leaves the context suspended, so the
+ * handlers stay until it is running. Returns a function that removes them.
  */
 export function installAudioUnlock(engine: AudioEngine, target: EventTarget = window): () => void {
-  const events = ["pointerdown", "keydown"] as const;
+  const events = ["pointerdown", "pointerup", "touchend", "click", "keydown"] as const;
   const options = { capture: true };
   const remove = () => events.forEach((type) => target.removeEventListener(type, onGesture, options));
   function onGesture() {
-    engine.unlock();
-    remove();
+    void engine.unlock().then(() => {
+      if (engine.isUnlocked()) remove();
+    });
   }
   events.forEach((type) => target.addEventListener(type, onGesture, options));
   return remove;

@@ -21,11 +21,11 @@ export function SoundLab() {
   // The engine unlocks on the first click; show when that has happened
   useEffect(() => {
     if (unlocked) return;
-    const onGesture = () => setTimeout(() => setUnlocked(audioEngine.isUnlocked()), 0);
-    window.addEventListener("pointerdown", onGesture);
+    const onGesture = () => void audioEngine.unlock().then(() => setUnlocked(audioEngine.isUnlocked()));
+    window.addEventListener("click", onGesture);
     window.addEventListener("keydown", onGesture);
     return () => {
-      window.removeEventListener("pointerdown", onGesture);
+      window.removeEventListener("click", onGesture);
       window.removeEventListener("keydown", onGesture);
     };
   }, [unlocked]);

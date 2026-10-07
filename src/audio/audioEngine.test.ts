@@ -3,9 +3,13 @@ import { createAudioEngine, installAudioUnlock } from "./audioEngine";
 
 function fakeEngine() {
   const engine = createAudioEngine(undefined, "/");
-  // Unlocking needs a browser AudioContext; count the calls instead.
-  const unlock = vi.fn();
-  return { ...engine, unlock };
+  // Unlocking needs a browser AudioContext; count the calls instead, the
+  // first one starting it (audioEngineContext.test.ts covers a refusal).
+  let running = false;
+  const unlock = vi.fn(async () => {
+    running = true;
+  });
+  return { ...engine, unlock, isUnlocked: () => running };
 }
 
 describe("createAudioEngine before unlock", () => {
@@ -32,13 +36,14 @@ describe("createAudioEngine before unlock", () => {
 });
 
 describe("installAudioUnlock", () => {
-  it("unlocks once, on the first pointerdown or keydown", () => {
+  it("unlocks once, on the first gesture that starts the context", async () => {
     const engine = fakeEngine();
     const target = new EventTarget();
     installAudioUnlock(engine, target);
     target.dispatchEvent(new Event("pointermove"));
     expect(engine.unlock).not.toHaveBeenCalled();
     target.dispatchEvent(new Event("keydown"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
     target.dispatchEvent(new Event("pointerdown"));
     expect(engine.unlock).toHaveBeenCalledTimes(1);
   });
