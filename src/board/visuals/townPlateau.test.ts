@@ -8,6 +8,7 @@ import {
   RISER,
   SHORE_KEEP_BOTTOM,
   SHORE_KEEP_TOP,
+  SQUARE_END,
   crossesRiser,
   plateauLevel,
   plateauPoint,
@@ -134,6 +135,16 @@ describe("town plateaus (#87)", () => {
         // The main street's middle is carved the full depth below its edge's ground.
         const main = p.streets[0];
         expect(streetCarveAt(p, (main.from[0] + main.to[0]) / 2, (main.from[1] + main.to[1]) / 2)).toBe(1);
+      }
+    }
+  });
+
+  it("keeps the square one level out to the port kit's reach", () => {
+    for (const seed of SEEDS) {
+      for (const p of fieldsOf(seed).town.townPlateaus) {
+        expect(p.steps[0]).toBeCloseTo(SQUARE_END * SCALE, 12);
+        // The kit's church, straight inland of the square, reaches a quarter unit inland at most (portSettlement.test.ts).
+        expect(p.steps[0]).toBeGreaterThan(0.26);
       }
     }
   });

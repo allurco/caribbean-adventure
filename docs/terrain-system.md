@@ -139,7 +139,12 @@ terraces rather than plinths and its streets are ground, not decals (ADR
 each other) and authored at the 115 m hex, drawn at `PROP_SCALE`: a square
 by the pier root where the port kit's square stands (`settlementCentre`),
 at the natural height kept between `SHORE_KEEP_TOP` and one riser above
-it; one to three flat terraces inland along the pier's line, stepping up
+it, and kept on that one level inland to `SQUARE_END`, past the kit's
+buildings (the church, straight inland, reaches furthest), so none of the
+kit straddles the first riser and the kit's riser check costs it nothing
+(over 30 small maps the same 62 taverns, 41 warehouses and 47 houses as
+with no check, pinned in `portSettlement.test.ts`); one to three flat
+terraces inland along the pier's line to `LENGTH`, stepping up
 by at most `RISER` (about 4 m); risers that are a steep `RISER_FACE` (about
 2 m wide) for the retaining walls, widening to the full `RAMP` where the
 main street or a back lane climbs; and the streets (a main street up the

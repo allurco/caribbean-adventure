@@ -43,12 +43,18 @@
 
 /** The square's radius, at scale 1 (the port kit's square plus room round it). */
 export const SQUARE_RADIUS = 0.6;
-/** How far inland of the square's centre the terraces reach, at scale 1. */
-export const LENGTH = 2.6;
+/** How far inland of the square's centre the terraces reach, at scale 1: lengthened with `SQUARE_END`, so the terraces keep their room for the village. */
+export const LENGTH = 2.95;
 /** Half-width of the terraces across the main street, at scale 1. */
 export const HALF_WIDTH = 0.85;
-/** Where the first terrace starts beyond the square's centre, at scale 1. */
-export const SQUARE_END = 0.5;
+/**
+ * Where the first terrace starts beyond the square's centre, at scale 1: past
+ * the port kit (`portSettlement.ts`), so its buildings stand on the square's
+ * one level and none straddles the first riser. The church, straight inland
+ * of the square, reaches furthest, about 0.25 world units (0.75 at scale 1);
+ * this keeps its back and the retaining wall's foot clear of the ramp.
+ */
+export const SQUARE_END = 0.85;
 /** Most a terrace steps up from the one before, at scale 1 (about 4 m at the 350 m hex). */
 export const RISER = 0.06;
 /** Length of the ramp a street climbs a riser by, at scale 1. */

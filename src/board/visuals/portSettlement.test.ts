@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
-import { hexToWorld } from "../../game/hex";
+import { createWrap, hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
 import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
@@ -556,6 +556,28 @@ describe("portBuildings", () => {
     // A deeper footing (a larger building) takes it.
     expect(standBuilding(settlementGround(noQuay, ramp(0.8), 0), { x: hx, z: hz }, reach, 0.2, pierRoot, [])).not.toBeNull();
   });
+
+  it("keeps the kit's tavern, warehouse and house on the town's square (#87): over 30 small maps nearly as many as with no riser or street to keep off", () => {
+    const withTown: Record<string, number> = {};
+    const without: Record<string, number> = {};
+    const preset = getMapPreset("small");
+    const wrap = createWrap(preset.columns);
+    for (let mapSeed = 1; mapSeed <= 30; mapSeed++) {
+      const someCells = generateMap(preset, mapSeed, wrap);
+      const someSeed = terrainSeedFromCells(someCells);
+      const someField = createTerrainHeightField(someCells, someSeed, { wrap });
+      const drawn = landSurface(someField);
+      for (const b of portBuildings(someCells, drawn, someSeed, someField.townPlateaus)) withTown[b.kind] = (withTown[b.kind] ?? 0) + 1;
+      // The same ground, but nothing refused for the town's risers or streets.
+      for (const b of portBuildings(someCells, drawn, someSeed)) without[b.kind] = (without[b.kind] ?? 0) + 1;
+    }
+    for (const kind of ["tavern", "warehouse", "house"] as const) {
+      expect(without[kind]).toBeGreaterThan(30);
+      expect(withTown[kind] ?? 0).toBeGreaterThanOrEqual(0.85 * without[kind]);
+    }
+    expect(withTown.church).toBe(without.church);
+    expect(withTown.watchtower).toBe(without.watchtower);
+  }, 60000);
 
   it("keeps every building's walls off the town's terrace risers and their retaining walls (#87), and still gives nearly every port its church", () => {
     let portsSeen = 0;
