@@ -1,0 +1,48 @@
+Project Caribbean
+=================
+
+The code in this repository is MIT licensed (see LICENSE). This file lists
+third-party assets shipped in the repository, their sources and licences.
+
+Sounds
+------
+
+Every sound is CC0 1.0 Universal (public domain dedication):
+https://creativecommons.org/publicdomain/zero/1.0/
+Files were converted to mono OGG Vorbis; other changes are noted per file.
+Credit is not required by CC0 and is given here with thanks.
+
+public/sounds/ui-click.ogg
+  Source:  "Interface Sounds" (click_001.ogg)
+  Author:  Kenney (www.kenney.nl)
+  URL:     https://opengameart.org/content/interface-sounds
+  Licence: CC0
+  Changes: mono, normalised
+
+public/sounds/ship-sail.ogg
+  Source:  "50 RPG sound effects" (creak1.ogg and cloth1.ogg)
+  Author:  Kenney (www.kenney.nl)
+  URL:     https://opengameart.org/content/50-rpg-sound-effects
+  Licence: CC0
+  Changes: wood creak layered with a cloth flap, mono, normalised
+
+public/sounds/coins.ogg
+  Source:  "50 RPG sound effects" (handleCoins.ogg)
+  Author:  Kenney (www.kenney.nl)
+  URL:     https://opengameart.org/content/50-rpg-sound-effects
+  Licence: CC0
+  Changes: mono, normalised
+
+public/sounds/cannon-fire.ogg
+  Source:  "Battle at sea" (cannon_fire_1.ogg)
+  Author:  Thimras
+  URL:     https://opengameart.org/content/battle-at-sea
+  Licence: CC0
+  Changes: trimmed to 2.6 s with a faded tail, mono, normalised
+
+public/sounds/sea-waves-loop.ogg
+  Source:  "Beach Ocean Waves" (wave_01 to wave_04, from freesound 18363 "alkaibeach")
+  Author:  jasinski
+  URL:     https://opengameart.org/content/beach-ocean-waves
+  Licence: CC0
+  Changes: four clips crossfaded into one seamless 9.7 s loop, mono
