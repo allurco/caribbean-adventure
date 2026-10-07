@@ -157,16 +157,21 @@ describe("placeShrubs", () => {
   it("keeps clear of the cell's trees, rocks, stones and piers", () => {
     const obstacles = shrubObstacles(placed);
     expect(obstacles.length).toBeGreaterThan(0);
-    for (const shrub of shrubs) {
+    // Shrubs × obstacles is large at PROP_DENSITY: collect the clashes rather than assert each pair.
+    const clashes: string[] = [];
+    shrubs.forEach((shrub, i) => {
       const radius = SHRUB_FOOTPRINT_RADIUS[shrub.kind] * shrub.scale;
-      for (const o of obstacles) {
+      obstacles.forEach((o, j) => {
         const d = segmentDistance(shrub.worldX, shrub.worldZ, o);
-        expect(d).toBeGreaterThanOrEqual(o.radius + radius + SHRUB_CLEARANCE - 1e-6);
-      }
-    }
+        if (d < o.radius + radius + SHRUB_CLEARANCE - 1e-6) clashes.push(`${i}-${j}`);
+      });
+    });
+    expect(clashes).toEqual([]);
   });
 
   it("keeps clear of other shrubs in the same cell", () => {
+    // PROP_DENSITY times the shrubs make this pairwise check large: count the overlaps rather than assert each pair.
+    const overlaps: string[] = [];
     for (let i = 0; i < shrubs.length; i++) {
       for (let j = i + 1; j < shrubs.length; j++) {
         const a = shrubs[i];
@@ -174,9 +179,11 @@ describe("placeShrubs", () => {
         const d = Math.hypot(a.worldX - b.worldX, a.worldZ - b.worldZ);
         const ra = SHRUB_FOOTPRINT_RADIUS[a.kind] * a.scale;
         const rb = SHRUB_FOOTPRINT_RADIUS[b.kind] * b.scale;
-        expect(d).toBeGreaterThanOrEqual(ra + rb - 1e-6);
+        if (d < ra + rb - 1e-6) overlaps.push(`${i}-${j}`);
       }
     }
+    expect(shrubs.length).toBeGreaterThan(100);
+    expect(overlaps).toEqual([]);
   });
 
   it("keeps clear of the port marker on port cells", () => {
