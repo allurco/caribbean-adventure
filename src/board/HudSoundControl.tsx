@@ -1,7 +1,10 @@
 import { useAudioSettings } from "../audio/useAudioSettings";
 import { audioEngine } from "../audio/sharedAudioEngine";
 
-/** Mute toggle and master volume, top right under the turn bar (#73). Saved per browser. */
+/**
+ * Mute toggle and master volume, top left under the turn bar (#73), clear
+ * of the boardgame.io debug panel on the right. Saved per browser.
+ */
 export function HudSoundControl() {
   const [settings, setSettings] = useAudioSettings();
   const silent = settings.muted || settings.volume === 0;
@@ -13,7 +16,7 @@ export function HudSoundControl() {
   };
 
   return (
-    <div className="absolute top-12 right-5 flex items-center gap-2 px-2.5 py-1.5 bg-black/40 rounded-lg border border-amber-700/30 backdrop-blur-sm">
+    <div className="absolute top-12 left-5 flex items-center gap-2 px-2.5 py-1.5 bg-black/40 rounded-lg border border-amber-700/30 backdrop-blur-sm">
       <button
         type="button"
         onClick={toggleMute}
