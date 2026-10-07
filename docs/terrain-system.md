@@ -1,189 +1,251 @@
-# Unified Terrain System - Technical Documentation
+# Terrain System
 
 ## Overview
 
-The terrain system renders islands and seafloor using GPU shaders with a heightmap texture.
+Islands, seabed, water and shore are all drawn from **one terrain height
+field** (ADR 0001, `docs/adr/0001-one-terrain-height-field.md`): a pure
+function of the map's cells and a seed that every visual consumer samples,
+on the CPU directly or on the GPU through a texture baked from it. The game's
+`cell.elevation` decides how high land rises; the renderer only shapes it.
+Read this before changing the field, the land mesh or the ocean and shadow
+shaders: §1 and §2 cover the field and the land drawn from it, §3 the water,
+§4 the sun's shadows.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  1. TerrainHeightmap.ts                                     │
-│     CPU-side: Generates a texture from hex cell data        │
-│     Uses SDF (Signed Distance Field) for clean boundaries   │
-└─────────────────────────────────────────────────────────────┘
-                            ↓
-                    DataTexture (1024x1024)
-                            ↓
-        ┌───────────────────┴───────────────────┐
-        ↓                                       ↓
-┌───────────────────────┐           ┌───────────────────────┐
-│  2. UnifiedTerrain    │           │  3. Ocean.tsx         │
-│     Vertex shader:    │           │     Fragment shader   │
-│     - Squash water    │           │     reads heightmap   │
-│       vertices        │           │     for depth & foam  │
-│     - Displace land Y │           │                       │
-│     Fragment shader:  │           │                       │
-│     - Noisy biome     │           │                       │
-│       transitions     │           │                       │
-└───────────────────────┘           └───────────────────────┘
-```
-
----
-
-## Key Design Decisions
-
-### 1. SDF-Based Land Mask (Not IDW)
-
-**Problem with IDW (Inverse Distance Weighting):**
-IDW never reaches zero - it creates infinite "ghosting" tails causing scattered land patches in water.
-
-**Solution: Signed Distance Field**
-- For each pixel, find the **single closest** hex center
-- Use a **hard cutoff** for the land mask
-- Use **smooth falloff** only for height (creates domed islands)
-
-```typescript
-const dist = distance(pixelPos, closestHexCenter);
-const hexRadius = 1.0;
-
-// Hard cutoff for mask (prevents ghost islands)
-const isLand = closestHex.terrain === "island" && dist < hexRadius * 1.1;
-
-// Smooth falloff for height (makes island domed, not flat-topped)
-const shapeMask = smoothstep(hexRadius * 1.1, hexRadius * 0.5, dist);
-finalHeight = baseElevation * shapeMask;
-```
-
-### 2. Vertex Squashing (Not Fragment Discard)
-
-**Problem with `discard`:**
-- Disables Early-Z testing on GPU
-- Forces fragment shader to run for ALL pixels, even water
-- 70% of GPU work thrown away
-
-**Solution: Degenerate Vertices**
-```glsl
-// In vertex shader - squash water vertices to nothing
-if (texture2D(heightmap, uv).a < 0.5) {
-    gl_Position = vec4(0.0, 0.0, 0.0, 0.0); // Degenerate
-    return;
-}
-```
-The rasterizer skips degenerate triangles entirely - zero fragment shader cost.
-
-### 3. High Resolution Texture (1024x1024+)
-
-| Resolution | Pixels per Hex | VRAM | Quality |
-|------------|----------------|------|---------|
-| 512x512 | ~10px | 4MB | Blurry, pixelated transitions |
-| **1024x1024** | ~20px | 16MB | Good for most cases |
-| 2048x2048 | ~40px | 64MB | High detail, large maps |
-
-### 4. Noisy Biome Transitions (Not Linear Mix)
-
-**Problem with linear `mix(SAND, GRASS, t)`:**
-- 50% blend = muddy brownish-green
-- Looks artificial
-
-**Solution: Noisy Smoothstep**
-```glsl
-float noiseVal = noise(worldPos.xz * 20.0) * 0.1;
-float mask = smoothstep(0.4, 0.45, terrainType + noiseVal);
-vec3 color = mix(SAND, GRASS, mask);
-```
-Creates organic "dithered" boundary - sand penetrating into grass patches.
-
----
-
-## 1. Heightmap Generation (TerrainHeightmap.ts)
-
-### Texture Format
-
-**1024x1024 DataTexture** with RGBA Float32:
-
-| Channel | Name | Description |
-|---------|------|-------------|
-| R | height | Terrain height with SDF falloff |
-| G | terrainType | Elevation indicator (0.33=beach, 0.66=jungle, 1.0=mountain) |
-| B | coastDist | Distance from shoreline (for foam) |
-| A | landMask | Hard cutoff: 1=land, 0=water |
-
-### Algorithm (SDF Approach)
-
-```
-For each pixel (x, y) in 1024x1024:
-  1. Convert to world coordinates
-  2. Find the SINGLE CLOSEST hex center
-  3. Calculate distance to that center
-  4. If closest hex is land AND dist < hexRadius * 1.1:
-       - landMask = 1
-       - shapeMask = smoothstep(radius*1.1, radius*0.5, dist)
-       - height = ELEVATION[hex.elevation] * shapeMask + noise
-       - terrainType = hex.elevation / 3
-     Else:
-       - landMask = 0
-       - height = seafloor depth based on distance to any land
+G.cells + seed ──▶ terrainHeightField.ts   sampleHeight(x, z), sampleCoastDistance,
+                   (one per map, through    sampleElevation, isNearLand, isNearSeabed
+                    sharedTerrainField.ts)
+        ┌───────────────┼──────────────────────────┐
+        ▼               ▼                          ▼
+  landMesh.ts     terrainFieldTexture.ts     CPU samplers
+  lattice mesh    RGBA half-float bake       groundPlacement.ts: trees, rocks, stones, shrubs
+  useLandTerrain  useTerrainFieldTexture     landSurface (landMesh.ts): buildings, quay, pier
+  LandTerrain           │                    useHexGrid.ts: port labels and hover volumes
+        │               ▼                    shoreBoulders.ts, useWaterGridLines.ts
+        ▼         Ocean.tsx: reef bands
+  seabed prepass  waveDisplacement.ts: shallow damping
+  → water depth   shoreFoamLand.ts: wash up the sand
 ```
 
 ---
 
-## 2. Unified Terrain Shader (UnifiedTerrain.tsx)
+## 1. The Height Field (terrainHeightField.ts)
 
-### Vertex Shader
+**What it is.** `createTerrainHeightField(cells, seed, options)` returns a
+`TerrainHeightField`: `sampleHeight(x, z)` is the terrain's world Y at any
+world XZ (flat-top hexes, `hexToWorld`); `sampleCoastDistance` the
+noise-perturbed signed distance to the coast, positive on land, negative
+over water, clamped at ±`MAX_COAST_DISTANCE` (4 units); `sampleElevation`
+the blended land elevation (1 beach … 3 mountain); and `isNearLand` /
+`isNearSeabed` cheap per-hex tests that let consumers skip open water
+without sampling. Plain TypeScript with no Three.js, so it is unit-tested.
+Building it is linear in the number of coastline edges and a sample is O(1):
+a hex look-up and a scan of the coast segments indexed to that hex, sorted
+by a lower bound on their distance so the scan stops early and the result is
+exact. The seed is `terrainSeedFromCells(cells)`, a hash of the land cells'
+positions and elevations, so every client and every consumer gets the same
+coastline without a seed stored in `G`.
 
-```glsl
-uniform sampler2D heightmap;
+**Coast.** The land/water boundary is the set of hex edges between a land
+hex and a non-land neighbour (water and reef alike). The coast distance `d`
+at a point is its distance to the nearest such edge, signed by whether its
+own hex is land, plus two octaves of simplex noise
+(`COAST_NOISE_AMPLITUDE` 0.25 units at 1.3 cycles per unit, from
+`periodicNoise.ts`). The amplitude stays under the hex inradius (√3/2), so
+the noisy shore never reaches a hex centre; `coastNoiseAmplitude: 0` makes
+the coast trace the hex edges exactly, which the tests use. Land/land edges
+are never boundary edges, so adjacent land hexes never dip towards each
+other.
 
-void main() {
-    vec4 hm = texture2D(heightmap, uv);
+**Under water (d ≤ 0).** The seabed is `seabedProfile.ts` in metres at the
+render scale (`worldScale.ts`, 65 m per unit): a ~1:21 beach face, a 2–15 m
+shelf about a hex wide and a drop-off at ~175 m offshore to a ~122 m floor
+(§3 *Seabed*). Reef hexes rise to a noisy crest `REEF_CREST_DEPTH` ±
+`REEF_CREST_VARIATION` (2 ± 0.9 m) below the surface; the rise starts
+`REEF_FOOT` (0.6 units) outside the reef outline and is complete `REEF_TOP`
+(0.4) inside it, joined to an already shallow shelf by a smooth max so there
+is no crease. The depth is a function of coast distance alone: a land cell's
+biome does not change the seabed off its shore.
 
-    // OPTIMIZATION: Squash water vertices (skip rasterization)
-    if (hm.a < 0.5) {
-        gl_Position = vec4(0.0, 0.0, 0.0, 0.0);
-        return;
-    }
+**On land (d > 0).** `height = target · ramp(d) + relief · ramp(d)²`. The
+target is a kernel-weighted blend (radius `BLEND_RADIUS` 2, which reaches
+the adjacent centres and no further) of nearby land cells' `ELEVATION_HEIGHTS`
+({1: 0.3, 2: 0.75, 3: 1.4} world units for beach, jungle, mountain), so an
+island is one landform with no seam at hex edges, stepping smoothly from a
+beach ring up to a mountain core. `ramp` rises from 0 at the coast to 1
+over `SHORE_RAMP` (0.9 units) inland; on beaches a soft toe (`SHORE_TOE`
+0.18, gone by jungle) leaves the waterline at zero slope, so sand meets the
+water tangentially while rocky coasts still rise steeply. Relief is
+non-negative multi-octave noise, rolling on low ground and ridged (sharp
+crests, broad valleys) from jungle up to mountain, with peak amplitude
+`RELIEF_AMPLITUDES` ({1: 0.05, 2: 0.16, 3: 0.5}) interpolated on the blended
+elevation. Because it only ever raises the ground and is scaled by ramp², it
+cannot cut a dip between land hexes, reorder beach < jungle < mountain at
+the cell centres, or lift the waterline. Both branches are 0 at d = 0, so
+the coast sits exactly at `SEA_LEVEL` (0).
 
-    // Displace land vertices
-    vec3 pos = position;
-    pos.y = hm.r;
+**Bounds and wrap.** Without a wrap `field.bounds` pads the outermost cell
+centres by `BOUNDS_PADDING` (5 units: the 4-unit coast-distance clamp plus a
+hex circumradius), so an island on the map's edge keeps its whole shelf and
+drop-off and nothing samples outside the field. With the game's east–west
+wrap (`G.wrap`, #36) the field is built over one seam strip
+(`seamStrip.ts`) exactly one wrap width wide, from the cells plus their
+images just past either edge (`withSeamImages`), with periodic noise, and
+every sampler first moves its x into the strip; `field.periodX` is the wrap
+width. §3 *Map shape and wrap* covers what the mesh, the texture and the
+world copies make of that.
 
-    // Compute normal from heightmap gradient
-    // ...
+**One per map.** `sharedTerrainField(cells, wrap)` (`sharedTerrainField.ts`)
+builds the field once per `cells` array (a `WeakMap` on the array, so a new
+map is a new field) and every consumer asks it, never
+`createTerrainHeightField` directly. Builds derived from the field (the bake
+below, the land mesh, the decoration layout) go through `perMapCache.ts` for
+the same reason: the board's tree is rendered more than once per map and
+every world copy would otherwise rebuild them.
 
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-}
-```
+**GPU consumers: the baked texture.** `terrainFieldTexture.ts` samples the
+field at every texel centre over `field.bounds` into an RGBA half-float
+image (height, coast distance, reef mask, reef windward weight; the channel
+table and the texel density are under *Field texture* in §3) and
+`useTerrainFieldTexture.ts` wraps it in one `DataTexture` per map.
+`TERRAIN_FIELD_GLSL` is the matching read helper, pasted into each shader
+that has a `mapBounds` uniform. Three shaders read it: `Ocean.tsx`, for the
+reef mask and windward weight behind the reef foam band;
+`waveDisplacement.ts`, for the height that damps the wave displacement in
+the shallows; and `shoreFoamLand.ts`, for the coast distance that runs the
+wash up the sand. The water's depth itself does not come from the texture:
+the land mesh (§2) is drawn into the seabed prepass and the water shader
+reads that depth back, so the colour follows the drawn seabed exactly.
 
-### Fragment Shader
+**CPU consumers.** Everything placed on land asks the field for its ground:
+`groundPlacement.ts` probes a footprint's centre and rim for trees, rocks,
+stones and shrubs (`decorationLayout.ts`, once per map); the port kit
+(`portSettlement.ts`, `quayPlacement.ts`, `pierPlacement.ts`) stands on the
+drawn lattice surface instead (`landSurface`, §2); `useHexGrid.ts` lifts each
+port's label and hover volume to `groundTopY`; `shoreBoulders.ts` keeps
+boulders where the coast distance straddles the waterline;
+`useWaterGridLines.ts` fades the water hex grid's lines by coast distance as
+they approach the shore. A rendered point on land must sit within a small
+tolerance of `sampleHeight` there. The shadow box (§4) does not sample the
+field: it is sized from the view's reach and fixed caster and receiver
+depths.
 
-```glsl
-// Biome colors
-const vec3 SAND = vec3(0.93, 0.87, 0.70);
-const vec3 GRASS = vec3(0.22, 0.55, 0.28);
-const vec3 ROCK = vec3(0.45, 0.42, 0.38);
+**Invariants the tests pin (`terrainHeightField.test.ts`).**
 
-void main() {
-    // Noisy transitions (not linear mud)
-    float n = noise(vWorldPos.xz * 15.0) * 0.08;
+- *Determinism.* The same cells and seed give identical heights, a different
+  seed a different coastline, and `terrainSeedFromCells` is stable for a map
+  and differs between maps.
+- *Continuity across land hex edges.* Along the segment between two adjacent
+  land centres the height never jumps (0.004-unit steps move it by under
+  0.01–0.02; under 0.06 on every land/land edge of a generated map) and
+  never dips to sea level.
+- *Height ordered by elevation.* `ELEVATION_HEIGHTS` increase; a volcano's
+  mountain centre is above its jungle ring, which is above its beach ring;
+  on generated maps every jungle centre is higher than every beach centre
+  and every mountain centre higher than every jungle one.
+- *Coastline and sea.* With no coast noise the land/water edge midpoint is
+  exactly 0 in height and coast distance; with it, the sea-level crossing
+  between a land and a water centre lies within `COAST_NOISE_AMPLITUDE` of
+  the hex edge. Every water cell centre, every reef centre and open ocean
+  are below 0; the sea deepens away from the shore; wherever `isNearLand`
+  is false the coast distance is at most −(1 − amplitude).
+- *Seabed in metres (#38).* The first ring of water hexes round an island
+  lies on a 2–15 m shelf; three hexes off it, and in open ocean, the water is
+  ≥ 65 m deep; a reef hex in open water sits 1–3 m down, its front never
+  steeper than 3:1, with deep water two hexes away; a beach leaves the
+  waterline at under 0.05 slope and stays under 0.45 through its first 3 m
+  of height; every point `isNearSeabed` rejects is deeper than 100 m; a reef
+  next to land leaves the land's heights untouched.
+- *Interior relief.* Its spread grows from beach to jungle to mountain (each
+  more than double the last, mountains over 0.08) and it vanishes at the
+  coast with zero slope.
+- *Bounds.* Every cell centre is inside, and the whole rim of the bounds is
+  deeper than `VISIBLE_SEABED_DEPTH`, for an island on the outer ring and
+  for the large map.
+- *Wrap (#36).* Coast distance and height repeat exactly every wrap width,
+  the strip's two edges meet without a step, and an island straddling the
+  seam is land on both sides.
+- *Performance.* Building the large map's field and sampling it at the land
+  mesh's resolution takes under 2 s.
 
-    vec3 color;
-    if (vTerrainType + n < 0.45) {
-        float t = smoothstep(0.25, 0.45, vTerrainType + n);
-        color = mix(SAND, GRASS, t);
-    } else {
-        float t = smoothstep(0.45, 0.75, vTerrainType + n);
-        color = mix(GRASS, ROCK, t);
-    }
+`terrainFieldTexture.test.ts` pins the bake: sea level encodes exactly;
+heights round-trip within 0.1% (under a centimetre over the first 10 m of
+depth) and the coast distance keeps its land/water sign; texel centres are
+laid out as GL samples them (x along a row, rows from `minZ` up); each
+channel holds the right sampler and the reef channels leave the others
+untouched; every texel matches `sampleHeight` within half-float precision;
+the texel pitch is no coarser than `LAND_MESH_SPACING`, so the shallows
+follow the mesh's coastline; the waterline lands on the noisy coast, not the
+hex outline; reef hex centres are full reef and no texel outside a reef hex
+is; and the default density survives the size cap on the large map.
 
-    // Lighting
-    // ...
-}
-```
+---
+
+## 2. The Land Mesh (landMesh.ts, useLandTerrain.ts, LandTerrain.tsx)
+
+**Lattice.** `buildLandMesh(field)` samples the field on a triangular lattice
+over `field.bounds` (`LAND_MESH_SPACING` 0.15 units, fine enough to resolve
+the relief; on a wrapping map the spacing is adjusted so a whole number of
+steps fits the wrap width) and keeps the triangles that reach above
+−`LAND_MESH_SKIRT_DEPTH` (`VISIBLE_SEABED_DEPTH`, ~90 m, `waterOptics.ts`),
+the depth below which the water hides the seabed anyway. Lattice vertices in
+open water (`isNearSeabed` false) are never sampled, which is why the large
+map's ~400k triangles build in about 0.2 s. Pure, no Three.js:
+`useLandTerrain.ts` wraps the arrays in `BufferGeometry`s once per map
+(`perMapCache`) and disposes them when the map changes; `LandTerrain.tsx`
+draws them, one instance per world copy, all sharing the same geometry and
+materials.
+
+**Two surfaces.** Triangles with any vertex above sea level are *land*:
+emitted unindexed, one face normal and one colour per triangle, under a
+flat-shaded `MeshStandardMaterial`, for the faceted low-poly look. Triangles
+wholly under water are *seabed*: indexed, one vertex per lattice point with
+the field's own smooth normal (central differences on the lattice) and a
+colour per vertex, so no facets show through clear water. Land draws in the
+main pass and the seabed prepass; the seabed only in the prepass
+(`SEABED_LAYER`, `seabedPrepass.ts`), which is how the water learns its depth
+(§3 *Water colour*). There is no shader displacement: the heights are in the
+vertex positions, so the mesh and every CPU sample agree.
+
+**Colour.** `landFaceColor` bands each face by its mean height: wet sand at
+the waterline drying over the first `WET_SAND_TOP` (0.03), dry sand fading
+to jungle over 0.42–0.55 and jungle to highland over 1.0–1.2, each boundary
+shifted by a fixed-seed noise so no contour shows; rock blended in by
+steepness (~50–62°) at any height; and a cheap occlusion term that darkens a
+face sitting below the mean of a ring of lattice points round it. Under
+water: wet sand to clean seabed sand within half a metre, the deep seabed
+colour down the drop-off (10–30 m), and coral in noisy patches where the
+reef mask is set. Albedos come from `palette.ts` through `useLandTerrain.ts`.
+Both materials are patched for caustics (`seabedCaustics.ts`) and the land
+one for the shore wash (`shoreFoamLand.ts`); §3 covers both.
+
+**The drawn surface for placement.** Between lattice points the drawn ground
+is the triangle's plane, not the smooth field, and the two differ by up to a
+few hundredths. Props that stand on the field through `groundPlacement.ts`
+(trees, rocks, stones, shrubs) tolerate that; the port kit does not, so
+`landSurface(field)` exposes the emitted triangulation as a `GroundField`
+(`sampleHeight` plus `creasesWithin`, the lattice vertices and edge crossings
+under a footprint) and `decorationLayout.ts` hands it to the settlement, the
+quay and the pier (§3 *Standing on the ground*).
+
+**Tests (`landMesh.test.ts`).** Every vertex lies on the field; land is whole
+flat triangles and the seabed indexed with shared vertices, smooth normals
+and one colour per vertex; the mesh covers land and the seabed down to the
+cut-off and nothing else, with no cracks (no corner on another triangle's
+edge) on reefs and drop-offs; every triangle faces up; a lone beach island is
+wet and dry sand only, steep faces are rock, flat high ground is not, hollows
+are darker, reef seabed is coral; skipping open water yields exactly the
+full-lattice mesh; on a wrapping map the lattice repeats every wrap width and
+a point and its copy share height, normal and colour; `landSurface` matches
+the emitted triangles and samples each vertex once; and the large map builds
+within budget.
 
 ---
 
 ## 3. Ocean Shader (Ocean.tsx)
 
-> Updated for ADR 0001 (issue #6). The ocean no longer uses `TerrainHeightmap.ts`.
+> Updated for ADR 0001 (issue #6): the ocean reads the terrain through the
+> baked field texture (§1) and the seabed prepass of the land mesh (§2).
 
 > Updated for #38 (steps 2–3): the seabed is in metres and the water colour
 > comes from the seabed itself.
@@ -1149,8 +1211,31 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 
 | File | Purpose |
 |------|---------|
-| `src/board/visuals/TerrainHeightmap.ts` | SDF-based heightmap generation |
-| `src/board/visuals/UnifiedTerrain.tsx` | Land shader with vertex squashing |
+| `docs/adr/0001-one-terrain-height-field.md` | The decision: one height field, driven by cell elevation |
+| `src/board/visuals/terrainHeightField.ts` | The height field: coast distance, seabed, blended elevation, relief; `sampleHeight` |
+| `src/board/visuals/sharedTerrainField.ts` | The map's one field, built once per `cells` array and wrap |
+| `src/board/visuals/perMapCache.ts` | Once-per-map builds derived from the field (bake, land mesh, decoration layout) |
+| `src/board/visuals/seamStrip.ts` | The one-wrap-wide strip a wrapping map's field and meshes are built over |
+| `src/board/visuals/periodicNoise.ts` | Simplex noise for the coast, relief and reef crest; periodic on a wrapping map |
+| `src/board/visuals/seabedProfile.ts` | The seabed's depth by coast distance, in metres: beach face, shelf, drop-off |
+| `src/board/visuals/reefMask.ts` | Reef mask and outward normal, for the bake and the coral |
+| `src/board/visuals/worldScale.ts` | Metres per world unit (65) and the conversions |
+| `src/board/visuals/terrainFieldTexture.ts` | Bakes the field to RGBA half-float texels; `TERRAIN_FIELD_GLSL` read helpers |
+| `src/board/visuals/useTerrainFieldTexture.ts` | The terrain field texture, once per map, for the water and the land |
+| `src/board/visuals/landMesh.ts` | The land and seabed lattice mesh, face colours, `landSurface` |
+| `src/board/visuals/useLandTerrain.ts` | Land and seabed geometry and materials, once per map |
+| `src/board/visuals/LandTerrain.tsx` | Draws the land and seabed meshes for one world copy |
+| `src/board/visuals/seabedPrepass.ts` | The seabed layer and the prepass the water reads its depth from |
+| `src/board/visuals/groundPlacement.ts` | Standing props on the field: footprint probes, nudging, `groundTopY` |
+| `src/board/visuals/decorationLayout.ts` | Where every decoration and port piece stands, once per map |
+| `src/board/visuals/useDecorationLayout.ts` | The layout plus the palms' and shrubs' GPU resources |
+| `src/board/visuals/TerrainDecorations.tsx` | Draws the decorations for one world copy |
+| `src/board/visuals/portSettlement.ts` | Port buildings on the drawn land surface and the quay |
+| `src/board/visuals/quayPlacement.ts` | The stone quay at each pier root |
+| `src/board/visuals/pierPlacement.ts` | Where the pier meets the drawn beach |
+| `src/board/visuals/shoreBoulders.ts` | Boulders along the noisy waterline, from the coast distance |
+| `src/board/useHexGrid.ts` | Port labels and hover volumes lifted to the field's ground |
+| `src/board/useWaterGridLines.ts` | The water hex grid's lines, faded by coast distance near the shore |
 | `src/board/visuals/Ocean.tsx` | Water: the displaced ring grid, refraction, water colour, waves, glint, foam |
 | `src/board/visuals/oceanGrid.ts` | The sea's mesh: stitched level-of-detail rings, snapping, coverage |
 | `src/board/visuals/waveDisplacement.ts` | Which cascades displace, the height gain, shallow damping, the vertex-stage GLSL |
@@ -1166,36 +1251,33 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | `src/board/visuals/hullFoam.ts` | Contact foam around a hull |
 | `src/board/shipFoamSources.ts` | Ships' animated positions for the hull foam |
 | `src/board/visuals/foamShading.ts` | Foam union, lace, detail fade, radiance; the surf pulse and churn noise |
-| `src/board/visuals/useTerrainFieldTexture.ts` | The terrain field texture, once per map, for the water and the land |
 | `src/board/visuals/causticFocus.ts` | Caustic maths: focus matrix, Hessian, intensity, depth and LOD fades |
 | `src/board/visuals/seabedCaustics.ts` | Patches the seabed material so its sunlight is focused by the waves |
-| `src/board/visuals/useLandTerrain.ts` | Land and seabed mesh and materials, once per map |
 | `src/board/visuals/SunLight.tsx` | The shadow-casting sun: fits, refits and snaps its shadow box to the view |
 | `src/board/shadowFit.ts` | Shadow box maths: extent from the view's reach, texel, biases, refit hysteresis, depth range |
 | `src/board/visuals/atmosphere.ts` | Sun, sky, haze, shadow and post-processing constants |
 | `src/board/Board.tsx` | Scene composition |
-| `src/board/HexGrid.tsx` | Click detection (invisible meshes) |
+| `src/board/HexGrid.tsx` | Water hex hit-testing, hover highlights, port labels and hover volumes for one world copy |
 
 ---
 
-## Elevation Constants
+## Terrain Constants
 
-```typescript
-ELEVATION_HEIGHTS = {
-  0: -0.15,  // Water/seafloor
-  1: 0.12,   // Beach
-  2: 0.4,    // Jungle
-  3: 0.7,    // Mountain
-}
-```
+World units unless stated; a hex is 1 unit in circumradius, 65 m per unit
+(`worldScale.ts`). All are exported from the file named.
 
----
+| Constant | Value | Where |
+|----------|-------|-------|
+| `SEA_LEVEL` | 0 | `terrainHeightField.ts` |
+| `ELEVATION_HEIGHTS` | {1: 0.3, 2: 0.75, 3: 1.4} (beach, jungle, mountain) | `terrainHeightField.ts` |
+| `RELIEF_AMPLITUDES` | {1: 0.05, 2: 0.16, 3: 0.5} | `terrainHeightField.ts` |
+| `COAST_NOISE_AMPLITUDE` | 0.25 (must stay under the hex inradius, √3/2) | `terrainHeightField.ts` |
+| `LAND_MESH_SPACING` | 0.15 | `landMesh.ts` |
+| `LAND_MESH_SKIRT_DEPTH` | `VISIBLE_SEABED_DEPTH` (~90 m) in units | `landMesh.ts`, `waterOptics.ts` |
+| `TERRAIN_TEXELS_PER_UNIT` | 12 (~5.4 m per texel) | `terrainFieldTexture.ts` |
+| `TERRAIN_TEXTURE_MAX_SIZE` | 1280 per side | `terrainFieldTexture.ts` |
+| `MIN_GROUND_HEIGHT` | `SEA_LEVEL` + 0.03 | `groundPlacement.ts` |
 
-## Performance Notes
-
-| Technique | Before | After |
-|-----------|--------|-------|
-| Water pixels | Fragment discard (run shader, throw away) | Vertex squash (skip entirely) |
-| Land mask | IDW blending (ghost patches) | SDF closest-hex (clean boundaries) |
-| Resolution | 512x512 (blurry) | 1024x1024 (crisp) |
-| Biome colors | Linear mix (muddy) | Noisy smoothstep (organic) |
+The shore ramp (0.9), the beach toe (0.18), the coast-distance clamp (4), the
+bounds padding (5), the reef crest (2 ± 0.9 m) and the relief noise are
+module-private in `terrainHeightField.ts`; §1 gives their meaning.
