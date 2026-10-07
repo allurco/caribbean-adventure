@@ -1,31 +1,35 @@
 /**
- * The #83/#84 prototypes' packed port town (throwaway): the aged kit's house
- * and warehouse, at the #84 prop scale, packed as tightly as they fit on
- * every port hex. Pure, no Three.js; `HouseScaleBoxes.tsx` draws them with
- * the port kit's own instanced meshes.
+ * The #84 prototype's port village (throwaway): the aged kit's house and
+ * warehouse at the #84 prop scale, laid out as a village round the port's
+ * own civic kit. Pure, no Three.js; `HouseScaleBoxes.tsx` draws it with the
+ * port kit's instanced meshes.
  *
- * Rows run parallel to the beach from the water side inland, a lane
- * between rows and a cross street every few buildings. Along a row each
- * building takes its own plan (walls plus the eaves' overhang and lean),
- * so a warehouse takes a warehouse's room. Near the shore about one in
- * four is a warehouse; the rest are houses, which thin out inland. Each
- * building faces the water or turns its back or side to it, with a small
- * yaw jitter, a scale within the kit's range and a tint, so the rows do
- * not read as clones. Nothing stands inside the hex's edge band, on wet or
- * uneven ground (more than the footing covers), on the quay, at the pier
- * root, or within a margin of the port's own buildings (a wider one round
- * the tower, church and tavern, so the civic kit stays clear).
+ * - The square is where the port kit stands (tower, church, tavern), by the
+ *   quay; the village keeps a civic margin clear round them.
+ * - A short waterfront row of warehouses either side of the pier root,
+ *   facing the water, set back to the first ground that takes them.
+ * - One main street runs inland from the square, wandering a little, with
+ *   one or two side lanes branching off it. Houses line both sides facing
+ *   the street, with irregular gaps and the odd yard, and thin out with
+ *   distance from the square; a few scattered houses finish the edge.
+ *
+ * Every building sits on the ground: it stands on the lowest ground under
+ * its walls unless that would bury the uphill side by more than
+ * `MAX_BURY`, and a spot that would show more than `MAX_FOOTING_SHOWN` of
+ * footing on the downhill side is refused. Nothing stands outside the hex,
+ * on wet ground, on the quay, at the pier root, on a street, or over
+ * another building.
  */
 import type { MapCell } from "../../game/types";
-import { hexToWorld, neighbors, canonicalHex, type MapWrap } from "../../game/hex";
+import { hexToWorld, neighbors, type MapWrap } from "../../game/hex";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
-import { BUILDING_FOOTING, type BuildingKind } from "./buildingGeometry";
+import type { BuildingKind } from "./buildingGeometry";
 import type { GroundField } from "./groundPlacement";
 import {
   PORT_BUILDING_SCALE_RANGE,
   PORT_BUILDING_TINT_SPREAD,
-  buildingGroundY,
-  buildingMaxSpread,
+  SCALED_MAX_BURY,
+  SCALED_MAX_FOOTING_SHOWN,
   type PortBuilding,
 } from "./portSettlement";
 import { quayTopAt, type QuayPlacement } from "./quayPlacement";
@@ -35,68 +39,136 @@ import { PROP_SCALE } from "./propScale";
 import { lerpRange, seedOf, stream } from "./variationStream";
 
 const K = PROP_SCALE;
+const TAU = Math.PI * 2;
+const SQRT3 = Math.sqrt(3);
 /** Past the walls on every side: the roof's overhang plus the lean, at scale 1. */
 const EAVE_MARGIN = 0.035;
-const MAX_SCALE = PORT_BUILDING_SCALE_RANGE[1];
-/** A row is as deep as the deepest footprint across it (a warehouse front-on, or a house side-on), plus a lane. */
-const ROW_HALF_DEPTH = (AGED_BUILDING_PLAN.house.halfW + EAVE_MARGIN) * MAX_SCALE * K;
-const LANE = 0.05 * K;
-const ROW_PITCH = 2 * ROW_HALF_DEPTH + LANE;
-/** Between neighbours along a row (eaves nearly touching), and a cross street every `STREET_EVERY` range of buildings. */
-const PARTY_GAP = 0.008 * K;
-const STREET = 0.07 * K;
-const STREET_EVERY: readonly [number, number] = [4, 8];
-/** Step along a row after a spot is refused. */
-const SKIP = 0.03 * K;
-/** Metres a world unit stands for at the prop scale: the town's bands are set in metres. */
-const PROP_METRES_PER_UNIT = 65 / K;
-/** Within this many metres of the water a building may be a warehouse (`WAREHOUSE_SHARE` of them). */
-const WATERFRONT_METRES = 100;
-const WAREHOUSE_SHARE = 0.25;
-/** Full rows within this many metres of the water; past it the town thins to `FAR_KEEP` over `THINNING_METRES`. */
-const FULL_TOWN_METRES = 120;
-const THINNING_METRES = 600;
-const FAR_KEEP = 0.12;
-/** How far inland the shore is looked for, and in what steps (world units). */
-const SHORE_SEARCH = 1.8;
-const SHORE_STEP = 0.02;
+/** At scale 1: how far the uphill side may sink into the ground, and how much footing may show downhill (as the port kit). */
+const MAX_BURY = SCALED_MAX_BURY;
+const MAX_FOOTING_SHOWN = SCALED_MAX_FOOTING_SHOWN;
 const DRY_HEIGHT = SEA_LEVEL + 0.02 * K;
 /** Clear margin round the port's own buildings: wide round the civic kit, narrower round its house and warehouse. */
 const CIVIC_MARGIN = 0.1 * K;
 const KIT_MARGIN = 0.04 * K;
-const YAW_JITTER = 0.05;
+/** Least gap between two buildings' eaves. */
+const EAVE_GAP = 0.006 * K;
+
+/** Waterfront warehouses: how many a port aims for, their spacing along the front, and how far inland they may set back. */
+const WAREHOUSE_TARGET: readonly [number, number] = [3, 6];
+const WAREHOUSE_SPACING = 0.02 * K;
+const WAREHOUSE_SETBACK_MAX = 1.0 * K;
+const WAREHOUSE_SETBACK_STEP = 0.02 * K;
+
+/** Streets: half width, the main street's length and the side lanes' (world units), in steps of `STREET_STEP`, wandering by up to `STREET_WANDER` a step. */
+const STREET_HALF_WIDTH = 0.06 * K;
+const MAIN_STREET_LENGTH: readonly [number, number] = [2.0 * K, 2.6 * K];
+const LANE_LENGTH: readonly [number, number] = [0.9 * K, 1.5 * K];
+const STREET_STEP = 0.12 * K;
+const STREET_WANDER = 0.14;
+/** Where the street starts beyond the square's centre. */
+const SQUARE_RADIUS = 0.45 * K;
+/** Gaps between houses along a street: usually narrow, sometimes a yard. */
+const HOUSE_GAP: readonly [number, number] = [0.01 * K, 0.06 * K];
+const YARD_CHANCE = 0.15;
+const YARD_GAP: readonly [number, number] = [0.12 * K, 0.25 * K];
+/** How far a house may sit back from the street edge. */
+const SETBACK: readonly [number, number] = [0.005 * K, 0.04 * K];
+/** Along a street, every house stands within this distance of the square; past it the chance of a house falls to `EDGE_KEEP`. */
+const FULL_VILLAGE = 0.9 * K;
+const EDGE_KEEP = 0.3;
+/** Scattered houses at the edge: how many tries, and how far from the square. */
+const SCATTER_TRIES = 30;
+const SCATTER_TARGET: readonly [number, number] = [4, 8];
+const SCATTER_RADIUS: readonly [number, number] = [1.2 * K, 2.8 * K];
+/** Headings tried for the main street, as turns from straight inland (radians). */
+const STREET_HEADINGS: readonly number[] = [-0.9, -0.6, -0.3, 0, 0.3, 0.6, 0.9];
+/** The ground a street's frontage is scored on: a house-sized probe this far either side of it. */
+const FLAT_PROBE = 0.09 * K;
+const STREET_PROBE_OFFSET = 0.15 * K;
+/** Further setbacks a house tries when the frontage will not take it. */
+const EXTRA_SETBACKS: readonly number[] = [0, 0.04 * K, 0.08 * K];
+/** Back plots: tries, the street-and-plot village size they fill to, and how far behind the street edge they stand. */
+const BACK_PLOT_TRIES = 3000;
+const BACK_PLOT_TARGET = 40;
+const BACK_PLOT_DEPTH: readonly [number, number] = [0.08 * K, 2.0 * K];
+/** Most houses in one port. */
+const MAX_HOUSES = 55;
+const YAW_JITTER = 0.06;
 const SALT = 0x2c6e9b13;
-const SQRT3 = Math.sqrt(3);
 
-/** Turns from facing the water, in quarter turns, with their weights: mostly front-on, some backs and sides. */
-const HOUSE_TURNS: readonly [number, number][] = [
-  [0, 0.5],
-  [2, 0.2],
-  [1, 0.15],
-  [3, 0.15],
-];
-
-/** What the town keeps clear of: the settlement as `decorationLayout` placed it. */
+/** What the village keeps clear of and gathers round: the settlement as `decorationLayout` placed it. */
 export interface PortKit {
   buildings: readonly PortBuilding[];
   quays: readonly QuayPlacement[];
   /** The piers' land ends. */
-  piers: readonly { worldX: number; worldZ: number }[];
+  piers: readonly { worldX: number; worldZ: number; rotation: number }[];
 }
 
-const pickTurn = (roll: number): number => {
-  let acc = 0;
-  for (const [turn, weight] of HOUSE_TURNS) {
-    acc += weight;
-    if (roll < acc) return turn;
+/** A footprint in plan: centre, unit facing (local +z) and half extents across and along it, eaves included. */
+interface Footprint {
+  x: number;
+  z: number;
+  fx: number;
+  fz: number;
+  halfW: number;
+  halfD: number;
+}
+
+/** Whether two footprints, each grown by half the gap, overlap (separating axes). */
+function overlaps(a: Footprint, b: Footprint, gap: number): boolean {
+  const axes: [number, number][] = [
+    [a.fx, a.fz],
+    [-a.fz, a.fx],
+    [b.fx, b.fz],
+    [-b.fz, b.fx],
+  ];
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  for (const [ux, uz] of axes) {
+    const ra = (a.halfD + gap / 2) * Math.abs(a.fx * ux + a.fz * uz) + (a.halfW + gap / 2) * Math.abs(-a.fz * ux + a.fx * uz);
+    const rb = (b.halfD + gap / 2) * Math.abs(b.fx * ux + b.fz * uz) + (b.halfW + gap / 2) * Math.abs(-b.fz * ux + b.fx * uz);
+    if (Math.abs(dx * ux + dz * uz) > ra + rb) return false;
   }
-  return 0;
+  return true;
+}
+
+/** Distance from a point to a polyline. */
+function polylineDistance(x: number, z: number, line: readonly [number, number][]): number {
+  let best = Infinity;
+  for (let i = 1; i < line.length; i++) {
+    const [ax, az] = line[i - 1];
+    const [bx, bz] = line[i];
+    const vx = bx - ax;
+    const vz = bz - az;
+    const len2 = vx * vx + vz * vz;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / len2));
+    best = Math.min(best, Math.hypot(x - (ax + vx * t), z - (az + vz * t)));
+  }
+  return best;
+}
+
+/** A street from (x, z) heading `heading` (radians, 0 = +z), wandering a little each step. */
+function street(x: number, z: number, heading: number, length: number, next: () => number): [number, number][] {
+  const points: [number, number][] = [[x, z]];
+  let h = heading;
+  for (let d = 0; d < length; d += STREET_STEP) {
+    h += (next() * 2 - 1) * STREET_WANDER;
+    x += Math.sin(h) * STREET_STEP;
+    z += Math.cos(h) * STREET_STEP;
+    points.push([x, z]);
+  }
+  return points;
+}
+
+/** Why village spots were refused, counted across the last layout (a dev diagnostic). */
+export const villageRejects: Record<string, number> = {};
+const reject = (reason: string): false => {
+  villageRejects[reason] = (villageRejects[reason] ?? 0) + 1;
+  return false;
 };
 
-/** The town on every port hex, standing on `ground`; `seed` is the terrain seed. */
-export function portTown(cells: readonly MapCell[], ground: GroundField, wrap: MapWrap, kit: PortKit, seed = 0): PortBuilding[] {
-  const water = new Set<string>();
-  for (const cell of cells) if (cell.terrain !== "island") water.add(`${cell.hex.q},${cell.hex.r}`);
+/** The village on every port hex, standing on `ground`; `seed` is the terrain seed. */
+export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: MapWrap, kit: PortKit, seed = 0): PortBuilding[] {
   const town: PortBuilding[] = [];
   for (const cell of cells) {
     if (!cell.hasPort) continue;
@@ -105,133 +177,245 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, wrap: M
       items.filter((i) => Math.hypot(i.worldX - cx, i.worldZ - cz) < 1);
     const kitHere = near(kit.buildings);
     const quays = near(kit.quays);
-    const piers = near(kit.piers);
-
-    // Towards the water: the mean direction to the water neighbours.
-    let dx = 0;
-    let dz = 0;
-    const edgeNormals: [number, number][] = [];
-    for (const n of neighbors(cell.hex)) {
-      const [nx, , nz] = hexToWorld(n);
-      edgeNormals.push([(nx - cx) / SQRT3, (nz - cz) / SQRT3]);
-      const c = canonicalHex(n, wrap);
-      if (!water.has(`${c.q},${c.r}`)) continue;
-      dx += nx - cx;
-      dz += nz - cz;
-    }
-    const len = Math.hypot(dx, dz);
-    if (len === 0) continue;
-    dx /= len;
-    dz /= len;
-    // Along the row: perpendicular to the water direction.
+    const pier = near(kit.piers)[0];
+    if (!pier) continue;
+    // Towards the water (the pier's heading) and along the front.
+    const dx = Math.sin(pier.rotation);
+    const dz = Math.cos(pier.rotation);
     const ax = -dz;
     const az = dx;
-    const facingWater = Math.atan2(dx, dz);
+    const toWater = pier.rotation;
+    const edgeNormals = neighbors(cell.hex).map((n): [number, number] => {
+      const [nx, , nz] = hexToWorld(n);
+      return [(nx - cx) / SQRT3, (nz - cz) / SQRT3];
+    });
     const next = stream(seedOf([cell.hex.q, cell.hex.r], SALT ^ seed));
 
-    const inHex = (x: number, z: number, reach: number) =>
-      edgeNormals.every(([ux, uz]) => (x - cx) * ux + (z - cz) * uz <= SQRT3 / 2 - reach);
-    /** Metres from (x, z) to the water, straight towards it (the search's end if none). */
-    const toShore = (x: number, z: number) => {
-      for (let d = 0; d <= SHORE_SEARCH; d += SHORE_STEP) {
-        if (ground.sampleHeight(x + dx * d, z + dz * d) <= SEA_LEVEL) return d * PROP_METRES_PER_UNIT;
+    // The square: the middle of the civic kit, else just inland of the pier root.
+    const civic = kitHere.filter((b) => b.kind === "watchtower" || b.kind === "church" || b.kind === "tavern");
+    const squareOf = civic.length > 0 ? civic : kitHere;
+    const square =
+      squareOf.length > 0
+        ? { x: squareOf.reduce((s, b) => s + b.worldX, 0) / squareOf.length, z: squareOf.reduce((s, b) => s + b.worldZ, 0) / squareOf.length }
+        : { x: pier.worldX - dx * SQUARE_RADIUS, z: pier.worldZ - dz * SQUARE_RADIUS };
+
+    const placed: Footprint[] = kitHere.map((b) => {
+      const plan = AGED_BUILDING_PLAN[b.kind];
+      const margin = b.kind === "house" || b.kind === "warehouse" ? KIT_MARGIN : CIVIC_MARGIN;
+      return {
+        x: b.worldX,
+        z: b.worldZ,
+        fx: Math.sin(b.yaw),
+        fz: Math.cos(b.yaw),
+        halfW: (plan.halfW + EAVE_MARGIN) * b.scale + margin,
+        halfD: (plan.halfD + EAVE_MARGIN) * b.scale + margin,
+      };
+    });
+    const streets: [number, number][][] = [];
+
+    /** Stands `kind` at (x, z) facing `yaw` if the ground and its neighbours allow; true if placed. */
+    const tryPlace = (kind: BuildingKind, x: number, z: number, yaw: number, scale: number, tint: number): boolean => {
+      const plan = AGED_BUILDING_PLAN[kind];
+      const fx = Math.sin(yaw);
+      const fz = Math.cos(yaw);
+      const foot: Footprint = { x, z, fx, fz, halfW: (plan.halfW + EAVE_MARGIN) * scale, halfD: (plan.halfD + EAVE_MARGIN) * scale };
+      const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
+      if (!edgeNormals.every(([ux, uz]) => (x - cx) * ux + (z - cz) * uz <= SQRT3 / 2 - reach)) return reject("hex");
+      if (Math.hypot(pier.worldX - x, pier.worldZ - z) < PIER_WIDTH * K + reach) return reject("pier");
+      if (placed.some((p) => overlaps(p, foot, EAVE_GAP))) return reject("overlap");
+      if (streets.some((line) => polylineDistance(x, z, line) < STREET_HALF_WIDTH + Math.min(foot.halfW, foot.halfD))) return reject("street");
+      let top = -Infinity;
+      let bottom = Infinity;
+      for (const u of [-1, 0, 1]) {
+        for (const v of [-1, 0, 1]) {
+          // Across the front is (fz, -fx) in the world, front to back is (fx, fz).
+          const px = x + fz * u * plan.halfW * scale + fx * v * plan.halfD * scale;
+          const pz = z - fx * u * plan.halfW * scale + fz * v * plan.halfD * scale;
+          const h = ground.sampleHeight(px, pz);
+          top = Math.max(top, h);
+          bottom = Math.min(bottom, h);
+          const ex = x + fz * u * foot.halfW + fx * v * foot.halfD;
+          const ez = z - fx * u * foot.halfW + fz * v * foot.halfD;
+          if (quays.some((q) => quayTopAt(q, { x: ex, z: ez }) !== undefined)) return reject("quay");
+        }
       }
-      return SHORE_SEARCH * PROP_METRES_PER_UNIT;
+      if (bottom <= DRY_HEIGHT) return reject("wet");
+      // On the ground: the lowest ground under the walls, unless that buries the uphill side too deep.
+      const y = Math.max(bottom, top - MAX_BURY * scale);
+      if (y - bottom > MAX_FOOTING_SHOWN * scale) return reject("plinth");
+      placed.push(foot);
+      town.push({ kind, worldX: x, worldY: y, worldZ: z, yaw, scale, tint });
+      return true;
     };
+    const scaleRoll = () => lerpRange(PORT_BUILDING_SCALE_RANGE, next()) * K;
+    const tintRoll = () => 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
+    const jitter = () => (next() * 2 - 1) * YAW_JITTER;
 
-    const rows = Math.floor(SQRT3 / ROW_PITCH);
-    for (let row = 0; row <= rows; row++) {
-      const t = SQRT3 / 2 - ROW_HALF_DEPTH - row * ROW_PITCH;
-      let s = -SQRT3 / 2;
-      let sinceStreet = 0;
-      let streetAt = Math.round(lerpRange(STREET_EVERY, next()));
-      while (s < SQRT3 / 2) {
-        // Every candidate draws the same numbers, placed or not.
-        const kindRoll = next();
-        const turnRoll = next();
-        const scaleRoll = next();
-        const tintRoll = next();
-        const jitterRoll = next();
-        const keepRoll = next();
+    // 1. The waterfront warehouses, either side of the pier root, facing the water.
+    const warehouseTarget = Math.round(lerpRange(WAREHOUSE_TARGET, next()));
+    let warehouses = 0;
+    const warehouseWidth = (AGED_BUILDING_PLAN.warehouse.halfW + EAVE_MARGIN) * 2 * K;
+    for (let slot = 0; slot < 12 && warehouses < warehouseTarget; slot++) {
+      const side = slot % 2 === 0 ? 1 : -1;
+      const along = side * (PIER_WIDTH * K + warehouseWidth * (0.6 + Math.floor(slot / 2)) + WAREHOUSE_SPACING * Math.floor(slot / 2));
+      const scale = scaleRoll();
+      const tint = tintRoll();
+      const yaw = toWater + jitter();
+      // Long side to the water, or (where the ground is narrower) gable end to it.
+      search: for (let back = 0; back <= WAREHOUSE_SETBACK_MAX; back += WAREHOUSE_SETBACK_STEP) {
+        const x = pier.worldX + ax * along - dx * back;
+        const z = pier.worldZ + az * along - dz * back;
+        for (const turn of [0, Math.PI / 2]) {
+          if (tryPlace("warehouse", x, z, yaw + turn, scale, tint)) {
+            warehouses++;
+            break search;
+          }
+        }
+      }
+    }
 
-        const rx = cx + dx * t + ax * s;
-        const rz = cz + dz * t + az * s;
-        const inland = toShore(rx, rz);
-        /** Places `kind` with its near end at `s`; returns the far end along the row, or false. */
-        const tryKind = (kind: BuildingKind): number | false => {
-        const turn = kind === "warehouse" ? (turnRoll < 0.8 ? 0 : 2) : pickTurn(turnRoll);
-        const scale = lerpRange(PORT_BUILDING_SCALE_RANGE, scaleRoll) * K;
-        const plan = AGED_BUILDING_PLAN[kind];
-        // Half-extents along the row and across it, eaves included.
-        const sideOn = turn % 2 === 1;
-        const halfAlong = ((sideOn ? plan.halfD : plan.halfW) + EAVE_MARGIN) * scale;
-        const halfAcross = ((sideOn ? plan.halfW : plan.halfD) + EAVE_MARGIN) * scale;
-        const yaw = facingWater + (turn * Math.PI) / 2 + (jitterRoll * 2 - 1) * YAW_JITTER;
+    // 2. The main street inland from the square, and one or two lanes off it.
+    // A street goes where the ground takes houses: of a few headings, the
+    // one with the most house-flat ground along both its sides wins.
+    const flatAt = (x: number, z: number): boolean => {
+      if (!edgeNormals.every(([ux, uz]) => (x - cx) * ux + (z - cz) * uz <= SQRT3 / 2 - FLAT_PROBE * 1.5)) return false;
+      let top = -Infinity;
+      let bottom = Infinity;
+      for (const u of [-1, 0, 1]) {
+        for (const v of [-1, 0, 1]) {
+          const h = ground.sampleHeight(x + u * FLAT_PROBE, z + v * FLAT_PROBE * 0.8);
+          top = Math.max(top, h);
+          bottom = Math.min(bottom, h);
+        }
+      }
+      return bottom > DRY_HEIGHT && top - bottom <= (MAX_BURY + MAX_FOOTING_SHOWN) * K;
+    };
+    const streetScore = (line: readonly [number, number][]): number => {
+      let score = 0;
+      for (let i = 1; i < line.length; i++) {
+        const [ax0, az0] = line[i - 1];
+        const [bx0, bz0] = line[i];
+        const len = Math.hypot(bx0 - ax0, bz0 - az0) || 1;
+        const nx = (bz0 - az0) / len;
+        const nz = -(bx0 - ax0) / len;
+        for (const side of [1, -1]) if (flatAt(bx0 + nx * side * STREET_PROBE_OFFSET, bz0 + nz * side * STREET_PROBE_OFFSET)) score++;
+      }
+      return score;
+    };
+    const best = (candidates: [number, number][][]): [number, number][] =>
+      candidates.reduce((a, b) => (streetScore(b) > streetScore(a) ? b : a));
 
-        const centre = s + halfAlong;
-        const x = cx + dx * t + ax * centre;
-        const z = cz + dz * t + az * centre;
-        const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
+    const landward = toWater + Math.PI;
+    const mainLength = lerpRange(MAIN_STREET_LENGTH, next());
+    const mains: [number, number][][] = [];
+    for (const turn of STREET_HEADINGS) {
+      const heading = landward + turn;
+      const sx = square.x + Math.sin(heading) * SQUARE_RADIUS;
+      const sz = square.z + Math.cos(heading) * SQUARE_RADIUS;
+      mains.push(street(sx, sz, heading, mainLength, next));
+    }
+    const main = best(mains);
+    const inland = Math.atan2(main[main.length - 1][0] - main[0][0], main[main.length - 1][1] - main[0][1]);
+    const lanes: [number, number][][] = [];
+    const laneCount = next() < 0.5 ? 1 : 2;
+    for (let i = 0; i < laneCount; i++) {
+      const length = lerpRange(LANE_LENGTH, next());
+      const candidates: [number, number][][] = [];
+      for (const at of [0.3, 0.45, 0.6, 0.75]) {
+        const p = main[Math.min(main.length - 1, Math.floor(main.length * at))];
+        for (const side of [1, -1]) for (const angle of [1.2, 1.6]) candidates.push(street(p[0], p[1], inland + side * angle, length, next));
+      }
+      // A second lane goes off the other side of the main street from the first.
+      const allowed = i === 0 ? candidates : candidates.filter((c) => polylineDistance(c[c.length - 1][0], c[c.length - 1][1], lanes[0]) > LANE_LENGTH[0]);
+      lanes.push(best(allowed.length > 0 ? allowed : candidates));
+    }
+    streets.push(main, ...lanes);
 
-        const place = (): boolean => {
-          if (halfAcross > ROW_HALF_DEPTH + 1e-9) return false;
-          if (!inHex(x, z, reach)) return false;
-          // The walls' plan, probed on a 3 × 3 grid, and its eaves for the quay.
-          const walls = { across: (sideOn ? plan.halfD : plan.halfW) * scale, along: (sideOn ? plan.halfW : plan.halfD) * scale };
-          let top = -Infinity;
-          let bottom = Infinity;
-          for (const u of [-1, 0, 1]) {
-            for (const v of [-1, 0, 1]) {
-              // Along the row is `a`, towards the water is `d`.
-              const px = x + ax * u * walls.across + dx * v * walls.along;
-              const pz = z + az * u * walls.across + dz * v * walls.along;
-              const h = ground.sampleHeight(px, pz);
-              top = Math.max(top, h);
-              bottom = Math.min(bottom, h);
-              const ex = x + ax * u * halfAlong + dx * v * halfAcross;
-              const ez = z + az * u * halfAlong + dz * v * halfAcross;
-              if (quays.some((q) => quayTopAt(q, { x: ex, z: ez }) !== undefined)) return false;
+    // 3. Houses along both sides of each street, facing it, thinning away from the square.
+    let houses = 0;
+    for (const line of streets) {
+      for (const side of [1, -1]) {
+        let carry = lerpRange(HOUSE_GAP, next());
+        for (let i = 1; i < line.length && houses < MAX_HOUSES; i++) {
+          const [ax0, az0] = line[i - 1];
+          const [bx0, bz0] = line[i];
+          const segLen = Math.hypot(bx0 - ax0, bz0 - az0);
+          const tx = (bx0 - ax0) / segLen;
+          const tz = (bz0 - az0) / segLen;
+          // The side's normal, pointing away from the street.
+          const nx = tz * side;
+          const nz = -tx * side;
+          let along = carry;
+          while (along < segLen && houses < MAX_HOUSES) {
+            const scale = scaleRoll();
+            const tint = tintRoll();
+            const gapRoll = next();
+            const keepRoll = next();
+            const setback = lerpRange(SETBACK, next());
+            const halfW = (AGED_BUILDING_PLAN.house.halfW + EAVE_MARGIN) * scale;
+            const halfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * scale;
+            const px = ax0 + tx * (along + halfW);
+            const pz = az0 + tz * (along + halfW);
+            // The front (+z local) faces the street: back along the normal.
+            const yaw = Math.atan2(-nx, -nz) + jitter();
+            const fromSquare = Math.hypot(px - square.x, pz - square.z);
+            const keep = fromSquare <= FULL_VILLAGE ? 1 : EDGE_KEEP + (1 - EDGE_KEEP) * Math.max(0, 1 - (fromSquare - FULL_VILLAGE) / FULL_VILLAGE);
+            const gap = gapRoll < YARD_CHANCE ? lerpRange(YARD_GAP, next()) : lerpRange(HOUSE_GAP, next());
+            // Set further back from the street if the ground at the frontage will not take it.
+            const stands = () =>
+              EXTRA_SETBACKS.some((extra) => {
+                const off = STREET_HALF_WIDTH + halfD + setback + extra;
+                return tryPlace("house", px + nx * off, pz + nz * off, yaw, scale, tint);
+              });
+            if (keepRoll <= keep && stands()) {
+              houses++;
+              along += 2 * halfW + gap;
+            } else {
+              along += halfW + gap;
             }
           }
-          if (bottom <= DRY_HEIGHT) return false;
-          if (top - bottom > buildingMaxSpread(BUILDING_FOOTING * scale)) return false;
-          if (piers.some((p) => Math.hypot(p.worldX - x, p.worldZ - z) < PIER_WIDTH * K + reach)) return false;
-          for (const b of kitHere) {
-            const margin = b.kind === "house" || b.kind === "warehouse" ? KIT_MARGIN : CIVIC_MARGIN;
-            if (Math.hypot(b.worldX - x, b.worldZ - z) < AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale + reach + margin) return false;
-          }
-          // Thinning inland: full near the water, sparser behind.
-          const keep = inland <= FULL_TOWN_METRES ? 1 : Math.max(FAR_KEEP, 1 - (inland - FULL_TOWN_METRES) / THINNING_METRES);
-          if (keepRoll > keep) return false;
-          town.push({
-            kind,
-            worldX: x,
-            worldY: buildingGroundY(top),
-            worldZ: z,
-            yaw,
-            scale,
-            tint: 1 + (tintRoll * 2 - 1) * PORT_BUILDING_TINT_SPREAD,
-          });
-          return true;
-        };
-
-        return place() ? centre + halfAlong : false;
-        };
-
-        // A warehouse that does not fit falls back to a house on the same spot.
-        const wantsWarehouse = inland <= WATERFRONT_METRES && kindRoll < WAREHOUSE_SHARE;
-        let placed = wantsWarehouse ? tryKind("warehouse") : false;
-        if (placed === false) placed = tryKind("house");
-        if (placed !== false) {
-          s = placed + PARTY_GAP;
-          if (++sinceStreet >= streetAt) {
-            s += STREET;
-            sinceStreet = 0;
-            streetAt = Math.round(lerpRange(STREET_EVERY, next()));
-          }
-        } else {
-          s += SKIP;
+          carry = Math.max(0, along - segLen);
         }
+      }
+    }
+
+    // 3b. Where the frontage was too steep, back plots: houses a little
+    // further from a street, still facing it, on whatever ground is flat
+    // enough, until the village reaches its size.
+    for (let i = 0; i < BACK_PLOT_TRIES && houses < BACK_PLOT_TARGET; i++) {
+      const line = streets[Math.min(streets.length - 1, Math.floor(next() * streets.length))];
+      const seg = 1 + Math.min(line.length - 2, Math.floor(next() * (line.length - 1)));
+      const [ax0, az0] = line[seg - 1];
+      const [bx0, bz0] = line[seg];
+      const segLen = Math.hypot(bx0 - ax0, bz0 - az0) || 1;
+      const tx = (bx0 - ax0) / segLen;
+      const tz = (bz0 - az0) / segLen;
+      const side = next() < 0.5 ? 1 : -1;
+      const nx = tz * side;
+      const nz = -tx * side;
+      const t = next() * segLen;
+      const scale = scaleRoll();
+      const halfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * scale;
+      const off = STREET_HALF_WIDTH + halfD + lerpRange(BACK_PLOT_DEPTH, next());
+      const x = ax0 + tx * t + nx * off;
+      const z = az0 + tz * t + nz * off;
+      const fromSquare = Math.hypot(x - square.x, z - square.z);
+      const keep = fromSquare <= FULL_VILLAGE ? 1 : EDGE_KEEP + (1 - EDGE_KEEP) * Math.max(0, 1 - (fromSquare - FULL_VILLAGE) / FULL_VILLAGE);
+      const keepRoll = next();
+      if (keepRoll <= keep && tryPlace("house", x, z, Math.atan2(-nx, -nz) + jitter(), scale, tintRoll())) houses++;
+    }
+
+    // 4. A few scattered houses at the village's edge, turned any way.
+    const scatterTarget = Math.round(lerpRange(SCATTER_TARGET, next()));
+    let scattered = 0;
+    for (let i = 0; i < SCATTER_TRIES && scattered < scatterTarget && houses < MAX_HOUSES; i++) {
+      const angle = inland + (next() * 2 - 1) * 1.6;
+      const r = lerpRange(SCATTER_RADIUS, next());
+      const x = square.x + Math.sin(angle) * r;
+      const z = square.z + Math.cos(angle) * r;
+      if (tryPlace("house", x, z, next() * TAU, scaleRoll(), tintRoll())) {
+        scattered++;
+        houses++;
       }
     }
   }

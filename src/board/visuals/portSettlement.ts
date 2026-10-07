@@ -280,6 +280,14 @@ export const buildingGroundY = (max: number) => max - BUILDING_SINK * PROP_SCALE
 /** Widest height spread a footprint may take: its footing (BUILDING_FOOTING at the building's scale) covers the low side with the margin to spare. */
 export const buildingMaxSpread = (footing: number) => footing - BUILDING_SINK * PROP_SCALE - BUILDING_FOOTING_MARGIN * PROP_SCALE;
 
+/**
+ * The #84 experiment, scaled only: how far a building's uphill side may
+ * sink into the ground, and how much footing may show downhill (scale 1;
+ * the eave is 0.14 to 0.17 high, the footing 0.16 deep).
+ */
+export const SCALED_MAX_BURY = 0.05;
+export const SCALED_MAX_FOOTING_SHOWN = 0.03;
+
 /** A building already placed: its plan circle. */
 export interface Footprint {
   x: number;
@@ -345,6 +353,16 @@ export function standBuilding(
   if (quay === "edge") return null;
   if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") * PROP_SCALE + reach) return null;
   if (max - min > buildingMaxSpread(footing)) return null;
+  if (PROP_SCALE !== 1) {
+    // The #84 experiment: on the ground, not on a plinth. The lowest ground
+    // under the footprint unless that buries the uphill side by more than
+    // `SCALED_MAX_BURY`, and no spot that would show more than
+    // `SCALED_MAX_FOOTING_SHOWN` of footing (both at scale 1).
+    const scale = footing / BUILDING_FOOTING;
+    const y = Math.max(min, max - SCALED_MAX_BURY * scale);
+    if (y - min > SCALED_MAX_FOOTING_SHOWN * scale) return null;
+    return { x: at.x, y, z: at.z };
+  }
   return { x: at.x, y: buildingGroundY(max), z: at.z };
 }
 
@@ -378,7 +396,9 @@ function standOnBeach(
     // The square, the rings and their step shrink with the #84 prop scale (1 unless `?hexMetres` is given).
     const first = PORT_SQUARE_RADIUS * PROP_SCALE + reach;
     const step = RADIAL_STEP * PROP_SCALE;
-    for (let radius = first; radius <= PORT_BUILDING_MAX_RADIUS * PROP_SCALE + 1e-9; radius += step) {
+    // Scaled, the square may spread further (three times the scaled radius) to find ground that takes a building without a plinth.
+    const farthest = PORT_BUILDING_MAX_RADIUS * PROP_SCALE * (PROP_SCALE === 1 ? 1 : 3);
+    for (let radius = first; radius <= farthest + 1e-9; radius += step) {
       const inner = Math.max(first, radius - step);
       const anchor = { x: centre.x + dir.x * inner, z: centre.z + dir.z * inner };
       const spot = { x: centre.x + dir.x * radius, z: centre.z + dir.z * radius };
