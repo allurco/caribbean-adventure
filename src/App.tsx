@@ -5,7 +5,7 @@ import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { parseDevUrlParams } from "./board/devUrlParams";
 import { setSharedTerrainFieldOptions } from "./board/visuals/sharedTerrainField";
-import { PROP_SCALE } from "./board/visuals/propScale";
+import { BUILDING_SCALE, PROP_SCALE } from "./board/visuals/propScale";
 
 // Dev URL parameters (#74), read once: a map size and seed pin the generated
 // map, cx/cz/dist pin the camera's first view, view=props opens the prop
@@ -15,7 +15,7 @@ const devParams = parseDevUrlParams(window.location.search);
 // The #84 town plateaus (`&townGround=1`) are sized at the prop scale.
 setSharedTerrainFieldOptions({
   massifs: devParams.massifs,
-  townPlateaus: devParams.townGround ? { scale: PROP_SCALE } : undefined,
+  townPlateaus: devParams.townGround ? { scale: PROP_SCALE, buildingScale: BUILDING_SCALE } : undefined,
 });
 
 const CaribbeanClient = Client({

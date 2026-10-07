@@ -20,6 +20,10 @@ import { placeShrubs } from "./shrubPlacement";
 import { shoreBoulders, type ShoreBoulder } from "./shoreBoulders";
 import { PROP_DENSITY, PROP_SCALE } from "./propScale";
 import { lerpRange, seedOf, stream } from "./variationStream";
+import { AGED_BUILDING_HALF_DIAGONAL } from "./agedBuildingGeometry";
+
+/** A watchtower this close to a fort port's square is that port's, and the fort's keep replaces it (#84). */
+const FORT_TOWER_REACH = 1.2;
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -178,6 +182,31 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
   const boulders = shoreBoulders(cells, field, wrap, seed);
   const buildings = portBuildings(cells, drawn, seed);
   const quays = portQuays(cells, drawn, seed);
+
+  // #84 forts (only with the experiment's town plateaus): the fort's keep
+  // takes over from its port's watchtower, and nothing grows or stands on
+  // the fort's pad.
+  const fortPlateaus = (field.townPlateaus ?? []).filter((p) => p.fort);
+  if (fortPlateaus.length > 0) {
+    const onPad = (x: number, z: number, margin: number) =>
+      fortPlateaus.some((p) => p.fort && Math.hypot(x - p.fort.x, z - p.fort.z) < p.fort.padRadius + margin);
+    const keep = <T extends { worldX: number; worldZ: number }>(items: readonly T[]) => items.filter((d) => !onPad(d.worldX, d.worldZ, 0));
+    const keptBuildings = buildings.filter(
+      (b) =>
+        !(b.kind === "watchtower" && fortPlateaus.some((p) => Math.hypot(b.worldX - p.x, b.worldZ - p.z) < FORT_TOWER_REACH)) &&
+        !fortPlateaus.some((p) => p.fort && Math.hypot(b.worldX - p.fort.x, b.worldZ - p.fort.z) < p.fort.reach + AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale)
+    );
+    return {
+      trees: keep(trees),
+      rocks: keep(rocks),
+      stones: keep(stones),
+      shoreBoulders: keep(boulders),
+      piers,
+      shrubs: keep(shrubs),
+      quays,
+      buildings: keptBuildings,
+    };
+  }
 
   return { trees, rocks, stones, shoreBoulders: boulders, piers, shrubs, quays, buildings };
 }

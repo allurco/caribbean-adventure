@@ -22,6 +22,7 @@ import { LandTerrain } from "./visuals/LandTerrain";
 import { useLandTerrain } from "./visuals/useLandTerrain";
 import { TerrainDecorations } from "./visuals/TerrainDecorations";
 import { HouseScaleBoxes } from "./visuals/HouseScaleBoxes";
+import { PortForts } from "./visuals/PortForts";
 import { useDecorationLayout } from "./visuals/useDecorationLayout";
 import { SunLight } from "./visuals/SunLight";
 import { FillLight } from "./visuals/FillLight";
@@ -359,6 +360,9 @@ function Scene({
       <TerrainDecorations layout={decorations} waveSlopes={waveSlopes} />
 
       {houseBoxes && <HouseScaleBoxes cells={G.cells} wrap={G.wrap} />}
+
+      {/* The #84 forts: none unless the experiment's town plateaus planned pads for them */}
+      <PortForts cells={G.cells} wrap={G.wrap} />
 
       <HexGrid grid={grid} copy={copy} />
 

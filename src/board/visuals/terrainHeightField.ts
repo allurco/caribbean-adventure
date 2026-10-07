@@ -35,6 +35,7 @@ import {
   type Massif,
 } from "./islandMassifs";
 import { applyTownPlateaus, planTownPlateau, type TownPlateau } from "./townPlateau";
+import { portHasFort } from "./portFort";
 
 export { ELEVATION_HEIGHTS };
 
@@ -169,9 +170,10 @@ export interface TerrainHeightFieldOptions {
   massifs?: boolean;
   /**
    * Prototype (#84): a terraced town plateau round each port's quay square
-   * (`townPlateau.ts`), sized at this prop scale. Off by default.
+   * (`townPlateau.ts`), sized at this prop scale, with a fort's pad on a
+   * fort port (`portHasFort`) sized at the building scale. Off by default.
    */
-  townPlateaus?: { scale: number };
+  townPlateaus?: { scale: number; buildingScale?: number };
 }
 
 export interface TerrainHeightField {
@@ -677,7 +679,14 @@ export function createTerrainHeightField(
       const pier = cell.hasPort ? cell.decorations?.find((d) => d.type === "pier") : undefined;
       if (!pier) continue;
       const [px, , pz] = hexToWorld(cell.hex);
-      plateaus.push(planTownPlateau({ x: px, z: pz, toWater: pier.rotation }, (sx, sz) => sampleHeight(inStrip(sx), sz), plateauScale));
+      plateaus.push(
+        planTownPlateau(
+          { x: px, z: pz, toWater: pier.rotation, hasFort: portHasFort(cell) },
+          (sx, sz) => sampleHeight(inStrip(sx), sz),
+          plateauScale,
+          options.townPlateaus?.buildingScale ?? plateauScale
+        )
+      );
     }
   }
 

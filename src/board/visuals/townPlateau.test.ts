@@ -8,10 +8,15 @@ import {
   RISER,
   SHORE_KEEP_BOTTOM,
   SHORE_KEEP_TOP,
+  FORT_PIER_GAP,
+  FORT_TOWN_GAP,
+  fortPadWeight,
   plateauPlanDistance,
   shoreKeep,
   type TownPlateau,
 } from "./townPlateau";
+import { FORT_KEEP_TOP, portHasFort } from "./portFort";
+import { VIEW_LINE_SLOPE } from "./islandMassifs";
 
 /** The #84 prop scale at a 350 m hex. */
 const SCALE = 115 / 350;
@@ -82,8 +87,9 @@ describe("town plateaus (#84)", () => {
           if (s >= p.steps[k] + p.ramp && s < next) level = p.levels[k + 1];
         }
         if (level < 0) continue;
-        // Only where no other plateau reaches.
+        // Only where no other plateau, and no fort's pad, reaches.
         if ((town.townPlateaus ?? []).some((o) => o !== p && plateauPlanDistance(o, x, z) < o.blend)) continue;
+        if ((town.townPlateaus ?? []).some((o) => o.fort && fortPadWeight(o.fort, x, z) > 0)) continue;
         expect(town.sampleHeight(x, z)).toBeCloseTo(level, 12);
         checked++;
       }
@@ -93,20 +99,68 @@ describe("town plateaus (#84)", () => {
 
   it("blends into the untouched terrain without a step", () => {
     for (const seed of SEEDS) {
-      const { town } = fields(seed);
+      const { plain, town } = fields(seed);
       for (const p of town.townPlateaus ?? []) {
-        // Rays from the centre out past the blend, in 0.004 steps.
+        // Rays from the centre out past the blend (and any fort's pad), in
+        // 0.004 steps: no step more than the untouched terrain's own plus 0.02.
         for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
           let prev = town.sampleHeight(p.x, p.z);
+          let prevPlain = plain.sampleHeight(p.x, p.z);
           for (let r = 0.004; r <= p.reach; r += 0.004) {
-            const h = town.sampleHeight(p.x + Math.sin(a) * r, p.z + Math.cos(a) * r);
-            expect(Math.abs(h - prev)).toBeLessThan(0.02);
+            const x = p.x + Math.sin(a) * r;
+            const z = p.z + Math.cos(a) * r;
+            const h = town.sampleHeight(x, z);
+            const h0 = plain.sampleHeight(x, z);
+            expect(Math.abs(h - prev)).toBeLessThan(Math.abs(h0 - prevPlain) + 0.02);
             prev = h;
+            prevPlain = h0;
           }
         }
-        // Past the plan and its blend the terrain is the untouched field's.
       }
     }
+  });
+
+  it("finds forts only on fort ports, clear of the village and the pier, wholly above the shore band", () => {
+    let forts = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const preset = getMapPreset("small");
+      const wrap = createWrap(preset.columns);
+      const cells = generateMap(preset, seed, wrap);
+      const plain = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+      const town = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap, townPlateaus: { scale: SCALE, buildingScale: SCALE * 1.125 } });
+      const ports = cells.filter((c) => c.hasPort && c.decorations?.some((d) => d.type === "pier"));
+      (town.townPlateaus ?? []).forEach((p, i) => {
+        if (!p.fort) return;
+        forts++;
+        expect(portHasFort(ports[i])).toBe(true);
+        expect(plateauPlanDistance(p, p.fort.x, p.fort.z)).toBeGreaterThanOrEqual(p.fort.reach + FORT_TOWN_GAP - 1e-9);
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * Math.PI * 2;
+          expect(plain.sampleHeight(p.fort.x + Math.cos(a) * p.fort.reach, p.fort.z + Math.sin(a) * p.fort.reach)).toBeGreaterThan(SHORE_KEEP_TOP);
+        }
+        // The pad is level under the whole fort.
+        for (let r = 0; r <= p.fort.reach; r += p.fort.reach / 4) {
+          for (let k = 0; k < 12; k++) {
+            const a = (k / 12) * Math.PI * 2;
+            const x = p.fort.x + Math.cos(a) * r;
+            const z = p.fort.z + Math.sin(a) * r;
+            if (shoreKeep(plain.sampleHeight(x, z)) < 1) continue;
+            expect(town.sampleHeight(x, z)).toBeCloseTo(p.fort.level, 12);
+          }
+        }
+        // South of its square (towards the camera) a fort stays under the line of sight to the square.
+        const southOf = Math.max(0, p.fort.z - p.fort.reach - p.z);
+        if (p.fort.z > p.z && Math.abs(p.fort.x - p.x) < 1 + southOf * 0.35 + p.fort.reach) {
+          const south = southOf;
+          expect(p.fort.level + FORT_KEEP_TOP * SCALE * 1.125).toBeLessThanOrEqual(p.levels[0] + south * VIEW_LINE_SLOPE);
+        }
+        expect(FORT_PIER_GAP).toBeGreaterThan(0);
+      });
+      ports.forEach((c, i) => {
+        if (!portHasFort(c)) expect(town.townPlateaus?.[i].fort).toBeUndefined();
+      });
+    }
+    expect(forts).toBeGreaterThan(0);
   });
 
   it("is the untouched terrain past its blend, under the shore band and under the sea, so the coastline stays put", () => {
@@ -118,7 +172,9 @@ describe("town plateaus (#84)", () => {
         expect(town.sampleCoastDistance(x, z)).toBe(plain.sampleCoastDistance(x, z));
         if (h0 <= SHORE_KEEP_BOTTOM) expect(h1).toBe(h0);
         if (h0 > 0) expect(h1).toBeGreaterThan(0);
-        const beyond = (town.townPlateaus ?? []).every((o) => plateauPlanDistance(o, x, z) >= o.blend);
+        const beyond = (town.townPlateaus ?? []).every(
+          (o) => plateauPlanDistance(o, x, z) >= o.blend && (!o.fort || fortPadWeight(o.fort, x, z) === 0)
+        );
         if (beyond) expect(h1).toBe(h0);
       }
     }

@@ -340,6 +340,12 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
         halfD: (plan.halfD + EAVE_MARGIN) * b.scale + margin,
       };
     });
+    // A fort port's fort (#84) is kept clear by the civic margin, as the kit's tower and church are.
+    const fortHere = kit.plateaus?.find((p) => Math.hypot(p.x - cx, p.z - cz) < 1.2)?.fort;
+    if (fortHere) {
+      const half = fortHere.reach + CIVIC_MARGIN;
+      placed.push({ x: fortHere.x, z: fortHere.z, fx: Math.sin(fortHere.yaw), fz: Math.cos(fortHere.yaw), halfW: half, halfD: half });
+    }
     const streets: [number, number][][] = [];
 
     /** Stands `kind` at (x, z) facing `yaw` if the ground and its neighbours allow; true if placed. */
