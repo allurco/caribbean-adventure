@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
-import { Vector3 } from "three";
+import { PerspectiveCamera, Vector3 } from "three";
 import type { MapControls as MapControlsType } from "three-stdlib";
 import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
 import { ToneMappingMode } from "postprocessing";
@@ -56,9 +56,13 @@ import {
   CAMERA_DIRECTION,
   CAMERA_MAX_DISTANCE,
   CAMERA_MIN_DISTANCE,
+  CAMERA_NEAR,
   cameraBoundsFromHexes,
+  cameraNearFor,
   clampToCameraBounds,
 } from "./cameraBounds";
+import { focusHeight } from "./groundFollow";
+import { sharedTerrainField } from "./visuals/sharedTerrainField";
 import {
   clampFocusToBand,
   groundFootprint,
@@ -212,28 +216,45 @@ function Scene({
     [strip, band, cameraBounds]
   );
 
+  // The ground the focus follows at town zoom (#90): the one terrain field.
+  const ground = useMemo(() => sharedTerrainField(G.cells, G.wrap).sampleHeight, [G.cells, G.wrap]);
+
   // Keep the view over the map: after every MapControls update (pan, zoom,
-  // damping, focus-lerp) pull the target back inside the bounds and move the
-  // camera by the same delta, so the view angle and zoom are unchanged.
+  // damping, focus-lerp) pull the target back inside the bounds, and at town
+  // zoom onto the ground (groundFollow.ts), and move the camera by the same
+  // delta, so the view angle and zoom are unchanged. The near plane closes in
+  // with the zoom (cameraNearFor).
   useEffect(() => {
     const controls = controlsRef.current;
     if (!controls) return;
     const correction = new Vector3();
     const clamp = () => {
-      const { x, z } = clampFocus(controls.target.x, controls.target.z);
-      const dx = x - controls.target.x;
-      const dz = z - controls.target.z;
-      if (dx === 0 && dz === 0) return;
-      correction.set(dx, 0, dz);
-      controls.target.add(correction);
-      camera.position.add(correction);
+      const target = controls.target;
+      const distance = camera.position.distanceTo(target);
+      const { x, z } = clampFocus(target.x, target.z);
+      const y = focusHeight({ x, z }, distance, ground);
+      correction.set(x - target.x, y - target.y, z - target.z);
+      if (correction.x !== 0 || correction.y !== 0 || correction.z !== 0) {
+        target.add(correction);
+        camera.position.add(correction);
+      }
     };
     // Apply any pending controls change (window resized) before clamping.
     controls.update();
     clamp();
     controls.addEventListener("change", clamp);
     return () => controls.removeEventListener("change", clamp);
-  }, [clampFocus, camera]);
+  }, [clampFocus, camera, ground]);
+
+  // The near plane closes in with the zoom (cameraNearFor, #90)
+  useFrame(({ camera: view }) => {
+    const target = controlsRef.current?.target;
+    if (!target || !(view instanceof PerspectiveCamera)) return;
+    const near = cameraNearFor(view.position.distanceTo(target));
+    if (view.near === near) return;
+    view.near = near;
+    view.updateProjectionMatrix();
+  });
 
   // A port's tooltip (and any hover) follows the scene as the camera moves
   // under a still pointer (re-tested on the next frame, after the clamp above)
@@ -259,7 +280,8 @@ function Scene({
       // short way round on a wrapping map
       const goal = targetPosition.current;
       const { x, z } = clampFocus(seamAwareStart(goal.x, target.x, period), goal.z);
-      goal.set(x, 0, z);
+      // Across only: the focus height is the ground follow's (#90), set on update
+      goal.set(x, target.y, z);
 
       // The camera keeps its direction from the focus; only the distance changes
       const direction = new Vector3().subVectors(camera.position, target);
@@ -756,7 +778,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
             start.target[2] + start.distance * CAMERA_DIRECTION[2],
           ],
           fov: CAMERA_FOV,
-          near: 0.1,
+          near: CAMERA_NEAR,
           far: 1000,
         }}
         style={{ background: '#0a1929' }}

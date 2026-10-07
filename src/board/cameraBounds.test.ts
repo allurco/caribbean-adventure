@@ -6,7 +6,10 @@ import {
   CAMERA_MIN_DISTANCE,
   CAMERA_DIRECTION,
   CAMERA_PITCH,
+  CAMERA_NEAR,
+  OLD_CAMERA_MIN_DISTANCE,
   cameraBoundsFromHexes,
+  cameraNearFor,
   clampToCameraBounds,
   groundViewReach,
 } from "./cameraBounds";
@@ -30,11 +33,29 @@ describe("the game camera", () => {
     expect(CAMERA_DIRECTION[2]).toBeGreaterThan(0);
   });
 
-  it("zooms in to one world distance on every map size: the small map's old floor (#62)", () => {
-    // The old floor was 0.15 of the old iso distance, 0.8 × the map's world span (36 on the small map).
-    expect(CAMERA_MIN_DISTANCE).toBeCloseTo(36 * 0.8 * 0.15, 12);
-    expect(CAMERA_MIN_DISTANCE).toBeGreaterThan(0);
+  it("zooms in to one world distance on every map size, a town zoom (#62, #90)", () => {
+    // The #84 town and fort were approved from dist 1.0 to 1.2 in the old
+    // units, which #78 rescaled by 1 / |(0.4, 0.6, 0.4)| (~0.8246): the floor
+    // must reach the closest of those views.
+    const oldUnit = 1 / Math.hypot(0.4, 0.6, 0.4);
+    expect(CAMERA_MIN_DISTANCE).toBeLessThanOrEqual(1.0 * oldUnit);
+    expect(CAMERA_MIN_DISTANCE).toBeCloseTo(0.8, 12);
     expect(CAMERA_MIN_DISTANCE).toBeLessThan(CAMERA_MAX_DISTANCE);
+  });
+
+  describe("near plane", () => {
+    it("is today's 0.1 from the old ship-zoom floor out, so map and mid zoom are unchanged", () => {
+      expect(cameraNearFor(OLD_CAMERA_MIN_DISTANCE)).toBe(CAMERA_NEAR);
+      expect(cameraNearFor(CAMERA_MAX_DISTANCE)).toBe(CAMERA_NEAR);
+      expect(CAMERA_NEAR).toBe(0.1);
+    });
+
+    it("closes in with the camera, keeping its share of the distance", () => {
+      const share = CAMERA_NEAR / OLD_CAMERA_MIN_DISTANCE;
+      expect(cameraNearFor(CAMERA_MIN_DISTANCE)).toBeCloseTo(CAMERA_MIN_DISTANCE * share, 12);
+      expect(cameraNearFor(CAMERA_MIN_DISTANCE)).toBeLessThan(CAMERA_NEAR / 4);
+      expect(cameraNearFor(2)).toBeLessThan(cameraNearFor(3));
+    });
   });
 
   it("is placed along a unit direction, so a configured distance is the real camera-to-focus distance (#78)", () => {

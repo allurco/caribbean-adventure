@@ -20,8 +20,11 @@ import {
   CAMERA_MIN_DISTANCE,
   CAMERA_PITCH,
   MAX_VIEW_ASPECT,
+  OLD_CAMERA_MIN_DISTANCE,
   groundViewReach,
 } from "../cameraBounds";
+import { focusHeight } from "../groundFollow";
+import { ELEVATION_HEIGHTS, RELIEF_AMPLITUDES } from "./terrainHeightField";
 
 const vertex = (mesh: OceanRingMesh, i: number): [number, number] => [mesh.positions[i * 3], mesh.positions[i * 3 + 2]];
 
@@ -179,11 +182,30 @@ describe("OCEAN_GRID_RINGS", () => {
     expect(oceanGridCoverage(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL)).toBeGreaterThan(reach);
   });
 
-  it("keeps the fine ring under the whole view at the closest ship zoom on a 16:9 screen", () => {
-    // The closest zoom is the same on every map size (#62); the fine ring must still cover the view there.
-    const reach = groundViewReach(CAMERA_MIN_DISTANCE, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
+  describe("keeps the fine ring under the whole view at ship and town zoom on a 16:9 screen", () => {
+    // The closest zooms are the same on every map size (#62). Below the old
+    // floor the focus climbs onto the ground (#90), so the sea lies further
+    // below it and the view reaches further across it.
     const fine = OCEAN_GRID_RINGS[0].halfSize * OCEAN_GRID_BASE_CELL - oceanGridSnapCell(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL) / 2;
-    expect(fine).toBeGreaterThan(reach);
+    const reachOver = (d: number, ground: number) =>
+      groundViewReach(d, CAMERA_PITCH, CAMERA_FOV, 16 / 9, focusHeight({ x: 0, z: 0 }, d, () => ground));
+
+    it("at the old ship-zoom floor, as before", () => {
+      expect(fine).toBeGreaterThan(groundViewReach(OLD_CAMERA_MIN_DISTANCE, CAMERA_PITCH, CAMERA_FOV, 16 / 9));
+    });
+
+    it("at the town-zoom floor, over the highest ground the field makes", () => {
+      expect(fine).toBeGreaterThan(reachOver(CAMERA_MIN_DISTANCE, ELEVATION_HEIGHTS[3] + RELIEF_AMPLITUDES[3]));
+    });
+
+    // Over the highest relief peaks the top corners can reach past the ring
+    // around a zoom of 2; out there the next ring's cells are no larger on
+    // screen than this ring's were at the old floor.
+    it("at every zoom in between, over a mountain hex's ground (a hilltop fort)", () => {
+      for (let d = CAMERA_MIN_DISTANCE; d <= OLD_CAMERA_MIN_DISTANCE + 1e-9; d += 0.02) {
+        expect(fine).toBeGreaterThan(reachOver(d, ELEVATION_HEIGHTS[3]));
+      }
+    });
   });
 });
 
