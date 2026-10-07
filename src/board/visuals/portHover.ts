@@ -16,6 +16,7 @@ import { hexToWorld, type Hex } from "../../game/hex";
 import { AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { PORT_SETTLEMENT_RADIUS, type PortBuilding } from "./portSettlement";
+import { PROP_SCALE } from "./propScale";
 
 /** The ground under a port is probed over this radius round the hex centre (`groundTopY`). */
 export const PORT_GROUND_PROBE_RADIUS = 0.35;
@@ -41,12 +42,15 @@ export function portOwnBuildings(centre: { x: number; z: number }, buildings: re
  */
 export function portHoverVolume(centre: { x: number; z: number }, groundY: number, buildings: readonly PortBuilding[]): PortHoverVolume {
   let bottom = groundY;
-  let top = groundY + BUILDING_MAX_HEIGHT;
+  // Heights follow the #84 prop scale (1 unless `?hexMetres` is given); the
+  // radius does not: the experiment's town fills the hex, so the hover must too.
+  let top = groundY + BUILDING_MAX_HEIGHT * PROP_SCALE;
   for (const b of portOwnBuildings(centre, buildings)) {
     bottom = Math.min(bottom, b.worldY);
     top = Math.max(top, b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale);
   }
-  return { bottom: bottom - PORT_HOVER_MARGIN, top: top + PORT_HOVER_MARGIN, radius: PORT_HOVER_RADIUS };
+  const margin = PORT_HOVER_MARGIN * PROP_SCALE;
+  return { bottom: bottom - margin, top: top + margin, radius: PORT_HOVER_RADIUS };
 }
 
 /** `portHoverVolume` for a port hex. */

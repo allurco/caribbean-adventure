@@ -4,6 +4,7 @@ import { Vector3, Mesh, MathUtils } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
 import { shipFoamSources } from "./shipFoamSources";
+import { PROP_SCALE } from "./visuals/propScale";
 
 const DURATION = 0.4; // seconds
 const SINK_DURATION = 2.0; // seconds for sinking animation
@@ -14,14 +15,21 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** The #84 prop scale on a hull box (1 unless `?hexMetres` is given). */
+const scaled = (box: [number, number, number]): [number, number, number] =>
+  PROP_SCALE === 1 ? box : [box[0] * PROP_SCALE, box[1] * PROP_SCALE, box[2] * PROP_SCALE];
+
 const SHIP_GEOMETRY: Record<ShipClass, [number, number, number]> = {
-  Sloop: [0.25, 0.2, 0.65],
-  Flute: [0.4, 0.3, 0.6],
-  Frigate: [0.35, 0.28, 0.7],
-  Galleon: [0.5, 0.35, 0.8],
+  Sloop: scaled([0.25, 0.2, 0.65]),
+  Flute: scaled([0.4, 0.3, 0.6]),
+  Frigate: scaled([0.35, 0.28, 0.7]),
+  Galleon: scaled([0.5, 0.35, 0.8]),
 };
 
-const DEFAULT_GEOMETRY: [number, number, number] = [0.3, 0.25, 0.7];
+const DEFAULT_GEOMETRY: [number, number, number] = scaled([0.3, 0.25, 0.7]);
+/** How far the hull box's centre rides above the sea, and how far a sinking ship goes down. */
+const RIDE_HEIGHT = 0.12 * PROP_SCALE;
+const SINK_DEPTH = 1.5 * PROP_SCALE;
 
 export function Ship({
   position,
@@ -72,9 +80,9 @@ export function Ship({
       if (!mesh) return;
       ref.current = mesh;
       if (!initialized.current) {
-        mesh.position.set(position[0], position[1] + 0.12, position[2]);
+        mesh.position.set(position[0], position[1] + RIDE_HEIGHT, position[2]);
         prevTarget.current = position;
-        to.set(position[0], position[1] + 0.12, position[2]);
+        to.set(position[0], position[1] + RIDE_HEIGHT, position[2]);
         initialized.current = true;
       }
     },
@@ -93,7 +101,7 @@ export function Ship({
       prev[2] !== position[2]
     ) {
       from.copy(ref.current.position);
-      to.set(position[0], position[1] + 0.12, position[2]);
+      to.set(position[0], position[1] + RIDE_HEIGHT, position[2]);
       // Across the seam, sail straight over it rather than back across the map.
       from.setX(seamAwareStart(from.x, to.x, wrapWidth));
       prevTarget.current = position;
@@ -175,7 +183,7 @@ export function SinkingShip({
 }) {
   const ref = useRef<Mesh>(null!);
   const progressRef = useRef(0);
-  const startY = position[1] + 0.12;
+  const startY = position[1] + RIDE_HEIGHT;
   const [opacity, setOpacity] = useState(1);
   const completedRef = useRef(false);
 
@@ -186,7 +194,7 @@ export function SinkingShip({
     const t = smoothstep(progressRef.current);
 
     // Sink down
-    ref.current.position.y = MathUtils.lerp(startY, startY - 1.5, t);
+    ref.current.position.y = MathUtils.lerp(startY, startY - SINK_DEPTH, t);
 
     // Tilt to one side (roll)
     ref.current.rotation.z = MathUtils.lerp(0, Math.PI / 4, t);

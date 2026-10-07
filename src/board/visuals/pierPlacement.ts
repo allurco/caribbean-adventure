@@ -11,12 +11,13 @@
  */
 import type { GroundField } from "./groundPlacement";
 import { SEA_LEVEL } from "./terrainHeightField";
+import { PROP_SCALE } from "./propScale";
 
 /** The shoreline is looked for between these distances from the hex centre. */
 export const PIER_SHORE_MIN = 0.5;
 export const PIER_SHORE_MAX = 0.85;
 /** How far inland of the shoreline the deck starts. */
-export const PIER_LAND_OVERLAP = 0.12;
+export const PIER_LAND_OVERLAP = 0.12 * PROP_SCALE;
 /** Ground at or under this height counts as the shore. */
 export const PIER_SHORE_HEIGHT = SEA_LEVEL + 0.02;
 const SEARCH_STEP = 0.025;

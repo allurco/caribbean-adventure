@@ -37,6 +37,7 @@ import {
   QUAY_WIDTH,
 } from "./quayGeometry";
 import { lerpRange, seedOf, stream } from "./variationStream";
+import { PROP_SCALE } from "./propScale";
 
 export interface QuaySize {
   /** Scale across the pier (the quay's width). */
@@ -99,13 +100,15 @@ export function quayAt(field: GroundField, centre: { x: number; z: number }, rot
   // The sand along the sea face, out to the coping's edge.
   let seaSand = -Infinity;
   for (const x of [-hw, 0, hw]) for (const z of [QUAY_SEA_FACE, QUAY_SEA_FACE + QUAY_COPING_PROUD]) seaSand = Math.max(seaSand, sample(x, z));
-  const top = Math.min(PIER_DECK_TOP + QUAY_MAX_STEP, Math.max(PIER_DECK_TOP + QUAY_LIP, seaSand + QUAY_PROUD_OF_SAND));
-  let worldY = top - QUAY_TOP;
+  // Heights scale with the #84 prop scale (1 unless `?hexMetres` is given), as the plan does through `size`.
+  const k = PROP_SCALE;
+  const top = Math.min((PIER_DECK_TOP + QUAY_MAX_STEP) * k, Math.max((PIER_DECK_TOP + QUAY_LIP) * k, seaSand + QUAY_PROUD_OF_SAND * k));
+  let worldY = top - QUAY_TOP * k;
   // The corners, edge midpoints and centre of the body's plan, the way `placeOnGround` probes a footprint.
   let lowest = Infinity;
   for (const x of [-hw, 0, hw]) for (const z of [QUAY_BACK, (QUAY_BACK + QUAY_SEA_FACE) / 2, QUAY_SEA_FACE]) lowest = Math.min(lowest, sample(x, z));
-  if (worldY + QUAY_BASE > lowest) worldY = lowest - QUAY_BASE;
-  return { worldX: origin.x, worldY, worldZ: origin.z, yaw: rotation, top: worldY + QUAY_TOP, ...size };
+  if (worldY + QUAY_BASE * k > lowest) worldY = lowest - QUAY_BASE * k;
+  return { worldX: origin.x, worldY, worldZ: origin.z, yaw: rotation, top: worldY + QUAY_TOP * k, ...size };
 }
 
 /** The quay of a port cell, or null if the cell has no port or no pier; `seed` is the map's terrain seed. */
@@ -115,7 +118,10 @@ export function placeQuay(cell: MapCell, field: GroundField, seed: number): Quay
   const [hexX, , hexZ] = hexToWorld(cell.hex);
   // The seed goes in through the salt, as the buildings' does (seedOf quantises its values by 4096).
   const next = stream(seedOf([cell.hex.q, cell.hex.r], QUAY_SALT ^ seed));
-  const size: QuaySize = { scaleX: lerpRange(QUAY_WIDTH_RANGE, next()), scaleZ: lerpRange(QUAY_DEPTH_RANGE, next()) };
+  const size: QuaySize = {
+    scaleX: lerpRange(QUAY_WIDTH_RANGE, next()) * PROP_SCALE,
+    scaleZ: lerpRange(QUAY_DEPTH_RANGE, next()) * PROP_SCALE,
+  };
   return quayAt(field, { x: hexX, z: hexZ }, pier.rotation, size);
 }
 
@@ -139,7 +145,7 @@ export function portQuays(cells: readonly MapCell[], field: GroundField, seed: n
 export function quayTopAt(quay: QuayPlacement, point: { x: number; z: number }): number | undefined {
   const local = toLocal(quay, point);
   if (Math.abs(local.x) > QUAY_WIDTH / 2 || local.z < QUAY_BACK || local.z > QUAY_SEA_FACE) return undefined;
-  return local.z < QUAY_STEP_Z ? quay.top - QUAY_COPING_THICKNESS : quay.top;
+  return local.z < QUAY_STEP_Z ? quay.top - QUAY_COPING_THICKNESS * PROP_SCALE : quay.top;
 }
 
 /**

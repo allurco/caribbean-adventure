@@ -18,12 +18,49 @@ import { portQuays, type QuayPlacement } from "./quayPlacement";
 import { landSurface } from "./landMesh";
 import { placeShrubs } from "./shrubPlacement";
 import { shoreBoulders, type ShoreBoulder } from "./shoreBoulders";
+import { PROP_DENSITY, PROP_SCALE } from "./propScale";
+import { lerpRange, seedOf, stream } from "./variationStream";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
 
 // Ground fit at scale 1. The footprint covers the trunk base plus its lean.
-const TREE_PLACEMENT: GroundPlacementOptions = { footprintRadius: 0.06, sink: 0.03, maxSlope: 0.9 };
+const TREE_PLACEMENT: GroundPlacementOptions = { footprintRadius: 0.06, sink: 0.03 * PROP_SCALE, maxSlope: 0.9 };
+
+/**
+ * The #84 experiment: at a prop scale under 1 each generator tree and rock
+ * on a non-port cell gets `PROP_DENSITY - 1` companions spread over its
+ * cell (out to this radius from the centre), so the land is as covered as
+ * today with props that much smaller. The companions are hashed from the
+ * cell, the decoration's index and the terrain seed.
+ */
+const COMPANION_SPREAD = 0.75;
+const COMPANION_SCALE_RANGE: readonly [number, number] = [0.8, 1.2];
+const COMPANION_SALT = 0x51c3a7e9;
+
+/** The decoration's own spot and scale, then its companions' (none at today's scale or on a port cell). */
+function withCompanions(
+  cell: MapCell,
+  index: number,
+  seed: number,
+  own: { x: number; z: number; scale: number; rotation: number }
+): { x: number; z: number; scale: number; rotation: number }[] {
+  const out = [own];
+  if (PROP_DENSITY <= 1 || cell.hasPort) return out;
+  const [hexX, , hexZ] = hexToWorld(cell.hex);
+  const next = stream(seedOf([cell.hex.q, cell.hex.r, index], COMPANION_SALT ^ seed));
+  for (let j = 1; j < PROP_DENSITY; j++) {
+    const angle = next() * Math.PI * 2;
+    const distance = Math.sqrt(next()) * COMPANION_SPREAD;
+    out.push({
+      x: hexX + Math.cos(angle) * distance,
+      z: hexZ + Math.sin(angle) * distance,
+      scale: own.scale * lerpRange(COMPANION_SCALE_RANGE, next()),
+      rotation: next() * Math.PI * 2,
+    });
+  }
+  return out;
+}
 
 export interface DecorationData {
   type: Decoration["type"];
@@ -68,63 +105,74 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
   // on the same surface (#59).
   const drawn = landSurface(field);
 
+  const seed = terrainSeedFromCells(cells);
   for (const cell of cells) {
     if (!cell.decorations || cell.decorations.length === 0) continue;
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     const anchor = { x: hexX, z: hexZ };
 
-    for (const deco of cell.decorations) {
-      const scale = deco.scale ?? 1;
-      const spot = { x: hexX + deco.position[0], z: hexZ + deco.position[2] };
+    cell.decorations.forEach((deco, index) => {
+      // The #84 prop scale: 1 unless `?hexMetres` is given.
+      const ownScale = (deco.scale ?? 1) * PROP_SCALE;
+      const own = { x: hexX + deco.position[0], z: hexZ + deco.position[2], scale: ownScale, rotation: deco.rotation };
 
       // Trees and rocks stand on the height field: nudged off water and
       // cliffs towards the cell centre, or dropped if nowhere fits.
-      const standing = (ground: GroundSpot | null): DecorationData | null =>
+      const standing = (ground: GroundSpot | null, scale: number, rotation: number): DecorationData | null =>
         ground && {
           type: deco.type,
           worldX: ground.x,
-          worldY: ground.y + deco.position[1],
+          worldY: ground.y + deco.position[1] * PROP_SCALE,
           worldZ: ground.z,
-          rotation: deco.rotation,
+          rotation,
           scale,
           biome: cell.biome,
         };
 
       switch (deco.type) {
         case "tree": {
-          // A trunk rests on the lowest ground under its base so it never floats.
-          const tree = standing(
-            placeOnGround(field, spot, anchor, { ...TREE_PLACEMENT, footprintRadius: TREE_PLACEMENT.footprintRadius * scale })
-          );
-          if (tree) trees.push(tree);
+          for (const p of withCompanions(cell, index, seed, own)) {
+            // A trunk rests on the lowest ground under its base so it never floats.
+            const tree = standing(
+              placeOnGround(field, p, anchor, { ...TREE_PLACEMENT, footprintRadius: (TREE_PLACEMENT.footprintRadius * p.scale) }),
+              p.scale,
+              p.rotation
+            );
+            if (tree) trees.push(tree);
+          }
           break;
         }
         case "rock": {
-          // Rocks stand on the centre height, probed out to their drawn radius (#53).
-          const rock = standing(placeRock(field, spot, anchor, { scale, rotation: deco.rotation, biome: cell.biome }));
-          if (rock) rocks.push(rock);
+          for (const p of withCompanions(cell, index, seed, own)) {
+            // Rocks stand on the centre height, probed out to their drawn radius (#53).
+            const rock = standing(
+              placeRock(field, p, anchor, { scale: p.scale, rotation: p.rotation, biome: cell.biome }),
+              p.scale,
+              p.rotation
+            );
+            if (rock) rocks.push(rock);
+          }
           break;
         }
         // The fort becomes a watchtower among the port buildings (`portBuildings`, below).
         case "pier": {
           // Piers sit at water level; the land end starts where the drawn beach meets the water.
-          const origin = pierOrigin(drawn, spot, deco.rotation);
+          const origin = pierOrigin(drawn, own, deco.rotation);
           piers.push({
             type: deco.type,
             worldX: origin.x,
             worldY: 0,
             worldZ: origin.z,
             rotation: deco.rotation,
-            scale,
+            scale: ownScale,
           });
           break;
         }
       }
-    }
+    });
   }
 
-  const seed = terrainSeedFromCells(cells);
   const stones = smallStones(cells, field, seed);
   const shrubs = placeShrubs(cells, field, seed, { trees, rocks, stones, piers });
   const boulders = shoreBoulders(cells, field, wrap, seed);

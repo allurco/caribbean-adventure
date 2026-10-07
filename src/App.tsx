@@ -35,6 +35,7 @@ export default function App() {
       cameraTarget={devParams.cameraTarget}
       cameraDistance={devParams.cameraDistance}
       houseBoxes={devParams.houseBoxes}
+      minDistance={devParams.minDistance}
     />
   );
 }

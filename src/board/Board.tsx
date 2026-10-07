@@ -128,11 +128,14 @@ function Scene({
   onShipClick,
   onPortHover,
   houseBoxes,
+  minDistance,
 }: {
   G: CaribbeanState;
   currentPlayer: string;
   /** The #83 prototype's tiny-house scale boxes (dev). */
   houseBoxes?: boolean;
+  /** The #84 experiment's zoom floor in world units, replacing the map-fraction one (dev). */
+  minDistance?: number;
   /** The map's iso distance (sets the zoom floor) and the first target. */
   cam: { isoDistance: number; target: [number, number, number] };
   movesRemaining: number;
@@ -455,7 +458,7 @@ function Scene({
         // side, looking back across the map (labels read mirrored).
         target={cam.target}
         enableRotate={false}
-        minDistance={Math.min(cam.isoDistance * 0.15, CAMERA_MAX_DISTANCE)}
+        minDistance={minDistance ?? Math.min(cam.isoDistance * 0.15, CAMERA_MAX_DISTANCE)}
         // The same on every map size (Civ style); the focus clamp above keeps
         // the view on the map, with open sea past the rows on a small map.
         maxDistance={CAMERA_MAX_DISTANCE}
@@ -482,10 +485,12 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   cameraDistance?: number;
   /** Draw the #83 prototype's tiny-house scale boxes on every port hex (dev). */
   houseBoxes?: boolean;
+  /** The #84 experiment's zoom floor in world units (dev, `&minDist=`). */
+  minDistance?: number;
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance, houseBoxes } = props;
+  const { G, ctx, cameraTarget, cameraDistance, houseBoxes, minDistance } = props;
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
   const [sinkingShips, setSinkingShips] = useState<SinkingShipData[]>([]);
@@ -742,6 +747,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         <Scene
           G={G}
           houseBoxes={houseBoxes}
+          minDistance={minDistance}
           currentPlayer={currentPlayer}
           cam={{ isoDistance: cam.isoDistance, target: start.target }}
           movesRemaining={movesRemaining}

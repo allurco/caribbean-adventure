@@ -20,10 +20,11 @@ import { SHRUB_FOOTPRINT_RADIUS, type ShrubKind } from "./shrubGeometry";
 import type { ShrubPlacement } from "./shrubVariation";
 import type { DecorationData } from "./useDecorationLayout";
 import { lerpRange, seedOf, stream } from "./variationStream";
+import { PROP_DENSITY, PROP_SCALE } from "./propScale";
 
 /** Shrubs per cell, by biome, as an inclusive [min, max]. */
-export const SHRUBS_PER_GRASS_CELL: readonly [number, number] = [1, 3];
-export const SHRUBS_PER_SAND_CELL: readonly [number, number] = [1, 3];
+export const SHRUBS_PER_GRASS_CELL: readonly [number, number] = [1 * PROP_DENSITY, 3 * PROP_DENSITY];
+export const SHRUBS_PER_SAND_CELL: readonly [number, number] = [1 * PROP_DENSITY, 3 * PROP_DENSITY];
 /** Which kind grows on which biome; ROCK cells stay bare. */
 export const SHRUB_KIND_BY_BIOME: Readonly<Record<Biome, ShrubKind | null>> = {
   GRASS: "bush",
@@ -38,9 +39,9 @@ export const SHRUB_KIND_BY_BIOME: Readonly<Record<Biome, ShrubKind | null>> = {
  */
 export const SHRUB_SPREAD = 0.68;
 /** Placement scale of a shrub, on top of the geometry's unit size. */
-export const SHRUB_SCALE_RANGE: readonly [number, number] = [0.8, 1.3];
+export const SHRUB_SCALE_RANGE: readonly [number, number] = [0.8 * PROP_SCALE, 1.3 * PROP_SCALE];
 /** Gap kept between a shrub's footprint and a neighbouring prop's. */
-export const SHRUB_CLEARANCE = 0.05;
+export const SHRUB_CLEARANCE = 0.05 * PROP_SCALE;
 /** Footprint radius of a tree at scale 1 that shrubs keep out of (the trunk base and its flare). */
 export const SHRUB_TREE_RADIUS = 0.06;
 /** Radius round a port cell's centre kept free of shrubs: the marker (0.35) plus a margin. */
@@ -64,7 +65,7 @@ export const SHRUB_GROUND_FOOTPRINT = 0.04;
  * #53) that the ±x/±z slope check misses. A spot that would bury the shrub
  * past this is nudged towards the cell centre or given up instead.
  */
-export const SHRUB_MAX_BURY = 0.05;
+export const SHRUB_MAX_BURY = 0.05 * PROP_SCALE;
 
 // The pier as TerrainDecorations draws it: a box 0.15 wide and 0.6 long,
 // offset 0.7 units from the cell centre along (sin, cos) of its rotation.
@@ -74,7 +75,7 @@ const PIER_HALF_WIDTH = 0.075;
 
 // `maxSlope` is only a coarse first gate for shrubs; `maxBury` is the binding one.
 const SHRUB_PLACEMENT: Omit<GroundPlacementOptions, "footprintRadius"> = {
-  sink: 0.01,
+  sink: 0.01 * PROP_SCALE,
   maxSlope: 1.2,
   maxBury: SHRUB_MAX_BURY,
 };

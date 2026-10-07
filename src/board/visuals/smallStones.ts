@@ -14,10 +14,11 @@ import type { GroundField } from "./groundPlacement";
 import { placeRock } from "./rockPlacement";
 import type { DecorationData } from "./useDecorationLayout";
 import { lerpRange, seedOf, stream } from "./variationStream";
+import { PROP_DENSITY, PROP_SCALE } from "./propScale";
 
 /** Stones per cell, by biome: ROCK cells already have outcrops and get none. */
-export const STONES_PER_SAND_CELL = 1;
-export const STONES_PER_GRASS_CELL = 1;
+export const STONES_PER_SAND_CELL = 1 * PROP_DENSITY;
+export const STONES_PER_GRASS_CELL = 1 * PROP_DENSITY;
 /** Farthest a stone sits from its cell centre (world units; a hex is 1 unit in radius). */
 export const STONE_SPREAD = 0.55;
 /**
@@ -25,10 +26,10 @@ export const STONE_SPREAD = 0.55;
  * 1, and stones take the small size class on top). Knee-to-waist-high rocks;
  * the earlier [0.3, 0.5] pebbles vanished into the beach at ship zoom.
  */
-export const STONE_SCALE_RANGE: readonly [number, number] = [0.6, 1];
+export const STONE_SCALE_RANGE: readonly [number, number] = [0.6 * PROP_SCALE, 1 * PROP_SCALE];
 
 /** A stone sinks a little less than an outcrop. */
-const STONE_SINK = 0.01;
+const STONE_SINK = 0.01 * PROP_SCALE;
 const STONE_SALT = 0x5d7a3c91;
 const TAU = Math.PI * 2;
 

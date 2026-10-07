@@ -20,6 +20,16 @@ export interface DevUrlParams {
   massifs?: boolean;
   /** `?houses=1`: the #83 prototype's tiny-house scale boxes on every port hex. */
   houseBoxes?: boolean;
+  /**
+   * `?hexMetres=<positive>`: the #84 experiment's hex scale. Every authored
+   * prop and ship is drawn at 115 / hexMetres (`propScale.ts`, which reads
+   * this at module load so module-level sizes pick it up).
+   */
+  hexMetres?: number;
+  /** `&scaleWater=1`: the #84 experiment's water follows the hex scale (`worldScale.ts`). */
+  scaleWater?: boolean;
+  /** `&minDist=<positive>`: the #84 experiment's zoom floor, in world units, instead of the map-fraction one. */
+  minDistance?: number;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -46,6 +56,12 @@ export function parseDevUrlParams(search: string): DevUrlParams {
 
   if (params.get("massifs") === "1") out.massifs = true;
   if (params.get("houses") === "1") out.houseBoxes = true;
+
+  const hexMetres = finiteNumber(params.get("hexMetres"));
+  if (hexMetres !== undefined && hexMetres > 0) out.hexMetres = hexMetres;
+  if (params.get("scaleWater") === "1") out.scaleWater = true;
+  const minDist = finiteNumber(params.get("minDist"));
+  if (minDist !== undefined && minDist > 0) out.minDistance = minDist;
 
   return out;
 }

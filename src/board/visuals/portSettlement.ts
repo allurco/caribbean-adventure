@@ -58,6 +58,7 @@ import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./
 import { SEA_LEVEL } from "./terrainHeightField";
 import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
 import { lerpRange, seedOf, stream } from "./variationStream";
+import { PROP_SCALE } from "./propScale";
 
 export interface PortBuilding {
   kind: BuildingKind;
@@ -275,9 +276,9 @@ export const BUILDING_SINK = 0.002;
 /** The footing's base stays at least this far under the lowest ground under the footprint, so nothing floats. */
 export const BUILDING_FOOTING_MARGIN = 0.01;
 /** The ground contact for a footprint whose highest ground is `max`. */
-export const buildingGroundY = (max: number) => max - BUILDING_SINK;
+export const buildingGroundY = (max: number) => max - BUILDING_SINK * PROP_SCALE;
 /** Widest height spread a footprint may take: its footing (BUILDING_FOOTING at the building's scale) covers the low side with the margin to spare. */
-export const buildingMaxSpread = (footing: number) => footing - BUILDING_SINK - BUILDING_FOOTING_MARGIN;
+export const buildingMaxSpread = (footing: number) => footing - BUILDING_SINK * PROP_SCALE - BUILDING_FOOTING_MARGIN * PROP_SCALE;
 
 /** A building already placed: its plan circle. */
 export interface Footprint {
@@ -339,10 +340,10 @@ export function standBuilding(
   placed: readonly Footprint[],
   plan?: PlanFootprint
 ): { x: number; y: number; z: number } | null {
-  if (placed.some((p) => Math.hypot(p.x - at.x, p.z - at.z) < p.reach + reach + PORT_BUILDING_GAP)) return null;
+  if (placed.some((p) => Math.hypot(p.x - at.x, p.z - at.z) < p.reach + reach + PORT_BUILDING_GAP * PROP_SCALE)) return null;
   const { min, max, quay } = footprintGround(ground, at.x, at.z, reach, plan);
   if (quay === "edge") return null;
-  if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") + reach) return null;
+  if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") * PROP_SCALE + reach) return null;
   if (max - min > buildingMaxSpread(footing)) return null;
   return { x: at.x, y: buildingGroundY(max), z: at.z };
 }
@@ -374,9 +375,11 @@ function standOnBeach(
     const dir = { x: Math.sin(angle), z: Math.cos(angle) };
     // Rings from the square outwards, the first with the near corner on the square's edge;
     // the ground fit may pull a spot back to the ring inside it.
-    const first = PORT_SQUARE_RADIUS + reach;
-    for (let radius = first; radius <= PORT_BUILDING_MAX_RADIUS + 1e-9; radius += RADIAL_STEP) {
-      const inner = Math.max(first, radius - RADIAL_STEP);
+    // The square, the rings and their step shrink with the #84 prop scale (1 unless `?hexMetres` is given).
+    const first = PORT_SQUARE_RADIUS * PROP_SCALE + reach;
+    const step = RADIAL_STEP * PROP_SCALE;
+    for (let radius = first; radius <= PORT_BUILDING_MAX_RADIUS * PROP_SCALE + 1e-9; radius += step) {
+      const inner = Math.max(first, radius - step);
       const anchor = { x: centre.x + dir.x * inner, z: centre.z + dir.z * inner };
       const spot = { x: centre.x + dir.x * radius, z: centre.z + dir.z * radius };
       const dry = placeOnGround(ground, spot, anchor, { ...BUILDING_PLACEMENT, footprintRadius: reach });
@@ -400,9 +403,16 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
     const landward = toWater + Math.PI;
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
-    const centre = { x: hexX, z: hexZ };
+    const hexCentre = { x: hexX, z: hexZ };
     const ground = settlementGround(cell, field, seed);
-    const pierRoot = pierOrigin(field, centre, toWater);
+    const pierRoot = pierOrigin(field, hexCentre, toWater);
+    // The #84 experiment: at a prop scale under 1 the whole settlement is
+    // scaled about the pier root, so the civic core (tower, church and the
+    // rest) stands by the quay rather than alone in the middle of the hex.
+    const centre =
+      PROP_SCALE === 1
+        ? hexCentre
+        : { x: pierRoot.x + (hexCentre.x - pierRoot.x) * PROP_SCALE, z: pierRoot.z + (hexCentre.z - pierRoot.z) * PROP_SCALE };
     // The seed goes in through the salt: seedOf quantises its values by 4096 (a
     // 12-bit shift into int32), which would drop a 32-bit seed's top 12 bits.
     const next = stream(seedOf([cell.hex.q, cell.hex.r], PORT_BUILDING_SALT ^ seed));
@@ -432,7 +442,7 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
 
     const placed: Footprint[] = [];
     for (const { kind, slot } of order) {
-      const scale = lerpRange(scaleRangeOf(kind), next());
+      const scale = lerpRange(scaleRangeOf(kind), next()) * PROP_SCALE;
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;

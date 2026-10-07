@@ -11,6 +11,7 @@
  * anchor (water slapping the hull) to full. The shaders break the patch up
  * with the same lace and churn as the shore foam (foamShading.ts).
  */
+import { PROP_SCALE } from "./propScale";
 
 /** How far out the foam reaches, in hull lengths. */
 export const HULL_FOAM_REACH = 0.5;
@@ -21,7 +22,7 @@ export const HULL_FOAM_FULL_SPEED = 2;
 /** How far the wake trails astern at full speed, in hull lengths. */
 export const HULL_FOAM_WAKE_LENGTHS = 1;
 /** STYLISTIC: the breakup noise's cycles per world unit and the lace's feature size (metres) for the detail fade. */
-export const HULL_FOAM_NOISE_SCALE = 14;
+export const HULL_FOAM_NOISE_SCALE = 14 / PROP_SCALE;
 export const HULL_FOAM_LACE_METRES = 1.2;
 
 const smoothstep = (e0: number, e1: number, x: number) => {

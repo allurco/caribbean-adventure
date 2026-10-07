@@ -19,9 +19,10 @@
 import type { Biome } from "../../game/types";
 import { nudgedTowards, standOnGround, type GroundField, type GroundSpot } from "./groundPlacement";
 import { rockDrawnRadius, rockSizeClass, rockVariation, type RockSizeClass } from "./rockVariation";
+import { PROP_SCALE } from "./propScale";
 
 /** How far below the ground at its centre a rock's origin (its widest ring) sits. */
-export const ROCK_SINK = 0.02;
+export const ROCK_SINK = 0.02 * PROP_SCALE;
 /** Steepest ground (rise over run across the drawn radius) a rock may stand on. */
 export const ROCK_MAX_SLOPE = 1.6;
 

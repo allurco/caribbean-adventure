@@ -9,7 +9,18 @@
  * This is the scale of the picture only. How far a move travels in the game's
  * fiction is abstract and not tied to it.
  */
-export const METRES_PER_UNIT = 65;
+import { HEX_METRES, HEX_METRES_TODAY, WATER_FOLLOWS_HEX_SCALE } from "./propScale";
+
+export const METRES_PER_UNIT = metresPerUnitFor(WATER_FOLLOWS_HEX_SCALE ? HEX_METRES : HEX_METRES_TODAY);
+
+/**
+ * The #84 experiment (throwaway): with `&scaleWater=1` the unit follows the
+ * hex scale, 65 × (hexMetres / 115), so the wave spectra, absorption, seabed
+ * shelf and every other metre-based size read the new scale. 65 otherwise.
+ */
+export function metresPerUnitFor(hexMetres: number): number {
+  return hexMetres === HEX_METRES_TODAY ? 65 : 65 * (hexMetres / HEX_METRES_TODAY);
+}
 
 export function metresToUnits(metres: number): number {
   return metres / METRES_PER_UNIT;
