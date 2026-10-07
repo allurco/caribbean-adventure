@@ -171,10 +171,11 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
   }
 
   const stones = smallStones(cells, field, seed);
-  const shrubs = placeShrubs(cells, field, seed, { trees, rocks, stones, piers });
-  const boulders = shoreBoulders(cells, field, wrap, seed);
   const buildings = portBuildings(cells, drawn, seed);
   const quays = portQuays(cells, drawn, seed);
+  // The port kit is placed first so the shrubs keep off it.
+  const shrubs = placeShrubs(cells, field, seed, { trees, rocks, stones, piers, quays, buildings });
+  const boulders = shoreBoulders(cells, field, wrap, seed);
 
   return { trees, rocks, stones, shoreBoulders: boulders, piers, shrubs, quays, buildings };
 }

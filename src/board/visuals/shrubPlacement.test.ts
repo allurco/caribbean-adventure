@@ -9,6 +9,11 @@ import { smallStones } from "./smallStones";
 import { PORT_GROUND_PROBE_RADIUS as PORT_MARKER_RADIUS } from "./portHover";
 import { SHRUB_FOOTPRINT_RADIUS } from "./shrubGeometry";
 import type { DecorationData } from "./useDecorationLayout";
+import { PIER_LENGTH, PIER_WIDTH } from "./pierGeometry";
+import { QUAY_BACK, QUAY_SEA_FACE, QUAY_WIDTH } from "./quayGeometry";
+import { portQuays } from "./quayPlacement";
+import { AGED_BUILDING_HALF_DIAGONAL } from "./agedBuildingGeometry";
+import { decorationLayout } from "./decorationLayout";
 import {
   placeShrubs,
   shrubObstacles,
@@ -25,6 +30,7 @@ import {
   SHRUBS_PER_GRASS_CELL,
   SHRUBS_PER_SAND_CELL,
   type PlacedProps,
+  type ShrubObstacle,
 } from "./shrubPlacement";
 import { PROP_DENSITY, PROP_SCALE } from "./worldScale";
 
@@ -215,15 +221,17 @@ describe("placeShrubs", () => {
     expect(found).toBeGreaterThan(40);
   });
 
-  it("keeps off the pier deck on a port cell: the plank from 0.4 to 1.0 units along its facing", () => {
+  it("keeps off the pier deck on a port cell: the planks from its land end out PIER_LENGTH at its scale", () => {
     const cell = grassCell(0, 0, { hasPort: true, biome: "SAND" });
-    const pier: DecorationData = { type: "pier", worldX: 0, worldY: 0, worldZ: 0, rotation: 0, scale: 1 };
+    // The layout puts a pier's origin at its land end, here 0.5 out from the cell centre.
+    const pier: DecorationData = { type: "pier", worldX: 0, worldY: 0, worldZ: 0.5, rotation: 0, scale: PROP_SCALE };
     const props: PlacedProps = { trees: [], rocks: [], stones: [], piers: [pier] };
     const [deck] = shrubObstacles(props);
-    // Facing 0 points along +z (sin 0, cos 0), as TerrainDecorations offsets the pier.
+    // Facing 0 points along +z (sin 0, cos 0), as Piers.tsx turns the deck.
     expect(deck.ax).toBeCloseTo(0, 9);
-    expect(deck.az).toBeCloseTo(0.4, 9);
-    expect(deck.bz).toBeCloseTo(1.0, 9);
+    expect(deck.az).toBeCloseTo(0.5, 9);
+    expect(deck.bz).toBeCloseTo(0.5 + PIER_LENGTH * PROP_SCALE, 9);
+    expect(deck.radius).toBeCloseTo((PIER_WIDTH / 2) * PROP_SCALE, 9);
     for (let s = 0; s < 40; s++) {
       for (const shrub of placeShrubs([cell], flat(0.5), s, props)) {
         const d = segmentDistance(shrub.worldX, shrub.worldZ, deck);
@@ -261,5 +269,61 @@ describe("segmentDistance", () => {
     expect(segmentDistance(3, 0, seg)).toBeCloseTo(1, 9);
     expect(segmentDistance(-1, 0, seg)).toBeCloseTo(1, 9);
     expect(segmentDistance(1, 1, { ax: 1, az: 0, bx: 1, bz: 0, radius: 0 })).toBeCloseTo(1, 9);
+  });
+});
+
+describe("the port kit's keep-out at the 350 m hex", () => {
+  const covered = (x: number, z: number, obstacles: readonly ShrubObstacle[]) => obstacles.some((o) => segmentDistance(x, z, o) <= o.radius + 1e-9);
+
+  it("covers the drawn pier deck at its scale, from its land end out, and nothing past it", () => {
+    const rotation = 0.9;
+    const pier: DecorationData = { type: "pier", worldX: 3, worldY: 0, worldZ: -2, rotation, scale: PROP_SCALE };
+    const obstacles = shrubObstacles({ trees: [], rocks: [], stones: [], piers: [pier] });
+    const along = { x: Math.sin(rotation), z: Math.cos(rotation) };
+    const across = { x: along.z, z: -along.x };
+    const halfWidth = (PIER_WIDTH / 2) * PROP_SCALE;
+    for (let t = 0; t <= 1; t += 0.125) {
+      const d = t * PIER_LENGTH * PROP_SCALE;
+      for (const side of [-1, 0, 1]) {
+        expect(covered(pier.worldX + along.x * d + across.x * side * halfWidth, pier.worldZ + along.z * d + across.z * side * halfWidth, obstacles)).toBe(true);
+      }
+    }
+    // Where the unscaled 0.7 offset used to put the keep-out, there is only water.
+    const beyond = (PIER_LENGTH * PROP_SCALE + halfWidth) * 1.5;
+    expect(covered(pier.worldX + along.x * beyond, pier.worldZ + along.z * beyond, obstacles)).toBe(false);
+  });
+
+  it("covers every placed quay's plan", () => {
+    const quays = portQuays(cells, field, seed);
+    expect(quays.length).toBeGreaterThan(0);
+    const obstacles = shrubObstacles({ trees: [], rocks: [], stones: [], piers: [], quays });
+    for (const q of quays) {
+      for (const lx of [-QUAY_WIDTH / 2, 0, QUAY_WIDTH / 2]) {
+        for (const lz of [QUAY_BACK, QUAY_SEA_FACE]) {
+          const x = lx * q.scaleX;
+          const z = lz * q.scaleZ;
+          expect(covered(q.worldX + x * Math.cos(q.yaw) + z * Math.sin(q.yaw), q.worldZ - x * Math.sin(q.yaw) + z * Math.cos(q.yaw), obstacles)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("keeps every shrub off the port buildings, the pier and the quay on generated maps", () => {
+    let buildings = 0;
+    for (const mapSeed of [1, 2, 3, 4, 5]) {
+      const preset = getMapPreset("small");
+      const wrap = createWrap(preset.columns);
+      const layout = decorationLayout(generateMap(preset, mapSeed, wrap), wrap);
+      buildings += layout.buildings.length;
+      const kit = shrubObstacles({ trees: [], rocks: [], stones: [], piers: layout.piers, quays: layout.quays, buildings: layout.buildings });
+      const clashes = layout.shrubs.filter((s) => kit.some((o) => segmentDistance(s.worldX, s.worldZ, o) < o.radius + SHRUB_FOOTPRINT_RADIUS[s.kind] * s.scale));
+      expect(clashes).toEqual([]);
+      for (const b of layout.buildings) {
+        expect(covered(b.worldX, b.worldZ, kit)).toBe(true);
+        const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
+        expect(kit.some((o) => segmentDistance(b.worldX, b.worldZ, o) < 1e-9 && o.radius >= reach - 1e-9)).toBe(true);
+      }
+    }
+    expect(buildings).toBeGreaterThan(10);
   });
 });

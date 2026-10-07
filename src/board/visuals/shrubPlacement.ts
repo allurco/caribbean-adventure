@@ -21,6 +21,11 @@ import type { ShrubPlacement } from "./shrubVariation";
 import type { DecorationData } from "./useDecorationLayout";
 import { lerpRange, seedOf, stream } from "./variationStream";
 import { PROP_DENSITY, PROP_SCALE } from "./worldScale";
+import { PIER_LENGTH, PIER_WIDTH } from "./pierGeometry";
+import { QUAY_BACK, QUAY_SEA_FACE, QUAY_WIDTH } from "./quayGeometry";
+import type { QuayPlacement } from "./quayPlacement";
+import { AGED_BUILDING_HALF_DIAGONAL } from "./agedBuildingGeometry";
+import type { PortBuilding } from "./portSettlement";
 
 /** Shrubs per cell, by biome, as an inclusive [min, max]: `PROP_DENSITY` times the authored [1, 3]. */
 export const SHRUBS_PER_GRASS_CELL: readonly [number, number] = [1 * PROP_DENSITY, 3 * PROP_DENSITY];
@@ -68,12 +73,6 @@ export const SHRUB_GROUND_FOOTPRINT = 0.04;
  */
 export const SHRUB_MAX_BURY = 0.05 * PROP_SCALE;
 
-// The pier as TerrainDecorations draws it: a box 0.15 wide and 0.6 long,
-// offset 0.7 units from the cell centre along (sin, cos) of its rotation.
-const PIER_OFFSET = 0.7;
-const PIER_LENGTH = 0.6;
-const PIER_HALF_WIDTH = 0.075;
-
 // `maxSlope` is only a coarse first gate for shrubs; `maxBury` is the binding one.
 const SHRUB_PLACEMENT: Omit<GroundPlacementOptions, "footprintRadius"> = {
   sink: 0.01 * PROP_SCALE,
@@ -95,6 +94,10 @@ export interface PlacedProps {
   rocks: readonly DecorationData[];
   stones: readonly DecorationData[];
   piers: readonly DecorationData[];
+  /** The stone quays at the piers' roots. */
+  quays?: readonly QuayPlacement[];
+  /** The port buildings, kept clear by their plan circles. */
+  buildings?: readonly PortBuilding[];
 }
 
 /** A prop's ground footprint: a disc (a == b) or a capsule round the segment a–b. */
@@ -122,19 +125,46 @@ const disc = (d: DecorationData, radius: number): ShrubObstacle => ({
 const rockRadius = (d: DecorationData, sizeClass = rockSizeClass(d.biome)) =>
   ROCK_UNIT_RADIUS * ROCK_SIZE_CLASS_SCALE[sizeClass] * d.scale;
 
+/** The pier's deck as `Piers.tsx` draws it: from its land end (the placement's origin) out `PIER_LENGTH` along its rotation, at its scale. */
 const pierDeck = (d: DecorationData): ShrubObstacle => {
-  const dx = Math.sin(d.rotation);
-  const dz = Math.cos(d.rotation);
-  const near = PIER_OFFSET - PIER_LENGTH / 2;
-  const far = PIER_OFFSET + PIER_LENGTH / 2;
+  const length = PIER_LENGTH * d.scale;
   return {
-    ax: d.worldX + dx * near,
-    az: d.worldZ + dz * near,
-    bx: d.worldX + dx * far,
-    bz: d.worldZ + dz * far,
-    radius: PIER_HALF_WIDTH * d.scale,
+    ax: d.worldX,
+    az: d.worldZ,
+    bx: d.worldX + Math.sin(d.rotation) * length,
+    bz: d.worldZ + Math.cos(d.rotation) * length,
+    radius: (PIER_WIDTH / 2) * d.scale,
   };
 };
+
+/**
+ * The quay's plan, its body from `QUAY_BACK` to `QUAY_SEA_FACE` at its
+ * placed size: a capsule along its width through the middle of its depth,
+ * as wide as half the depth, which covers the rectangle.
+ */
+const quayPlan = (q: QuayPlacement): ShrubObstacle => {
+  const halfWidth = (QUAY_WIDTH / 2) * q.scaleX;
+  const midZ = ((QUAY_BACK + QUAY_SEA_FACE) / 2) * q.scaleZ;
+  const cx = q.worldX + midZ * Math.sin(q.yaw);
+  const cz = q.worldZ + midZ * Math.cos(q.yaw);
+  const ux = Math.cos(q.yaw);
+  const uz = -Math.sin(q.yaw);
+  return {
+    ax: cx - ux * halfWidth,
+    az: cz - uz * halfWidth,
+    bx: cx + ux * halfWidth,
+    bz: cz + uz * halfWidth,
+    radius: ((QUAY_SEA_FACE - QUAY_BACK) / 2) * q.scaleZ,
+  };
+};
+
+const buildingPlan = (b: PortBuilding): ShrubObstacle => ({
+  ax: b.worldX,
+  az: b.worldZ,
+  bx: b.worldX,
+  bz: b.worldZ,
+  radius: AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale,
+});
 
 /** Every placed prop as a footprint shrubs must stay out of. */
 export function shrubObstacles(placed: PlacedProps): ShrubObstacle[] {
@@ -143,6 +173,8 @@ export function shrubObstacles(placed: PlacedProps): ShrubObstacle[] {
     ...placed.rocks.map((r) => disc(r, rockRadius(r))),
     ...placed.stones.map((s) => disc(s, rockRadius(s, "small"))),
     ...placed.piers.map(pierDeck),
+    ...(placed.quays ?? []).map(quayPlan),
+    ...(placed.buildings ?? []).map(buildingPlan),
   ];
 }
 
