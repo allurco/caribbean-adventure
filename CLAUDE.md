@@ -69,6 +69,10 @@ Hexagonal grid uses **cube coordinates** `(q, r, s)` where `s = -q - r`, flat-to
 
 One terrain height field (ADR 0001) drives everything drawn on or under the sea. `terrainHeightField.ts` builds it from `G.cells` and a seed in pure TypeScript: `sampleHeight(x, z)` in world space, a noise-perturbed coastline, `cell.elevation` setting how high land rises, negative under water. `sharedTerrainField.ts` builds it once per map. `landMesh.ts` samples it into one lattice mesh (land above sea level, seabed below); `terrainFieldTexture.ts` bakes it into a texture the ocean, wave displacement and shore foam shaders read; decorations and the port kit sample it on the CPU. Full design and the invariants the tests pin are in **`docs/terrain-system.md`** — read it before changing the field or the terrain/ocean shaders.
 
+### Art Direction and Scale
+
+Photorealism is confined to the water and the light; islands, props, ports and ships are our own stylised mid-poly models authored in code (**ADR 0002**, `docs/adr/0002-art-direction.md`). A hex stands for about 350 m in the picture, with props at 115/350 of their former size, ships at twice true scale and buildings at 1.125 × true scale, while the water keeps 65 m per world unit (**ADR 0003**, `docs/adr/0003-hex-scale-350-metres.md`). The code still draws the old 115 m scale until the #84 prototype's rollout lands. Read both before adding or reshaping anything visible.
+
 ### Multiplayer
 
 boardgame.io handles all multiplayer. All game state changes go through boardgame.io moves — never mutate state outside of moves.
