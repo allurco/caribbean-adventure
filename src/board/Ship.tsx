@@ -4,7 +4,7 @@ import { Vector3, Mesh, MathUtils } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
 import { shipFoamSources } from "./shipFoamSources";
-import { PROP_SCALE } from "./visuals/propScale";
+import { SHIP_SCALE } from "./visuals/propScale";
 
 const DURATION = 0.4; // seconds
 const SINK_DURATION = 2.0; // seconds for sinking animation
@@ -15,9 +15,9 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** The #84 prop scale on a hull box (1 unless `?hexMetres` is given). */
+/** The #84 ship scale on a hull box (1 unless `?hexMetres` is given). */
 const scaled = (box: [number, number, number]): [number, number, number] =>
-  PROP_SCALE === 1 ? box : [box[0] * PROP_SCALE, box[1] * PROP_SCALE, box[2] * PROP_SCALE];
+  SHIP_SCALE === 1 ? box : [box[0] * SHIP_SCALE, box[1] * SHIP_SCALE, box[2] * SHIP_SCALE];
 
 const SHIP_GEOMETRY: Record<ShipClass, [number, number, number]> = {
   Sloop: scaled([0.25, 0.2, 0.65]),
@@ -28,8 +28,8 @@ const SHIP_GEOMETRY: Record<ShipClass, [number, number, number]> = {
 
 const DEFAULT_GEOMETRY: [number, number, number] = scaled([0.3, 0.25, 0.7]);
 /** How far the hull box's centre rides above the sea, and how far a sinking ship goes down. */
-const RIDE_HEIGHT = 0.12 * PROP_SCALE;
-const SINK_DEPTH = 1.5 * PROP_SCALE;
+const RIDE_HEIGHT = 0.12 * SHIP_SCALE;
+const SINK_DEPTH = 1.5 * SHIP_SCALE;
 
 export function Ship({
   position,

@@ -38,6 +38,15 @@ const params = parseDevUrlParams(search);
 export const HEX_METRES = params.hexMetres ?? HEX_METRES_TODAY;
 /** Factor on every authored prop's and ship's world size (1 unless `?hexMetres` is given). */
 export const PROP_SCALE = propScaleFor(params.hexMetres);
+/**
+ * Factor on the ships (hulls, ride height, sink depth, hull foam): twice
+ * true scale, so a ship still reads against the town, never above today's.
+ */
+export function shipScaleFor(propScale: number): number {
+  return propScale >= 0.5 ? 1 : 2 * propScale;
+}
+/** The ships' factor (1 unless `?hexMetres` is given): `min(1, 2 × PROP_SCALE)`. */
+export const SHIP_SCALE = shipScaleFor(PROP_SCALE);
 /** Multiplier on the derived props' counts per cell (1 unless `?hexMetres` is given). */
 export const PROP_DENSITY = propDensityFor(PROP_SCALE);
 /** Whether the physical water follows the hex scale (`&scaleWater=1`). */

@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { HEX_METRES, PROP_DENSITY, PROP_SCALE, WATER_FOLLOWS_HEX_SCALE, propDensityFor, propScaleFor } from "./propScale";
+import {
+  HEX_METRES,
+  PROP_DENSITY,
+  PROP_SCALE,
+  SHIP_SCALE,
+  WATER_FOLLOWS_HEX_SCALE,
+  propDensityFor,
+  propScaleFor,
+  shipScaleFor,
+} from "./propScale";
 import { METRES_PER_UNIT, metresPerUnitFor } from "./worldScale";
 import { parseDevUrlParams } from "../devUrlParams";
 
@@ -11,6 +20,8 @@ describe("the #84 prop scale", () => {
     // The page under test has no URL parameters.
     expect(PROP_SCALE).toBe(1);
     expect(PROP_DENSITY).toBe(1);
+    expect(SHIP_SCALE).toBe(1);
+    expect(shipScaleFor(1)).toBe(1);
     expect(HEX_METRES).toBe(115);
     expect(WATER_FOLLOWS_HEX_SCALE).toBe(false);
     expect(METRES_PER_UNIT).toBe(65);
@@ -23,6 +34,12 @@ describe("the #84 prop scale", () => {
     expect(propDensityFor(propScaleFor(600))).toBe(27);
     expect(propDensityFor(propScaleFor(1000))).toBe(76);
     expect(propDensityFor(0.01)).toBe(80);
+  });
+
+  it("draws ships at twice true scale, never above today's", () => {
+    expect(shipScaleFor(propScaleFor(350))).toBeCloseTo(0.657, 3);
+    expect(shipScaleFor(propScaleFor(1000))).toBeCloseTo(0.23, 3);
+    expect(shipScaleFor(propScaleFor(200))).toBe(1);
   });
 
   it("moves the water's unit with the hex scale when asked", () => {
