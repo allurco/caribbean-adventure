@@ -25,7 +25,7 @@ import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
 import { seamStrip, withSeamImages, wrapIntoStrip } from "./seamStrip";
 import { seabedDepth } from "./seabedProfile";
 import { BUILDING_SCALE, PROP_SCALE, metresToUnits, unitsToMetres } from "./worldScale";
-import { applyTownPlateaus, planTownPlateau, type TownPlateau } from "./townPlateau";
+import { applyTownPlateaus, planTownPlateau, plateauLookup, type PlateauLookup, type TownPlateau } from "./townPlateau";
 
 /** World height that each land elevation rises to (1 beach, 2 jungle, 3 mountain). */
 export const ELEVATION_HEIGHTS = { 1: 0.3, 2: 0.75, 3: 1.4 } as const;
@@ -529,6 +529,7 @@ export function createTerrainHeightField(
   const scratch: [number, number] = [0, 0];
   // Filled once the natural land is defined (below); empty until then, so the plans see the land without them.
   let plateaus: readonly TownPlateau[] = [];
+  let plateausNear: PlateauLookup = () => plateaus;
 
   const naturalLandHeight = (x: number, z: number, d: number): number => {
     const blended = blendLand(x, z, scratch);
@@ -566,7 +567,8 @@ export function createTerrainHeightField(
     }
     const land = naturalLandHeight(x, z, d);
     // The town plateaus (#87): terraces and streets round each port square, above the shore band only.
-    return SEA_LEVEL + (plateaus.length > 0 ? applyTownPlateaus(plateaus, x, z, land, strip ? strip.width : null) : land);
+    const near = plateausNear(x, z);
+    return SEA_LEVEL + (near.length > 0 ? applyTownPlateaus(near, x, z, land, strip ? strip.width : null) : land);
   };
 
   // Each port's plateau is planned on the natural land (the list is still
@@ -580,6 +582,7 @@ export function createTerrainHeightField(
       planned.push(planTownPlateau({ x: px, z: pz, toWater: pier.rotation }, (sx, sz) => sampleHeight(inStrip(sx), sz), PROP_SCALE, BUILDING_SCALE));
     }
     plateaus = planned;
+    plateausNear = plateauLookup(planned, strip ? strip.width : null);
   }
 
   const sampleElevation = (x: number, z: number): number => {

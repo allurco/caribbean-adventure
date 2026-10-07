@@ -312,8 +312,43 @@ export function shoreKeep(h: number): number {
 }
 
 /** `x` brought to the copy of the wrapping world nearest `p` (unchanged without a wrap). */
-export const nearestCopyX = (p: { x: number }, x: number, periodX: number | null): number =>
-  periodX === null ? x : p.x + ((((x - p.x) % periodX) + periodX * 1.5) % periodX) - periodX / 2;
+export function nearestCopyX(p: { x: number }, x: number, periodX: number | null): number {
+  if (periodX === null || Math.abs(x - p.x) <= periodX / 2) return x;
+  return p.x + ((((x - p.x) % periodX) + periodX * 1.5) % periodX) - periodX / 2;
+}
+
+/** The plateaus whose reach (plus a pad) may touch a point, found without scanning them all. */
+export type PlateauLookup = (x: number, z: number) => readonly TownPlateau[];
+
+/** Grid cell size of `plateauLookup`, world units. */
+const LOOKUP_CELL = 1;
+
+/**
+ * An index of `plateaus` on a grid of `LOOKUP_CELL` squares: `lookup(x, z)`
+ * lists every plateau whose reach plus `pad` may touch (x, z), and only a
+ * few others; on a wrapping world in any copy of it.
+ */
+export function plateauLookup(plateaus: readonly TownPlateau[], periodX: number | null, pad = 0): PlateauLookup {
+  const none: readonly TownPlateau[] = [];
+  if (plateaus.length === 0) return () => none;
+  // Columns of the grid wrap with the world when it has a whole number of cells per period; otherwise x is only folded into one period.
+  const columns = periodX === null ? null : Math.max(1, Math.floor(periodX / LOOKUP_CELL));
+  const cellWidth = columns === null || periodX === null ? LOOKUP_CELL : periodX / columns;
+  const cells = new Map<number, TownPlateau[]>();
+  const key = (i: number, j: number) => (columns === null ? i : ((i % columns) + columns) % columns) * 100003 + j;
+  for (const p of plateaus) {
+    const r = p.reach + pad;
+    for (let i = Math.floor((p.x - r) / cellWidth); i <= Math.floor((p.x + r) / cellWidth); i++) {
+      for (let j = Math.floor((p.z - r) / LOOKUP_CELL); j <= Math.floor((p.z + r) / LOOKUP_CELL); j++) {
+        const k = key(i, j);
+        const list = cells.get(k);
+        if (!list) cells.set(k, [p]);
+        else if (!list.includes(p)) list.push(p);
+      }
+    }
+  }
+  return (x, z) => cells.get(key(Math.floor(x / cellWidth), Math.floor(z / LOOKUP_CELL))) ?? none;
+}
 
 /**
  * The land height at (x, z) with the plateaus applied to the natural land
