@@ -10,6 +10,11 @@ import { portBuildings, PORT_SETTLEMENT_RADIUS, type PortBuilding } from "./port
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { PORT_GROUND_PROBE_RADIUS, PORT_HOVER_MARGIN, PORT_HOVER_RADIUS, portHoverVolume } from "./portHover";
+import { BUILDING_SCALE } from "./worldScale";
+
+/** The building cap and the margin, at the buildings' scale. */
+const CAP = BUILDING_MAX_HEIGHT * BUILDING_SCALE;
+const MARGIN = PORT_HOVER_MARGIN * BUILDING_SCALE;
 
 const SAMPLES: readonly [MapSizeId, number][] = [
   ["small", 1],
@@ -23,7 +28,7 @@ describe("portHoverVolume", () => {
   it("covers the settlement's envelope: every building's foot and top, out to the settlement radius", () => {
     expect(PORT_HOVER_RADIUS).toBe(PORT_SETTLEMENT_RADIUS);
     let ports = 0;
-    let tallerThanCap = 0;
+    let followsBuildings = 0;
     for (const [size, seed] of SAMPLES) {
       const preset = getMapPreset(size);
       const wrap = createWrap(preset.columns);
@@ -38,8 +43,8 @@ describe("portHoverVolume", () => {
         const volume = portHoverVolume({ x, z }, groundY, buildings);
         // The ground the probe found, and the cap's worth of air over it, as before.
         expect(volume.bottom).toBeLessThanOrEqual(groundY);
-        expect(volume.top).toBeGreaterThanOrEqual(groundY + BUILDING_MAX_HEIGHT);
-        if (volume.top > groundY + BUILDING_MAX_HEIGHT + PORT_HOVER_MARGIN + 1e-9) tallerThanCap++;
+        expect(volume.top).toBeGreaterThanOrEqual(groundY + CAP);
+        if (volume.top > groundY + CAP + MARGIN + 1e-9 || volume.bottom < groundY - MARGIN - 1e-9) followsBuildings++;
         const own = buildings.filter((b) => Math.hypot(b.worldX - x, b.worldZ - z) <= PORT_HOVER_RADIUS);
         expect(own.length).toBeGreaterThan(0);
         for (const b of own) {
@@ -51,14 +56,15 @@ describe("portHoverVolume", () => {
       }
     }
     expect(ports).toBeGreaterThan(20);
-    // On a beach rising inland a tower at the settlement's edge stands above the centre's ground plus the cap: the volume follows it.
-    expect(tallerThanCap).toBeGreaterThan(0);
+    // The buildings stand by the quay, down the beach from the centre's ground (or, on a beach rising
+    // inland, a tower above it plus the cap): the volume follows them rather than the cap alone.
+    expect(followsBuildings).toBeGreaterThan(0);
   });
 
   it("falls back to the cap over the probed ground when a port has no buildings, with the margin either way", () => {
     const volume = portHoverVolume({ x: 0, z: 0 }, 0.2, []);
-    expect(volume.bottom).toBeCloseTo(0.2 - PORT_HOVER_MARGIN, 9);
-    expect(volume.top).toBeCloseTo(0.2 + BUILDING_MAX_HEIGHT + PORT_HOVER_MARGIN, 9);
+    expect(volume.bottom).toBeCloseTo(0.2 - MARGIN, 9);
+    expect(volume.top).toBeCloseTo(0.2 + CAP + MARGIN, 9);
     expect(volume.radius).toBe(PORT_HOVER_RADIUS);
   });
 
@@ -66,7 +72,7 @@ describe("portHoverVolume", () => {
     const far: PortBuilding = { kind: "watchtower", worldX: 2, worldY: 1, worldZ: 0, yaw: 0, scale: 1, tint: 1 };
     const here: PortBuilding = { kind: "house", worldX: 0.3, worldY: -0.3, worldZ: 0, yaw: 0, scale: 1, tint: 1 };
     const volume = portHoverVolume({ x: 0, z: 0 }, 0.1, [far, here]);
-    expect(volume.bottom).toBeCloseTo(-0.3 - PORT_HOVER_MARGIN, 9);
-    expect(volume.top).toBeCloseTo(0.1 + BUILDING_MAX_HEIGHT + PORT_HOVER_MARGIN, 9);
+    expect(volume.bottom).toBeCloseTo(-0.3 - MARGIN, 9);
+    expect(volume.top).toBeCloseTo(0.1 + CAP + MARGIN, 9);
   });
 });

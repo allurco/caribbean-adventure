@@ -31,6 +31,7 @@ import {
   type QuayPlacement,
 } from "./quayPlacement";
 import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
+import { PROP_SCALE } from "./worldScale";
 
 const flat = (height: number): GroundField => ({ sampleHeight: () => height });
 const centre = { x: 3, z: -2 };
@@ -43,6 +44,9 @@ const port: MapCell = {
   decorations: [{ type: "pier", position: [0, 0, 0], rotation }],
 };
 const seed = 0x1234abcd;
+/** The quay is drawn at the props' scale: its plan through its size, its heights through `quayAt`. */
+const k = PROP_SCALE;
+const unit = { scaleX: k, scaleZ: k };
 
 /** World (x, z) of a point given in the quay's local frame (unscaled). */
 function worldPoint(q: QuayPlacement, x: number, z: number): { x: number; z: number } {
@@ -79,34 +83,34 @@ describe("quayAt", () => {
   });
 
   it("stands at the pier's land end, turned with the pier, at sea level on a low beach", () => {
-    const field = flat(SEA_LEVEL + 0.03);
-    const q = quayAt(field, centre, rotation, { scaleX: 1, scaleZ: 1 });
+    const field = flat(SEA_LEVEL + 0.03 * k);
+    const q = quayAt(field, centre, rotation, unit);
     const origin = pierOrigin(field, centre, rotation);
     expect(q.worldX).toBeCloseTo(origin.x, 9);
     expect(q.worldZ).toBeCloseTo(origin.z, 9);
     expect(q.yaw).toBe(rotation);
     expect(q.worldY).toBeCloseTo(0, 9);
-    expect(q.top).toBeCloseTo(PIER_DECK_TOP + QUAY_LIP, 9);
+    expect(q.top).toBeCloseTo((PIER_DECK_TOP + QUAY_LIP) * k, 9);
   });
 
   it("lifts the deck clear of a high beach at its sea face, up to the step cap", () => {
-    const q = quayAt(flat(0.1), centre, rotation, { scaleX: 1, scaleZ: 1 });
-    expect(q.top).toBeCloseTo(0.1 + QUAY_PROUD_OF_SAND, 9);
-    expect(q.worldY).toBeCloseTo(q.top - QUAY_TOP, 9);
-    const capped = quayAt(flat(0.4), centre, rotation, { scaleX: 1, scaleZ: 1 });
-    expect(capped.top).toBeCloseTo(PIER_DECK_TOP + QUAY_MAX_STEP, 9);
+    const q = quayAt(flat(0.1 * k), centre, rotation, unit);
+    expect(q.top).toBeCloseTo((0.1 + QUAY_PROUD_OF_SAND) * k, 9);
+    expect(q.worldY).toBeCloseTo(q.top - QUAY_TOP * k, 9);
+    const capped = quayAt(flat(0.4 * k), centre, rotation, unit);
+    expect(capped.top).toBeCloseTo((PIER_DECK_TOP + QUAY_MAX_STEP) * k, 9);
   });
 
   it("never floats: where the ground falls away under a corner the whole quay is lowered onto it", () => {
     // A ledge: beach along the pier line, a deep drop to one side.
     const field: GroundField = {
-      sampleHeight: (x) => (x > centre.x + 0.1 ? -0.6 : 0.05),
+      sampleHeight: (x) => (x > centre.x + 0.1 * k ? -0.6 : 0.05),
     };
-    const q = quayAt(field, centre, 0, { scaleX: 1, scaleZ: 1 });
+    const q = quayAt(field, centre, 0, unit);
     const lowest = Math.min(...footprintHeights(field, q));
     expect(lowest).toBeLessThan(-0.5);
-    expect(q.worldY + QUAY_BASE).toBeLessThanOrEqual(lowest + 1e-9);
-    expect(q.top).toBeCloseTo(q.worldY + QUAY_TOP, 9);
+    expect(q.worldY + QUAY_BASE * k).toBeLessThanOrEqual(lowest + 1e-9);
+    expect(q.top).toBeCloseTo(q.worldY + QUAY_TOP * k, 9);
   });
 
   it("is the same across the wrap seam: a copy one wrap width over gets the same height and size", () => {
@@ -137,10 +141,10 @@ describe("placeQuay", () => {
     const field = flat(0.05);
     const q = placeQuay(port, field, seed);
     expect(q).not.toBeNull();
-    expect(q!.scaleX).toBeGreaterThanOrEqual(QUAY_WIDTH_RANGE[0]);
-    expect(q!.scaleX).toBeLessThanOrEqual(QUAY_WIDTH_RANGE[1]);
-    expect(q!.scaleZ).toBeGreaterThanOrEqual(QUAY_DEPTH_RANGE[0]);
-    expect(q!.scaleZ).toBeLessThanOrEqual(QUAY_DEPTH_RANGE[1]);
+    expect(q!.scaleX).toBeGreaterThanOrEqual(QUAY_WIDTH_RANGE[0] * k);
+    expect(q!.scaleX).toBeLessThanOrEqual(QUAY_WIDTH_RANGE[1] * k);
+    expect(q!.scaleZ).toBeGreaterThanOrEqual(QUAY_DEPTH_RANGE[0] * k);
+    expect(q!.scaleZ).toBeLessThanOrEqual(QUAY_DEPTH_RANGE[1] * k);
     expect(placeQuay(port, field, seed)).toEqual(q);
     for (const bit of [20, 25, 31]) {
       const other = placeQuay(port, field, seed ^ (1 << bit));
@@ -166,16 +170,16 @@ describe("placeQuay", () => {
         expect(q.worldX).toBeCloseTo(origin.x, 9);
         expect(q.worldZ).toBeCloseTo(origin.z, 9);
         expect(q.yaw).toBe(pier.rotation);
-        expect(q.top).toBeGreaterThanOrEqual(PIER_DECK_TOP + QUAY_LIP - 1e-9);
-        expect(q.top).toBeLessThanOrEqual(PIER_DECK_TOP + QUAY_MAX_STEP + 1e-9);
+        expect(q.top).toBeGreaterThanOrEqual((PIER_DECK_TOP + QUAY_LIP) * k - 1e-9);
+        expect(q.top).toBeLessThanOrEqual((PIER_DECK_TOP + QUAY_MAX_STEP) * k + 1e-9);
         const heights = footprintHeights(field, q);
-        expect(q.worldY + QUAY_BASE).toBeLessThanOrEqual(Math.min(...heights) + 1e-9);
+        expect(q.worldY + QUAY_BASE * k).toBeLessThanOrEqual(Math.min(...heights) + 1e-9);
         // The sea face stands proud of the sand unless the step cap is reached.
         const hw = QUAY_WIDTH / 2;
         for (const x of [-hw, 0, hw]) {
           const p = worldPoint(q, x, QUAY_SEA_FACE);
           const sand = field.sampleHeight(p.x, p.z);
-          if (q.top < PIER_DECK_TOP + QUAY_MAX_STEP - 1e-9) expect(sand).toBeLessThanOrEqual(q.top - QUAY_PROUD_OF_SAND + 1e-9);
+          if (q.top < (PIER_DECK_TOP + QUAY_MAX_STEP) * k - 1e-9) expect(sand).toBeLessThanOrEqual(q.top - QUAY_PROUD_OF_SAND * k + 1e-9);
         }
       });
     }
@@ -194,12 +198,14 @@ describe("placeQuay", () => {
     lifts.sort((a, b) => a - b);
     const median = lifts[Math.floor(lifts.length / 2)];
     expect(lifts.length).toBeGreaterThan(20);
-    expect(Math.abs(median + QUAY_WATERLINE - SEA_LEVEL), `median lift ${median.toFixed(4)} of ${lifts.length}`).toBeLessThan(0.012);
+    // The tolerance stays in world units: the sand the quay is lifted clear of keeps its height while the quay shrinks,
+    // so at the 350 m hex the median mark sits about 0.01 above the sea, inside the old bound but not a third of it.
+    expect(Math.abs(median + QUAY_WATERLINE * k - SEA_LEVEL), `median lift ${median.toFixed(4)} of ${lifts.length}`).toBeLessThan(0.012);
     expect(QUAY_WATERLINE).toBeLessThan(SEA_LEVEL);
     expect(QUAY_TYPICAL_LIFT).toBeCloseTo(SEA_LEVEL - QUAY_WATERLINE, 9);
     // The highest lift the placement allows puts the mark no more than a block above the water.
-    const cap = PIER_DECK_TOP + QUAY_MAX_STEP - QUAY_TOP;
-    expect(cap + QUAY_WATERLINE - SEA_LEVEL).toBeLessThanOrEqual(0.03 + 1e-9);
+    const cap = (PIER_DECK_TOP + QUAY_MAX_STEP - QUAY_TOP) * k;
+    expect(cap + QUAY_WATERLINE * k - SEA_LEVEL).toBeLessThanOrEqual(0.03 * k + 1e-9);
     expect(lifts[lifts.length - 1]).toBeLessThanOrEqual(cap + 1e-9);
   });
 });
@@ -213,7 +219,7 @@ describe("quayTopY", () => {
     const onDeck = worldPoint(q, hw * 0.5, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2);
     expect(quayTopY(port, field, seed, onDeck)).toBeCloseTo(q.top, 9);
     const onStep = worldPoint(q, -hw * 0.5, (QUAY_BACK + QUAY_STEP_Z) / 2);
-    expect(quayTopY(port, field, seed, onStep)).toBeCloseTo(q.top - QUAY_COPING_THICKNESS, 9);
+    expect(quayTopY(port, field, seed, onStep)).toBeCloseTo(q.top - QUAY_COPING_THICKNESS * k, 9);
     const beside = worldPoint(q, hw * 1.2, 0);
     expect(quayTopY(port, field, seed, beside)).toBeUndefined();
     const behind = worldPoint(q, 0, QUAY_BACK - 0.05);
@@ -239,7 +245,7 @@ describe("quayTopY", () => {
     ];
     for (const p of points) expect(quayTopAt(q, p)).toBe(quayTopY(port, field, seed, p));
     expect(quayTopAt(q, points[0])).toBeCloseTo(q.top, 9);
-    expect(quayTopAt(q, points[1])).toBeCloseTo(q.top - QUAY_COPING_THICKNESS, 9);
+    expect(quayTopAt(q, points[1])).toBeCloseTo(q.top - QUAY_COPING_THICKNESS * k, 9);
     expect(quayTopAt(q, points[2])).toBeUndefined();
     // The lookup follows the placement it is given, not the cell: a quay lifted and turned elsewhere answers for itself.
     const moved: QuayPlacement = { ...q, worldX: q.worldX + 5, worldZ: q.worldZ - 3, yaw: q.yaw + 1, worldY: q.worldY + 0.02, top: q.top + 0.02 };

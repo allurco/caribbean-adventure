@@ -12,6 +12,8 @@ import {
   PIER_SHORE_MAX,
   PIER_SHORE_MIN,
 } from "./pierPlacement";
+import { PROP_SCALE } from "./worldScale";
+import { SHIP_HULL_BOXES } from "../shipHull";
 
 const flat = (height: number): GroundField => ({ sampleHeight: () => height });
 const centre = { x: 3, z: -2 };
@@ -20,8 +22,8 @@ describe("pierOrigin", () => {
   it("keeps the search band inside the port hex and leaves room for a docked ship", () => {
     expect(PIER_SHORE_MIN).toBeGreaterThanOrEqual(0.4);
     expect(PIER_SHORE_MIN).toBeLessThan(PIER_SHORE_MAX);
-    // The docking hex centre is √3 away and a galleon's hull reaches 0.4 back from it.
-    expect(PIER_SHORE_MAX - PIER_LAND_OVERLAP + PIER_LENGTH).toBeLessThanOrEqual(Math.sqrt(3) - 0.4 + 1e-9);
+    // The docking hex centre is √3 away and a galleon's hull reaches half its length back from it; the pier is drawn at PROP_SCALE.
+    expect(PIER_SHORE_MAX - PIER_LAND_OVERLAP + PIER_LENGTH * PROP_SCALE).toBeLessThanOrEqual(Math.sqrt(3) - SHIP_HULL_BOXES.Galleon[2] / 2 + 1e-9);
     expect(PIER_LAND_OVERLAP).toBeGreaterThan(0);
     expect(PIER_SHORE_HEIGHT).toBeGreaterThan(SEA_LEVEL);
     expect(PIER_SHORE_HEIGHT).toBeLessThan(PIER_DECK_TOP);

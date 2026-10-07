@@ -16,11 +16,12 @@ import { hexToWorld, type Hex } from "../../game/hex";
 import { AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { PORT_SETTLEMENT_RADIUS, type PortBuilding } from "./portSettlement";
+import { BUILDING_SCALE } from "./worldScale";
 
 /** The ground under a port is probed over this radius round the hex centre (`groundTopY`). */
 export const PORT_GROUND_PROBE_RADIUS = 0.35;
 export const PORT_HOVER_RADIUS = PORT_SETTLEMENT_RADIUS;
-/** Air above the tallest top and below the lowest foot, so an edge is never a miss. */
+/** Air above the tallest top and below the lowest foot, so an edge is never a miss (at `BUILDING_SCALE`). */
 export const PORT_HOVER_MARGIN = 0.05;
 
 export interface PortHoverVolume {
@@ -40,13 +41,15 @@ export function portOwnBuildings(centre: { x: number; z: number }, buildings: re
  * (or the building cap over the ground), with the margin either way.
  */
 export function portHoverVolume(centre: { x: number; z: number }, groundY: number, buildings: readonly PortBuilding[]): PortHoverVolume {
+  // The cap and the margin are at the buildings' scale; the radius is not, so the hover still covers the hex.
   let bottom = groundY;
-  let top = groundY + BUILDING_MAX_HEIGHT;
+  let top = groundY + BUILDING_MAX_HEIGHT * BUILDING_SCALE;
   for (const b of portOwnBuildings(centre, buildings)) {
     bottom = Math.min(bottom, b.worldY);
     top = Math.max(top, b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale);
   }
-  return { bottom: bottom - PORT_HOVER_MARGIN, top: top + PORT_HOVER_MARGIN, radius: PORT_HOVER_RADIUS };
+  const margin = PORT_HOVER_MARGIN * BUILDING_SCALE;
+  return { bottom: bottom - margin, top: top + margin, radius: PORT_HOVER_RADIUS };
 }
 
 /** `portHoverVolume` for a port hex. */
