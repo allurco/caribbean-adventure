@@ -888,6 +888,31 @@ The shallow-water saturation boost scales with the red the water has
 absorbed, so sand under near-clear water keeps its colour instead of
 turning orange. Wet sand is dry sand at half albedo.
 
+**Distance recession (#77, stylistic).** Close up the shelf is clear
+turquoise over sunlit sand; at map zoom the same shelf read as a bright
+ring the eye landed on before the island. So the shelf recedes as the
+camera pulls out: a weight in the camera's real distance from its focus
+point (0 up to `SHELF_RECEDE_NEAR_DISTANCE`, 1 from
+`SHELF_RECEDE_FAR_DISTANCE`, eased in log distance; `waterOptics.ts`) makes
+the water more opaque rather than veiling it. The water body is evaluated
+at an effective depth, real × `SHELF_FAR_DEPTH_SCALE` plus
+`SHELF_FAR_DEPTH_OFFSET` metres (ramping in over the first
+`SHELF_OFFSET_RAMP` of real depth so the waterline stays continuous), both
+scaled by the weight, and every depth-driven term reads it: absorption on
+both legs, the seabed fade, the deep lift and the saturation boost. The sand
+shows through less and the shelf collapses toward the water's own colour
+along the gradient it already has, so no new hue appears and open water,
+already opaque, is identical at every zoom. The deep lift, added on top of
+the seabed close up, is composited under it by (1 − transmittance) as the
+shelf recedes, since added it drew a blue band brighter than both sides. The
+shore foam (wash, breaker and reef bands, on the sea and up the sand) fades
+with the same weight to `SHORE_FOAM_FAR_SHARE`, so the far coastline is a
+faint line, not a white rim; whitecaps and hull foam are untouched. A milky
+veil and a mix toward the open-sea tone were tried first and rejected: both
+added light, so the shelf went pale grey instead of sinking into the blue.
+The weight reaches the land's shore wash through `cameraDistanceUniform`,
+a shared uniform object like the surf clock.
+
 Where the prepass has no seabed (below the mesh cut-off, or off the mesh) the
 shader reads `NO_SEABED_DEPTH` (105 m, past the fade), so the water is deep
 water.
