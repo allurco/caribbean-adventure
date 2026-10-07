@@ -58,6 +58,7 @@ export interface CameraConfig {
   maxDistance: number;
   // Orthographic camera settings
   frustumSize: number;
+  /** Camera-to-target distance of the first view. */
   isoDistance: number;
   /** World point the camera looks at to start with: the centre of the map. */
   target: [number, number, number];
@@ -78,8 +79,10 @@ export function computeCameraConfig(dimensions: MapDimensions): CameraConfig {
   // Orthographic frustum size (half-height of view)
   const frustumSize = worldSpan * 0.6;
   // Camera-to-target distance to start at (the board places the camera
-  // along its fixed offset from the target; see cameraBounds.ts)
-  const isoDistance = worldSpan * 0.8;
+  // along its fixed unit direction from the target; see cameraBounds.ts).
+  // 0.66 keeps the old view: it was configured as 0.8 but placed along a
+  // vector of length √0.68 ≈ 0.8246 (#78).
+  const isoDistance = worldSpan * 0.66;
 
   const bounds = mapWorldBounds(dimensions);
   const target: [number, number, number] = [

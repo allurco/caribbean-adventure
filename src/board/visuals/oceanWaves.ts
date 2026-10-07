@@ -39,7 +39,7 @@ import { resolvedSlopeVariance, type WaveCascade } from "./waveCascade";
 import { bandedCascades } from "./waveCascadeBands";
 import type { WindSea } from "./jonswap";
 import { viewDirectionXZ } from "./sunDirection";
-import { CAMERA_OFFSET } from "../cameraBounds";
+import { CAMERA_DIRECTION } from "../cameraBounds";
 
 export const TRADE_WIND_SEA: WindSea = { windSpeed: 7, fetch: 100_000, peakEnhancement: 3.3 };
 
@@ -52,7 +52,7 @@ export const TRADE_WIND_SEA: WindSea = { windSpeed: 7, fetch: 100_000, peakEnhan
  * −x, 0.35 rad off the axis", which is this swing from that view.)
  */
 const WIND_SWING_FROM_VIEW = (-25 * Math.PI) / 180;
-const [VIEW_X, VIEW_Z] = viewDirectionXZ(CAMERA_OFFSET);
+const [VIEW_X, VIEW_Z] = viewDirectionXZ(CAMERA_DIRECTION);
 export const WIND_ANGLE = Math.atan2(VIEW_Z, VIEW_X) + WIND_SWING_FROM_VIEW;
 
 export const WAVE_CASCADES: readonly WaveCascade[] = bandedCascades(TRADE_WIND_SEA, WIND_ANGLE, [

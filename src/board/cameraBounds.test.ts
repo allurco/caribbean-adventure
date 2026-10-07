@@ -3,7 +3,8 @@ import { PerspectiveCamera, Vector3 } from "three";
 import {
   CAMERA_FOV,
   CAMERA_MAX_DISTANCE,
-  CAMERA_OFFSET,
+  CAMERA_MIN_DISTANCE,
+  CAMERA_DIRECTION,
   CAMERA_PITCH,
   cameraBoundsFromHexes,
   clampToCameraBounds,
@@ -19,14 +20,26 @@ describe("the game camera", () => {
   // must pan along the wrap axis (world x) only, and a vertical one along
   // world z only, so the camera's yaw is aligned with the map axes.
   const camera = new PerspectiveCamera(CAMERA_FOV, 16 / 9, 0.1, 1000);
-  camera.position.set(...CAMERA_OFFSET).multiplyScalar(20);
+  camera.position.set(...CAMERA_DIRECTION).multiplyScalar(20);
   camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld();
 
   it("sits due south of its focus", () => {
-    expect(CAMERA_OFFSET[0]).toBe(0);
-    expect(CAMERA_OFFSET[1]).toBeGreaterThan(0);
-    expect(CAMERA_OFFSET[2]).toBeGreaterThan(0);
+    expect(CAMERA_DIRECTION[0]).toBe(0);
+    expect(CAMERA_DIRECTION[1]).toBeGreaterThan(0);
+    expect(CAMERA_DIRECTION[2]).toBeGreaterThan(0);
+  });
+
+  it("zooms in to one world distance on every map size: the small map's old floor (#62)", () => {
+    // The old floor was 0.15 of the old iso distance, 0.8 × the map's world span (36 on the small map).
+    expect(CAMERA_MIN_DISTANCE).toBeCloseTo(36 * 0.8 * 0.15, 12);
+    expect(CAMERA_MIN_DISTANCE).toBeGreaterThan(0);
+    expect(CAMERA_MIN_DISTANCE).toBeLessThan(CAMERA_MAX_DISTANCE);
+  });
+
+  it("is placed along a unit direction, so a configured distance is the real camera-to-focus distance (#78)", () => {
+    expect(Math.hypot(...CAMERA_DIRECTION)).toBeCloseTo(1, 12);
+    expect(camera.position.length()).toBeCloseTo(20, 12);
   });
 
   it("keeps the pitch of the old diagonal view (~46.7° down)", () => {

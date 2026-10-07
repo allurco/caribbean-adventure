@@ -20,17 +20,30 @@ import { hexToWorld } from "../game/hex";
  * the old diagonal view ([0.4, 0.6, 0.4]) made every drag move the focus in
  * both and showed the map's north and south edges as diagonals. Same pitch as
  * that view: the same height over the same horizontal setback.
+ *
+ * Unit length, so the camera sits at `target + distance × CAMERA_DIRECTION`
+ * exactly `distance` from its target: every configured distance (the map
+ * presets' `isoDistance`, the `dist` URL parameter, `CAMERA_MAX_DISTANCE`) is
+ * a real camera-to-target distance, the one MapControls measures (#78).
  */
-export const CAMERA_OFFSET: [number, number, number] = [0, 0.6, 0.4 * Math.SQRT2];
+export const CAMERA_DIRECTION: readonly [number, number, number] = unitVector([0, 0.6, 0.4 * Math.SQRT2]);
 /** Downward angle of the view direction, in radians (~46.7 degrees). */
 export const CAMERA_PITCH = Math.atan2(
-  CAMERA_OFFSET[1],
-  Math.hypot(CAMERA_OFFSET[0], CAMERA_OFFSET[2])
+  CAMERA_DIRECTION[1],
+  Math.hypot(CAMERA_DIRECTION[0], CAMERA_DIRECTION[2])
 );
 /** Vertical field of view in degrees. */
 export const CAMERA_FOV = 45;
 /** MapControls zoom-out limit (camera-to-target distance). */
 export const CAMERA_MAX_DISTANCE = 28;
+/**
+ * MapControls zoom-in limit (camera-to-target distance), the same world
+ * distance on every map size so medium and large maps reach the small map's
+ * ship zoom (#62). It is the small map's old floor, 0.15 of its old iso
+ * distance (0.8 × 36). A larger hex scale may want it lower; the fine ring of
+ * the ocean grid must still cover the view there (oceanGrid.test.ts).
+ */
+export const CAMERA_MIN_DISTANCE = 4.32;
 /** How far past the outermost cell centre the focus may go: one hex. */
 export const CAMERA_BOUNDS_PADDING = Math.sqrt(3);
 /**
@@ -57,6 +70,12 @@ export interface ClampResult {
   /** Correction applied: clamped minus input. Zero when already inside. */
   dx: number;
   dz: number;
+}
+
+/** Hoisted: CAMERA_DIRECTION above is built with it. */
+function unitVector([x, y, z]: readonly [number, number, number]): [number, number, number] {
+  const length = Math.hypot(x, y, z);
+  return [x / length, y / length, z / length];
 }
 
 function cross(o: Point2, a: Point2, b: Point2): number {

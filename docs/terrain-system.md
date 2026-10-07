@@ -299,7 +299,7 @@ never jump. How many copies: `wrapCopyRange` from the view's ground footprint
 at full zoom-out (`CAMERA_MAX_DISTANCE`): at 16:9, five (−2…+2) on the small
 map and three (−1…+1) on the medium and large; a 4:1 super-ultrawide needs up
 to seven on the small map.
-The camera looks **due north** (`CAMERA_OFFSET` in `cameraBounds.ts`: due
+The camera looks **due north** (`CAMERA_DIRECTION` in `cameraBounds.ts`: due
 south of its focus, pitched ~46.7° down, no yaw), so screen-horizontal is
 world x, the wrap axis, and screen-vertical is world z: a horizontal drag
 pans along the wrap only and never changes which rows are on screen, a
@@ -1162,8 +1162,8 @@ things also widen the depth range, which `shadowDepthRange` checks against
 the near and far planes (0.5 and 150) in `atmosphere.test.ts`. At full
 zoom-out (distance 28) the 16:9 view reaches ~43 units across the sea, so
 the box sits at the 25-unit cap, as before: 50 units across, a 0.79 m texel.
-From ship zoom (distance 3.5–4.3; 4.3 is as close as the small map's
-`minDistance` allows) the seabed term sets the box: it fits to 10.2–11.4
+From ship zoom (distance 3.5–4.3; `CAMERA_MIN_DISTANCE`, 4.32, is as close
+as the zoom allows on every map size) the seabed term sets the box: it fits to 10.2–11.4
 units, a 0.32–0.36 m texel, 2.2–2.5× finer than the cap. The top-corner ray
 descends at only ~24°, so the 1.46 units of seabed depth add ~4 units of
 reach; without the seabed the box would be 6.8–8.1 units. From ship zoom up

@@ -5,7 +5,7 @@ import { resolvedSlopeVariance } from "./waveCascade";
 import { coxMunkSlopeVariance } from "./seaSurfaceSlope";
 import { GRAVITY } from "./waveDispersion";
 import { viewDirectionXZ } from "./sunDirection";
-import { CAMERA_OFFSET } from "../cameraBounds";
+import { CAMERA_DIRECTION } from "../cameraBounds";
 import { METRES_PER_UNIT } from "./worldScale";
 
 const peakWavenumber = jonswapPeakFrequency(TRADE_WIND_SEA) ** 2 / GRAVITY;
@@ -47,7 +47,7 @@ describe("WAVE_CASCADES", () => {
   });
 
   it("reaches waves two pixels long at the closest ship zoom", () => {
-    // Small map, closest zoom: the camera is ~4.3 units (280 m) from its
+    // Closest zoom, on any map size: the camera is ~4.3 units (280 m) from its
     // target, so a 1080-px, 45° view covers 0.21 m per pixel there.
     expect(ripple.kMax).toBeGreaterThanOrEqual((2 * Math.PI) / (2 * 0.21));
   });
@@ -85,7 +85,7 @@ describe("WAVE_CASCADES", () => {
     // camera and the crests run across the screen), so the wind turns with
     // the camera (#36): it blows away from the camera, 25° to the left of the
     // view direction, as it did with the old diagonal view.
-    const [vx, vz] = viewDirectionXZ(CAMERA_OFFSET);
+    const [vx, vz] = viewDirectionXZ(CAMERA_DIRECTION);
     const wind = [Math.cos(swell.windAngle), Math.sin(swell.windAngle)];
     const ahead = wind[0] * vx + wind[1] * vz;
     const right = -wind[0] * vz + wind[1] * vx; // screen right is view × up

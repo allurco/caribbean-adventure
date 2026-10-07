@@ -52,8 +52,9 @@ import {
 import {
   CAMERA_BOUNDS_PADDING,
   CAMERA_FOV,
+  CAMERA_DIRECTION,
   CAMERA_MAX_DISTANCE,
-  CAMERA_OFFSET,
+  CAMERA_MIN_DISTANCE,
   cameraBoundsFromHexes,
   clampToCameraBounds,
 } from "./cameraBounds";
@@ -129,8 +130,8 @@ function Scene({
 }: {
   G: CaribbeanState;
   currentPlayer: string;
-  /** The map's iso distance (sets the zoom floor) and the first target. */
-  cam: { isoDistance: number; target: [number, number, number] };
+  /** The first target. */
+  cam: { target: [number, number, number] };
   movesRemaining: number;
   attackMode: boolean;
   spyglassMode: boolean;
@@ -179,12 +180,12 @@ function Scene({
   // the focus itself stays over the rows of hexes (Civ style), at every zoom,
   // so a map edge can always be panned to the screen centre with open sea
   // past it. The zoom-out cap is the same on every map size. The camera looks
-  // due north (CAMERA_OFFSET), so a horizontal drag pans along the wrap axis
+  // due north (CAMERA_DIRECTION), so a horizontal drag pans along the wrap axis
   // only and the map's north and south edges are horizontal on screen.
   const strip = useMemo(() => seamStrip(G.wrap), [G.wrap]);
   const period = wrapWorldWidth(G.wrap);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
-  const footprint = useMemo(() => groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect), [aspect]);
+  const footprint = useMemo(() => groundFootprint(CAMERA_DIRECTION,CAMERA_FOV, aspect), [aspect]);
   const band = useMemo(() => mapBand(getMapPreset(G.mapSize).rows), [G.mapSize]);
   const copies = useMemo(
     () => (strip && footprint ? wrapCopyRange(footprint, CAMERA_MAX_DISTANCE, period, WRAP_COPY_MARGIN) : { from: 0, to: 0 }),
@@ -449,9 +450,10 @@ function Scene({
         // side, looking back across the map (labels read mirrored).
         target={cam.target}
         enableRotate={false}
-        minDistance={Math.min(cam.isoDistance * 0.15, CAMERA_MAX_DISTANCE)}
-        // The same on every map size (Civ style); the focus clamp above keeps
-        // the view on the map, with open sea past the rows on a small map.
+        // Both limits are the same on every map size (Civ style); the focus
+        // clamp above keeps the view on the map, with open sea past the rows
+        // on a small map.
+        minDistance={CAMERA_MIN_DISTANCE}
         maxDistance={CAMERA_MAX_DISTANCE}
       />
 
@@ -659,9 +661,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const preset = getMapPreset(G.mapSize);
   const cam = computeCameraConfig(preset);
   // The first view: the map's middle from its iso distance unless pinned.
-  // Only the start changes; the zoom floor (minDistance, from cam.isoDistance)
-  // and the focus clamp stay as they are, so a pinned view off the map is
-  // pulled back onto it like any other.
+  // Only the start changes; the zoom limits and the focus clamp stay as they
+  // are, so a pinned view off the map is pulled back onto it like any other.
   const start = {
     target: cameraTarget ?? cam.target,
     distance: cameraDistance ?? cam.isoDistance,
@@ -719,11 +720,11 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         shadows={{ type: SHADOW_MAP_TYPE }}
         camera={{
           // Start due south of the middle of the map (the rectangle's corner
-          // is the origin), looking north along CAMERA_OFFSET
+          // is the origin), looking north along CAMERA_DIRECTION
           position: [
-            start.target[0] + start.distance * CAMERA_OFFSET[0],
-            start.target[1] + start.distance * CAMERA_OFFSET[1],
-            start.target[2] + start.distance * CAMERA_OFFSET[2],
+            start.target[0] + start.distance * CAMERA_DIRECTION[0],
+            start.target[1] + start.distance * CAMERA_DIRECTION[1],
+            start.target[2] + start.distance * CAMERA_DIRECTION[2],
           ],
           fov: CAMERA_FOV,
           near: 0.1,
@@ -734,7 +735,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         <Scene
           G={G}
           currentPlayer={currentPlayer}
-          cam={{ isoDistance: cam.isoDistance, target: start.target }}
+          cam={{ target: start.target }}
           movesRemaining={movesRemaining}
           attackMode={attackMode}
           spyglassMode={spyglassMode}

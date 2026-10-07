@@ -85,10 +85,10 @@ const SHALLOW_BOOST_RAMP = 2; // metres
  * than both the shelf inside it and the open water outside.
  *
  * The distances are the camera's real distance from its focus point (what
- * `camera.position.distanceTo(controls.target)` returns), not the `dist` URL
- * parameter or the map's iso distance: the board multiplies those by the
- * camera offset vector, whose length is about 0.82, so the small map's zoom
- * floor is 4.32, its first view 23.7 and its zoom ceiling 28. The shots the
+ * `camera.position.distanceTo(controls.target)` returns), which since #78 is
+ * also what the `dist` URL parameter and the map's iso distance give: the
+ * small map's zoom floor is 4.32, its first view 23.8 and its zoom ceiling
+ * 28. (The old `dist` values were 0.8246× real; dist=11 is now 9.07.) The shots the
  * numbers were tuned on: ship zoom 4.3 (weight 0, untouched), 9 (0.03, as
  * close up), 11.5 (0.23), 15 (0.54), 18 (0.78), first map view (0.98).
  */
