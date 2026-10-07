@@ -66,6 +66,8 @@ import {
   seamAwareStart,
   wrapCopyRange,
 } from "./wrapView";
+import { openingView, turnChangeView, type CameraView } from "./shipView";
+import { flightStep } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
 import { Ship, SinkingShip } from "./Ship";
@@ -121,7 +123,7 @@ function Scene({
   hoveredShipId,
   hoveredPort,
   scoutedPlayerIds,
-  focusPosition,
+  focusView,
   onMoveShip,
   onHexClick,
   onSinkingComplete,
@@ -143,7 +145,8 @@ function Scene({
   hoveredShipId: string | null;
   hoveredPort: MapCell | null;
   scoutedPlayerIds: string[];
-  focusPosition: [number, number, number] | null;
+  /** Where to fly the camera: a new view starts a flight. */
+  focusView: CameraView | null;
   onMoveShip: (q: number, r: number) => void;
   onHexClick: (hex: Hex) => void;
   onSinkingComplete: (id: string) => void;
@@ -155,6 +158,7 @@ function Scene({
   const controlsRef = useRef<MapControlsType>(null);
   const { camera } = useThree();
   const targetPosition = useRef(new Vector3());
+  const targetDistance = useRef(0);
   const isAnimating = useRef(false);
   // Physical sky as image-based lighting for the whole scene (replaces the old
   // hemisphere and fill lights) and as the sea's reflection.
@@ -231,15 +235,17 @@ function Scene({
   // under a still pointer (re-tested on the next frame, after the clamp above)
   useHoverFollowsCamera(controlsRef);
 
-  // Animate camera to focus position when it changes
+  // Animate camera to focus view when it changes
   useEffect(() => {
-    if (focusPosition && controlsRef.current) {
-      targetPosition.current.set(focusPosition[0], 0, focusPosition[2]);
+    if (focusView && controlsRef.current) {
+      targetPosition.current.set(focusView.target[0], 0, focusView.target[2]);
+      // Within the zoom limits, or the controls would hold it off forever
+      targetDistance.current = Math.min(CAMERA_MAX_DISTANCE, Math.max(CAMERA_MIN_DISTANCE, focusView.distance));
       isAnimating.current = true;
     }
-  }, [focusPosition]);
+  }, [focusView]);
 
-  // Smooth camera animation
+  // Smooth camera animation: focus and zoom move together (cameraFlight.ts)
   useFrame(() => {
     if (isAnimating.current && controlsRef.current) {
       const controls = controlsRef.current;
@@ -251,18 +257,16 @@ function Scene({
       const { x, z } = clampFocus(seamAwareStart(goal.x, target.x, period), goal.z);
       goal.set(x, 0, z);
 
-      // Lerp towards target
-      target.lerp(targetPosition.current, 0.08);
-
-      // Also move camera position to follow
-      const offset = new Vector3().subVectors(camera.position, target);
-      const newCamPos = targetPosition.current.clone().add(offset);
-      camera.position.lerp(newCamPos, 0.08);
-
-      // Stop animating when close enough
-      if (target.distanceTo(targetPosition.current) < 0.1) {
-        isAnimating.current = false;
-      }
+      // The camera keeps its direction from the focus; only the distance changes
+      const direction = new Vector3().subVectors(camera.position, target);
+      const step = flightStep(
+        { x: target.x, z: target.z, distance: direction.length() },
+        { x, z, distance: targetDistance.current },
+        0.08
+      );
+      target.set(step.x, 0, step.z);
+      camera.position.copy(target).addScaledVector(direction.normalize(), step.distance);
+      if (step.arrived) isAnimating.current = false;
 
       controls.update();
     }
@@ -494,7 +498,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const [dockingPort, setDockingPort] = useState<MapCell | null>(null);
   const [showTurnChange, setShowTurnChange] = useState(false);
   const [completedMission, setCompletedMission] = useState<Mission | null>(null);
-  const [cameraFocusPosition, setCameraFocusPosition] = useState<[number, number, number] | null>(null);
+  const [cameraFocusView, setCameraFocusView] = useState<CameraView | null>(null);
+  // The first view, taken once when the main phase starts: MapControls
+  // re-aims at its `target` prop whenever that changes.
+  const [firstView, setFirstView] = useState<CameraView | null>(null);
 
   const currentPlayer = ctx.currentPlayer;
   const currentShipState = G.ships[currentPlayer];
@@ -576,18 +583,16 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     if (currentPlayer !== prevPlayer && prevPlayer !== null) {
       const timer = setTimeout(() => {
         setShowTurnChange(true);
-        // Focus camera on new player's ship
-        if (currentShipState) {
-          const worldPos = hexToWorld(currentShipState.position);
-          setCameraFocusPosition(worldPos);
-        }
+        // Hotseat: fly to the new player's ship (networked clients stay put)
+        const view = turnChangeView({ ships: G.ships, currentPlayer, playerID: props.playerID });
+        if (view) setCameraFocusView(view);
       }, 0);
       prevPlayerRef.current = currentPlayer;
       return () => clearTimeout(timer);
     }
 
     prevPlayerRef.current = currentPlayer;
-  }, [currentPlayer, ctx.phase, currentShipState]);
+  }, [currentPlayer, ctx.phase, G.ships, props.playerID]);
 
   // Detect mission completion
   useEffect(() => {
@@ -665,13 +670,20 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   const preset = getMapPreset(G.mapSize);
   const cam = computeCameraConfig(preset);
-  // The first view: the map's middle from its iso distance unless pinned.
-  // Only the start changes; the zoom limits and the focus clamp stay as they
-  // are, so a pinned view off the map is pulled back onto it like any other.
-  const start = {
-    target: cameraTarget ?? cam.target,
-    distance: cameraDistance ?? cam.isoDistance,
-  };
+  // The first view: the viewer's own ship at ship zoom (the map's middle from
+  // its iso distance without one) unless pinned. Only the start changes; the
+  // zoom limits and the focus clamp stay as they are, so a pinned view off
+  // the map is pulled back onto it like any other.
+  const start =
+    firstView ??
+    openingView({
+      ships: G.ships,
+      currentPlayer,
+      playerID: props.playerID,
+      mapView: { target: cam.target, distance: cam.isoDistance },
+      pins: { target: cameraTarget, distance: cameraDistance },
+    });
+  if (!firstView) setFirstView(start);
   const maxMoves = currentShipState ? getMaxMoves(currentShipState) : 0;
   const movesRemaining = maxMoves - (ctx.numMoves ?? 0);
 
@@ -751,7 +763,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           hoveredShipId={hoveredShipId}
           hoveredPort={hoveredPort}
           scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
-          focusPosition={cameraFocusPosition}
+          focusView={cameraFocusView}
           onMoveShip={(q, r) => props.moves.moveShip(q, r)}
           onHexClick={spyglassMode ? handleHexClickForSpyglass : handleHexClickForAttack}
           onSinkingComplete={handleSinkingComplete}
