@@ -1,4 +1,5 @@
 import { WIN_SCORE } from "../game/types";
+import { HUD_TOP_BAR_HEIGHT } from "./hudLayout";
 
 interface HudTurnBarProps {
   mapLabel: string;
@@ -19,7 +20,10 @@ export function HudTurnBar({
 }: HudTurnBarProps) {
   return (
     <div className="absolute top-0 left-0 right-0 pointer-events-none">
-      <div className="flex items-center justify-between px-5 py-2.5 bg-gradient-to-b from-black/60 via-black/30 to-transparent">
+      <div
+        className="flex items-center justify-between px-5 py-2.5 bg-gradient-to-b from-black/60 via-black/30 to-transparent"
+        style={{ height: HUD_TOP_BAR_HEIGHT }}
+      >
         {/* Left: Map label */}
         <div className="font-heading text-amber-600/60 text-[11px] uppercase tracking-[0.2em]">
           {mapLabel}

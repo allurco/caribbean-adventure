@@ -18,6 +18,7 @@
  *   the port is still in view, so it is brought back down inside the edge.
  */
 
+import { HUD_TOP_BAR_HEIGHT } from "../hudLayout";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { portOwnBuildings } from "./portHover";
 import type { PortBuilding } from "./portSettlement";
@@ -34,8 +35,8 @@ export const PORT_LABEL_LIFT_MARGIN = 0.08;
 export const PORT_LABEL_FADE_FAR = 9;
 /** Camera-to-label distance at and within which the label is at its faintest. */
 export const PORT_LABEL_FADE_NEAR = 5.5;
-/** The faintest the label gets (close in, not hovered). */
-export const PORT_LABEL_MIN_OPACITY = 0.2;
+/** The faintest the label gets (close in, not hovered): still readable over shore foam. */
+export const PORT_LABEL_MIN_OPACITY = 0.35;
 
 /**
  * World units per CSS pixel at `distance` from a perspective camera with
@@ -95,12 +96,15 @@ export function portLabelOpacity(distance: number, hovered: boolean): number {
   return PORT_LABEL_MIN_OPACITY + (1 - PORT_LABEL_MIN_OPACITY) * eased;
 }
 
+/** Air, in CSS pixels, between the bottom of the HUD's top bar and a label's top. */
+export const PORT_LABEL_HUD_GAP = 4;
+
 /**
  * Smallest gap, in CSS pixels, kept between a label's top and the viewport's
- * top edge: below the HUD's top bar (glory, gold, moves), so it is not drawn
- * under it.
+ * top edge: the HUD's top bar (glory, gold, moves) plus `PORT_LABEL_HUD_GAP`,
+ * so the label is never drawn under the bar.
  */
-export const PORT_LABEL_VIEWPORT_MARGIN = 56;
+export const PORT_LABEL_VIEWPORT_MARGIN = HUD_TOP_BAR_HEIGHT + PORT_LABEL_HUD_GAP;
 
 /** Screen positions (CSS pixels down from the viewport's top) of a label and the port it names. */
 export interface PortLabelScreen {
