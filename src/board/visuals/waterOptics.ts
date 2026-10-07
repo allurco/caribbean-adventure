@@ -104,12 +104,21 @@ export const SHELF_FAR_DEPTH_OFFSET = 12;
 export const SHELF_OFFSET_RAMP = 0.2;
 /**
  * STYLISTIC, NOT PHYSICS (user decision, #77): the shore foam (wash, breaker
- * line and reef bands, on the sea and up the sand) fades with the same weight,
+ * line and reef bands, on the sea and up the sand) fades with the recession,
  * so at map zoom the coast is a faint line, not a white rim brighter than the
- * sand. Open water's whitecaps and the ships' hull foam are not touched.
+ * sand. It fades ahead of the water: half-receded, the water body over the
+ * shelf has already gone dark while the breaker band at half strength still
+ * drew a pale halo round every island, with a darker line of water between
+ * it and the sand. So the foam is down to its far share by
+ * SHORE_FOAM_FADE_END of the weight (`shoreFoamRecedeShare`). Open water's
+ * whitecaps and the ships' hull foam are not touched.
  */
 /** What is left of the shore foam at the far distance, 0 … 1: lower makes the far coastline quieter. */
 export const SHORE_FOAM_FAR_SHARE = 0.2;
+/** Weight at which the foam starts fading: later keeps the surf longer as the camera pulls out. */
+export const SHORE_FOAM_FADE_START = 0;
+/** Weight by which the foam is at its far share: later lets the breaker band linger as a halo over the darkened shelf. */
+export const SHORE_FOAM_FADE_END = 0.5;
 /**
  * The camera's real distance from its focus point (world units) as a shared
  * uniform object, like the surf clock (`surfTimeUniform`, surfMotion.ts):
@@ -249,9 +258,9 @@ export function shelfRecedeWeight(cameraDistance: number): number {
   );
 }
 
-/** What is left of the shore foam (stylistic) with the shelf receded by `recede`, 0 … 1: all of it close up. */
+/** What is left of the shore foam (stylistic) with the shelf receded by `recede`, 0 … 1: all of it close up, the far share from SHORE_FOAM_FADE_END on. */
 export function shoreFoamRecedeShare(recede: number): number {
-  return 1 + (SHORE_FOAM_FAR_SHARE - 1) * recede;
+  return 1 + (SHORE_FOAM_FAR_SHARE - 1) * smoothstep(SHORE_FOAM_FADE_START, SHORE_FOAM_FADE_END, recede);
 }
 
 /** Effective-depth multiplier (stylistic) for the water body with the shelf receded by `recede`: 1 close up. */
@@ -340,7 +349,7 @@ export const SHELF_RECEDE_GLSL = `
     return smoothstep(${Math.log(SHELF_RECEDE_NEAR_DISTANCE).toFixed(6)}, ${Math.log(SHELF_RECEDE_FAR_DISTANCE).toFixed(6)}, log(max(cameraDistance, 1e-3)));
   }
   float shoreFoamRecedeShare(float recede) {
-    return 1.0 + ${(SHORE_FOAM_FAR_SHARE - 1).toFixed(2)} * recede;
+    return 1.0 + ${(SHORE_FOAM_FAR_SHARE - 1).toFixed(2)} * smoothstep(${SHORE_FOAM_FADE_START.toFixed(2)}, ${SHORE_FOAM_FADE_END.toFixed(2)}, recede);
   }
 `;
 
