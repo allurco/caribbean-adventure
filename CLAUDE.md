@@ -113,4 +113,4 @@ Uses the five canonical triage roles with default label strings. See `docs/agent
 
 ### Domain docs
 
-Single-context: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: `docs/adr/` at the repo root, plus a root `CONTEXT.md` glossary once one is written (none exists yet; it is created lazily when domain terms get pinned down, so do not flag its absence). See `docs/agents/domain.md`.
