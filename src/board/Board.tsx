@@ -17,6 +17,7 @@ import { getValidScoutTargets } from "../game/scouting";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
 import { HexGrid } from "./HexGrid";
 import { useHexGrid } from "./useHexGrid";
+import { useHoverFollowsCamera } from "./useHoverFollowsCamera";
 import { Ocean } from "./visuals/Ocean";
 import { LandTerrain } from "./visuals/LandTerrain";
 import { useLandTerrain } from "./visuals/useLandTerrain";
@@ -225,6 +226,10 @@ function Scene({
     controls.addEventListener("change", clamp);
     return () => controls.removeEventListener("change", clamp);
   }, [clampFocus, camera]);
+
+  // A port's tooltip (and any hover) follows the scene as the camera moves
+  // under a still pointer; after the clamp above, so it tests the final view
+  useHoverFollowsCamera(controlsRef);
 
   // Animate camera to focus position when it changes
   useEffect(() => {
