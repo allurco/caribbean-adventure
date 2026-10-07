@@ -3,7 +3,7 @@ import { soundForEvent, soundsForEvents } from "./eventSounds";
 
 describe("soundForEvent", () => {
   it("maps the moves this slice has sounds for", () => {
-    expect(soundForEvent({ type: "shipSailed", shipId: "0" })).toBe("ship-sail");
+    expect(soundForEvent({ type: "shipSailed", shipId: "0" })).toBe("ship-wash");
     expect(soundForEvent({ type: "goodsBought", shipId: "0", good: "Rum", amount: 1 })).toBe("coins");
     expect(soundForEvent({ type: "goodsSold", shipId: "0", good: "Rum", amount: 1 })).toBe("coins");
     expect(soundForEvent({ type: "upgradeBought", shipId: "0", upgradeId: "x" })).toBe("coins");
@@ -31,7 +31,7 @@ describe("soundsForEvents", () => {
         { type: "goodsSold", shipId: "0", good: "Wood", amount: 1 },
         { type: "shipSailed", shipId: "1" },
       ])
-    ).toEqual(["ship-sail", "coins"]);
+    ).toEqual(["ship-wash", "coins"]);
     expect(soundsForEvents([])).toEqual([]);
   });
 });

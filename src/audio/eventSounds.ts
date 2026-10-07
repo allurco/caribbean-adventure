@@ -7,7 +7,7 @@ import type { SoundId } from "./soundRegistry";
  * start, NPC movement, ...).
  */
 const EVENT_SOUNDS: Partial<Record<SoundEventType, SoundId>> = {
-  shipSailed: "ship-sail",
+  shipSailed: "ship-wash",
   goodsBought: "coins",
   goodsSold: "coins",
   upgradeBought: "coins",

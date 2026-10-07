@@ -7,7 +7,7 @@
 
 export type SoundKind = "ui" | "world" | "ambience";
 
-export type SoundId = "ui-click" | "ship-sail" | "coins" | "cannon-fire" | "sea-waves";
+export type SoundId = "ui-click" | "ship-wash" | "coins" | "cannon-fire" | "sea-waves";
 
 export interface SoundCredit {
   /** The source's title, as published. */
@@ -48,18 +48,19 @@ export const SOUNDS: readonly SoundEntry[] = [
     },
   },
   {
-    id: "ship-sail",
-    file: "ship-sail.ogg",
+    id: "ship-wash",
+    file: "ship-wash.ogg",
     kind: "world",
     volume: 0.7,
     loop: false,
-    label: "Ship sails a hex",
+    label: "Ship sails a hex (hull wash)",
     credit: {
-      title: "50 RPG sound effects (creak1 + cloth1)",
-      author: "Kenney",
-      url: "https://opengameart.org/content/50-rpg-sound-effects",
+      title: "40 CC0 water / splash / slime SFX (loop_water_02)",
+      author: "rubberduck",
+      url: "https://opengameart.org/content/40-cc0-water-splash-slime-sfx",
       licence: "CC0",
-      changes: "wood creak layered with a cloth flap, mono, normalised",
+      changes:
+        "1.9 s of rushing water layered with a wave wash (Beach Ocean Waves, jasinski) and a low hull bed (Tiny Naval Battle Sounds Set, qubodup), swelled in and washed out, mono",
     },
   },
   {

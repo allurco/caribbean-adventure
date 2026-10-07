@@ -19,12 +19,22 @@ public/sounds/ui-click.ogg
   Licence: CC0
   Changes: mono, normalised
 
-public/sounds/ship-sail.ogg
-  Source:  "50 RPG sound effects" (creak1.ogg and cloth1.ogg)
-  Author:  Kenney (www.kenney.nl)
-  URL:     https://opengameart.org/content/50-rpg-sound-effects
+public/sounds/ship-wash.ogg
+  A mix of three CC0 sources:
+  Source:  "40 CC0 water / splash / slime SFX" (loop_water_02.ogg), the main layer
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/40-cc0-water-splash-slime-sfx
   Licence: CC0
-  Changes: wood creak layered with a cloth flap, mono, normalised
+  Source:  "Beach Ocean Waves" (wave_02)
+  Author:  jasinski
+  URL:     https://opengameart.org/content/beach-ocean-waves
+  Licence: CC0
+  Source:  "Tiny Naval Battle Sounds Set" (BattleShipMovementAmbient.wav)
+  Author:  qubodup (Iwan Gabovitch)
+  URL:     https://opengameart.org/content/tiny-naval-battle-sounds-set
+  Licence: CC0
+  Changes: 1.9 s of rushing water over a wave wash and a low hull bed,
+           swelled in and washed out, mono, normalised
 
 public/sounds/coins.ogg
   Source:  "50 RPG sound effects" (handleCoins.ogg)
