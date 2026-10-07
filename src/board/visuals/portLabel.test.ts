@@ -7,6 +7,7 @@ import {
   PORT_LABEL_LIFT_MARGIN,
   PORT_LABEL_MAX_PX,
   PORT_LABEL_MIN_HEIGHT,
+  PORT_LABEL_HUD_GAP,
   PORT_LABEL_MIN_OPACITY,
   PORT_LABEL_VIEWPORT_MARGIN,
   portLabelBaseY,
@@ -18,6 +19,7 @@ import {
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import type { BuildingKind } from "./buildingGeometry";
 import type { PortBuilding } from "./portSettlement";
+import { HUD_TOP_BAR_HEIGHT } from "../hudLayout";
 
 const VIEWPORT = 900;
 
@@ -137,6 +139,11 @@ describe("portLabelOpacity", () => {
     }
   });
 
+  it("keeps the floor high enough to read over shore foam", () => {
+    expect(PORT_LABEL_MIN_OPACITY).toBe(0.35);
+    expect(portLabelOpacity(4.3, false)).toBeCloseTo(0.35, 10);
+  });
+
   it("stays readable while the port is hovered", () => {
     expect(portLabelOpacity(4.3, true)).toBe(1);
   });
@@ -144,6 +151,13 @@ describe("portLabelOpacity", () => {
 
 describe("portLabelScreenShift", () => {
   const M = PORT_LABEL_VIEWPORT_MARGIN;
+
+  it("keeps the label just below the HUD's top bar", () => {
+    expect(PORT_LABEL_HUD_GAP).toBeGreaterThan(0);
+    expect(PORT_LABEL_VIEWPORT_MARGIN).toBe(HUD_TOP_BAR_HEIGHT + PORT_LABEL_HUD_GAP);
+    // Close to the hand-picked 56 px it replaces: the label's place barely moves
+    expect(Math.abs(PORT_LABEL_VIEWPORT_MARGIN - 56)).toBeLessThanOrEqual(8);
+  });
 
   it("leaves a label that is already inside the viewport where it is", () => {
     expect(portLabelScreenShift({ baselineY: 300, topY: 270, portY: 400 })).toBe(0);
