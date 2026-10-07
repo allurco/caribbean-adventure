@@ -16,6 +16,10 @@ export interface DevUrlParams {
   cameraDistance?: number;
   /** `?view=props`, with `&focus=n` to start close up on entry n. */
   propViewer?: { focus?: number };
+  /** `?massifs=1`: the #83 prototype's rock massifs in the terrain field. */
+  massifs?: boolean;
+  /** `?houses=1`: the #83 prototype's tiny-house scale boxes on every port hex. */
+  houseBoxes?: boolean;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -39,6 +43,9 @@ export function parseDevUrlParams(search: string): DevUrlParams {
     const focus = integer(params.get("focus"));
     out.propViewer = focus !== undefined && focus >= 0 ? { focus } : {};
   }
+
+  if (params.get("massifs") === "1") out.massifs = true;
+  if (params.get("houses") === "1") out.houseBoxes = true;
 
   return out;
 }

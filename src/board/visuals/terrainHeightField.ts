@@ -24,9 +24,27 @@ import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
 import { seamStrip, withSeamImages, wrapIntoStrip } from "./seamStrip";
 import { seabedDepth } from "./seabedProfile";
 import { metresToUnits, unitsToMetres } from "./worldScale";
+import { ELEVATION_HEIGHTS } from "./elevationHeights";
+import {
+  MASSIF_BLEND,
+  MASSIF_COAST_RAMP,
+  MASSIF_SHORE_RAMP,
+  massifHeight,
+  massifInfluence,
+  placeMassifs,
+  type Massif,
+} from "./islandMassifs";
 
-/** World height that each land elevation rises to (1 beach, 2 jungle, 3 mountain). */
-export const ELEVATION_HEIGHTS = { 1: 0.3, 2: 0.75, 3: 1.4 } as const;
+export { ELEVATION_HEIGHTS };
+
+/**
+ * Massif index radius in hexes (#83): a point reads massifs whose rim plus
+ * shore reach can touch it. Hexes n apart have centres at least 1.5·n apart
+ * and a point is within 1 of its centre.
+ */
+const MASSIF_INDEX_RADIUS = 2;
+/** Within this distance of a port centre the massifs' shore-ramp pull fades out, so the port hex keeps its beach. */
+const MASSIF_PORT_FADE = { from: 0.7, to: 1.2 } as const;
 
 /** Sea level in world Y. */
 export const SEA_LEVEL = 0;
@@ -142,6 +160,12 @@ export interface TerrainHeightFieldOptions {
    * the seam from the cells on the other side (#36).
    */
   wrap?: MapWrap;
+  /**
+   * Prototype (#83): stacked rock massifs on elevation 2–3 hexes, unioned
+   * with the relief, with the sand margin pulled in beside them. Off by
+   * default, so the field is unchanged unless asked.
+   */
+  massifs?: boolean;
 }
 
 export interface TerrainHeightField {
@@ -206,7 +230,7 @@ const KEY_WIDTH = 2048;
 const hexKey = (q: number, r: number): number => (q + KEY_OFFSET) * KEY_WIDTH + (r + KEY_OFFSET);
 
 /** Flat-top world (x, z) → the axial hex containing it (inverse of hexToWorld, cube-rounded). */
-function worldToHexKey(x: number, z: number): number {
+function worldToHex(x: number, z: number): [number, number] {
   const qf = (2 / 3) * x;
   const rf = z / SQRT3 - x / 3;
   const sf = -qf - rf;
@@ -218,6 +242,11 @@ function worldToHexKey(x: number, z: number): number {
   const ds = Math.abs(s - sf);
   if (dq > dr && dq > ds) q = -r - s;
   else if (dr > ds) r = -q - s;
+  return [q, r];
+}
+
+function worldToHexKey(x: number, z: number): number {
+  const [q, r] = worldToHex(x, z);
   return hexKey(q, r);
 }
 
@@ -474,6 +503,61 @@ export function createTerrainHeightField(
   const landArrays = new Map<number, Float64Array>();
   for (const [k, list] of landNear) landArrays.set(k, Float64Array.from(list));
 
+  // Massifs (#83 prototype), drawn from the PRNG after the noises so turning
+  // them on leaves the coast, relief and reef exactly as they were. Indexed
+  // by hex like the coast segments; ports likewise, for the shore-ramp fade.
+  const massifsNear = new Map<number, Massif[]>();
+  const portsNear = new Map<number, number[]>();
+  if (options.massifs) {
+    for (const m of placeMassifs(cells, rng, options.wrap ?? null)) {
+      const [q, r] = worldToHex(m.x, m.z);
+      forEachHexWithin(q, r, MASSIF_INDEX_RADIUS, (hq, hr) => {
+        const k = hexKey(hq, hr);
+        let list = massifsNear.get(k);
+        if (!list) massifsNear.set(k, (list = []));
+        list.push(m);
+      });
+    }
+    for (const cell of sourceCells) {
+      if (!cell.hasPort) continue;
+      const [px, , pz] = hexToWorld(cell.hex);
+      forEachHexWithin(cell.hex.q, cell.hex.r, 1, (hq, hr) => {
+        const k = hexKey(hq, hr);
+        let list = portsNear.get(k);
+        if (!list) portsNear.set(k, (list = []));
+        list.push(px, pz);
+      });
+    }
+  }
+  const massifScratch: [number, number] = [0, 0];
+  /** The massif body height and shore-ramp influence at (x, z) into `out`; false if none is near. */
+  const sampleMassifs = (x: number, z: number, out: [number, number]): boolean => {
+    const k = worldToHexKey(x, z);
+    const near = massifsNear.get(k);
+    if (!near) return false;
+    let height = 0;
+    let influence = 0;
+    for (const m of near) {
+      const h = massifHeight(m, x, z);
+      if (h > height) height = h;
+      const w = massifInfluence(m, x, z);
+      if (w > influence) influence = w;
+    }
+    if (influence > 0) {
+      const ports = portsNear.get(k);
+      if (ports) {
+        for (let i = 0; i < ports.length; i += 2) {
+          const d = Math.hypot(x - ports[i], z - ports[i + 1]);
+          const t = Math.max(0, Math.min(1, (d - MASSIF_PORT_FADE.from) / (MASSIF_PORT_FADE.to - MASSIF_PORT_FADE.from)));
+          influence *= t * t * (3 - 2 * t);
+        }
+      }
+    }
+    out[0] = height;
+    out[1] = influence;
+    return height > 0 || influence > 0;
+  };
+
   const sampleCoastDistance = (x: number, z: number): number => {
     const k = worldToHexKey(x, z);
     const segments = segmentArrays.get(k);
@@ -538,17 +622,38 @@ export function createTerrainHeightField(
     // slope and becomes d − toe inland, so a beach meets the water
     // tangentially instead of rising at 34° from it. It fades out from beach
     // (elevation 1) to jungle (2): rocky coasts still meet the sea steeply.
-    const toe = SHORE_TOE * Math.max(0, Math.min(1, 2 - elevation));
+    // Massifs (#83): beside one the shore ramp pulls in from SHORE_RAMP to
+    // MASSIF_SHORE_RAMP and the beach toe goes, so the sand is a thin margin.
+    const nearMassif = massifsNear.size > 0 && sampleMassifs(x, z, massifScratch);
+    const influence = nearMassif ? massifScratch[1] : 0;
+    const shoreRamp = SHORE_RAMP + (MASSIF_SHORE_RAMP - SHORE_RAMP) * influence;
+    const toe = SHORE_TOE * Math.max(0, Math.min(1, 2 - elevation)) * (1 - influence);
     const inland = toe > 0 ? (d * d) / (d + toe) : d;
-    const t = 1 - Math.min(inland / SHORE_RAMP, 1);
+    const t = 1 - Math.min(inland / shoreRamp, 1);
     const ramp = 1 - t * t;
-    if (reliefScale === 0) return SEA_LEVEL + target * ramp;
-    const relief = reliefScale * reliefAmplitude(elevation) * reliefShape(reliefNoise, x, z, elevation);
-    // Relief is scaled by the original ramp squared (no toe): it already
-    // vanishes with zero slope at the shore.
-    const tr = 1 - Math.min(d / SHORE_RAMP, 1);
-    const reliefRamp = 1 - tr * tr;
-    return SEA_LEVEL + target * ramp + relief * reliefRamp * reliefRamp;
+    let height: number;
+    if (reliefScale === 0) {
+      height = target * ramp;
+    } else {
+      const relief = reliefScale * reliefAmplitude(elevation) * reliefShape(reliefNoise, x, z, elevation);
+      // Relief is scaled by the original ramp squared (no toe): it already
+      // vanishes with zero slope at the shore.
+      const tr = 1 - Math.min(d / shoreRamp, 1);
+      const reliefRamp = 1 - tr * tr;
+      height = target * ramp + relief * reliefRamp * reliefRamp;
+    }
+    if (nearMassif && massifScratch[0] > 0) {
+      // The massif body, brought to 0 at the coast by its own short ramp, and
+      // unioned with the relief by a smooth max whose width also vanishes at
+      // the coast, so both stay exactly 0 at d = 0.
+      const tm = 1 - Math.min(d / MASSIF_COAST_RAMP, 1);
+      const massifRamp = 1 - tm * tm;
+      const body = massifScratch[0] * massifRamp * massifRamp;
+      const k = MASSIF_BLEND * massifRamp;
+      const h = k > 0 ? Math.max(k - Math.abs(height - body), 0) / k : 0;
+      height = Math.max(height, body) + (h * h * k) / 4;
+    }
+    return SEA_LEVEL + height;
   };
 
   const sampleElevation = (x: number, z: number): number => {
