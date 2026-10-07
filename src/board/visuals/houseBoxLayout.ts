@@ -1,29 +1,33 @@
 /**
- * The #84 prototype's port village (throwaway): the aged kit's house and
- * warehouse at the #84 prop scale, laid out as a village round the port's
- * own civic kit. Pure, no Three.js; `HouseScaleBoxes.tsx` draws it with the
- * port kit's instanced meshes.
+ * The #84 prototype's port village (throwaway): village buildings at the
+ * #84 building scale, laid out round the port's own civic kit. Pure, no
+ * Three.js; `HouseScaleBoxes.tsx` draws it as one merged mesh
+ * (`villageMesh.ts`).
  *
  * - The square is where the port kit stands (tower, church, tavern), by the
  *   quay; the village keeps a civic margin clear round them.
  * - A short waterfront row of warehouses either side of the pier root,
  *   facing the water, set back to the first ground that takes them.
- * - One main street runs inland from the square, wandering a little, with
- *   one or two side lanes branching off it. Houses line both sides facing
- *   the street, with irregular gaps and the odd yard, and thin out with
- *   distance from the square; a few scattered houses finish the edge.
+ * - On a town plateau (`&townGround=1`) the village lines the plateau's own
+ *   streets (`townPlateau.ts`, carved into the ground): the merchant houses
+ *   on the square, stone houses and cottages up the main street, cottages
+ *   on the lanes, a lean-to against the odd house, a few houses at the
+ *   plateau's edge. Nothing straddles a terrace riser and its wall.
+ * - Without one, one main street runs inland from the square, wandering a
+ *   little, with one or two side lanes branching off it, and houses thin
+ *   out with distance from the square.
  *
  * Every building sits on the ground: it stands on the lowest ground under
  * its walls unless that would bury the uphill side by more than
  * `MAX_BURY`, and a spot that would show more than `MAX_FOOTING_SHOWN` of
- * footing on the downhill side is refused. Nothing stands outside the hex,
- * on wet ground, on the quay, at the pier root, on a street, or over
- * another building.
+ * footing on the downhill side is refused (on the beach, `BEACH_FOOTING` of
+ * that, so a waterfront building never sits visibly askew). Nothing stands outside
+ * the hex, on wet ground, on the quay, at the pier root, on a street, or
+ * over another building.
  */
 import type { MapCell } from "../../game/types";
 import { hexToWorld, neighbors, type MapWrap } from "../../game/hex";
-import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
-import type { BuildingKind } from "./buildingGeometry";
+import { AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import type { GroundField } from "./groundPlacement";
 import {
   PORT_BUILDING_SCALE_RANGE,
@@ -37,17 +41,31 @@ import { PIER_WIDTH } from "./pierGeometry";
 import { SEA_LEVEL } from "./terrainHeightField";
 import { BUILDING_SCALE, PROP_SCALE } from "./propScale";
 import { lerpRange, seedOf, stream } from "./variationStream";
-import { plateauPlanDistance, type TownPlateau } from "./townPlateau";
+import {
+  climbWeight,
+  fortRoadDistance,
+  KERB_WIDTH,
+  plateauLocal,
+  plateauPlanDistance,
+  RETAINING_WALL_DEPTH,
+  riserCentre,
+  SHORE_KEEP_TOP,
+  streetDistance,
+  type TownPlateau,
+  type TownStreet,
+} from "./townPlateau";
+import { VILLAGE_EAVE, VILLAGE_PLAN, type VillageVariant } from "./villageBuildingGeometry";
 
 /** Every village length follows the buildings' scale; the pier's follow the prop scale. */
 const K = BUILDING_SCALE;
 const TAU = Math.PI * 2;
 const SQRT3 = Math.sqrt(3);
-/** Past the walls on every side: the roof's overhang plus the lean, at scale 1. */
-const EAVE_MARGIN = 0.035;
 /** At scale 1: how far the uphill side may sink into the ground, and how much footing may show downhill (as the port kit). */
 const MAX_BURY = SCALED_MAX_BURY;
 const MAX_FOOTING_SHOWN = SCALED_MAX_FOOTING_SHOWN;
+/** On the beach (under this height) the footing may show only this share of the limit. */
+const BEACH_TOP = SHORE_KEEP_TOP + 0.01;
+const BEACH_FOOTING = 0.6;
 const DRY_HEIGHT = SEA_LEVEL + 0.02 * K;
 /** Clear margin round the port's own buildings: wide round the civic kit, narrower round its house and warehouse. */
 const CIVIC_MARGIN = 0.1 * K;
@@ -61,7 +79,7 @@ const WAREHOUSE_SPACING = 0.02 * K;
 const WAREHOUSE_SETBACK_MAX = 1.0 * K;
 const WAREHOUSE_SETBACK_STEP = 0.02 * K;
 
-/** Streets: half width, the main street's length and the side lanes' (world units), in steps of `STREET_STEP`, wandering by up to `STREET_WANDER` a step. */
+/** Streets off the plateau: half width, the main street's length and the side lanes' (world units), in steps of `STREET_STEP`, wandering by up to `STREET_WANDER` a step. */
 const STREET_HALF_WIDTH = 0.06 * K;
 const MAIN_STREET_LENGTH: readonly [number, number] = [2.0 * K, 2.6 * K];
 const LANE_LENGTH: readonly [number, number] = [0.9 * K, 1.5 * K];
@@ -98,6 +116,21 @@ const MAX_HOUSES = 55;
 const YAW_JITTER = 0.06;
 const SALT = 0x2c6e9b13;
 
+/** On a plateau: the gaps along a frontage, the odd yard, and how far a frontage may sit back. */
+const PLATEAU_GAP: readonly [number, number] = [0.003 * K, 0.015 * K];
+const PLATEAU_YARD_CHANCE = 0.08;
+const PLATEAU_SETBACK: readonly [number, number] = [0, 0.012 * K];
+/** Edge houses: how many a plateau aims for, tries, and how far into the blend they may stand (fraction of it). */
+const PLATEAU_EDGE_TARGET: readonly [number, number] = [4, 8];
+const PLATEAU_EDGE_TRIES = 200;
+const PLATEAU_EDGE_REACH = 0.6;
+/** Houses round the square: the ring's sweep either side of inland (radians), and how many of the first are merchants' houses. */
+const SQUARE_SWEEP = 2.4;
+const SQUARE_MERCHANTS = 2;
+/** A lean-to against a cottage or stone house: how often, and the gap between them. */
+const LEAN_TO_CHANCE = 0.3;
+const LEAN_TO_GAP = 0.002 * K;
+
 /** What the village keeps clear of and gathers round: the settlement as `decorationLayout` placed it. */
 export interface PortKit {
   buildings: readonly PortBuilding[];
@@ -109,7 +142,7 @@ export interface PortKit {
 }
 
 /** A footprint in plan: centre, unit facing (local +z) and half extents across and along it, eaves included. */
-interface Footprint {
+export interface Footprint {
   x: number;
   z: number;
   fx: number;
@@ -118,8 +151,36 @@ interface Footprint {
   halfD: number;
 }
 
+/** A village building: the port kit's kind (house or warehouse) and which of the village's own models it is. */
+export interface VillageBuilding extends PortBuilding {
+  variant: VillageVariant;
+  /** 0…1, picks its roof's colour (`villageMesh.ts`). */
+  roofTone: number;
+}
+
+/** A street as the clutter sees it: a centre line and the half width of its running surface. */
+export interface TownLane {
+  line: readonly (readonly [number, number])[];
+  halfWidth: number;
+}
+
+/** One port's village as laid out: what clutter must keep clear of and gathers round. */
+export interface PortTownPlan {
+  /** The hex centre. */
+  cx: number;
+  cz: number;
+  square: { x: number; z: number };
+  pier: { worldX: number; worldZ: number; rotation: number };
+  quays: readonly QuayPlacement[];
+  plateau?: TownPlateau;
+  /** Every footprint taken: the kit's (with its margins), the fort's and the village's. */
+  footprints: readonly Footprint[];
+  streets: readonly TownLane[];
+  buildings: readonly VillageBuilding[];
+}
+
 /** Whether two footprints, each grown by half the gap, overlap (separating axes). */
-function overlaps(a: Footprint, b: Footprint, gap: number): boolean {
+export function overlaps(a: Footprint, b: Footprint, gap: number): boolean {
   const axes: [number, number][] = [
     [a.fx, a.fz],
     [-a.fz, a.fx],
@@ -137,7 +198,7 @@ function overlaps(a: Footprint, b: Footprint, gap: number): boolean {
 }
 
 /** Distance from a point to a polyline. */
-function polylineDistance(x: number, z: number, line: readonly [number, number][]): number {
+export function polylineDistance(x: number, z: number, line: readonly (readonly [number, number])[]): number {
   let best = Infinity;
   for (let i = 1; i < line.length; i++) {
     const [ax, az] = line[i - 1];
@@ -164,32 +225,31 @@ function street(x: number, z: number, heading: number, length: number, next: () 
   return points;
 }
 
-/** On a plateau: the main street's wander per step, the gaps along a frontage, the odd yard, and how far a frontage may sit back. */
-const PLATEAU_WANDER = 0.035;
-const PLATEAU_GAP: readonly [number, number] = [0.003 * K, 0.015 * K];
-const PLATEAU_YARD_CHANCE = 0.06;
-const PLATEAU_SETBACK: readonly [number, number] = [0, 0.012 * K];
-/** Lanes across the plateau off the main street: where along it they branch (fractions of its length). */
-const PLATEAU_LANE_AT: readonly number[] = [0.4, 0.75];
-/** Edge houses: how many a plateau aims for, tries, and how far into the blend they may stand (fraction of it). */
-const PLATEAU_EDGE_TARGET: readonly [number, number] = [4, 8];
-const PLATEAU_EDGE_TRIES = 200;
-const PLATEAU_EDGE_REACH = 0.6;
-/** Houses round the square: the ring's sweep either side of inland (radians). */
-const SQUARE_SWEEP = 2.4;
+/** Stands a building if the ground and its neighbours allow; its footprint if placed. `attachedTo` is a footprint it may touch (a lean-to's house). */
+type TryPlace = (variant: VillageVariant, x: number, z: number, yaw: number, scale: number, tint: number, attachedTo?: Footprint) => Footprint | undefined;
 
-type TryPlace = (kind: BuildingKind, x: number, z: number, yaw: number, scale: number, tint: number) => boolean;
+/** The kind of house a frontage gets, by where it is (`along`: 0 at the street's start, 1 at its end). */
+type Pick = (next: () => number, along?: number) => VillageVariant;
+const pickMain: Pick = (next, along = 1) => {
+  const r = next();
+  // Merchants' houses on the lower half of the street, stone houses up it, cottages among them.
+  if (along < 0.6 && r < 0.3) return "merchant";
+  return r < 0.65 ? "stoneHouse" : "cottage";
+};
+const pickLane: Pick = (next) => {
+  const r = next();
+  return r < 0.08 ? "merchant" : r < 0.38 ? "stoneHouse" : "cottage";
+};
 
 /**
- * The village on a town plateau: a main street straight up the terraces
- * from the square, a back lane either side of it and one or two lanes
- * across, houses shoulder to shoulder along every frontage, a ring of
- * houses round the square, and a few at the plateau's edge.
+ * The village on a town plateau: a ring of houses round the square facing
+ * its middle (merchants' houses first), then houses shoulder to shoulder
+ * along both sides of every street the plateau laid, facing it, and a few
+ * at the plateau's edge.
  */
 function plateauVillage(
   p: TownPlateau,
   tryPlace: TryPlace,
-  streets: [number, number][][],
   next: () => number,
   scaleRoll: () => number,
   tintRoll: () => number,
@@ -199,77 +259,93 @@ function plateauVillage(
   const heading = Math.atan2(p.ux, p.uz);
   const ax = -p.uz;
   const az = p.ux;
-  const houseHalfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * PORT_BUILDING_SCALE_RANGE[1] * K;
-  const start = p.squareRadius * 0.6;
-  const main = street(p.x + p.ux * start, p.z + p.uz * start, heading, p.length - start, next, PLATEAU_WANDER);
-  // Back lanes parallel to the main street, a pair of house depths out either side.
-  const backOffset = 2 * STREET_HALF_WIDTH + 4 * houseHalfD + PLATEAU_GAP[1];
-  const backLanes = [1, -1].map((side) => main.map(([x, z]): [number, number] => [x + ax * side * backOffset, z + az * side * backOffset]));
-  const lanes: [number, number][][] = [];
-  for (const at of PLATEAU_LANE_AT.slice(0, next() < 0.5 ? 1 : 2)) {
-    const [lx, lz] = main[Math.min(main.length - 1, Math.floor(main.length * at))];
+
+  /** A lean-to against `house`'s side wall, flush with its back, sometimes. */
+  const maybeLeanTo = (variant: VillageVariant, house: Footprint, yaw: number, scale: number) => {
+    if ((variant !== "cottage" && variant !== "stoneHouse") || next() >= LEAN_TO_CHANCE) return;
     const side = next() < 0.5 ? 1 : -1;
-    lanes.push(street(lx, lz, heading + side * Math.PI / 2, p.halfWidth, next, PLATEAU_WANDER));
-  }
-  streets.push(main, ...backLanes, ...lanes);
+    const wall = VILLAGE_PLAN[variant];
+    const lean = VILLAGE_PLAN.leanTo;
+    const across = (wall.halfW + lean.halfW) * scale + LEAN_TO_GAP;
+    const back = (wall.halfD - lean.halfD) * scale;
+    const rx = Math.cos(yaw);
+    const rz = -Math.sin(yaw);
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    if (tryPlace("leanTo", house.x + rx * across * side - fx * back, house.z + rz * across * side - fz * back, yaw, scale, tintRoll(), house)) houses++;
+  };
 
   /** Houses shoulder to shoulder along one side of a street, facing it. */
-  const frontage = (line: readonly [number, number][], side: number) => {
-    let carry = lerpRange(PLATEAU_GAP, next());
-    for (let i = 1; i < line.length && houses < MAX_HOUSES; i++) {
-      const [x0, z0] = line[i - 1];
-      const [x1, z1] = line[i];
-      const segLen = Math.hypot(x1 - x0, z1 - z0) || 1;
-      const tx = (x1 - x0) / segLen;
-      const tz = (z1 - z0) / segLen;
-      const nx = tz * side;
-      const nz = -tx * side;
-      let along = carry;
-      while (along < segLen && houses < MAX_HOUSES) {
-        const scale = scaleRoll();
-        const tint = tintRoll();
-        const halfW = (AGED_BUILDING_PLAN.house.halfW + EAVE_MARGIN) * scale;
-        const halfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * scale;
-        const gap = next() < PLATEAU_YARD_CHANCE ? 2 * halfW : lerpRange(PLATEAU_GAP, next());
-        const setback = lerpRange(PLATEAU_SETBACK, next());
+  const frontage = (s: TownStreet, side: number, pick: Pick) => {
+    const [x0, z0] = s.from;
+    const [x1, z1] = s.to;
+    const len = Math.hypot(x1 - x0, z1 - z0) || 1;
+    const tx = (x1 - x0) / len;
+    const tz = (z1 - z0) / len;
+    const nx = tz * side;
+    const nz = -tx * side;
+    let along = lerpRange(PLATEAU_GAP, next());
+    while (along < len && houses < MAX_HOUSES) {
+      const first = pick(next, along / len);
+      // A merchant's house that will not fit gives way to a stone house in the same plot.
+      const choices: VillageVariant[] = first === "merchant" ? ["merchant", "stoneHouse"] : [first];
+      const scale = scaleRoll();
+      const tint = tintRoll();
+      const yaw = Math.atan2(-nx, -nz) + jitter();
+      const setback = lerpRange(PLATEAU_SETBACK, next());
+      const yard = next() < PLATEAU_YARD_CHANCE;
+      const gapRoll = next();
+      let advance = Infinity;
+      for (const variant of choices) {
+        const halfW = (VILLAGE_PLAN[variant].halfW + VILLAGE_EAVE[variant]) * scale;
+        const halfD = (VILLAGE_PLAN[variant].halfD + VILLAGE_EAVE[variant]) * scale;
         const px = x0 + tx * (along + halfW);
         const pz = z0 + tz * (along + halfW);
-        const yaw = Math.atan2(-nx, -nz) + jitter();
-        const off = STREET_HALF_WIDTH + halfD + setback;
-        if (tryPlace("house", px + nx * off, pz + nz * off, yaw, scale, tint)) {
+        const off = s.halfWidth + KERB_WIDTH * K + halfD + setback;
+        const placed = tryPlace(variant, px + nx * off, pz + nz * off, yaw, scale, tint);
+        if (placed) {
           houses++;
-          along += 2 * halfW + gap;
-        } else {
-          along += halfW * 0.5;
+          maybeLeanTo(variant, placed, yaw, scale);
+          advance = 2 * halfW + (yard ? 2 * halfW : lerpRange(PLATEAU_GAP, gapRoll));
+          break;
         }
+        advance = Math.min(advance, halfW * 0.5);
       }
-      carry = Math.max(0, along - segLen);
+      along += advance;
     }
   };
 
-  // The square's ring first, facing its middle, then the main street's frontage, the lanes, the back lanes.
+  // The square's ring first, facing its middle, then the main street's frontage, the cross lanes, the back lanes.
   const ringRadius = p.squareRadius * 0.85;
+  let merchants = 0;
   for (let a = -SQUARE_SWEEP; a <= SQUARE_SWEEP && houses < MAX_HOUSES; ) {
+    // A merchant's house where one fits, else a smaller house in the same slot.
+    const choices: VillageVariant[] = merchants < SQUARE_MERCHANTS ? ["merchant", "stoneHouse"] : [next() < 0.5 ? "stoneHouse" : "cottage"];
     const scale = scaleRoll();
-    const halfW = (AGED_BUILDING_PLAN.house.halfW + EAVE_MARGIN) * scale;
-    const halfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * scale;
-    const dir = heading + a;
-    const r = ringRadius + halfD;
-    const x = p.x + Math.sin(dir) * r;
-    const z = p.z + Math.cos(dir) * r;
-    if (tryPlace("house", x, z, dir + Math.PI + jitter(), scale, tintRoll())) {
-      houses++;
-      a += (2 * halfW + lerpRange(PLATEAU_GAP, next())) / r;
-    } else {
-      a += halfW / r;
+    const tint = tintRoll();
+    const yawJitter = jitter();
+    let step = Infinity;
+    for (const variant of choices) {
+      const halfW = (VILLAGE_PLAN[variant].halfW + VILLAGE_EAVE[variant]) * scale;
+      const halfD = (VILLAGE_PLAN[variant].halfD + VILLAGE_EAVE[variant]) * scale;
+      const dir = heading + a;
+      const r = ringRadius + halfD;
+      if (tryPlace(variant, p.x + Math.sin(dir) * r, p.z + Math.cos(dir) * r, dir + Math.PI + yawJitter, scale, tint)) {
+        houses++;
+        if (variant === "merchant") merchants++;
+        step = (2 * halfW + lerpRange(PLATEAU_GAP, next())) / r;
+        break;
+      }
+      step = Math.min(step, halfW / r);
     }
+    a += step;
   }
-  for (const side of [1, -1]) frontage(main, side);
-  for (const lane of lanes) for (const side of [1, -1]) frontage(lane, side);
-  backLanes.forEach((lane, i) => {
-    const outward = i === 0 ? 1 : -1;
-    for (const side of [-outward, outward]) frontage(lane, side);
-  });
+  const main = p.streets.filter((s) => s.kind === "main");
+  const cross = p.streets.filter((s) => s.kind === "cross");
+  const back = p.streets.filter((s) => s.kind === "back");
+  for (const s of main) for (const side of [1, -1]) frontage(s, side, pickMain);
+  for (const s of cross) for (const side of [1, -1]) frontage(s, side, pickLane);
+  for (const s of back) for (const side of [1, -1]) frontage(s, side, pickLane);
 
   // A few houses at the plateau's edge, turned any way.
   const edgeTarget = Math.round(lerpRange(PLATEAU_EDGE_TARGET, next()));
@@ -281,7 +357,7 @@ function plateauVillage(
     const z = p.z + p.uz * s + az * across;
     const d = plateauPlanDistance(p, x, z);
     if (d <= 0 || d > p.blend * PLATEAU_EDGE_REACH) continue;
-    if (tryPlace("house", x, z, next() * TAU, scaleRoll(), tintRoll())) {
+    if (tryPlace("cottage", x, z, next() * TAU, scaleRoll(), tintRoll())) {
       edge++;
       houses++;
     }
@@ -291,14 +367,36 @@ function plateauVillage(
 
 /** Why village spots were refused, counted across the last layout (a dev diagnostic). */
 export const villageRejects: Record<string, number> = {};
-const reject = (reason: string): false => {
+const rejectFor = (reason: string): undefined => {
   villageRejects[reason] = (villageRejects[reason] ?? 0) + 1;
-  return false;
+  return undefined;
 };
 
-/** The village on every port hex, standing on `ground`; `seed` is the terrain seed. */
-export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: MapWrap, kit: PortKit, seed = 0): PortBuilding[] {
-  const town: PortBuilding[] = [];
+/** Whether a footprint crosses one of the plateau's risers (and the retaining wall along it) where the wall stands. */
+export function crossesRiser(p: TownPlateau, corners: readonly (readonly [number, number])[]): boolean {
+  const local = corners.map(([x, z]) => plateauLocal(p, x, z));
+  const s0 = Math.min(...local.map((l) => l.s));
+  const s1 = Math.max(...local.map((l) => l.s));
+  const a0 = Math.min(...local.map((l) => l.across));
+  const a1 = Math.max(...local.map((l) => l.across));
+  const reach = p.halfWidth + p.blend;
+  if (a1 < -reach || a0 > reach) return false;
+  // The riser's run under the footprint: the steep face, or the ramp where a street climbs it.
+  const run = Math.max(...local.map((l) => p.riserFace + (p.ramp - p.riserFace) * climbWeight(p, l.across)));
+  for (let k = 0; k < p.steps.length; k++) {
+    const c = riserCentre(p, k);
+    // The run and the wall standing at its foot.
+    const lo = c - run / 2 - RETAINING_WALL_DEPTH * K;
+    const hi = c + run / 2;
+    if (s1 > lo && s0 < hi) return true;
+  }
+  return false;
+}
+
+/** The village on every port hex, standing on `ground`, and what each port's plan keeps clear; `seed` is the terrain seed. */
+export function planPortTowns(cells: readonly MapCell[], ground: GroundField, kit: PortKit, seed = 0): { buildings: VillageBuilding[]; ports: PortTownPlan[] } {
+  const town: VillageBuilding[] = [];
+  const ports: PortTownPlan[] = [];
   for (const cell of cells) {
     if (!cell.hasPort) continue;
     const [cx, , cz] = hexToWorld(cell.hex);
@@ -319,6 +417,7 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
       return [(nx - cx) / SQRT3, (nz - cz) / SQRT3];
     });
     const next = stream(seedOf([cell.hex.q, cell.hex.r], SALT ^ seed));
+    const here: VillageBuilding[] = [];
 
     // The square: the middle of the civic kit, else just inland of the pier root.
     const civic = kitHere.filter((b) => b.kind === "watchtower" || b.kind === "church" || b.kind === "tavern");
@@ -336,31 +435,42 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
         z: b.worldZ,
         fx: Math.sin(b.yaw),
         fz: Math.cos(b.yaw),
-        halfW: (plan.halfW + EAVE_MARGIN) * b.scale + margin,
-        halfD: (plan.halfD + EAVE_MARGIN) * b.scale + margin,
+        halfW: (plan.halfW + 0.035) * b.scale + margin,
+        halfD: (plan.halfD + 0.035) * b.scale + margin,
       };
     });
+    const plateau = kit.plateaus?.find((p) => Math.hypot(p.x - cx, p.z - cz) < 1.2);
     // A fort port's fort (#84) is kept clear by the civic margin, as the kit's tower and church are.
-    const fortHere = kit.plateaus?.find((p) => Math.hypot(p.x - cx, p.z - cz) < 1.2)?.fort;
+    const fortHere = plateau?.fort;
     if (fortHere) {
       const half = fortHere.reach + CIVIC_MARGIN;
       placed.push({ x: fortHere.x, z: fortHere.z, fx: Math.sin(fortHere.yaw), fz: Math.cos(fortHere.yaw), halfW: half, halfD: half });
     }
-    const streets: [number, number][][] = [];
+    const streets: TownLane[] = [];
+    if (plateau) {
+      for (const s of plateau.streets) streets.push({ line: [s.from, s.to], halfWidth: s.halfWidth + KERB_WIDTH * K });
+      if (plateau.fortRoad) streets.push({ line: plateau.fortRoad.points, halfWidth: plateau.fortRoad.halfWidth + plateau.fortRoad.shoulder * 0.5 });
+    }
 
-    /** Stands `kind` at (x, z) facing `yaw` if the ground and its neighbours allow; true if placed. */
-    const tryPlace = (kind: BuildingKind, x: number, z: number, yaw: number, scale: number, tint: number): boolean => {
-      const plan = AGED_BUILDING_PLAN[kind];
+    const tryPlace: TryPlace = (variant, x, z, yaw, scale, tint, attachedTo) => {
+      // Refusals are counted by reason, and by kind and reason.
+      const reject = (reason: string): undefined => {
+        villageRejects[`${variant}/${reason}`] = (villageRejects[`${variant}/${reason}`] ?? 0) + 1;
+        return rejectFor(reason);
+      };
+      const plan = VILLAGE_PLAN[variant];
+      const eave = VILLAGE_EAVE[variant];
       const fx = Math.sin(yaw);
       const fz = Math.cos(yaw);
-      const foot: Footprint = { x, z, fx, fz, halfW: (plan.halfW + EAVE_MARGIN) * scale, halfD: (plan.halfD + EAVE_MARGIN) * scale };
-      const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
+      const foot: Footprint = { x, z, fx, fz, halfW: (plan.halfW + eave) * scale, halfD: (plan.halfD + eave) * scale };
+      const reach = Math.hypot(foot.halfW, foot.halfD);
       if (!edgeNormals.every(([ux, uz]) => (x - cx) * ux + (z - cz) * uz <= SQRT3 / 2 - reach)) return reject("hex");
       if (Math.hypot(pier.worldX - x, pier.worldZ - z) < PIER_WIDTH * PROP_SCALE + reach) return reject("pier");
-      if (placed.some((p) => overlaps(p, foot, EAVE_GAP))) return reject("overlap");
-      if (streets.some((line) => polylineDistance(x, z, line) < STREET_HALF_WIDTH + Math.min(foot.halfW, foot.halfD))) return reject("street");
+      if (placed.some((p) => p !== attachedTo && overlaps(p, foot, EAVE_GAP))) return reject("overlap");
+      if (streets.some((s) => polylineDistance(x, z, s.line) < s.halfWidth + Math.min(foot.halfW, foot.halfD))) return reject("street");
       let top = -Infinity;
       let bottom = Infinity;
+      const corners: [number, number][] = [];
       for (const u of [-1, 0, 1]) {
         for (const v of [-1, 0, 1]) {
           // Across the front is (fz, -fx) in the world, front to back is (fx, fz).
@@ -369,18 +479,34 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
           const h = ground.sampleHeight(px, pz);
           top = Math.max(top, h);
           bottom = Math.min(bottom, h);
+          // The walls (not the eaves, which may overhang a retaining wall) must keep off a riser.
+          corners.push([px, pz]);
           const ex = x + fz * u * foot.halfW + fx * v * foot.halfD;
           const ez = z - fx * u * foot.halfW + fz * v * foot.halfD;
           if (quays.some((q) => quayTopAt(q, { x: ex, z: ez }) !== undefined)) return reject("quay");
         }
       }
       if (bottom <= DRY_HEIGHT) return reject("wet");
+      if (plateau && crossesRiser(plateau, corners)) return reject("riser");
       // On the ground: the lowest ground under the walls, unless that buries the uphill side too deep.
+      // On the beach less footing may show, so no waterfront building stands visibly askew on its plinth.
+      const beach = bottom < BEACH_TOP ? BEACH_FOOTING : 1;
       const y = Math.max(bottom, top - MAX_BURY * scale);
-      if (y - bottom > MAX_FOOTING_SHOWN * scale) return reject("plinth");
+      if (y - bottom > MAX_FOOTING_SHOWN * scale * beach) return reject("plinth");
       placed.push(foot);
-      town.push({ kind, worldX: x, worldY: y, worldZ: z, yaw, scale, tint });
-      return true;
+      const building: VillageBuilding = {
+        kind: variant === "warehouse" ? "warehouse" : "house",
+        variant,
+        worldX: x,
+        worldY: y,
+        worldZ: z,
+        yaw,
+        scale,
+        tint,
+        roofTone: next(),
+      };
+      here.push(building);
+      return foot;
     };
     const scaleRoll = () => lerpRange(PORT_BUILDING_SCALE_RANGE, next()) * K;
     const tintRoll = () => 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
@@ -389,14 +515,14 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
     // 1. The waterfront warehouses, either side of the pier root, facing the water.
     const warehouseTarget = Math.round(lerpRange(WAREHOUSE_TARGET, next()));
     let warehouses = 0;
-    const warehouseWidth = (AGED_BUILDING_PLAN.warehouse.halfW + EAVE_MARGIN) * 2 * K;
+    const warehouseWidth = (VILLAGE_PLAN.warehouse.halfW + VILLAGE_EAVE.warehouse) * 2 * K;
     for (let slot = 0; slot < 12 && warehouses < warehouseTarget; slot++) {
       const side = slot % 2 === 0 ? 1 : -1;
       const along = side * (PIER_WIDTH * PROP_SCALE + warehouseWidth * (0.6 + Math.floor(slot / 2)) + WAREHOUSE_SPACING * Math.floor(slot / 2));
       const scale = scaleRoll();
       const tint = tintRoll();
       const yaw = toWater + jitter();
-      // Long side to the water, or (where the ground is narrower) gable end to it.
+      // Gable end to the water (the doors), or (where the ground is narrower) long side to it.
       search: for (let back = 0; back <= WAREHOUSE_SETBACK_MAX; back += WAREHOUSE_SETBACK_STEP) {
         const x = pier.worldX + ax * along - dx * back;
         const z = pier.worldZ + az * along - dz * back;
@@ -409,10 +535,14 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
       }
     }
 
-    // On a town plateau (`&townGround=1`) the village packs onto its terraces instead.
-    const plateau = kit.plateaus?.find((p) => Math.hypot(p.x - cx, p.z - cz) < 1.2);
+    const finish = () =>
+      ports.push({ cx, cz, square: plateau ? { x: plateau.x, z: plateau.z } : square, pier, quays, plateau, footprints: placed, streets, buildings: here });
+
+    // On a town plateau (`&townGround=1`) the village lines its streets instead.
     if (plateau) {
-      plateauVillage(plateau, tryPlace, streets, next, scaleRoll, tintRoll, jitter);
+      plateauVillage(plateau, tryPlace, next, scaleRoll, tintRoll, jitter);
+      town.push(...here);
+      finish();
       continue;
     }
 
@@ -471,11 +601,12 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
       const allowed = i === 0 ? candidates : candidates.filter((c) => polylineDistance(c[c.length - 1][0], c[c.length - 1][1], lanes[0]) > LANE_LENGTH[0]);
       lanes.push(best(allowed.length > 0 ? allowed : candidates));
     }
-    streets.push(main, ...lanes);
+    const lines = [main, ...lanes];
+    for (const line of lines) streets.push({ line, halfWidth: STREET_HALF_WIDTH });
 
     // 3. Houses along both sides of each street, facing it, thinning away from the square.
     let houses = 0;
-    for (const line of streets) {
+    for (const line of lines) {
       for (const side of [1, -1]) {
         let carry = lerpRange(HOUSE_GAP, next());
         for (let i = 1; i < line.length && houses < MAX_HOUSES; i++) {
@@ -489,13 +620,14 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
           const nz = -tx * side;
           let along = carry;
           while (along < segLen && houses < MAX_HOUSES) {
+            const variant = pickLane(next);
             const scale = scaleRoll();
             const tint = tintRoll();
             const gapRoll = next();
             const keepRoll = next();
             const setback = lerpRange(SETBACK, next());
-            const halfW = (AGED_BUILDING_PLAN.house.halfW + EAVE_MARGIN) * scale;
-            const halfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * scale;
+            const halfW = (VILLAGE_PLAN[variant].halfW + VILLAGE_EAVE[variant]) * scale;
+            const halfD = (VILLAGE_PLAN[variant].halfD + VILLAGE_EAVE[variant]) * scale;
             const px = ax0 + tx * (along + halfW);
             const pz = az0 + tz * (along + halfW);
             // The front (+z local) faces the street: back along the normal.
@@ -507,7 +639,7 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
             const stands = () =>
               EXTRA_SETBACKS.some((extra) => {
                 const off = STREET_HALF_WIDTH + halfD + setback + extra;
-                return tryPlace("house", px + nx * off, pz + nz * off, yaw, scale, tint);
+                return tryPlace(variant, px + nx * off, pz + nz * off, yaw, scale, tint) !== undefined;
               });
             if (keepRoll <= keep && stands()) {
               houses++;
@@ -525,7 +657,7 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
     // further from a street, still facing it, on whatever ground is flat
     // enough, until the village reaches its size.
     for (let i = 0; i < BACK_PLOT_TRIES && houses < BACK_PLOT_TARGET; i++) {
-      const line = streets[Math.min(streets.length - 1, Math.floor(next() * streets.length))];
+      const line = lines[Math.min(lines.length - 1, Math.floor(next() * lines.length))];
       const seg = 1 + Math.min(line.length - 2, Math.floor(next() * (line.length - 1)));
       const [ax0, az0] = line[seg - 1];
       const [bx0, bz0] = line[seg];
@@ -537,14 +669,15 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
       const nz = -tx * side;
       const t = next() * segLen;
       const scale = scaleRoll();
-      const halfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * scale;
+      const variant = pickLane(next);
+      const halfD = (VILLAGE_PLAN[variant].halfD + VILLAGE_EAVE[variant]) * scale;
       const off = STREET_HALF_WIDTH + halfD + lerpRange(BACK_PLOT_DEPTH, next());
       const x = ax0 + tx * t + nx * off;
       const z = az0 + tz * t + nz * off;
       const fromSquare = Math.hypot(x - square.x, z - square.z);
       const keep = fromSquare <= FULL_VILLAGE ? 1 : EDGE_KEEP + (1 - EDGE_KEEP) * Math.max(0, 1 - (fromSquare - FULL_VILLAGE) / FULL_VILLAGE);
       const keepRoll = next();
-      if (keepRoll <= keep && tryPlace("house", x, z, Math.atan2(-nx, -nz) + jitter(), scale, tintRoll())) houses++;
+      if (keepRoll <= keep && tryPlace(variant, x, z, Math.atan2(-nx, -nz) + jitter(), scale, tintRoll())) houses++;
     }
 
     // 4. A few scattered houses at the village's edge, turned any way.
@@ -555,11 +688,22 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
       const r = lerpRange(SCATTER_RADIUS, next());
       const x = square.x + Math.sin(angle) * r;
       const z = square.z + Math.cos(angle) * r;
-      if (tryPlace("house", x, z, next() * TAU, scaleRoll(), tintRoll())) {
+      if (tryPlace("cottage", x, z, next() * TAU, scaleRoll(), tintRoll())) {
         scattered++;
         houses++;
       }
     }
+    town.push(...here);
+    finish();
   }
-  return town;
+  return { buildings: town, ports };
 }
+
+/** The village on every port hex, standing on `ground`; `seed` is the terrain seed. */
+export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: MapWrap, kit: PortKit, seed = 0): VillageBuilding[] {
+  return planPortTowns(cells, ground, kit, seed).buildings;
+}
+
+/** Which footprints a fort port's road and streets leave the village (for tests): every street's distance from a footprint centre. */
+export const streetClearance = (p: TownPlateau, x: number, z: number): number =>
+  Math.min(...p.streets.map((s) => streetDistance(s, x, z) - s.halfWidth), p.fortRoad ? fortRoadDistance(p.fortRoad, x, z) - p.fortRoad.halfWidth : Infinity);

@@ -287,7 +287,7 @@ const SALT = 0x5a1d;
 const kindSeed = (kind: BuildingKind, part: number) => seedOf([BUILDING_KINDS.indexOf(kind), part], SALT);
 
 /** The stone footing below ground contact (10 triangles) with its proud plinth course (8 more) under the course's paler cap (10 more). */
-function plinth(b: FacetBuilder, hw: number, hd: number, stone: Rgb) {
+export function plinth(b: FacetBuilder, hw: number, hd: number, stone: Rgb) {
   b.box([-hw, -BUILDING_FOOTING, -hd], [hw, 0, hd], shadeRgb(stone, FOOTING_SHADE), { top: false });
   const p = PLINTH_COURSE.proud;
   const capBottom = PLINTH_COURSE.top - PLINTH_CAP.height;
@@ -307,7 +307,7 @@ export function agedWindowBand(wallTop: number): { bottom: number; top: number }
  * into the attic. `cutLeft` and `cutRight` are the wall's top-ring cuts at
  * that face's ends, `width` the face's full width.
  */
-function gable(b: FacetBuilder, frame: FaceFrame, width: number, cutLeft: number, cutRight: number, wallTop: number, apex: number, slope: number, color: Rgb) {
+export function gable(b: FacetBuilder, frame: FaceFrame, width: number, cutLeft: number, cutRight: number, wallTop: number, apex: number, slope: number, color: Rgb) {
   const bl = frame.at(cutLeft, wallTop);
   const br = frame.at(width - cutRight, wallTop);
   const tr = frame.at(width - cutRight, wallTop + cutRight * slope);
@@ -337,7 +337,7 @@ export function faceCutIndices(face: WallFace): [number, number] {
 }
 
 /** The top-ring cuts at a face's left and right ends, seen from outside, in `wornRingPoints` corner order. */
-function faceCuts(face: WallFace, cuts: readonly [number, number, number, number]): [number, number] {
+export function faceCuts(face: WallFace, cuts: readonly [number, number, number, number]): [number, number] {
   const [l, r] = faceCutIndices(face);
   return [cuts[l], cuts[r]];
 }
