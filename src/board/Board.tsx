@@ -228,7 +228,7 @@ function Scene({
   }, [clampFocus, camera]);
 
   // A port's tooltip (and any hover) follows the scene as the camera moves
-  // under a still pointer; after the clamp above, so it tests the final view
+  // under a still pointer (re-tested on the next frame, after the clamp above)
   useHoverFollowsCamera(controlsRef);
 
   // Animate camera to focus position when it changes
