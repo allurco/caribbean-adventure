@@ -16,8 +16,9 @@
  * it. The origin is at the ground contact; the footing carries on under
  * the ground by `FORT_FOOTING`.
  */
-import { createFacetBuilder, shadeRgb, type FacetGeometryData, type Vec3 } from "./facetBuilder";
+import { createFacetBuilder, shadeRgb, type FacetBuilder, type FacetGeometryData, type Vec3 } from "./facetBuilder";
 import type { Rgb } from "./palmGeometry";
+import { stream } from "./variationStream";
 import { FORT_KEEP_TOP, FORT_REACH, FORT_TOP, FORT_WALL_HEIGHT } from "./portFort";
 
 /** Curtain half-side, how far along the curtain each bastion's flank starts from the corner, and the flank's length. */
@@ -36,9 +37,22 @@ const UPPER_LEAN = 0.004;
 /** The breastwork round the terreplein: height and thickness; the merlons over it, their length, the embrasures between them and their height. */
 const BREASTWORK = 0.012;
 const BREASTWORK_THICKNESS = 0.03;
-const MERLON = 0.055;
-const EMBRASURE = 0.03;
+const MERLON = 0.04;
+const EMBRASURE = 0.022;
 const MERLON_HEIGHT = 0.02;
+/** The walls' courses (under and over the cordón) and a block's length; how often a low block is mossy, a block salt-pale, a column streaked. */
+const LOWER_COURSES = 4;
+const UPPER_COURSES = 2;
+const BLOCK_LENGTH = 0.085;
+const MOSS_HEIGHT = 0.06;
+const MOSS_CHANCE = 0.22;
+const MOSS: Rgb = [0.74, 0.84, 0.66];
+const SALT_CHANCE = 0.1;
+const STREAK_CHANCE = 0.12;
+const STREAK_SHADE = 0.8;
+/** Inside the walls: the barracks along the left curtain and the powder magazine on the right (their plan, wall height and roof ridge). */
+const BARRACKS = { x0: -0.235, x1: -0.155, z0: -0.13, z1: 0.15, wall: 0.045, ridge: 0.075 };
+const MAGAZINE = { x0: 0.15, x1: 0.225, z0: -0.06, z1: 0.04, wall: 0.042, ridge: 0.068 };
 /** The keep: half width and depth, how far back of the centre, and its top under its merlons. */
 const KEEP_HALF = 0.075;
 const KEEP_BACK = 0.12;
@@ -56,6 +70,9 @@ export interface FortColors {
   mortar: Rgb;
   timber: Rgb;
   iron: Rgb;
+  /** The barracks' render and the roofs inside the walls. */
+  whitewash: Rgb;
+  roof: Rgb;
 }
 
 /** The outline at y = 0, in the prism winding (`facetBuilder.prism`): round the four bastions. */
@@ -142,10 +159,56 @@ export function buildFortGeometry(colors: FortColors): FacetGeometryData {
   ];
   const rings = profile.map((r) => offsetRing(outline, r.inset, r.y));
   const wallsFrom = b.vertexCount();
+  // The battered wall under the cordón and the upper wall over it are laid
+  // in courses of blocks, each its own colour: a little jitter, the odd
+  // block mossy or salt-stained low down, the odd column streaked dark from
+  // the embrasures above. The other bands (the footing, the cordón, the
+  // breastwork's top and inner face) are single faces.
+  const coursed: Readonly<Record<number, number>> = { 1: LOWER_COURSES, 5: UPPER_COURSES };
+  const next = stream(0x2b7c19d3);
   for (let r = 0; r < rings.length - 1; r++) {
     for (let k = 0; k < n; k++) {
       const k1 = (k + 1) % n;
-      b.quad(rings[r][k], rings[r][k1], rings[r + 1][k1], rings[r + 1][k], profile[r + 1].color);
+      const a0 = rings[r][k];
+      const a1 = rings[r][k1];
+      const b0 = rings[r + 1][k];
+      const b1 = rings[r + 1][k1];
+      const courses = coursed[r];
+      if (!courses) {
+        b.quad(a0, a1, b1, b0, profile[r + 1].color);
+        continue;
+      }
+      const at = (u: number, v: number): Vec3 => {
+        const lo: Vec3 = [a0[0] + (a1[0] - a0[0]) * u, a0[1] + (a1[1] - a0[1]) * u, a0[2] + (a1[2] - a0[2]) * u];
+        const hi: Vec3 = [b0[0] + (b1[0] - b0[0]) * u, b0[1] + (b1[1] - b0[1]) * u, b0[2] + (b1[2] - b0[2]) * u];
+        return [lo[0] + (hi[0] - lo[0]) * v, lo[1] + (hi[1] - lo[1]) * v, lo[2] + (hi[2] - lo[2]) * v];
+      };
+      const length = Math.hypot(a1[0] - a0[0], a1[2] - a0[2]);
+      const blocks = Math.max(1, Math.round(length / BLOCK_LENGTH));
+      // Streaked columns under the embrasures, by block column.
+      const streaked = Array.from({ length: blocks + 1 }, () => next() < STREAK_CHANCE);
+      for (let c = 0; c < courses; c++) {
+        const v0 = c / courses;
+        const v1 = (c + 1) / courses;
+        // Running bond: every other course starts half a block in.
+        const offset = c % 2 === 1 ? 0.5 / blocks : 0;
+        const cuts = [0];
+        for (let i = 0; i < blocks; i++) {
+          const u = (i + 1) / blocks - offset;
+          if (u > 1e-6 && u < 1 - 1e-6) cuts.push(u);
+        }
+        cuts.push(1);
+        for (let i = 0; i < cuts.length - 1; i++) {
+          const y = (at(cuts[i], v0)[1] + at(cuts[i], v1)[1]) / 2;
+          const tone = 0.86 + next() * 0.24;
+          let tint: Rgb = [tone, tone, tone];
+          if (y < MOSS_HEIGHT && next() < MOSS_CHANCE) tint = [tone * MOSS[0], tone * MOSS[1], tone * MOSS[2]];
+          else if (next() < SALT_CHANCE) tint = [tone * 1.08, tone * 1.07, tone * 1.05];
+          if (streaked[i]) tint = [tint[0] * STREAK_SHADE, tint[1] * STREAK_SHADE, tint[2] * STREAK_SHADE];
+          const base = profile[r + 1].color;
+          b.quad(at(cuts[i], v0), at(cuts[i + 1], v0), at(cuts[i + 1], v1), at(cuts[i], v1), [base[0] * tint[0], base[1] * tint[1], base[2] * tint[2]]);
+        }
+      }
     }
   }
   // The footing's underside, closed so no ray through the ground sees in.
@@ -253,14 +316,84 @@ export function buildFortGeometry(colors: FortColors): FacetGeometryData {
   b.box([-STAFF, KEEP_BODY_TOP, FORT_FLAG_HOIST[2] - STAFF], [STAFF, FORT_TOP, FORT_FLAG_HOIST[2] + STAFF], colors.timber);
   const keepTo = b.vertexCount();
 
-  // Weathering: grime and damp at the foot, shade under the cordón, a little stone-to-stone jitter.
+  // The barracks and the powder magazine on the terreplein.
+  const housesFrom = b.vertexCount();
+  addBarracks(b, colors);
+  addMagazine(b, colors);
+  const housesTo = b.vertexCount();
+
+  // Weathering: grime and damp at the foot (greener than plain shade), shade under the cordón; the blocks carry their own colours.
   b.tintColors(wallsFrom, wallsTo, (p) => {
-    const t = Math.max(0, Math.min(1, p[1] / 0.04));
-    const k = 0.72 + 0.28 * t;
-    return [k, k * 0.98, k * 0.95];
+    const t = Math.max(0, Math.min(1, p[1] / 0.045));
+    const k = 0.66 + 0.34 * t;
+    return [k, k * 0.99, k * 0.93];
   });
   b.bakeAmbientOcclusion({ groundHeight: 0.025, groundStrength: 0.3, overhangs: [{ y: CORDON_Y, reach: 0.02, strength: 0.25 }], from: wallsFrom, to: wallsTo });
-  b.jitterColors(0.07, 0x6f2a9d41, wallsFrom, merlonsTo);
+  b.jitterColors(0.07, 0x6f2a9d41, wallsTo, merlonsTo);
   b.jitterColors(0.05, 0x1c7e3b55, keepFrom, keepTo);
+  b.bakeAmbientOcclusion({ groundHeight: 0.012, groundStrength: 0.3, from: housesFrom, to: housesTo });
   return b.build();
+}
+
+/** The garrison flag flies larger than a tower's (#84 detail pass), so it carries at mid zoom. */
+export const FORT_FLAG_ENLARGEMENT = 1.8;
+
+/** A nation flag built at `FORT_FLAG_HOIST`, enlarged about the hoist for the fort. */
+export function fortFlag(flag: FacetGeometryData): FacetGeometryData {
+  const positions = new Float32Array(flag.positions);
+  for (let i = 0; i < flag.vertexCount; i++) {
+    for (let c = 0; c < 3; c++) positions[i * 3 + c] = FORT_FLAG_HOIST[c] + (positions[i * 3 + c] - FORT_FLAG_HOIST[c]) * FORT_FLAG_ENLARGEMENT;
+  }
+  return { ...flag, positions };
+}
+
+/** A building on the terreplein (local y from the wall top H): walls, a gable roof with its ridge along z, `roof` coloured. */
+function terrepleinHouse(b: FacetBuilder, s: { x0: number; x1: number; z0: number; z1: number; wall: number; ridge: number }, wall: Rgb, roof: Rgb) {
+  const H = FORT_WALL_HEIGHT;
+  const y1 = H + s.wall;
+  b.box([s.x0, H, s.z0], [s.x1, y1, s.z1], wall, { bottom: false, top: false });
+  const over = 0.008;
+  const xm = (s.x0 + s.x1) / 2;
+  const ridgeY = H + s.ridge;
+  const drop = (over * (ridgeY - y1)) / ((s.x1 - s.x0) / 2);
+  const e0: Vec3 = [s.x0 - over, y1 - drop, s.z0 - over];
+  const e1: Vec3 = [s.x0 - over, y1 - drop, s.z1 + over];
+  const f0: Vec3 = [s.x1 + over, y1 - drop, s.z0 - over];
+  const f1: Vec3 = [s.x1 + over, y1 - drop, s.z1 + over];
+  const r0: Vec3 = [xm, ridgeY, s.z0 - over];
+  const r1: Vec3 = [xm, ridgeY, s.z1 + over];
+  const centre: Vec3 = [xm, y1, (s.z0 + s.z1) / 2];
+  b.outwardQuad(e0, e1, r1, r0, centre, roof);
+  b.outwardQuad(f0, r0, r1, f1, centre, shadeRgb(roof, 1.08));
+  // The gables under the roof, at both ends.
+  for (const z of [s.z0, s.z1]) b.outwardTriangle([s.x0, y1, z], [s.x1, y1, z], [xm, ridgeY - 0.004, z], centre, wall);
+  // The roof's underside, so its eaves never show through from below.
+  b.outwardQuad(e0, r0, r1, e1, [xm, ridgeY + 1, (s.z0 + s.z1) / 2], shadeRgb(roof, 0.5));
+  b.outwardQuad(f0, f1, r1, r0, [xm, ridgeY + 1, (s.z0 + s.z1) / 2], shadeRgb(roof, 0.5));
+}
+
+/** The barracks: a long low range along the left curtain, whitewashed, its doors and windows facing the parade. */
+function addBarracks(b: FacetBuilder, colors: FortColors) {
+  const s = BARRACKS;
+  terrepleinHouse(b, s, colors.whitewash, colors.roof);
+  const H = FORT_WALL_HEIGHT;
+  const x = s.x1 + 0.0008;
+  for (let i = 0; i < 4; i++) {
+    const z = s.z0 + ((i + 0.5) / 4) * (s.z1 - s.z0);
+    const door = i % 2 === 0;
+    const y0 = door ? H : H + 0.016;
+    const y1 = door ? H + 0.03 : H + 0.032;
+    const half = door ? 0.009 : 0.007;
+    b.quad([x, y0, z + half], [x, y0, z - half], [x, y1, z - half], [x, y1, z + half], door ? colors.timber : colors.mortar);
+  }
+}
+
+/** The powder magazine: a squat stone block under a steep roof, its single iron-bound door facing the parade. */
+function addMagazine(b: FacetBuilder, colors: FortColors) {
+  const s = MAGAZINE;
+  terrepleinHouse(b, s, shadeRgb(colors.stone, 0.92), shadeRgb(colors.stone, 0.82));
+  const H = FORT_WALL_HEIGHT;
+  const x = s.x0 - 0.0008;
+  const zm = (s.z0 + s.z1) / 2;
+  b.quad([x, H, zm - 0.009], [x, H, zm + 0.009], [x, H + 0.03, zm + 0.009], [x, H + 0.03, zm - 0.009], colors.iron);
 }

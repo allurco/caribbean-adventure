@@ -5,7 +5,7 @@ import { hexToWorld, type MapWrap } from "../../game/hex";
 import { paletteColor, type PaletteName } from "./palette";
 import type { Rgb } from "./palmGeometry";
 import type { FacetGeometryData } from "./facetBuilder";
-import { buildFortGeometry, FORT_FLAG_HOIST, type FortColors } from "./fortGeometry";
+import { buildFortGeometry, FORT_FLAG_HOIST, fortFlag, type FortColors } from "./fortGeometry";
 import { buildNationFlagGeometry } from "./nationFlagGeometry";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { perMapCache } from "./perMapCache";
@@ -17,20 +17,36 @@ const rgb = (name: PaletteName): Rgb => {
   return [c.r, c.g, c.b];
 };
 
-/** The fort's palette: the quay's weathered masonry for the walls, the tower's stone for the cordón, packed sand on the terreplein. */
+/** sRGB hex to linear RGB. */
+const hex = (h: number): Rgb => {
+  const toLinear = (v: number) => {
+    const s = v / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return [toLinear((h >> 16) & 255), toLinear((h >> 8) & 255), toLinear(h & 255)];
+};
+
+/**
+ * The fort's palette (#84 detail pass): pale coral limestone, the stone the
+ * Spanish forts of the Caribbean were built of, weathered to a warm grey,
+ * so the fort stands out light against the green hill; a paler cordón;
+ * packed earth on the terreplein; the barracks whitewashed under tiles.
+ */
 function fortColors(): FortColors {
-  const masonry = rgb("masonry");
-  const stone: Rgb = [masonry[0] * 0.95, masonry[1] * 0.88, masonry[2] * 0.76];
+  const stone = hex(0xcfc2a5);
   const sand = rgb("drySand");
   return {
     stone,
-    cordon: rgb("roughStone"),
-    terreplein: [sand[0] * 0.72, sand[1] * 0.68, sand[2] * 0.6],
-    mortar: [stone[0] * 0.25, stone[1] * 0.23, stone[2] * 0.21],
+    cordon: hex(0xe2d8c0),
+    terreplein: [sand[0] * 0.62, sand[1] * 0.56, sand[2] * 0.46],
+    mortar: [stone[0] * 0.2, stone[1] * 0.19, stone[2] * 0.17],
     timber: rgb("oldTimber"),
     iron: rgb("ironwork"),
+    whitewash: rgb("limewash"),
+    roof: rgb("oldTerracotta"),
   };
 }
+
 
 function toGeometry(data: FacetGeometryData): BufferGeometry {
   const geometry = new BufferGeometry();
@@ -42,7 +58,7 @@ function toGeometry(data: FacetGeometryData): BufferGeometry {
 
 const FORT_GEOMETRY = toGeometry(buildFortGeometry(fortColors()));
 const FLAG_GEOMETRIES: Readonly<Record<PortNation, BufferGeometry>> = Object.fromEntries(
-  PORT_NATIONS.map((nation) => [nation, toGeometry(buildNationFlagGeometry(nation, FORT_FLAG_HOIST))])
+  PORT_NATIONS.map((nation) => [nation, toGeometry(fortFlag(buildNationFlagGeometry(nation, FORT_FLAG_HOIST)))])
 ) as Record<PortNation, BufferGeometry>;
 const STONE_MATERIAL = new MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.95, metalness: 0 });
 const FLAG_MATERIAL = new MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.75, metalness: 0 });
