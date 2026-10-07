@@ -19,6 +19,21 @@ import {
   refractedDirection,
   MAX_REFRACTED_TRAVEL,
   facetSunlight,
+  SHELF_RECEDE_GLSL,
+  SHELF_RECEDE_NEAR_DISTANCE,
+  SHELF_RECEDE_FAR_DISTANCE,
+  SHELF_FAR_DEPTH_SCALE,
+  SHELF_FAR_DEPTH_OFFSET,
+  SHELF_OFFSET_RAMP,
+  SHORE_FOAM_FAR_SHARE,
+  SHORE_FOAM_FADE_START,
+  SHORE_FOAM_FADE_END,
+  shelfRecedeWeight,
+  recededDepthScale,
+  recededDepth,
+  recededLiftShare,
+  shoreFoamRecedeShare,
+  cameraDistanceUniform,
 } from "./waterOptics";
 
 type Rgb = readonly [number, number, number];
@@ -323,6 +338,223 @@ describe("waterOptics (#38 step 3)", () => {
       expect(schlickFresnel(0)).toBeCloseTo(1, 12);
       // ~5% at a 60° view from vertical, the steep end of the game camera.
       expect(schlickFresnel(Math.cos((60 * Math.PI) / 180))).toBeCloseTo(0.0506, 3);
+    });
+  });
+
+  describe("distance recession (stylistic, not physics, #77)", () => {
+    const lum = (c: Rgb) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    // The small map's real camera-to-focus distances: the zoom floor, the
+    // shots the look was approved on, the first map view and the zoom ceiling.
+    const ZOOM_FLOOR = 4.32;
+    const MID_SHOT = 9.07;
+    const FIRST_MAP_VIEW = 23.75;
+    const ZOOM_CEILING = 28;
+
+    describe("shelfRecedeWeight", () => {
+      it("is 0 from the zoom floor to the near distance, so the close-up shelf is untouched", () => {
+        expect(shelfRecedeWeight(ZOOM_FLOOR)).toBe(0);
+        expect(shelfRecedeWeight(SHELF_RECEDE_NEAR_DISTANCE)).toBe(0);
+        expect(shelfRecedeWeight(0)).toBe(0);
+      });
+
+      it("is 1 from the far distance to the zoom ceiling, so panning at map zoom is uniform", () => {
+        expect(shelfRecedeWeight(SHELF_RECEDE_FAR_DISTANCE)).toBe(1);
+        expect(shelfRecedeWeight(ZOOM_CEILING)).toBe(1);
+      });
+
+      it("barely touches the mid shot and is all but complete at the first map view", () => {
+        expect(shelfRecedeWeight(MID_SHOT)).toBeCloseTo(0.032, 2);
+        expect(shelfRecedeWeight(FIRST_MAP_VIEW)).toBeGreaterThan(0.98);
+      });
+
+      it("only grows as the camera pulls out", () => {
+        let prev = 0;
+        for (let d = 1; d <= 30; d += 0.25) {
+          expect(shelfRecedeWeight(d)).toBeGreaterThanOrEqual(prev);
+          prev = shelfRecedeWeight(d);
+        }
+      });
+    });
+
+    describe("recededDepthScale and recededDepth", () => {
+      it("leave the real depth alone close up", () => {
+        expect(recededDepthScale(0)).toBe(1);
+        for (const d of [0, 0.1, 0.5, 2, 6, 40]) expect(recededDepth(d, 0)).toBe(d);
+      });
+
+      it("scale the depth and add the offset at the far distance", () => {
+        expect(recededDepthScale(1)).toBe(SHELF_FAR_DEPTH_SCALE);
+        for (const d of [SHELF_OFFSET_RAMP, 1, 3, 6]) {
+          expect(recededDepth(d, 1)).toBeCloseTo(d * SHELF_FAR_DEPTH_SCALE + SHELF_FAR_DEPTH_OFFSET, 12);
+        }
+      });
+
+      it("keep the waterline at zero depth and ramp the offset in continuously", () => {
+        expect(recededDepth(0, 1)).toBe(0);
+        let prev = 0;
+        for (let d = 0.01; d <= 1; d += 0.01) {
+          const v = recededDepth(d, 1);
+          expect(v).toBeGreaterThan(prev);
+          // No step: the offset's steepest rise is under a metre per centimetre of real depth.
+          expect(v - prev).toBeLessThan(1);
+          prev = v;
+        }
+      });
+
+      it("land the shallowest water past the dark trough at the far distance", () => {
+        // Between ~3 and ~10 m of effective depth the sand is mostly absorbed and
+        // the lift has not come in; the far offset must clear it.
+        expect(recededDepth(SHELF_OFFSET_RAMP, 1)).toBeGreaterThanOrEqual(10);
+      });
+    });
+
+    describe("recededLiftShare", () => {
+      it("adds the whole lift close up and composites it by (1 − t) at the far distance", () => {
+        const t: Rgb = [0.1, 0.5, 0.9];
+        expect(recededLiftShare(t, 0)).toEqual([1, 1, 1]);
+        expect(recededLiftShare(t, 1)).toEqual([0.9, 0.5, 1 - 0.9]);
+        expect(recededLiftShare(t, 0.5)[1]).toBeCloseTo(0.75, 12);
+      });
+    });
+
+    describe("shoreFoamRecedeShare", () => {
+      it("keeps all the foam close up and the far share at the far distance", () => {
+        expect(shoreFoamRecedeShare(0)).toBe(1);
+        expect(shoreFoamRecedeShare(1)).toBeCloseTo(SHORE_FOAM_FAR_SHARE, 12);
+      });
+
+      it("fades the foam ahead of the water: at its far share from half the recession on", () => {
+        // Half-receded, the water body has gone dark but the breaker band at
+        // 57% still drew a pale halo round every island with a darker line
+        // between it and the sand; the foam must be gone before that.
+        expect(SHORE_FOAM_FADE_START).toBe(0);
+        expect(SHORE_FOAM_FADE_END).toBeLessThanOrEqual(0.5);
+        expect(shoreFoamRecedeShare(SHORE_FOAM_FADE_END)).toBeCloseTo(SHORE_FOAM_FAR_SHARE, 12);
+        expect(shoreFoamRecedeShare(0.5)).toBeCloseTo(SHORE_FOAM_FAR_SHARE, 12);
+        expect(shoreFoamRecedeShare(0.75)).toBeCloseTo(SHORE_FOAM_FAR_SHARE, 12);
+        expect(shoreFoamRecedeShare(0.25)).toBeCloseTo(1 + (SHORE_FOAM_FAR_SHARE - 1) * 0.5, 12);
+        let prev = 1;
+        for (let w = 0; w <= 1; w += 0.01) {
+          expect(shoreFoamRecedeShare(w)).toBeLessThanOrEqual(prev + 1e-12);
+          prev = shoreFoamRecedeShare(w);
+        }
+      });
+    });
+
+    describe("the approved shots", () => {
+      // Ship zoom (weight 0), the mid shot (0.032) and the first map view
+      // (0.983) were approved; the effective depth and the foam there are pinned.
+      const MID = shelfRecedeWeight(MID_SHOT);
+      const MAP = shelfRecedeWeight(FIRST_MAP_VIEW);
+
+      it("ship zoom: the real depth and all the foam", () => {
+        for (const d of [0.1, 1, 3, 6]) expect(recededDepth(d, 0)).toBe(d);
+        expect(shoreFoamRecedeShare(0)).toBe(1);
+      });
+
+      it("mid shot: within a few percent of the real depth, the foam within 2% of all of it", () => {
+        expect(recededDepth(1, MID)).toBeCloseTo(1.443, 2);
+        expect(recededDepth(3, MID)).toBeCloseTo(3.569, 2);
+        expect(recededDepth(0.1, MID)).toBeCloseTo(0.1 * (1 + 2 * MID) + 12 * MID * 0.5, 3);
+        expect(shoreFoamRecedeShare(MID)).toBeGreaterThan(0.98);
+      });
+
+      it("first map view: three times the depth plus 11.8 m, a fifth of the foam", () => {
+        expect(recededDepth(1, MAP)).toBeCloseTo(14.76, 1);
+        expect(recededDepth(3, MAP)).toBeCloseTo(20.69, 1);
+        expect(shoreFoamRecedeShare(MAP)).toBeCloseTo(SHORE_FOAM_FAR_SHARE, 2);
+      });
+    });
+
+    describe("the shelf at map zoom", () => {
+      // The shader's water body seen from straight above with the sun overhead
+      // (as the #38 test), the shelf receded by `recede`: the body at the
+      // effective depth, the lift composited by recededLiftShare.
+      const seabedSand: Rgb = [0.564, 0.456, 0.339];
+      const deepSeabed: Rgb = [0.3515, 0.3625, 0.197];
+      const downwelling: Rgb = [0.75, 0.56, 0.45];
+      const ss = (a: number, b: number, x: number) => {
+        const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+        return t * t * (3 - 2 * t);
+      };
+      const bodyLum = (real: number, recede: number) => {
+        const d = recededDepth(real, recede);
+        const k = ss(10, 30, real); // the seabed's own colour is by its real depth
+        const albedo = seabedSand.map((s, i) => s + (deepSeabed[i] - s) * k) as unknown as Rgb;
+        const fade = 1 - ss(SEABED_FADE_START, SEABED_FADE_END, d);
+        const t = waterTransmittance(2 * d).map((v) => v * fade) as unknown as Rgb;
+        const base = waterBodyRadiance(albedo, deepWaterReflectance(), t);
+        const lifted = liftedDeepWaterReflectance(deepWaterLiftWeight(d));
+        const physical = deepWaterReflectance();
+        const share = recededLiftShare(t, recede);
+        const body = base.map((v, i) => (v + (lifted[i] - physical[i]) * share[i]) * downwelling[i]) as unknown as Rgb;
+        const boost = shallowSaturationBoost(d, t[0]);
+        const l = lum(body);
+        return lum(body.map((v) => Math.max(0, l + (v - l) * (1 + boost))) as unknown as Rgb);
+      };
+
+      it("leaves open water the same at every distance", () => {
+        for (const recede of [0, 0.25, 0.5, 1]) {
+          expect(bodyLum(NO_SEABED_DEPTH, recede)).toBeCloseTo(bodyLum(NO_SEABED_DEPTH, 0), 12);
+        }
+      });
+
+      it("darkens from the waterline to open water with no ring and only a hair of re-brightening, at every stage of the recession", () => {
+        for (const recede of [0.25, 0.5, 0.75, 1]) {
+          const open = bodyLum(NO_SEABED_DEPTH, recede);
+          let runMin = Infinity;
+          for (let d = SHELF_OFFSET_RAMP; d <= NO_SEABED_DEPTH; d += 0.25) {
+            const v = bodyLum(d, recede);
+            expect(v).toBeGreaterThanOrEqual(0.98 * open);
+            // No dip-then-rise: walking out to sea it may only brighten again by a hair.
+            expect(v - runMin).toBeLessThan(0.08 * open);
+            runMin = Math.min(runMin, v);
+          }
+        }
+      });
+
+      it("is never brighter receded than close up, at any depth", () => {
+        for (let d = 0; d <= NO_SEABED_DEPTH; d += 0.25) {
+          expect(bodyLum(d, 1)).toBeLessThanOrEqual(bodyLum(d, 0) + 1e-12);
+          expect(bodyLum(d, 0.5)).toBeLessThanOrEqual(bodyLum(d, 0) + 1e-12);
+        }
+      });
+
+      it("keeps the whole shelf within a quarter of open water in luminance (the approved map-zoom look)", () => {
+        // Close up the inner shelf is more than four times open water; at map
+        // zoom the shelf is a faint halo: inner, middle and outer band all
+        // within 25% of the open sea, with no band edge between them.
+        const open = bodyLum(NO_SEABED_DEPTH, 1);
+        expect(bodyLum(1, 0)).toBeGreaterThan(3 * open);
+        for (let d = SHELF_OFFSET_RAMP; d <= 6; d += 0.25) {
+          expect(bodyLum(d, 1)).toBeLessThan(1.25 * open);
+        }
+      });
+    });
+
+    describe("GLSL", () => {
+      it("is the same functions, from the same constants", () => {
+        expect(WATER_OPTICS_GLSL).toContain(SHELF_RECEDE_GLSL);
+        expect(SHELF_RECEDE_GLSL).toContain(
+          `float shelfRecedeWeight(float cameraDistance) {\n    return smoothstep(${Math.log(SHELF_RECEDE_NEAR_DISTANCE).toFixed(6)}, ${Math.log(SHELF_RECEDE_FAR_DISTANCE).toFixed(6)}, log(max(cameraDistance, 1e-3)));`
+        );
+        expect(SHELF_RECEDE_GLSL).toContain(
+          `float shoreFoamRecedeShare(float recede) {\n    return 1.0 + ${(SHORE_FOAM_FAR_SHARE - 1).toFixed(2)} * smoothstep(${SHORE_FOAM_FADE_START.toFixed(2)}, ${SHORE_FOAM_FADE_END.toFixed(2)}, recede);`
+        );
+        expect(WATER_OPTICS_GLSL).toContain(
+          `float recededDepthScale(float recede) {\n    return 1.0 + ${(SHELF_FAR_DEPTH_SCALE - 1).toFixed(2)} * recede;`
+        );
+        expect(WATER_OPTICS_GLSL).toContain(
+          `float recededDepth(float realMetres, float recede) {\n    return realMetres * recededDepthScale(recede) + ${SHELF_FAR_DEPTH_OFFSET.toFixed(2)} * recede * smoothstep(0.0, ${SHELF_OFFSET_RAMP.toFixed(2)}, realMetres);`
+        );
+        expect(WATER_OPTICS_GLSL).toContain(
+          "vec3 recededLiftShare(vec3 t, float recede) {\n    return mix(vec3(1.0), 1.0 - t, recede);"
+        );
+      });
+    });
+
+    it("shares the camera distance as a uniform object, zero before the first frame", () => {
+      expect(cameraDistanceUniform).toEqual({ value: 0 });
     });
   });
 

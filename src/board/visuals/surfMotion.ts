@@ -39,7 +39,8 @@ export function advanceSurfTime(current: number, deltaSeconds: number, reducedMo
  * The one surf clock as a uniform (#38 step 7): the water advances it each
  * frame and the land's shoreline patch (shoreFoamLand.ts) shares the very
  * same object, so the wash on the sand pulses and churns in step with the
- * wash on the water.
+ * wash on the water. The camera's distance from its focus is shared the same
+ * way (`cameraDistanceUniform`, waterOptics.ts, #77).
  */
 export const surfTimeUniform: { value: number } = { value: 0 };
 

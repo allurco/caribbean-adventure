@@ -23,6 +23,7 @@ import { SHORE_FOAM_GLSL } from "./shoreFoam";
 import { SURF_TIMING_GLSL, surfTimeUniform } from "./surfMotion";
 import { TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
 import type { TerrainBounds } from "./terrainHeightField";
+import { cameraDistanceUniform, SHELF_RECEDE_GLSL } from "./waterOptics";
 import { METRES_PER_UNIT } from "./worldScale";
 
 /** World units below sea level over which the land's foam fades in, so the waterline has no hard edge. */
@@ -33,6 +34,7 @@ export const LAND_FOAM_GLSL = `
   uniform sampler2D terrainField;
   uniform vec4 mapBounds; // minX, maxX, minZ, maxZ
   uniform float surfTime; // seconds, wrapped on the CPU (surfMotion.ts)
+  uniform float cameraDistance; // camera to its focus point, world units (waterOptics.ts, #77)
   varying vec3 vFoamWorld;
   const float FOAM_METRES_PER_UNIT = ${METRES_PER_UNIT.toFixed(1)};
   const float FOAM_WATERLINE_SOFTNESS = ${FOAM_WATERLINE_SOFTNESS.toFixed(4)};
@@ -41,6 +43,7 @@ export const LAND_FOAM_GLSL = `
   ${FOAM_MOTION_GLSL}
   ${FOAM_SHADING_GLSL}
   ${SHORE_FOAM_GLSL}
+  ${SHELF_RECEDE_GLSL}
 
   // Foam coverage on this land fragment: the wash up the sand.
   float landFoam() {
@@ -55,7 +58,10 @@ export const LAND_FOAM_GLSL = `
     float footprintMetres = max(length(dFdx(vFoamWorld.xz)), length(dFdy(vFoamWorld.xz))) * FOAM_METRES_PER_UNIT;
     float detail = foamDetailFade(footprintMetres, SHORE_FOAM_LACE_METRES);
     float lace = foamLace(coverage, foamBreakupNoise(vFoamWorld.xz, SHORE_FOAM_NOISE_SCALE, surfChurn(surfTime)));
-    return mix(coverage * FOAM_FAR_SHARE, lace, detail) * waveDetailFade(length(vFoamWorld - cameraPosition));
+    // ... and, like the water's shore bands, as the shelf recedes with
+    // camera distance (#77, waterOptics.ts).
+    return mix(coverage * FOAM_FAR_SHARE, lace, detail) * waveDetailFade(length(vFoamWorld - cameraPosition))
+      * shoreFoamRecedeShare(shelfRecedeWeight(cameraDistance));
   }
 `;
 
@@ -92,6 +98,7 @@ export function injectShoreFoam<T>(shader: ShoreFoamShader, { texture, bounds, w
   shader.uniforms.terrainField = { value: texture };
   shader.uniforms.mapBounds = { value: [bounds.minX, bounds.maxX, bounds.minZ, bounds.maxZ] };
   shader.uniforms.surfTime = surfTimeUniform;
+  shader.uniforms.cameraDistance = cameraDistanceUniform;
   const wrapDefine = wrap ? "\n#define TERRAIN_FIELD_WRAP_X" : "";
   shader.vertexShader = shader.vertexShader
     .replace("#include <common>", `#include <common>${VERTEX_DECLARATIONS}`)

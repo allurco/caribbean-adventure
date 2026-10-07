@@ -23,7 +23,7 @@ import { TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
 import { advanceSurfTime, SURF_TIMING_GLSL, surfTimeUniform } from "./surfMotion";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
 import { useSeabedPrepass } from "./seabedPrepass";
-import { WATER_OPTICS_GLSL } from "./waterOptics";
+import { cameraDistanceUniform, WATER_OPTICS_GLSL } from "./waterOptics";
 import { METRES_PER_UNIT } from "./worldScale";
 import { GLINT_BASE_ROUGHNESS2 } from "./oceanWaves";
 import { SUN_GLINT_GLSL } from "./sunGlint";
@@ -99,6 +99,7 @@ const fragmentShader = `
   uniform mat4 cameraProjectionInverse;
   uniform mat4 cameraWorld;      // camera.matrixWorld
   uniform mat4 cameraViewProjection; // projection × view, to find a world point's prepass texel
+  uniform float cameraDistance;  // camera to its focus point, world units (the shelf recedes with it, #77)
   // The seabed mesh stops where its light is under 1% (VISIBLE_SEABED_DEPTH,
   // waterOptics.ts); texels with no seabed read NO_SEABED_DEPTH, past the fade.
   const float NO_SEABED_Y = -NO_SEABED_DEPTH / METRES_PER_UNIT;
@@ -308,7 +309,12 @@ const fragmentShader = `
     // The seabed's depth below the displaced surface (a crest looks through
     // more water than a trough), and the path down to it along the
     // refracted view ray, in metres.
-    float depth = max(vWorld.y - seabedWorldY, 0.0) * METRES_PER_UNIT;
+    // Stylistic, not physics (#77): the shelf recedes as the camera pulls
+    // out. The water body is computed for an effective depth, the real one
+    // scaled up with camera distance (waterOptics.ts), so the water is more
+    // opaque from afar; open water is opaque already and does not change.
+    float recede = shelfRecedeWeight(cameraDistance);
+    float depth = recededDepth(max(vWorld.y - seabedWorldY, 0.0) * METRES_PER_UNIT, recede);
     float viewPath = depth / max(-refracted.y, 0.05);
 
     // Sunlight reaches the seabed along the refracted sun ray, then the light
@@ -332,8 +338,12 @@ const fragmentShader = `
     // top rather than mixed by (1 − t): the lifted blue is brighter than the
     // seabed's own, so mixing drew a dark ring wherever the seabed still shows.
     vec3 lift = liftedDeepWaterReflectance(deepWaterLiftWeight(depth)) - deepWaterReflectance();
-    body += lift * facetDownwelling;
-    // Stylistic, not physics: a mild saturation boost in the shallows only.
+    // ... close up. As the shelf recedes (#77) the lift is composited under
+    // the seabed by (1 − t) instead, so it never adds to a seabed that still
+    // shows (waterOptics.ts).
+    body += lift * facetDownwelling * recededLiftShare(t, recede);
+    // Stylistic, not physics: a mild saturation boost in the shallows only
+    // (by the effective depth, so it goes as the shelf recedes, #77).
     float luma = dot(body, vec3(0.2126, 0.7152, 0.0722));
     return max(mix(vec3(luma), body, 1.0 + shallowSaturationBoost(depth, t.r)), 0.0);
   }
@@ -401,7 +411,10 @@ const fragmentShader = `
     float pulse = surfPulse(vWorld.xz, surfTime, 0.0);
     float sets = surfPulse(vWorld.xz, surfTime, SETS_PHASE_LEAD);
     float reef = inField ? terrainFieldReef(fieldTexel) : 0.0;
-    float shoreCoverage = shoreFoamCoverage(seabedDepthMetres, reef, terrainFieldReefWindward(fieldTexel), pulse, sets) * distanceFade;
+    // The shore bands also fade as the shelf recedes with camera distance
+    // (#77, waterOptics.ts); the whitecaps and the hull foam do not.
+    float shoreCoverage = shoreFoamCoverage(seabedDepthMetres, reef, terrainFieldReefWindward(fieldTexel), pulse, sets) * distanceFade
+      * shoreFoamRecedeShare(shelfRecedeWeight(cameraDistance));
     float hullCoverage = shipFoamCoverage(vWorld.xz) * distanceFade;
     float shore = lacedFoam(shoreCoverage, SHORE_FOAM_NOISE_SCALE, SHORE_FOAM_LACE_METRES, churn, footprintMetres);
     float whitecaps = lacedFoam(whitecapCoverage, WHITECAP_NOISE_SCALE, WHITECAP_LACE_METRES, churn, footprintMetres);
@@ -494,6 +507,7 @@ export function Ocean({
           mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
           shipFoamCount: { value: 0 },
           shipFoamWrap: { value: wrap ? wrapWorldWidth(wrap) : 0 },
+          cameraDistance: { value: 0 },
         },
       ]),
       defines: wrap ? { ...cubeUvDefines(skyHeight), TERRAIN_FIELD_WRAP_X: "" } : cubeUvDefines(skyHeight),
@@ -502,6 +516,7 @@ export function Ocean({
     // UniformsUtils.merge clones uniform values, so textures, shared uniforms
     // and the ship arrays are attached afterwards.
     mat.uniforms.surfTime = surfTimeUniform;
+    mat.uniforms.cameraDistance = cameraDistanceUniform;
     mat.uniforms.terrainField = { value: terrainField.texture };
     mat.uniforms.skyEnv = { value: sky };
     mat.uniforms.seabedColor = { value: seabed.texture };
@@ -548,6 +563,9 @@ export function Ocean({
     mat.uniforms.cameraProjectionInverse.value.copy(camera.projectionMatrixInverse);
     mat.uniforms.cameraWorld.value.copy(camera.matrixWorld);
     mat.uniforms.cameraViewProjection.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    // How far the camera is from its focus: the shelf and the shore foam
+    // recede with it (#77); shared with the land's wash (shoreFoamLand.ts).
+    if (focus) cameraDistanceUniform.value = camera.position.distanceTo(focus);
     // The one surf clock, shared with the land's shoreline foam.
     surfTimeUniform.value = advanceSurfTime(surfTimeUniform.value, delta, reducedMotion);
     // This frame's animated ship positions (written by Ship.tsx) for the hull foam.
