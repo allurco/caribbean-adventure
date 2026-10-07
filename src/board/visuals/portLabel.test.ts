@@ -8,9 +8,11 @@ import {
   PORT_LABEL_MAX_PX,
   PORT_LABEL_MIN_HEIGHT,
   PORT_LABEL_MIN_OPACITY,
+  PORT_LABEL_VIEWPORT_MARGIN,
   portLabelBaseY,
   portLabelOpacity,
   portLabelScale,
+  portLabelScreenShift,
   worldUnitsPerPixel,
 } from "./portLabel";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
@@ -137,5 +139,38 @@ describe("portLabelOpacity", () => {
 
   it("stays readable while the port is hovered", () => {
     expect(portLabelOpacity(4.3, true)).toBe(1);
+  });
+});
+
+describe("portLabelScreenShift", () => {
+  const M = PORT_LABEL_VIEWPORT_MARGIN;
+
+  it("leaves a label that is already inside the viewport where it is", () => {
+    expect(portLabelScreenShift({ baselineY: 300, topY: 270, portY: 400 })).toBe(0);
+    // Exactly at the margin counts as inside
+    expect(portLabelScreenShift({ baselineY: M + 30, topY: M, portY: 400 })).toBe(0);
+  });
+
+  it("brings a label lifted off the top back down to the margin", () => {
+    // Ship zoom over Crescent Harbor: the port is on screen, its label's top is above it
+    const shift = portLabelScreenShift({ baselineY: 10, topY: -20, portY: 350 });
+    expect(shift).toBeCloseTo(M + 20, 10);
+    expect(-20 + shift).toBeCloseTo(M, 10);
+  });
+
+  it("never pulls the label's baseline below the port it names", () => {
+    // The port itself is near the top edge: the label may only come down onto it
+    expect(portLabelScreenShift({ baselineY: -10, topY: -40, portY: 5 })).toBeCloseTo(15, 10);
+  });
+
+  it("lets a label go off screen with a port that is off screen", () => {
+    // Port above the top edge: the label (above it on screen) is not pinned to the edge
+    const shift = portLabelScreenShift({ baselineY: -120, topY: -150, portY: -60 });
+    expect(-120 + shift).toBeLessThanOrEqual(-60);
+    expect(-150 + shift).toBeLessThan(0);
+  });
+
+  it("never pushes a label up", () => {
+    expect(portLabelScreenShift({ baselineY: 300, topY: 270, portY: 200 })).toBe(0);
   });
 });

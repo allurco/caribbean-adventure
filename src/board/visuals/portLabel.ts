@@ -14,6 +14,8 @@
  *   pier are lower and nearer the water than any roof).
  * - Fade: close in, where the buildings name the port on their own, it fades
  *   to `PORT_LABEL_MIN_OPACITY`; hovering the port brings it back.
+ * - Clamp: the lift can carry it off the top of the screen at ship zoom while
+ *   the port is still in view, so it is brought back down inside the edge.
  */
 
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
@@ -91,4 +93,34 @@ export function portLabelOpacity(distance: number, hovered: boolean): number {
   const t = Math.min(1, Math.max(0, (distance - PORT_LABEL_FADE_NEAR) / (PORT_LABEL_FADE_FAR - PORT_LABEL_FADE_NEAR)));
   const eased = t * t * (3 - 2 * t);
   return PORT_LABEL_MIN_OPACITY + (1 - PORT_LABEL_MIN_OPACITY) * eased;
+}
+
+/**
+ * Smallest gap, in CSS pixels, kept between a label's top and the viewport's
+ * top edge: below the HUD's top bar (glory, gold, moves), so it is not drawn
+ * under it.
+ */
+export const PORT_LABEL_VIEWPORT_MARGIN = 56;
+
+/** Screen positions (CSS pixels down from the viewport's top) of a label and the port it names. */
+export interface PortLabelScreen {
+  /** The label's baseline. */
+  baselineY: number;
+  /** The top of its glyphs. */
+  topY: number;
+  /** The port's ground point under the label. */
+  portY: number;
+}
+
+/**
+ * How far down, in CSS pixels (≥ 0), to move a label so its top stays
+ * `PORT_LABEL_VIEWPORT_MARGIN` inside the viewport's top edge. The lift that
+ * clears the roofs can carry it off the top at ship zoom while the port is
+ * still in view. It never comes down past the port it names, so a label whose
+ * port is itself off the top goes off with it instead of sticking to the edge.
+ */
+export function portLabelScreenShift({ baselineY, topY, portY }: PortLabelScreen): number {
+  const needed = PORT_LABEL_VIEWPORT_MARGIN - topY;
+  const room = portY - baselineY;
+  return Math.max(0, Math.min(needed, room));
 }
