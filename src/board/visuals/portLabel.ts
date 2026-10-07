@@ -13,7 +13,8 @@
  *   the port's centre, so it never sits across the settlement (the quay and
  *   pier are lower and nearer the water than any roof).
  * - Fade: close in, where the buildings name the port on their own, it fades
- *   to `PORT_LABEL_MIN_OPACITY`; hovering the port brings it back.
+ *   to `PORT_LABEL_MIN_OPACITY`, and out entirely at town zoom (#90);
+ *   hovering the port brings it back, short of town zoom.
  * - Clamp: the lift can carry it off the top of the screen at ship zoom while
  *   the port is still in view, so it is brought back down inside the edge.
  */
@@ -35,8 +36,21 @@ export const PORT_LABEL_LIFT_MARGIN = 0.08;
 export const PORT_LABEL_FADE_FAR = 9;
 /** Camera-to-label distance at and within which the label is at its faintest. */
 export const PORT_LABEL_FADE_NEAR = 5.5;
-/** The faintest the label gets (close in, not hovered): still readable over shore foam. */
+/** The faintest the label gets at ship zoom (close in, not hovered): still readable over shore foam. */
 export const PORT_LABEL_MIN_OPACITY = 0.35;
+/**
+ * Camera-to-label distance at and beyond which the label keeps its ship-zoom
+ * floor (`PORT_LABEL_MIN_OPACITY`). At the old ship-zoom floor (camera 4.32
+ * from its focus) the label is about 3.8 away, so ship zoom is unchanged.
+ */
+export const PORT_LABEL_TOWN_FADE_FAR = 3;
+/**
+ * Camera-to-label distance at and within which the label is gone (#90): at
+ * town zoom the camera is among the roofs, the label would hang over the
+ * streets (or be pinned to the top edge by the clamp), and the town names
+ * itself. Hovering does not bring it back here (see `portLabelOpacity`).
+ */
+export const PORT_LABEL_TOWN_FADE_NEAR = 2;
 
 /**
  * World units per CSS pixel at `distance` from a perspective camera with
@@ -87,13 +101,22 @@ export function portLabelBaseY(
 /**
  * The label's opacity at `distance` from the camera: 1 from
  * `PORT_LABEL_FADE_FAR` out, easing to `PORT_LABEL_MIN_OPACITY` at
- * `PORT_LABEL_FADE_NEAR` and closer. Always 1 while the port is hovered.
+ * `PORT_LABEL_FADE_NEAR` and closer, then from `PORT_LABEL_TOWN_FADE_FAR`
+ * on out to nothing at `PORT_LABEL_TOWN_FADE_NEAR` (town zoom, #90). Hovering
+ * the port brings it back to 1, except at town zoom: there one hex fills the
+ * screen, so the pointer rests on the port nearly all the time, and the town
+ * fade applies all the same.
  */
 export function portLabelOpacity(distance: number, hovered: boolean): number {
-  if (hovered) return 1;
+  const town = Math.min(
+    1,
+    Math.max(0, (distance - PORT_LABEL_TOWN_FADE_NEAR) / (PORT_LABEL_TOWN_FADE_FAR - PORT_LABEL_TOWN_FADE_NEAR))
+  );
+  const townEased = town * town * (3 - 2 * town);
+  if (hovered) return townEased;
   const t = Math.min(1, Math.max(0, (distance - PORT_LABEL_FADE_NEAR) / (PORT_LABEL_FADE_FAR - PORT_LABEL_FADE_NEAR)));
   const eased = t * t * (3 - 2 * t);
-  return PORT_LABEL_MIN_OPACITY + (1 - PORT_LABEL_MIN_OPACITY) * eased;
+  return (PORT_LABEL_MIN_OPACITY + (1 - PORT_LABEL_MIN_OPACITY) * eased) * townEased;
 }
 
 /** Air, in CSS pixels, between the bottom of the HUD's top bar and a label's top. */
