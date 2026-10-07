@@ -120,8 +120,10 @@ reads that depth back, so the colour follows the drawn seabed exactly.
 **CPU consumers.** Everything placed on land asks the field for its ground:
 `groundPlacement.ts` probes a footprint's centre and rim for trees, rocks,
 stones and shrubs (`decorationLayout.ts`, once per map); the port kit
-(`portSettlement.ts`, `quayPlacement.ts`, `pierPlacement.ts`) stands on the
-drawn lattice surface instead (`landSurface`, §2); `useHexGrid.ts` lifts each
+(`portSettlement.ts`, `quayPlacement.ts`, `pierPlacement.ts`) and the
+village with its walls and clutter (`villageLayout.ts`,
+`townDetailLayout.ts`, #87) stand on the drawn lattice surface instead
+(`landSurface`, §2); `useHexGrid.ts` lifts each
 port's label and hover volume to `groundTopY`; `shoreBoulders.ts` keeps
 boulders where the coast distance straddles the waterline;
 `useWaterGridLines.ts` fades the water hex grid's lines by coast distance as
@@ -129,6 +131,32 @@ they approach the shore. A rendered point on land must sit within a small
 tolerance of `sampleHeight` there. The shadow box (§4) does not sample the
 field: it is sized from the view's reach and fixed caster and receiver
 depths.
+
+**Town plateaus (#87, ADR 0003).** Round each port with a pier the field
+levels a terraced town plateau (`townPlateau.ts`), so the village stands on
+terraces rather than plinths and its streets are ground, not decals (ADR
+0002). It is planned per port on the natural land (the plans never see
+each other) and authored at the 115 m hex, drawn at `PROP_SCALE`: a square
+by the pier root where the port kit's square stands (`settlementCentre`),
+at the natural height kept between `SHORE_KEEP_TOP` and one riser above
+it; one to three flat terraces inland along the pier's line, stepping up
+by at most `RISER` (about 4 m); risers that are a steep `RISER_FACE` (about
+2 m wide) for the retaining walls, widening to the full `RAMP` where the
+main street or a back lane climbs; and the streets (a main street up the
+terraces, a back lane either side, a cross lane on the first one or two
+terraces) carved `STREET_CARVE` (about half a metre) into their terraces.
+Outside the plan the plateau fades into the slope over `BLEND`, and it is
+weighted by the natural height from 0 at `SHORE_KEEP_BOTTOM` to 1 at
+`SHORE_KEEP_TOP`, so below the shore band the field, the coastline, the
+pier's shore contact and the quay's sea face are untouched, the land stays
+above the sea, and the seabed and the shore foam (both read from the
+field) are unchanged. `field.townPlateaus` lists them; `towns: false`
+builds the natural land, for tests. Samples find their plateaus through a
+grid (`plateauLookup`), so land away from a town pays one map look-up.
+`townPlateau.test.ts` pins: flat terraces and square to the bit but for
+the street carve, risers a face off the streets and a ramp on them, no
+step at the blend, the untouched field past it and under the shore band,
+and plans independent of the other ports.
 
 **Invariants the tests pin (`terrainHeightField.test.ts`).**
 
@@ -227,6 +255,27 @@ few hundredths. Props that stand on the field through `groundPlacement.ts`
 (`sampleHeight` plus `creasesWithin`, the lattice vertices and edge crossings
 under a footprint) and `decorationLayout.ts` hands it to the settlement, the
 quay and the pier (§3 *Standing on the ground*).
+
+**The town ground (#87).** The lattice (about 30 m at the 350 m hex) is
+coarser than a street or a riser, so round each town the mesh is refined
+(`townGround.ts`). A lattice corner is flagged when it lies within
+`TOWN_FLAG_MARGIN` (a step and a quarter) of a town's plan and it and its
+six lattice neighbours are above the sea; a land triangle with a flagged
+corner and all three corners above the sea is cut into `TOWN_REFINE`²
+(100) triangles at about 3 m, each vertex the coarse plane blended to the
+field by the corners' flags (`refinedVertex`), so an edge with two
+unflagged ends stays on the coarse edge. An unrefined land neighbour
+across a cut edge is drawn as a coplanar fan from its centroid to the
+cuts, so no T-junction opens, and because no refined triangle reaches the
+waterline none borders the (uncut) seabed mesh. Sub-faces are coloured as
+any land face, or as setts (the main street and the paved middle of the
+square) and trodden earth (the lanes). `landSurface` samples the same
+sub-triangles (each refined triangle's heights cached once), so buildings
+and clutter stand on the ground as drawn. Cost: on the large map the land
+triangles go from about 81k to 298k and the benchmark build from about
+200 to 310–350 ms locally; `townGround.test.ts` pins no new open edges,
+the mesh untouched away from towns, and the placement surface equal to
+the drawn faces at their corners and inside them.
 
 **Tests (`landMesh.test.ts`).** Every vertex lies on the field; land is whole
 flat triangles and the seabed indexed with shared vertices, smooth normals
@@ -834,6 +883,39 @@ cannot keep the mouth clear, so on generated maps no building stands on
 the quay and none moved when the rule landed; the seam is in place for
 smaller quay pieces (a crane, a customs shed, stacked cargo).
 
+**The village (#87, ADR 0003).** A port is a village on its town plateau,
+gathered round the port kit above, which stays as it is (watchtower,
+church, tavern, house and warehouse on the square; quay and pier): one set
+of buildings, the village keeping a margin round the kit's. The kit keeps
+its own standing rule but now also refuses a footprint across a riser
+(`settlementGround`'s `crossesRiser`). `villageLayout.ts` lays the village
+out per port: a row of warehouses either side of the pier root facing the
+water, a ring of houses round the square facing its middle (merchants'
+houses first), houses shoulder to shoulder along both sides of every
+street facing it (merchants' low on the main street, stone houses and
+cottages up it, cottages on the lanes, a lean-to against the odd house)
+and a few cottages at the plateau's edge; about 45 buildings a port with
+the warehouses and lean-tos. Five kinds of our own (`villageBuildingGeometry.ts`:
+cottage, stone house, merchant's house, lean-to, warehouse) in the aged
+kit's register, each roof one of seven terracotta tones. A building
+stands on the lowest drawn ground under its walls unless that would bury
+the uphill side by more than `VILLAGE_MAX_BURY` (0.05 at scale 1), and is
+refused where it would show more than `VILLAGE_MAX_FOOTING_SHOWN` (0.03; on
+the beach 60 % of it), on wet ground, across a riser or its wall, on a
+street, over the kit, the quay or the pier deck, or past the hex.
+`townDetailLayout.ts` adds the works (dry-stone retaining walls on the
+riser faces, kerbs on the main street, edge stones on the lanes) and the
+clutter (a fountain, stalls and carts on the square, cargo by the
+warehouses, boats and net racks on the beach, gardens, palms), each piece
+off the streets, the harbour, the risers, the buildings and steep banks.
+Trees, rocks, stones, shrubs and boulders are dropped inside a town's plan
+(`TOWN_CLEAR_MARGIN`), on its buildings and on its clutter (`townKeepOut`).
+Everything is merged into one vertex-coloured mesh per map
+(`villageGeometry.ts`, about 195k triangles on the small map) and drawn
+once per world copy (`PortVillage.tsx`), casting and receiving shadows: a
+draw and a shadow draw per copy. `villagePlacement.test.ts` holds the
+placement over 200 seeds of every map size.
+
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
 capped at 1280 per side; the bounds pad the outermost cell centres by the
@@ -1238,6 +1320,11 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | `docs/adr/0001-one-terrain-height-field.md` | The decision: one height field, driven by cell elevation |
 | `src/board/visuals/terrainHeightField.ts` | The height field: coast distance, seabed, blended elevation, relief; `sampleHeight` |
 | `src/board/visuals/sharedTerrainField.ts` | The map's one field, built once per `cells` array and wrap |
+| `src/board/visuals/townPlateau.ts` | Town plateaus in the field: terraces, risers, carved streets (#87) |
+| `src/board/visuals/townGround.ts` | Which lattice corners are refined round a town, and its setts and earth |
+| `src/board/visuals/villageLayout.ts` | The port village's houses on the plateau (#87) |
+| `src/board/visuals/townDetailLayout.ts` | The town's retaining walls, kerbs and clutter; props kept out of it |
+| `src/board/visuals/villageGeometry.ts` | Every village merged into one mesh per map |
 | `src/board/visuals/perMapCache.ts` | Once-per-map builds derived from the field (bake, land mesh, decoration layout) |
 | `src/board/visuals/seamStrip.ts` | The one-wrap-wide strip a wrapping map's field and meshes are built over |
 | `src/board/visuals/periodicNoise.ts` | Simplex noise for the coast, relief and reef crest; periodic on a wrapping map |

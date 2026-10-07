@@ -67,7 +67,7 @@ Hexagonal grid uses **cube coordinates** `(q, r, s)` where `s = -q - r`, flat-to
 
 ### Terrain System
 
-One terrain height field (ADR 0001) drives everything drawn on or under the sea. `terrainHeightField.ts` builds it from `G.cells` and a seed in pure TypeScript: `sampleHeight(x, z)` in world space, a noise-perturbed coastline, `cell.elevation` setting how high land rises, negative under water. `sharedTerrainField.ts` builds it once per map. `landMesh.ts` samples it into one lattice mesh (land above sea level, seabed below); `terrainFieldTexture.ts` bakes it into a texture the ocean, wave displacement and shore foam shaders read; decorations and the port kit sample it on the CPU. Full design and the invariants the tests pin are in **`docs/terrain-system.md`** — read it before changing the field or the terrain/ocean shaders.
+One terrain height field (ADR 0001) drives everything drawn on or under the sea. `terrainHeightField.ts` builds it from `G.cells` and a seed in pure TypeScript: `sampleHeight(x, z)` in world space, a noise-perturbed coastline, `cell.elevation` setting how high land rises, negative under water; round each port it levels the town's terraces and carves its streets (`townPlateau.ts`, where the port village stands, `villageLayout.ts`). `sharedTerrainField.ts` builds it once per map. `landMesh.ts` samples it into one lattice mesh (land above sea level, seabed below); `terrainFieldTexture.ts` bakes it into a texture the ocean, wave displacement and shore foam shaders read; decorations and the port kit sample it on the CPU. Full design and the invariants the tests pin are in **`docs/terrain-system.md`** — read it before changing the field or the terrain/ocean shaders.
 
 ### Art Direction and Scale
 
