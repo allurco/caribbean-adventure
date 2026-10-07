@@ -12,10 +12,10 @@ const fieldsByCells = new WeakMap<readonly MapCell[], { wrap: MapWrap; field: Te
 const sameWrap = (a: MapWrap, b: MapWrap): boolean => (a?.columns ?? null) === (b?.columns ?? null);
 
 /** Dev-only field options (#83 prototype), set once from the URL before any field is built. */
-let devOptions: Pick<TerrainHeightFieldOptions, "massifs"> = {};
+let devOptions: Pick<TerrainHeightFieldOptions, "massifs" | "townPlateaus"> = {};
 
 /** Set the dev-only options every shared field is built with (call before the first build). */
-export function setSharedTerrainFieldOptions(options: Pick<TerrainHeightFieldOptions, "massifs">): void {
+export function setSharedTerrainFieldOptions(options: Pick<TerrainHeightFieldOptions, "massifs" | "townPlateaus">): void {
   devOptions = options;
 }
 

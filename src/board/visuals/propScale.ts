@@ -47,6 +47,14 @@ export function shipScaleFor(propScale: number): number {
 }
 /** The ships' factor (1 unless `?hexMetres` is given): `min(1, 2 × PROP_SCALE)`. */
 export const SHIP_SCALE = shipScaleFor(PROP_SCALE);
+/** How much bigger than true scale the buildings are drawn under `?hexMetres` (#84: 10–15 %). */
+export const BUILDING_ENLARGEMENT = 1.125;
+/** The buildings' factor for a prop scale: `PROP_SCALE × BUILDING_ENLARGEMENT`, exactly 1 at today's scale. */
+export function buildingScaleFor(propScale: number): number {
+  return propScale === 1 ? 1 : propScale * BUILDING_ENLARGEMENT;
+}
+/** Factor on every building (village and port kit), its footprint, margins and footing rule (1 unless `?hexMetres` is given). */
+export const BUILDING_SCALE = buildingScaleFor(PROP_SCALE);
 /** Multiplier on the derived props' counts per cell (1 unless `?hexMetres` is given). */
 export const PROP_DENSITY = propDensityFor(PROP_SCALE);
 /** Whether the physical water follows the hex scale (`&scaleWater=1`). */

@@ -34,6 +34,7 @@ import {
   placeMassifs,
   type Massif,
 } from "./islandMassifs";
+import { applyTownPlateaus, planTownPlateau, type TownPlateau } from "./townPlateau";
 
 export { ELEVATION_HEIGHTS };
 
@@ -166,6 +167,11 @@ export interface TerrainHeightFieldOptions {
    * default, so the field is unchanged unless asked.
    */
   massifs?: boolean;
+  /**
+   * Prototype (#84): a terraced town plateau round each port's quay square
+   * (`townPlateau.ts`), sized at this prop scale. Off by default.
+   */
+  townPlateaus?: { scale: number };
 }
 
 export interface TerrainHeightField {
@@ -196,6 +202,8 @@ export interface TerrainHeightField {
   periodX: number | null;
   /** The massifs the field was built with (#83 prototype); empty or absent with the flag off. */
   massifs?: readonly Massif[];
+  /** The town plateaus the field was built with (#84 prototype); empty with the option off. */
+  townPlateaus?: readonly TownPlateau[];
 }
 
 /** Seeded PRNG (mulberry32), same as the map generator's. */
@@ -604,6 +612,7 @@ export function createTerrainHeightField(
   };
 
   const scratch: [number, number] = [0, 0];
+  const plateaus: TownPlateau[] = [];
 
   const sampleHeight = (x: number, z: number): number => {
     const d = sampleCoastDistance(x, z);
@@ -656,8 +665,21 @@ export function createTerrainHeightField(
       const h = k > 0 ? Math.max(k - Math.abs(height - body), 0) / k : 0;
       height = Math.max(height, body) + (h * h * k) / 4;
     }
+    // Town plateaus (#84 prototype): none unless asked, so the field is unchanged.
+    if (plateaus.length > 0) height = applyTownPlateaus(plateaus, x, z, height, strip ? strip.width : null);
     return SEA_LEVEL + height;
   };
+
+  // Planned on the field without them (the list is still empty here).
+  const plateauScale = options.townPlateaus?.scale;
+  if (plateauScale !== undefined) {
+    for (const cell of cells) {
+      const pier = cell.hasPort ? cell.decorations?.find((d) => d.type === "pier") : undefined;
+      if (!pier) continue;
+      const [px, , pz] = hexToWorld(cell.hex);
+      plateaus.push(planTownPlateau({ x: px, z: pz, toWater: pier.rotation }, (sx, sz) => sampleHeight(inStrip(sx), sz), plateauScale));
+    }
+  }
 
   const sampleElevation = (x: number, z: number): number => {
     const out: [number, number] = [0, 0];
@@ -676,5 +698,6 @@ export function createTerrainHeightField(
     bounds,
     periodX: strip ? strip.width : null,
     massifs,
+    townPlateaus: plateaus,
   };
 }

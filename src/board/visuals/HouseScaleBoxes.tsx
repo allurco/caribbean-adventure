@@ -13,7 +13,7 @@ import { HEX_METRES } from "./propScale";
 const townOf = perMapCache((cells: readonly MapCell[], wrap: MapWrap) => {
   const field = sharedTerrainField(cells, wrap);
   const layout = decorationLayoutOf(cells, wrap);
-  const kit = { buildings: layout.buildings, quays: layout.quays, piers: layout.piers };
+  const kit = { buildings: layout.buildings, quays: layout.quays, piers: layout.piers, plateaus: field.townPlateaus };
   const started = performance.now();
   const town = portTown(cells, landSurface(field), wrap, kit, terrainSeedFromCells(cells));
   const ports = cells.filter((c) => c.hasPort).length;

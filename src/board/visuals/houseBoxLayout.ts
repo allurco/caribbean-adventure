@@ -35,10 +35,12 @@ import {
 import { quayTopAt, type QuayPlacement } from "./quayPlacement";
 import { PIER_WIDTH } from "./pierGeometry";
 import { SEA_LEVEL } from "./terrainHeightField";
-import { PROP_SCALE } from "./propScale";
+import { BUILDING_SCALE, PROP_SCALE } from "./propScale";
 import { lerpRange, seedOf, stream } from "./variationStream";
+import { plateauPlanDistance, type TownPlateau } from "./townPlateau";
 
-const K = PROP_SCALE;
+/** Every village length follows the buildings' scale; the pier's follow the prop scale. */
+const K = BUILDING_SCALE;
 const TAU = Math.PI * 2;
 const SQRT3 = Math.sqrt(3);
 /** Past the walls on every side: the roof's overhang plus the lean, at scale 1. */
@@ -102,6 +104,8 @@ export interface PortKit {
   quays: readonly QuayPlacement[];
   /** The piers' land ends. */
   piers: readonly { worldX: number; worldZ: number; rotation: number }[];
+  /** The field's town plateaus (`&townGround=1`), if any. */
+  plateaus?: readonly TownPlateau[];
 }
 
 /** A footprint in plan: centre, unit facing (local +z) and half extents across and along it, eaves included. */
@@ -148,16 +152,141 @@ function polylineDistance(x: number, z: number, line: readonly [number, number][
 }
 
 /** A street from (x, z) heading `heading` (radians, 0 = +z), wandering a little each step. */
-function street(x: number, z: number, heading: number, length: number, next: () => number): [number, number][] {
+function street(x: number, z: number, heading: number, length: number, next: () => number, wander = STREET_WANDER): [number, number][] {
   const points: [number, number][] = [[x, z]];
   let h = heading;
   for (let d = 0; d < length; d += STREET_STEP) {
-    h += (next() * 2 - 1) * STREET_WANDER;
+    h += (next() * 2 - 1) * wander;
     x += Math.sin(h) * STREET_STEP;
     z += Math.cos(h) * STREET_STEP;
     points.push([x, z]);
   }
   return points;
+}
+
+/** On a plateau: the main street's wander per step, the gaps along a frontage, the odd yard, and how far a frontage may sit back. */
+const PLATEAU_WANDER = 0.035;
+const PLATEAU_GAP: readonly [number, number] = [0.003 * K, 0.015 * K];
+const PLATEAU_YARD_CHANCE = 0.06;
+const PLATEAU_SETBACK: readonly [number, number] = [0, 0.012 * K];
+/** Lanes across the plateau off the main street: where along it they branch (fractions of its length). */
+const PLATEAU_LANE_AT: readonly number[] = [0.4, 0.75];
+/** Edge houses: how many a plateau aims for, tries, and how far into the blend they may stand (fraction of it). */
+const PLATEAU_EDGE_TARGET: readonly [number, number] = [4, 8];
+const PLATEAU_EDGE_TRIES = 200;
+const PLATEAU_EDGE_REACH = 0.6;
+/** Houses round the square: the ring's sweep either side of inland (radians). */
+const SQUARE_SWEEP = 2.4;
+
+type TryPlace = (kind: BuildingKind, x: number, z: number, yaw: number, scale: number, tint: number) => boolean;
+
+/**
+ * The village on a town plateau: a main street straight up the terraces
+ * from the square, a back lane either side of it and one or two lanes
+ * across, houses shoulder to shoulder along every frontage, a ring of
+ * houses round the square, and a few at the plateau's edge.
+ */
+function plateauVillage(
+  p: TownPlateau,
+  tryPlace: TryPlace,
+  streets: [number, number][][],
+  next: () => number,
+  scaleRoll: () => number,
+  tintRoll: () => number,
+  jitter: () => number
+): number {
+  let houses = 0;
+  const heading = Math.atan2(p.ux, p.uz);
+  const ax = -p.uz;
+  const az = p.ux;
+  const houseHalfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * PORT_BUILDING_SCALE_RANGE[1] * K;
+  const start = p.squareRadius * 0.6;
+  const main = street(p.x + p.ux * start, p.z + p.uz * start, heading, p.length - start, next, PLATEAU_WANDER);
+  // Back lanes parallel to the main street, a pair of house depths out either side.
+  const backOffset = 2 * STREET_HALF_WIDTH + 4 * houseHalfD + PLATEAU_GAP[1];
+  const backLanes = [1, -1].map((side) => main.map(([x, z]): [number, number] => [x + ax * side * backOffset, z + az * side * backOffset]));
+  const lanes: [number, number][][] = [];
+  for (const at of PLATEAU_LANE_AT.slice(0, next() < 0.5 ? 1 : 2)) {
+    const [lx, lz] = main[Math.min(main.length - 1, Math.floor(main.length * at))];
+    const side = next() < 0.5 ? 1 : -1;
+    lanes.push(street(lx, lz, heading + side * Math.PI / 2, p.halfWidth, next, PLATEAU_WANDER));
+  }
+  streets.push(main, ...backLanes, ...lanes);
+
+  /** Houses shoulder to shoulder along one side of a street, facing it. */
+  const frontage = (line: readonly [number, number][], side: number) => {
+    let carry = lerpRange(PLATEAU_GAP, next());
+    for (let i = 1; i < line.length && houses < MAX_HOUSES; i++) {
+      const [x0, z0] = line[i - 1];
+      const [x1, z1] = line[i];
+      const segLen = Math.hypot(x1 - x0, z1 - z0) || 1;
+      const tx = (x1 - x0) / segLen;
+      const tz = (z1 - z0) / segLen;
+      const nx = tz * side;
+      const nz = -tx * side;
+      let along = carry;
+      while (along < segLen && houses < MAX_HOUSES) {
+        const scale = scaleRoll();
+        const tint = tintRoll();
+        const halfW = (AGED_BUILDING_PLAN.house.halfW + EAVE_MARGIN) * scale;
+        const halfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * scale;
+        const gap = next() < PLATEAU_YARD_CHANCE ? 2 * halfW : lerpRange(PLATEAU_GAP, next());
+        const setback = lerpRange(PLATEAU_SETBACK, next());
+        const px = x0 + tx * (along + halfW);
+        const pz = z0 + tz * (along + halfW);
+        const yaw = Math.atan2(-nx, -nz) + jitter();
+        const off = STREET_HALF_WIDTH + halfD + setback;
+        if (tryPlace("house", px + nx * off, pz + nz * off, yaw, scale, tint)) {
+          houses++;
+          along += 2 * halfW + gap;
+        } else {
+          along += halfW * 0.5;
+        }
+      }
+      carry = Math.max(0, along - segLen);
+    }
+  };
+
+  // The square's ring first, facing its middle, then the main street's frontage, the lanes, the back lanes.
+  const ringRadius = p.squareRadius * 0.85;
+  for (let a = -SQUARE_SWEEP; a <= SQUARE_SWEEP && houses < MAX_HOUSES; ) {
+    const scale = scaleRoll();
+    const halfW = (AGED_BUILDING_PLAN.house.halfW + EAVE_MARGIN) * scale;
+    const halfD = (AGED_BUILDING_PLAN.house.halfD + EAVE_MARGIN) * scale;
+    const dir = heading + a;
+    const r = ringRadius + halfD;
+    const x = p.x + Math.sin(dir) * r;
+    const z = p.z + Math.cos(dir) * r;
+    if (tryPlace("house", x, z, dir + Math.PI + jitter(), scale, tintRoll())) {
+      houses++;
+      a += (2 * halfW + lerpRange(PLATEAU_GAP, next())) / r;
+    } else {
+      a += halfW / r;
+    }
+  }
+  for (const side of [1, -1]) frontage(main, side);
+  for (const lane of lanes) for (const side of [1, -1]) frontage(lane, side);
+  backLanes.forEach((lane, i) => {
+    const outward = i === 0 ? 1 : -1;
+    for (const side of [-outward, outward]) frontage(lane, side);
+  });
+
+  // A few houses at the plateau's edge, turned any way.
+  const edgeTarget = Math.round(lerpRange(PLATEAU_EDGE_TARGET, next()));
+  let edge = 0;
+  for (let i = 0; i < PLATEAU_EDGE_TRIES && edge < edgeTarget && houses < MAX_HOUSES; i++) {
+    const s = next() * p.length;
+    const across = (next() * 2 - 1) * (p.halfWidth + p.blend * PLATEAU_EDGE_REACH);
+    const x = p.x + p.ux * s + ax * across;
+    const z = p.z + p.uz * s + az * across;
+    const d = plateauPlanDistance(p, x, z);
+    if (d <= 0 || d > p.blend * PLATEAU_EDGE_REACH) continue;
+    if (tryPlace("house", x, z, next() * TAU, scaleRoll(), tintRoll())) {
+      edge++;
+      houses++;
+    }
+  }
+  return houses;
 }
 
 /** Why village spots were refused, counted across the last layout (a dev diagnostic). */
@@ -221,7 +350,7 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
       const foot: Footprint = { x, z, fx, fz, halfW: (plan.halfW + EAVE_MARGIN) * scale, halfD: (plan.halfD + EAVE_MARGIN) * scale };
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
       if (!edgeNormals.every(([ux, uz]) => (x - cx) * ux + (z - cz) * uz <= SQRT3 / 2 - reach)) return reject("hex");
-      if (Math.hypot(pier.worldX - x, pier.worldZ - z) < PIER_WIDTH * K + reach) return reject("pier");
+      if (Math.hypot(pier.worldX - x, pier.worldZ - z) < PIER_WIDTH * PROP_SCALE + reach) return reject("pier");
       if (placed.some((p) => overlaps(p, foot, EAVE_GAP))) return reject("overlap");
       if (streets.some((line) => polylineDistance(x, z, line) < STREET_HALF_WIDTH + Math.min(foot.halfW, foot.halfD))) return reject("street");
       let top = -Infinity;
@@ -257,7 +386,7 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
     const warehouseWidth = (AGED_BUILDING_PLAN.warehouse.halfW + EAVE_MARGIN) * 2 * K;
     for (let slot = 0; slot < 12 && warehouses < warehouseTarget; slot++) {
       const side = slot % 2 === 0 ? 1 : -1;
-      const along = side * (PIER_WIDTH * K + warehouseWidth * (0.6 + Math.floor(slot / 2)) + WAREHOUSE_SPACING * Math.floor(slot / 2));
+      const along = side * (PIER_WIDTH * PROP_SCALE + warehouseWidth * (0.6 + Math.floor(slot / 2)) + WAREHOUSE_SPACING * Math.floor(slot / 2));
       const scale = scaleRoll();
       const tint = tintRoll();
       const yaw = toWater + jitter();
@@ -272,6 +401,13 @@ export function portTown(cells: readonly MapCell[], ground: GroundField, _wrap: 
           }
         }
       }
+    }
+
+    // On a town plateau (`&townGround=1`) the village packs onto its terraces instead.
+    const plateau = kit.plateaus?.find((p) => Math.hypot(p.x - cx, p.z - cz) < 1.2);
+    if (plateau) {
+      plateauVillage(plateau, tryPlace, streets, next, scaleRoll, tintRoll, jitter);
+      continue;
     }
 
     // 2. The main street inland from the square, and one or two lanes off it.

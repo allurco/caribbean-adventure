@@ -58,7 +58,7 @@ import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./
 import { SEA_LEVEL } from "./terrainHeightField";
 import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
 import { lerpRange, seedOf, stream } from "./variationStream";
-import { PROP_SCALE } from "./propScale";
+import { BUILDING_SCALE, PROP_SCALE } from "./propScale";
 
 export interface PortBuilding {
   kind: BuildingKind;
@@ -276,9 +276,9 @@ export const BUILDING_SINK = 0.002;
 /** The footing's base stays at least this far under the lowest ground under the footprint, so nothing floats. */
 export const BUILDING_FOOTING_MARGIN = 0.01;
 /** The ground contact for a footprint whose highest ground is `max`. */
-export const buildingGroundY = (max: number) => max - BUILDING_SINK * PROP_SCALE;
+export const buildingGroundY = (max: number) => max - BUILDING_SINK * BUILDING_SCALE;
 /** Widest height spread a footprint may take: its footing (BUILDING_FOOTING at the building's scale) covers the low side with the margin to spare. */
-export const buildingMaxSpread = (footing: number) => footing - BUILDING_SINK * PROP_SCALE - BUILDING_FOOTING_MARGIN * PROP_SCALE;
+export const buildingMaxSpread = (footing: number) => footing - BUILDING_SINK * BUILDING_SCALE - BUILDING_FOOTING_MARGIN * BUILDING_SCALE;
 
 /**
  * The #84 experiment, scaled only: how far a building's uphill side may
@@ -348,7 +348,7 @@ export function standBuilding(
   placed: readonly Footprint[],
   plan?: PlanFootprint
 ): { x: number; y: number; z: number } | null {
-  if (placed.some((p) => Math.hypot(p.x - at.x, p.z - at.z) < p.reach + reach + PORT_BUILDING_GAP * PROP_SCALE)) return null;
+  if (placed.some((p) => Math.hypot(p.x - at.x, p.z - at.z) < p.reach + reach + PORT_BUILDING_GAP * BUILDING_SCALE)) return null;
   const { min, max, quay } = footprintGround(ground, at.x, at.z, reach, plan);
   if (quay === "edge") return null;
   if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") * PROP_SCALE + reach) return null;
@@ -394,10 +394,10 @@ function standOnBeach(
     // Rings from the square outwards, the first with the near corner on the square's edge;
     // the ground fit may pull a spot back to the ring inside it.
     // The square, the rings and their step shrink with the #84 prop scale (1 unless `?hexMetres` is given).
-    const first = PORT_SQUARE_RADIUS * PROP_SCALE + reach;
-    const step = RADIAL_STEP * PROP_SCALE;
+    const first = PORT_SQUARE_RADIUS * BUILDING_SCALE + reach;
+    const step = RADIAL_STEP * BUILDING_SCALE;
     // Scaled, the square may spread further (three times the scaled radius) to find ground that takes a building without a plinth.
-    const farthest = PORT_BUILDING_MAX_RADIUS * PROP_SCALE * (PROP_SCALE === 1 ? 1 : 3);
+    const farthest = PORT_BUILDING_MAX_RADIUS * BUILDING_SCALE * (BUILDING_SCALE === 1 ? 1 : 3);
     for (let radius = first; radius <= farthest + 1e-9; radius += step) {
       const inner = Math.max(first, radius - step);
       const anchor = { x: centre.x + dir.x * inner, z: centre.z + dir.z * inner };
@@ -462,7 +462,7 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
 
     const placed: Footprint[] = [];
     for (const { kind, slot } of order) {
-      const scale = lerpRange(scaleRangeOf(kind), next()) * PROP_SCALE;
+      const scale = lerpRange(scaleRangeOf(kind), next()) * BUILDING_SCALE;
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;

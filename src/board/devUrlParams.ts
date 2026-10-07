@@ -30,6 +30,8 @@ export interface DevUrlParams {
   scaleWater?: boolean;
   /** `&minDist=<positive>`: the #84 experiment's zoom floor, in world units, instead of the map-fraction one. */
   minDistance?: number;
+  /** `&townGround=1`: the #84 experiment's terraced town plateau round each port square in the terrain field. */
+  townGround?: boolean;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -60,6 +62,7 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   const hexMetres = finiteNumber(params.get("hexMetres"));
   if (hexMetres !== undefined && hexMetres > 0) out.hexMetres = hexMetres;
   if (params.get("scaleWater") === "1") out.scaleWater = true;
+  if (params.get("townGround") === "1") out.townGround = true;
   const minDist = finiteNumber(params.get("minDist"));
   if (minDist !== undefined && minDist > 0) out.minDistance = minDist;
 

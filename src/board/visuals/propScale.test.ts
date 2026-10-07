@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  BUILDING_SCALE,
+  buildingScaleFor,
   HEX_METRES,
   PROP_DENSITY,
   PROP_SCALE,
@@ -21,6 +23,8 @@ describe("the #84 prop scale", () => {
     expect(PROP_SCALE).toBe(1);
     expect(PROP_DENSITY).toBe(1);
     expect(SHIP_SCALE).toBe(1);
+    expect(BUILDING_SCALE).toBe(1);
+    expect(buildingScaleFor(1)).toBe(1);
     expect(shipScaleFor(1)).toBe(1);
     expect(HEX_METRES).toBe(115);
     expect(WATER_FOLLOWS_HEX_SCALE).toBe(false);
@@ -40,6 +44,10 @@ describe("the #84 prop scale", () => {
     expect(shipScaleFor(propScaleFor(350))).toBeCloseTo(0.657, 3);
     expect(shipScaleFor(propScaleFor(1000))).toBeCloseTo(0.23, 3);
     expect(shipScaleFor(propScaleFor(200))).toBe(1);
+  });
+
+  it("draws buildings 12.5 % over the prop scale under hexMetres", () => {
+    expect(buildingScaleFor(propScaleFor(350))).toBeCloseTo((115 / 350) * 1.125, 12);
   });
 
   it("moves the water's unit with the hex scale when asked", () => {
