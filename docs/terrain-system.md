@@ -150,6 +150,9 @@ by at most `RISER` (about 4 m); risers that are a steep `RISER_FACE` (about
 main street or a back lane climbs; and the streets (a main street up the
 terraces, a back lane either side, a cross lane on the first one or two
 terraces) carved `STREET_CARVE` (about half a metre) into their terraces.
+Every street leaves the square at its inland edge, where the first ramp
+starts: the square is the kit's, and a street across it ran under the
+church.
 Outside the plan the plateau fades into the slope over `BLEND`, and it is
 weighted by the natural height from 0 at `SHORE_KEEP_BOTTOM` to 1 at
 `SHORE_KEEP_TOP`, so below the shore band the field, the coastline, the
@@ -893,7 +896,10 @@ gathered round the port kit above, which stays as it is (watchtower,
 church, tavern, house and warehouse on the square; quay and pier): one set
 of buildings, the village keeping a margin round the kit's. The kit keeps
 its own standing rule but now also refuses a footprint across a riser
-(`settlementGround`'s `crossesRiser`). `villageLayout.ts` lays the village
+(`settlementGround`'s `crossesRiser`) or touching a street or its kerbs
+anywhere along its walls (`onStreet`, `footprintOnStreet`); since the
+square holds the kit and the streets start past it, neither costs the kit
+a building. `villageLayout.ts` lays the village
 out per port: a row of warehouses either side of the pier root facing the
 water, a ring of houses round the square facing its middle (merchants'
 houses first), houses shoulder to shoulder along both sides of every
@@ -909,7 +915,8 @@ refused where it would show more than `VILLAGE_MAX_FOOTING_SHOWN` (0.03; on
 the beach 60 % of it), on wet ground, across a riser or its wall, on a
 street, over the kit, the quay or the pier deck, or past the hex.
 `townDetailLayout.ts` adds the works (dry-stone retaining walls on the
-riser faces, kerbs on the main street, edge stones on the lanes) and the
+riser faces, kerbs on the main street, edge stones on the lanes, none in a
+building's walls, `streetEdgeStones`) and the
 clutter (a fountain, stalls and carts on the square, cargo by the
 warehouses, boats and net racks on the beach, gardens, palms), each piece
 off the streets, the harbour, the risers, the buildings and steep banks.
@@ -919,7 +926,9 @@ Everything is merged into one vertex-coloured mesh per map
 (`villageGeometry.ts`, about 195k triangles on the small map) and drawn
 once per world copy (`PortVillage.tsx`), casting and receiving shadows: a
 draw and a shadow draw per copy. `villagePlacement.test.ts` holds the
-placement over 200 seeds of every map size.
+placement over 200 seeds of every map size, the kit's buildings off the
+risers, the streets, the lanes and their kerbs, and every kerb and edge
+stone out of every building's walls.
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,

@@ -1,7 +1,9 @@
 /**
  * The village's placement over 200 seeds of every map size (#87): no
- * floating or buried buildings, no building across a terrace riser, and
- * nothing on a street's running surface, the quay or the pier.
+ * floating or buried buildings, no building (the port kit's included)
+ * across a terrace riser, nothing on a street's running surface, the quay
+ * or the pier, no kit building on a street, a lane or their kerbs, and no
+ * kerb or edge stone inside a building's walls.
  */
 import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
@@ -11,10 +13,11 @@ import type { MapCell } from "../../game/types";
 import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
 import { landSurface } from "./landMesh";
 import { pierOrigin } from "./pierPlacement";
-import { portBuildings, planFootprint, planProbePoints } from "./portSettlement";
+import { portBuildings, planFootprint, type PlanFootprint } from "./portSettlement";
 import { portQuays } from "./quayPlacement";
-import { crossesRiser, RETAINING_WALL_DEPTH } from "./townPlateau";
-import { pieceClearRadius, townClutter } from "./townDetailLayout";
+import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH } from "./townPlateau";
+import { pieceClearRadius, streetEdgeStones, townClutter } from "./townDetailLayout";
+import { AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { BUILDING_FOOTING } from "./buildingGeometry";
 import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
 import {
@@ -50,16 +53,21 @@ function piersOf(cells: readonly MapCell[], drawn: ReturnType<typeof landSurface
   return piers;
 }
 
+/** A kit building's plan footprint as a rectangle in the world. */
+const planRectOf = (plan: PlanFootprint, x: number, z: number): PlanRect => ({ x, z, fx: Math.sin(plan.yaw), fz: Math.cos(plan.yaw), halfW: plan.halfW, halfD: plan.halfD });
+
 interface Tally {
   maps: number;
   ports: number;
   houses: number;
   clutter: number;
+  kit: number;
+  stones: number;
   failures: string[];
 }
 
 function sweep(size: MapSizeId): Tally {
-  const tally: Tally = { maps: 0, ports: 0, houses: 0, clutter: 0, failures: [] };
+  const tally: Tally = { maps: 0, ports: 0, houses: 0, clutter: 0, kit: 0, stones: 0, failures: [] };
   const fail = (seed: number, what: string) => {
     if (tally.failures.length < 20) tally.failures.push(`${size} seed ${seed}: ${what}`);
   };
@@ -80,11 +88,22 @@ function sweep(size: MapSizeId): Tally {
     tally.clutter += clutter.length;
     for (const port of ports) {
       const harbour: PlanRect[] = [pierRect(port.pier), ...port.quays.map(quayRect)];
-      // The kit's walls keep off the risers too.
+      // Every building's walls: the kit's here, the village's below; no kerb or edge stone may stand in one.
+      const walls: PlanRect[] = port.buildings.map(villageWalls);
+      // The kit's walls keep off the risers too, and off the streets, the lanes and their kerbs.
       for (const b of kit) {
-        if (Math.hypot(b.worldX - port.cx, b.worldZ - port.cz) > 1 || Math.hypot(b.worldX - port.cx, b.worldZ - port.cz) < 1e-9) continue;
-        const corners = planProbePoints(b.worldX, b.worldZ, planFootprint(b.kind, b.scale, b.yaw), 2, 2).map((p) => [p.x, p.z] as const);
+        if (Math.hypot(b.worldX - port.cx, b.worldZ - port.cz) > 1) continue;
+        const plan = AGED_BUILDING_PLAN[b.kind];
+        walls.push({ x: b.worldX, z: b.worldZ, fx: Math.sin(b.yaw), fz: Math.cos(b.yaw), halfW: plan.halfW * b.scale, halfD: plan.halfD * b.scale });
+        if (Math.hypot(b.worldX - port.cx, b.worldZ - port.cz) < 1e-9) continue; // a tower's last-resort fallback
+        const corners = rectCorners(planRectOf(planFootprint(b.kind, b.scale, b.yaw), b.worldX, b.worldZ));
         if (crossesRiser(port.plateau, corners, RETAINING_WALL_DEPTH * BUILDING_SCALE)) fail(seed, `kit ${b.kind} across a riser`);
+        if (footprintOnStreet(port.plateau, corners, KERB_WIDTH * BUILDING_SCALE)) fail(seed, `kit ${b.kind} on a street or its kerbs`);
+        tally.kit++;
+      }
+      for (const stone of streetEdgeStones(port.plateau, drawn, BUILDING_SCALE, port.walls)) {
+        tally.stones++;
+        if (walls.some((w) => overlaps(w, stone, 0))) fail(seed, `a ${stone.kerb ? "kerb" : "edge stone"} inside a building's walls`);
       }
       for (const b of port.buildings) {
         tally.houses++;
@@ -132,10 +151,14 @@ describe("village placement over 200 seeds per map size (#87)", () => {
       const tally = sweep(size);
       console.log(
         `village ${size}: ${tally.maps} maps, ${tally.ports} ports, ${(tally.houses / tally.ports).toFixed(1)} houses and ` +
-          `${(tally.clutter / tally.ports).toFixed(1)} clutter pieces per port, in ${((performance.now() - started) / 1000).toFixed(1)} s`
+          `${(tally.clutter / tally.ports).toFixed(1)} clutter pieces, ${(tally.kit / tally.ports).toFixed(2)} kit buildings and ` +
+          `${(tally.stones / tally.ports).toFixed(0)} kerb and edge stones per port, in ${((performance.now() - started) / 1000).toFixed(1)} s`
       );
       expect(tally.failures).toEqual([]);
       expect(tally.houses / tally.ports).toBeGreaterThan(20);
+      // The watchtower and church, and most of the tavern, warehouse and house, at every port; the kerbs drawn.
+      expect(tally.kit / tally.ports).toBeGreaterThan(2.5);
+      expect(tally.stones / tally.ports).toBeGreaterThan(50);
     }, 600000);
   }
 });

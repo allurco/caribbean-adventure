@@ -129,6 +129,8 @@ export interface PortTownPlan {
   quays: readonly QuayPlacement[];
   /** Every rectangle taken: the kit's (with its margins), the quay's, the pier's and the village's. */
   footprints: readonly PlanRect[];
+  /** Every building's walls, without eaves or margins: the kit's and the village's (no kerb stands in one). */
+  walls: readonly PlanRect[];
   streets: readonly TownLane[];
   buildings: readonly VillageBuilding[];
 }
@@ -461,7 +463,16 @@ export function planPortTowns(cells: readonly MapCell[], ground: GroundField, ki
     // 2. The square's ring, the streets' frontages and the edge.
     plateauVillage(plateau, tryPlace, next, scaleRoll, tintRoll, jitter);
     town.push(...here);
-    ports.push({ cx, cz, plateau, pier, quays, footprints: placed, streets, buildings: here });
+    const walls: PlanRect[] = kitHere.map((b) => ({
+      x: b.worldX,
+      z: b.worldZ,
+      fx: Math.sin(b.yaw),
+      fz: Math.cos(b.yaw),
+      halfW: AGED_BUILDING_PLAN[b.kind].halfW * b.scale,
+      halfD: AGED_BUILDING_PLAN[b.kind].halfD * b.scale,
+    }));
+    walls.push(...here.map(villageWalls));
+    ports.push({ cx, cz, plateau, pier, quays, footprints: placed, walls, streets, buildings: here });
   }
   return { buildings: town, ports };
 }

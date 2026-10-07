@@ -65,7 +65,7 @@ import { SEA_LEVEL } from "./terrainHeightField";
 import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
 import { lerpRange, seedOf, stream } from "./variationStream";
 import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
-import { crossesRiser, RETAINING_WALL_DEPTH, type TownPlateau } from "./townPlateau";
+import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH, type TownPlateau } from "./townPlateau";
 
 export interface PortBuilding {
   kind: BuildingKind;
@@ -302,6 +302,8 @@ export interface SettlementGround extends GroundField {
   onQuay(x: number, z: number): boolean;
   /** Whether a footprint (its corners) crosses one of the town's terrace risers and its retaining wall (#87); absent without a town. */
   crossesRiser?(corners: readonly (readonly [number, number])[]): boolean;
+  /** Whether a footprint (its corners in order) touches one of the town's streets or the kerbs along them (#87); absent without a town. */
+  onStreet?(corners: readonly (readonly [number, number])[]): boolean;
 }
 
 /**
@@ -313,18 +315,22 @@ export interface SettlementGround extends GroundField {
  * surface and wins. The quay is placed once here, however many points a
  * port's buildings then probe. Same `field` and `seed` as `portQuays`.
  * With the port's town `plateau` (#87), footprints across its terrace
- * risers are refused (`standBuilding`), as the village's are.
+ * risers or on its streets and their kerbs are refused (`standBuilding`),
+ * as the village's are; the plateau keeps its square one level out past the
+ * kit and starts its streets beyond it, so the kit seldom meets either.
  */
 export function settlementGround(cell: MapCell, field: GroundField, seed: number, plateau?: TownPlateau): SettlementGround {
   const quay = placeQuay(cell, field, seed);
   // The ground's creases are the terrain's: the deck is flat, and where the sand drifts over the quay they are the sand's.
   const creasesWithin = field.creasesWithin?.bind(field);
   const crossesRiserHere = plateau && ((corners: readonly (readonly [number, number])[]) => crossesRiser(plateau, corners, RETAINING_WALL_DEPTH * BUILDING_SCALE));
-  if (!quay) return { quay, creasesWithin, crossesRiser: crossesRiserHere, onQuay: () => false, sampleHeight: (x, z) => field.sampleHeight(x, z) };
+  const onStreet = plateau && ((corners: readonly (readonly [number, number])[]) => footprintOnStreet(plateau, corners, KERB_WIDTH * BUILDING_SCALE));
+  if (!quay) return { quay, creasesWithin, crossesRiser: crossesRiserHere, onStreet, onQuay: () => false, sampleHeight: (x, z) => field.sampleHeight(x, z) };
   return {
     quay,
     creasesWithin,
     crossesRiser: crossesRiserHere,
+    onStreet,
     onQuay: (x, z) => quayTopAt(quay, { x, z }) !== undefined,
     sampleHeight: (x, z) => {
       const terrain = field.sampleHeight(x, z);
@@ -359,9 +365,18 @@ export function standBuilding(
   // The reserve is the pier's width, so it shrinks with the pier.
   if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") * PROP_SCALE + reach) return null;
   if (max - min > buildingMaxSpread(footing)) return null;
-  if (plan && ground.crossesRiser) {
-    const corners = [-1, 1].flatMap((u) => [-1, 1].map((v) => planPoint(at.x, at.z, plan, u * plan.halfW, v * plan.halfD)));
-    if (ground.crossesRiser(corners.map((p) => [p.x, p.z] as const))) return null;
+  if (plan && (ground.crossesRiser || ground.onStreet)) {
+    // The walls' corners in order round the rectangle.
+    const corners = [
+      [-1, -1],
+      [1, -1],
+      [1, 1],
+      [-1, 1],
+    ].map(([u, v]) => {
+      const p = planPoint(at.x, at.z, plan, u * plan.halfW, v * plan.halfD);
+      return [p.x, p.z] as const;
+    });
+    if (ground.crossesRiser?.(corners) || ground.onStreet?.(corners)) return null;
   }
   return { x: at.x, y: buildingGroundY(max), z: at.z };
 }

@@ -23,7 +23,8 @@
  *   a slope with the wall either side of it.
  * - The streets: a main street straight up the terraces from the square, a
  *   back lane either side of it, and a lane across the middle of the first
- *   one or two terraces. Each is carved `STREET_CARVE` (about 0.5 m) into its
+ *   one or two terraces, all clear of the square, which is the port kit's.
+ *   Each is carved `STREET_CARVE` (about 0.5 m) into its
  *   terrace, flat across most of its width and rising to the terrace at its
  *   edges, where the kerb stones stand.
  * - Outside that plan the plateau fades into the untouched terrain over
@@ -227,14 +228,18 @@ export function plateauPoint(p: TownPlateau, s: number, across: number): [number
 /** Where riser `k`'s face is centred, along the axis. */
 export const riserCentre = (p: TownPlateau, k: number): number => p.steps[k] + p.ramp / 2;
 
-/** The streets of a planned plateau: the main street, the back lanes either side and a lane across each of the first one or two terraces. */
+/**
+ * The streets of a planned plateau: the main street, the back lanes either
+ * side and a lane across each of the first one or two terraces. Every one
+ * leaves the square at its inland edge, where the first terrace's ramp
+ * starts: the square is the port kit's, and a street through it would run
+ * under the church (#87).
+ */
 function planStreets(p: TownPlateau, mainHalf: number, laneHalf: number, back: number): TownStreet[] {
-  const start = p.squareRadius * 0.5;
+  const start = p.steps[0];
   const streets: TownStreet[] = [{ kind: "main", from: plateauPoint(p, start, 0), to: plateauPoint(p, p.length, 0), halfWidth: mainHalf }];
-  // The back lanes start where the square's disc ends either side of the main street.
-  const backStart = Math.sqrt(Math.max(0, p.squareRadius * p.squareRadius - back * back));
   for (const side of [1, -1]) {
-    streets.push({ kind: "back", from: plateauPoint(p, backStart, side * back), to: plateauPoint(p, p.length - laneHalf, side * back), halfWidth: laneHalf });
+    streets.push({ kind: "back", from: plateauPoint(p, start, side * back), to: plateauPoint(p, p.length - laneHalf, side * back), halfWidth: laneHalf });
   }
   const terraces = p.steps.length;
   for (let k = 0; k < Math.min(2, terraces); k++) {
@@ -258,6 +263,57 @@ export function segmentDistance(x: number, z: number, ax: number, az: number, bx
 /** Distance from (x, z) to a street's centre line. */
 export const streetDistance = (street: TownStreet, x: number, z: number): number =>
   segmentDistance(x, z, street.from[0], street.from[1], street.to[0], street.to[1]);
+
+/** Twice the signed area of the triangle a, b, c (positive turning left). */
+const cross2 = (ax: number, az: number, bx: number, bz: number, cx: number, cz: number) => (bx - ax) * (cz - az) - (bz - az) * (cx - ax);
+
+/** Whether the segments a→b and c→d cross or touch. */
+function segmentsMeet(ax: number, az: number, bx: number, bz: number, cx: number, cz: number, dx: number, dz: number): boolean {
+  const d1 = cross2(cx, cz, dx, dz, ax, az);
+  const d2 = cross2(cx, cz, dx, dz, bx, bz);
+  const d3 = cross2(ax, az, bx, bz, cx, cz);
+  const d4 = cross2(ax, az, bx, bz, dx, dz);
+  return d1 * d2 <= 0 && d3 * d4 <= 0;
+}
+
+/** Whether (x, z) lies inside a convex polygon given by its corners in order. */
+function insideConvex(corners: readonly (readonly [number, number])[], x: number, z: number): boolean {
+  let sign = 0;
+  for (let i = 0; i < corners.length; i++) {
+    const [ax, az] = corners[i];
+    const [bx, bz] = corners[(i + 1) % corners.length];
+    const c = Math.sign(cross2(ax, az, bx, bz, x, z));
+    if (c === 0) continue;
+    if (sign === 0) sign = c;
+    else if (c !== sign) return false;
+  }
+  return true;
+}
+
+/** Distance between a street's centre line and a convex footprint (its corners in order): 0 where they meet. */
+function streetFootprintDistance(street: TownStreet, corners: readonly (readonly [number, number])[]): number {
+  const [ax, az] = street.from;
+  const [bx, bz] = street.to;
+  if (insideConvex(corners, ax, az)) return 0;
+  let best = Infinity;
+  for (let i = 0; i < corners.length; i++) {
+    const [cx, cz] = corners[i];
+    const [dx, dz] = corners[(i + 1) % corners.length];
+    if (segmentsMeet(ax, az, bx, bz, cx, cz, dx, dz)) return 0;
+    best = Math.min(best, segmentDistance(cx, cz, ax, az, bx, bz), segmentDistance(ax, az, cx, cz, dx, dz), segmentDistance(bx, bz, cx, cz, dx, dz));
+  }
+  return best;
+}
+
+/**
+ * Whether a footprint (a convex outline, its corners in order, in the
+ * world) touches any of the plateau's streets: comes within the street's
+ * half width plus `margin` (its kerbs or edge stones) of its centre line,
+ * anywhere along its walls, not only at a corner.
+ */
+export function footprintOnStreet(p: TownPlateau, corners: readonly (readonly [number, number])[], margin: number): boolean {
+  return p.streets.some((street) => streetFootprintDistance(street, corners) < street.halfWidth + margin);
+}
 
 /** How much of a street's carve (0…1) reaches (x, z): the full depth over its flat bottom, rising to nothing at its edge. */
 export function streetCarveAt(p: TownPlateau, x: number, z: number): number {

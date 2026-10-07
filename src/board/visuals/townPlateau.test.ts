@@ -10,6 +10,8 @@ import {
   SHORE_KEEP_TOP,
   SQUARE_END,
   crossesRiser,
+  footprintOnStreet,
+  plateauLocal,
   plateauLevel,
   plateauPoint,
   plateauPlanDistance,
@@ -139,14 +141,39 @@ describe("town plateaus (#87)", () => {
     }
   });
 
-  it("keeps the square one level out to the port kit's reach", () => {
+  it("keeps the square one level out to the port kit's reach, and starts every street at its inland edge (the kit stands on the square, off the streets)", () => {
     for (const seed of SEEDS) {
       for (const p of fieldsOf(seed).town.townPlateaus) {
         expect(p.steps[0]).toBeCloseTo(SQUARE_END * SCALE, 12);
         // The kit's church, straight inland of the square, reaches a quarter unit inland at most (portSettlement.test.ts).
         expect(p.steps[0]).toBeGreaterThan(0.26);
+        for (const street of p.streets) {
+          for (const end of [street.from, street.to]) expect(plateauLocal(p, end[0], end[1]).s).toBeGreaterThanOrEqual(p.steps[0] - 1e-9);
+        }
       }
     }
+  });
+
+  it("says when a footprint touches a street's running surface (with a margin for its kerbs), and not when it stands beside it", () => {
+    const p = fieldsOf(1).town.townPlateaus[0];
+    const main = p.streets.find((s) => s.kind === "main")!;
+    const mid = (p.steps[0] + p.length) / 2;
+    const rect = (s: number, across: number, halfS: number, halfA: number) =>
+      [
+        [-halfS, -halfA],
+        [halfS, -halfA],
+        [halfS, halfA],
+        [-halfS, halfA],
+      ].map(([ds, da]) => plateauPoint(p, s + ds, across + da));
+    // Astride the main street, with no corner on it: a corner test alone would miss it.
+    expect(footprintOnStreet(p, rect(mid, 0, 0.01, main.halfWidth * 3), 0)).toBe(true);
+    // Its corner just inside the street's edge, and just outside it.
+    expect(footprintOnStreet(p, rect(mid, main.halfWidth + 0.02 - 0.001, 0.01, 0.02), 0)).toBe(true);
+    expect(footprintOnStreet(p, rect(mid, main.halfWidth + 0.02 + 0.001, 0.01, 0.02), 0)).toBe(false);
+    // The margin widens the street by the kerbs.
+    expect(footprintOnStreet(p, rect(mid, main.halfWidth + 0.02 + 0.001, 0.01, 0.02), 0.002)).toBe(true);
+    // Past the street's start, on the square.
+    expect(footprintOnStreet(p, rect(p.steps[0] - main.halfWidth - 0.02, 0, 0.01, 0.01), 0)).toBe(false);
   });
 
   it("makes each riser a steep face, but a ramp where the main street climbs it", () => {

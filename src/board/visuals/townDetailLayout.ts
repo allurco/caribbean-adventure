@@ -10,7 +10,7 @@
  *   plateau into the hillside.
  * - Kerb stones along both edges of the main street, standing a hand proud
  *   of the street's carved bed, broken at the lanes that cross it; sparse
- *   edge stones along the lanes.
+ *   edge stones along the lanes. None stands in a building's walls.
  *
  * Pieces, placed for `townPieces.ts` models (`townClutter`): a fountain on
  * the square; market stalls round it; a cart or two parked at its edge;
@@ -169,8 +169,24 @@ function retainingWalls(b: FacetBuilder, p: TownPlateau, ground: GroundField, k:
   }
 }
 
-/** Kerbs along the main street's edges and edge stones along the lanes, at building scale `k`. */
-function streetEdges(b: FacetBuilder, p: TownPlateau, ground: GroundField, k: number, colors: TownWorksColors) {
+/** A kerb or edge stone: its plan rectangle (facing along its length), its bottom and top, and its tone's shade. */
+export interface EdgeStone extends PlanRect {
+  y0: number;
+  y1: number;
+  shade: number;
+  /** A kerb of the main street (its top lighter), else a lane's edge stone. */
+  kerb: boolean;
+}
+
+/**
+ * Kerbs along the main street's edges and edge stones along the lanes, at
+ * building scale `k`: broken where another street crosses, and left out
+ * wherever one would stand in a building's `walls` (the kit's or the
+ * village's), so no kerb runs through a wall.
+ */
+export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number, walls: readonly PlanRect[]): EdgeStone[] {
+  const stones: EdgeStone[] = [];
+  const inWalls = (stone: PlanRect) => walls.some((w) => overlaps(w, stone, 0));
   const kerbW = KERB_WIDTH * k;
   for (const street of p.streets) {
     const [x0, z0] = street.from;
@@ -194,8 +210,9 @@ function streetEdges(b: FacetBuilder, p: TownPlateau, ground: GroundField, k: nu
           if (others.some((o) => streetDistance(o, x, z) < o.halfWidth + kerbW)) continue;
           const outside = ground.sampleHeight(x + nx * side * kerbW, z + nz * side * kerbW);
           const inside = ground.sampleHeight(x - nx * side * kerbW, z - nz * side * kerbW);
-          const tone = shadeRgb(colors.kerb, 0.85 + next() * 0.3);
-          orientedBox(b, x, z, tx, tz, stone / 2, kerbW / 2, Math.min(inside, outside) - kerbW, outside + KERB_PROUD * k, tone, shadeRgb(tone, 1.12));
+          const shade = 0.85 + next() * 0.3;
+          const kerb: EdgeStone = { x, z, fx: tx, fz: tz, halfW: kerbW / 2, halfD: stone / 2, y0: Math.min(inside, outside) - kerbW, y1: outside + KERB_PROUD * k, shade, kerb: true };
+          if (!inWalls(kerb)) stones.push(kerb);
         }
       } else {
         for (let t = EDGE_STONE_SPACING * k * next(); t < len; t += EDGE_STONE_SPACING * k * (0.6 + next() * 0.8)) {
@@ -207,10 +224,21 @@ function streetEdges(b: FacetBuilder, p: TownPlateau, ground: GroundField, k: nu
           const g = ground.sampleHeight(x, z);
           const size = EDGE_STONE_SIZE * k * (0.7 + next() * 0.6);
           const yaw = next() * Math.PI;
-          orientedBox(b, x, z, Math.sin(yaw), Math.cos(yaw), size / 2, size * 0.4, g - size * 0.5, g + size * 0.35, shadeRgb(colors.kerb, 0.75 + next() * 0.35));
+          const shade = 0.75 + next() * 0.35;
+          const edge: EdgeStone = { x, z, fx: Math.sin(yaw), fz: Math.cos(yaw), halfW: size * 0.4, halfD: size / 2, y0: g - size * 0.5, y1: g + size * 0.35, shade, kerb: false };
+          if (!inWalls(edge)) stones.push(edge);
         }
       }
     }
+  }
+  return stones;
+}
+
+/** The kerbs and edge stones, drawn. */
+function streetEdges(b: FacetBuilder, p: TownPlateau, ground: GroundField, k: number, walls: readonly PlanRect[], colors: TownWorksColors) {
+  for (const s of streetEdgeStones(p, ground, k, walls)) {
+    const tone = shadeRgb(colors.kerb, s.shade);
+    orientedBox(b, s.x, s.z, s.fx, s.fz, s.halfD, s.halfW, s.y0, s.y1, tone, s.kerb ? shadeRgb(tone, 1.12) : tone);
   }
 }
 
@@ -219,7 +247,7 @@ export function townWorks(plans: readonly PortTownPlan[], ground: GroundField, k
   const b = createFacetBuilder();
   for (const plan of plans) {
     retainingWalls(b, plan.plateau, ground, k, colors);
-    streetEdges(b, plan.plateau, ground, k, colors);
+    streetEdges(b, plan.plateau, ground, k, plan.walls, colors);
   }
   return b.build();
 }
