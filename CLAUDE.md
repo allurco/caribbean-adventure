@@ -71,7 +71,7 @@ One terrain height field (ADR 0001) drives everything drawn on or under the sea.
 
 ### Art Direction and Scale
 
-Photorealism is confined to the water and the light; islands, props, ports and ships are our own stylised mid-poly models authored in code (**ADR 0002**, `docs/adr/0002-art-direction.md`). A hex stands for about 350 m in the picture, with props at 115/350 of their former size, ships at twice true scale and buildings at 1.125 × true scale, while the water keeps 65 m per world unit (**ADR 0003**, `docs/adr/0003-hex-scale-350-metres.md`). The code still draws the old 115 m scale until the #84 prototype's rollout lands. Read both before adding or reshaping anything visible.
+Photorealism is confined to the water and the light; islands, props, ports and ships are our own stylised mid-poly models authored in code (**ADR 0002**, `docs/adr/0002-art-direction.md`). A hex stands for about 350 m in the picture, with props at 115/350 of their former size, ships at twice true scale and buildings at 1.125 × true scale, while the water keeps 65 m per world unit (**ADR 0003**, `docs/adr/0003-hex-scale-350-metres.md`). The factors are the named constants `PROP_SCALE`, `SHIP_SCALE`, `BUILDING_SCALE` and `PROP_DENSITY` in `src/board/visuals/worldScale.ts`; a new prop takes its factor there. Read both before adding or reshaping anything visible.
 
 ### Multiplayer
 

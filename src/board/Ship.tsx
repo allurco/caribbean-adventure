@@ -4,6 +4,7 @@ import { Vector3, Mesh, MathUtils } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
 import { shipFoamSources } from "./shipFoamSources";
+import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, shipHullBox } from "./shipHull";
 
 const DURATION = 0.4; // seconds
 const SINK_DURATION = 2.0; // seconds for sinking animation
@@ -13,15 +14,6 @@ const FOAM_SPEED_DECAY = 0.8;
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
-
-const SHIP_GEOMETRY: Record<ShipClass, [number, number, number]> = {
-  Sloop: [0.25, 0.2, 0.65],
-  Flute: [0.4, 0.3, 0.6],
-  Frigate: [0.35, 0.28, 0.7],
-  Galleon: [0.5, 0.35, 0.8],
-};
-
-const DEFAULT_GEOMETRY: [number, number, number] = [0.3, 0.25, 0.7];
 
 export function Ship({
   position,
@@ -60,7 +52,7 @@ export function Ship({
   const targetYRotation = useRef(0);
   const foamPrevPosition = useRef<Vector3 | null>(null);
   const foamSpeed = useRef(0);
-  const hullLength = (shipClass ? SHIP_GEOMETRY[shipClass] : DEFAULT_GEOMETRY)[2];
+  const hullLength = shipHullBox(shipClass)[2];
 
   useEffect(() => {
     if (!foamId) return;
@@ -72,9 +64,9 @@ export function Ship({
       if (!mesh) return;
       ref.current = mesh;
       if (!initialized.current) {
-        mesh.position.set(position[0], position[1] + 0.12, position[2]);
+        mesh.position.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
         prevTarget.current = position;
-        to.set(position[0], position[1] + 0.12, position[2]);
+        to.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
         initialized.current = true;
       }
     },
@@ -93,7 +85,7 @@ export function Ship({
       prev[2] !== position[2]
     ) {
       from.copy(ref.current.position);
-      to.set(position[0], position[1] + 0.12, position[2]);
+      to.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
       // Across the seam, sail straight over it rather than back across the map.
       from.setX(seamAwareStart(from.x, to.x, wrapWidth));
       prevTarget.current = position;
@@ -156,7 +148,7 @@ export function Ship({
         onClick?.();
       }}
     >
-      <boxGeometry args={shipClass ? SHIP_GEOMETRY[shipClass] : DEFAULT_GEOMETRY} />
+      <boxGeometry args={[...shipHullBox(shipClass)]} />
       <meshStandardMaterial color={color} />
     </mesh>
   );
@@ -175,7 +167,7 @@ export function SinkingShip({
 }) {
   const ref = useRef<Mesh>(null!);
   const progressRef = useRef(0);
-  const startY = position[1] + 0.12;
+  const startY = position[1] + SHIP_RIDE_HEIGHT;
   const [opacity, setOpacity] = useState(1);
   const completedRef = useRef(false);
 
@@ -186,7 +178,7 @@ export function SinkingShip({
     const t = smoothstep(progressRef.current);
 
     // Sink down
-    ref.current.position.y = MathUtils.lerp(startY, startY - 1.5, t);
+    ref.current.position.y = MathUtils.lerp(startY, startY - SHIP_SINK_DEPTH, t);
 
     // Tilt to one side (roll)
     ref.current.rotation.z = MathUtils.lerp(0, Math.PI / 4, t);
@@ -210,7 +202,7 @@ export function SinkingShip({
       position={[position[0], startY, position[2]]}
       castShadow
     >
-      <boxGeometry args={shipClass ? SHIP_GEOMETRY[shipClass] : DEFAULT_GEOMETRY} />
+      <boxGeometry args={[...shipHullBox(shipClass)]} />
       <meshStandardMaterial
         color={color}
         transparent

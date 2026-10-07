@@ -16,6 +16,7 @@ import {
 } from "./rockVariation";
 import { ROCK_UNIT_RADIUS, ROCK_VARIANT_COUNT, rockVariantRadii } from "./rockGeometry";
 import { PALETTE_HEX } from "./palette";
+import { PROP_SCALE } from "./worldScale";
 
 const BIOMES: readonly Biome[] = ["SAND", "GRASS", "ROCK"];
 /** Inradius of a flat-top hex of size 1 (`hexToWorld`): the distance from its centre to an edge. */
@@ -39,7 +40,8 @@ function placement(i: number, biome: Biome | undefined = BIOMES[i % 3]): RockPla
     worldY: 0.3,
     worldZ: Math.sin(i * 0.7) * 5 - i * 0.05,
     rotation: (i * 2.39996) % (Math.PI * 2),
-    scale: 0.8 + (i % 7) * 0.08,
+    // The generator's decoration scales as the layout passes them, at PROP_SCALE.
+    scale: (0.8 + (i % 7) * 0.08) * PROP_SCALE,
     biome,
   };
 }
@@ -72,13 +74,13 @@ describe("rockSizeClass", () => {
 });
 
 describe("drawn extent", () => {
-  // The generator's biggest decoration scale is 1.6 (summits); every large-class
+  // The generator's biggest decoration scale is 1.6 (summits), drawn at PROP_SCALE; every large-class
   // placement at it, whatever its hash gives for variant and stretch.
-  const biggest = Array.from({ length: 60 }, (_, i) => rockVariation({ ...placement(i, "ROCK"), scale: 1.6 }));
+  const biggest = Array.from({ length: 60 }, (_, i) => rockVariation({ ...placement(i, "ROCK"), scale: 1.6 * PROP_SCALE }));
 
-  it("caps a drawn rock inside a hex: the cap is under the hex inradius", () => {
-    expect(ROCK_MAX_EXTENT).toBeLessThan(HEX_INRADIUS);
-    expect(ROCK_MAX_EXTENT).toBeGreaterThan(0.5);
+  it("caps a drawn rock inside a hex: the cap is under the hex inradius, shrunk with the rocks", () => {
+    expect(ROCK_MAX_EXTENT).toBeLessThan(HEX_INRADIUS * PROP_SCALE);
+    expect(ROCK_MAX_EXTENT).toBeGreaterThan(0.5 * PROP_SCALE);
   });
 
   it("is the per-axis scale times the variant's radii times the unit radius, in the ground plane", () => {
@@ -105,7 +107,7 @@ describe("drawn extent", () => {
       expect(v.scale[1] / v.scale[0]).toBeGreaterThanOrEqual(1 / span - 1e-9);
       expect(v.scale[1] / v.scale[0]).toBeLessThanOrEqual(span + 1e-9);
       // And the rock is smaller than its uncapped nominal size on every axis.
-      const base = 1.6 * ROCK_SIZE_CLASS_SCALE.large;
+      const base = 1.6 * PROP_SCALE * ROCK_SIZE_CLASS_SCALE.large;
       for (const axis of v.scale) expect(axis).toBeLessThan(base * ROCK_STRETCH_RANGE[1]);
     }
   });
@@ -113,7 +115,7 @@ describe("drawn extent", () => {
   it("leaves small and medium rocks uncapped", () => {
     for (const biome of ["SAND", "GRASS"] as const) {
       for (let i = 0; i < 30; i++) {
-        const v = rockVariation({ ...placement(i, biome), scale: 1.4 });
+        const v = rockVariation({ ...placement(i, biome), scale: 1.4 * PROP_SCALE });
         expect(rockDrawnRadius(v)).toBeLessThan(ROCK_MAX_EXTENT);
       }
     }

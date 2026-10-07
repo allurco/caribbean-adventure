@@ -17,6 +17,7 @@
 import type { Biome } from "../../game/types";
 import { ROCK_UNIT_RADIUS, ROCK_VARIANT_COUNT, rockVariantRadii } from "./rockGeometry";
 import { lerpRange, seedOf, stream } from "./variationStream";
+import { PROP_SCALE } from "./worldScale";
 
 /** Where a rock stands, after ground placement. */
 export interface RockPlacement {
@@ -87,8 +88,9 @@ export const ROCK_SIZE_CLASS_SCALE: Readonly<Record<RockSizeClass, number>> = {
  * it a large slab at the generator's biggest scale (1.6) would reach
  * 0.22 × 1.6 × 2.2 × 1.3 (stretch) × 1.3 (slab radius) ≈ 1.31 units. A rock
  * over the cap is shrunk uniformly, so only the very biggest slabs change.
+ * The cap shrinks with the rocks (`PROP_SCALE`).
  */
-export const ROCK_MAX_EXTENT = 0.85;
+export const ROCK_MAX_EXTENT = 0.85 * PROP_SCALE;
 
 const SIZE_CLASS_BY_BIOME: Readonly<Record<Biome, RockSizeClass>> = {
   ROCK: "large",

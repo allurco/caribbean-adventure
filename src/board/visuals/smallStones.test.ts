@@ -13,6 +13,7 @@ import {
   STONES_PER_GRASS_CELL,
   STONES_PER_SAND_CELL,
 } from "./smallStones";
+import { PROP_DENSITY, PROP_SCALE } from "./worldScale";
 
 const cells = generateMap(getMapPreset("small"), 11);
 const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
@@ -26,9 +27,9 @@ const takesStones = (cell: MapCell) =>
   cell.terrain === "island" && !cell.hasPort && !hasRock(cell) && (cell.biome === "SAND" || cell.biome === "GRASS");
 
 describe("smallStones", () => {
-  it("places one stone per sand or grass cell", () => {
-    expect(STONES_PER_SAND_CELL).toBe(1);
-    expect(STONES_PER_GRASS_CELL).toBe(1);
+  it("places PROP_DENSITY stones per sand or grass cell, one per authored stone", () => {
+    expect(STONES_PER_SAND_CELL).toBe(PROP_DENSITY);
+    expect(STONES_PER_GRASS_CELL).toBe(PROP_DENSITY);
   });
 
   it("is deterministic", () => {
@@ -51,12 +52,12 @@ describe("smallStones", () => {
     }
   });
 
-  it("puts a stone on nearly every sand or grass cell that has no rock and no port", () => {
+  it("puts its stones on nearly every sand or grass cell that has no rock and no port", () => {
     const eligible = cells.filter(takesStones);
     expect(eligible.length).toBeGreaterThan(5);
     // Nudging rescues nearly all; dropping (steep or wet ground) is the rare fallback.
-    expect(stones.length).toBeGreaterThanOrEqual(eligible.length * 0.9);
-    expect(stones.length).toBeLessThanOrEqual(eligible.length);
+    expect(stones.length).toBeGreaterThanOrEqual(eligible.length * PROP_DENSITY * 0.9);
+    expect(stones.length).toBeLessThanOrEqual(eligible.length * PROP_DENSITY);
   });
 
   it("keeps stones off rock cells, port cells, water and cells that already have a rock", () => {
@@ -88,9 +89,9 @@ describe("smallStones", () => {
     }
   });
 
-  it("scales stones between 0.6 and 1 of a small rock: knee-to-waist high, not the [0.3, 0.5] pebbles", () => {
-    expect(STONE_SCALE_RANGE[0]).toBeGreaterThanOrEqual(0.6);
-    expect(STONE_SCALE_RANGE[1]).toBeLessThanOrEqual(1);
+  it("scales stones between 0.6 and 1 of a small rock (at PROP_SCALE): knee-to-waist high, not the [0.3, 0.5] pebbles", () => {
+    expect(STONE_SCALE_RANGE[0]).toBeGreaterThanOrEqual(0.6 * PROP_SCALE);
+    expect(STONE_SCALE_RANGE[1]).toBeLessThanOrEqual(1 * PROP_SCALE);
     expect(STONE_SCALE_RANGE[0]).toBeLessThan(STONE_SCALE_RANGE[1]);
   });
 
@@ -100,7 +101,7 @@ describe("smallStones", () => {
     const onSlope = smallStones(cells, slope, seed);
     expect(onSlope.length).toBeGreaterThan(0);
     for (const stone of onSlope) {
-      expect(stone.worldY).toBeCloseTo(slope.sampleHeight(stone.worldX, stone.worldZ) - 0.01, 5);
+      expect(stone.worldY).toBeCloseTo(slope.sampleHeight(stone.worldX, stone.worldZ) - 0.01 * PROP_SCALE, 5);
     }
   });
 

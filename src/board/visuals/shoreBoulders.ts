@@ -40,7 +40,7 @@ import { ROCK_VARIANT_REACH } from "./rockGeometry";
 import { rockVariation, type RockSizeClass, type RockVariation } from "./rockVariation";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { lerpRange, seedOf, stream } from "./variationStream";
-import { metresToUnits } from "./worldScale";
+import { metresToUnits, PROP_DENSITY, PROP_SCALE } from "./worldScale";
 
 /** What the boulders need of the terrain field. */
 export type ShoreField = Pick<TerrainHeightField, "sampleHeight" | "sampleCoastDistance">;
@@ -68,8 +68,8 @@ export const SHORE_BOULDER_BIOMES: readonly Biome[] = ["ROCK", "GRASS"];
  * large one (~450 of ~990).
  */
 export const BOULDERS_PER_COAST_EDGE = 0.6;
-/** Candidate points per coastal edge; `BOULDER_KEEP_SHARE` of them are tried. */
-export const BOULDER_SAMPLES_PER_EDGE = 3;
+/** Candidate points per coastal edge (`PROP_DENSITY` times the authored 3); `BOULDER_KEEP_SHARE` of them are tried. */
+export const BOULDER_SAMPLES_PER_EDGE = 3 * PROP_DENSITY;
 /** Share of candidates tried; the rest of the thinning is the coast-distance band. */
 export const BOULDER_KEEP_SHARE = 0.22;
 /** Fraction of an edge kept clear at each corner, so neighbouring edges' boulders don't pile up. */
@@ -82,11 +82,11 @@ export const SHORE_BAND: readonly [number, number] = [-0.3, 0.4];
 export const MAX_OFFSHORE_REACH = 0.3;
 /** Least distance from a drawn rim to any water hex centre: a hull (~0.4) plus a margin. */
 export const SHIP_HULL_CLEARANCE = 0.55;
-/** Decoration scale of a boulder (the rock mesh is ROCK_UNIT_RADIUS at 1, in the small size class). */
-export const BOULDER_SCALE_RANGE: readonly [number, number] = [0.55, 1.2];
+/** Decoration scale of a boulder (the rock mesh is ROCK_UNIT_RADIUS at 1, in the small size class), at `PROP_SCALE`. */
+export const BOULDER_SCALE_RANGE: readonly [number, number] = [0.55 * PROP_SCALE, 1.2 * PROP_SCALE];
 export const BOULDER_SIZE_CLASS: RockSizeClass = "small";
 /** A boulder shrunk by the sea-lane rules below this reach is dropped instead. */
-export const MIN_BOULDER_REACH = 0.06;
+export const MIN_BOULDER_REACH = 0.06 * PROP_SCALE;
 /** Share of the boulders whose centre is in the water that are sunk under the surface. */
 export const SUBMERGED_SHARE = 0.5;
 /** How far under the surface a submerged boulder's crown sits, metres: shallow enough to see and foam over. */

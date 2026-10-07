@@ -39,8 +39,10 @@ import {
   PORT_BUILDING_TINT_SPREAD,
   PORT_BUILDING_YAW_JITTER,
   WATCHTOWER_SCALE_RANGE,
+  settlementCentre,
   type PortBuilding,
 } from "./portSettlement";
+import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
 
 /** Inradius of a flat-top hex of size 1: the nearest any edge comes to the centre. */
 const HEX_INRADIUS = Math.sqrt(3) / 2;
@@ -74,6 +76,16 @@ function portOf(b: PortBuilding): MapCell {
 }
 
 const pierRotation = (cell: MapCell) => (cell.decorations ?? []).find((d) => d.type === "pier")?.rotation ?? 0;
+
+/** The buildings, their square, rings and margins are at the buildings' scale; the pier's reserve at the props'. */
+const BS = BUILDING_SCALE;
+const k = PROP_SCALE;
+
+/** The centre a port's settlement is laid out round on `ground`: by the quay, not the hex centre. */
+function centreOf(port: MapCell, ground: GroundField): { x: number; z: number } {
+  const [x, , z] = hexToWorld(port.hex);
+  return settlementCentre({ x, z }, pierOrigin(ground, { x, z }, pierRotation(port)));
+}
 const angleDiff = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
 /** The centre and rings of a plan circle: `rim` points on the rim, half as many at half reach, a quarter at a quarter. */
@@ -110,21 +122,23 @@ function quayPoint(q: QuayPlacement, x: number, z: number): { x: number; z: numb
 }
 
 describe("settlementGround", () => {
-  const sand = flat(0.05);
+  // A low beach, under the quay's step cap at the props' scale, so the deck stands clear of it.
+  const SAND = 0.02;
+  const sand = flat(SAND);
   const quay = placeQuay(quayPort, sand, quaySeed)!;
   const ground = settlementGround(quayPort, sand, quaySeed);
 
   it("is the quay's flat top on the deck, the step's top on the rear step and the terrain off the quay", () => {
     expect(ground.quay).toEqual(quay);
     const onDeck = quayPoint(quay, 0.05, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2);
-    expect(quay.top).toBeGreaterThan(0.05 + 0.03);
+    expect(quay.top).toBeGreaterThan(SAND + 0.03 * k);
     expect(ground.sampleHeight(onDeck.x, onDeck.z)).toBeCloseTo(quay.top, 9);
     expect(ground.onQuay(onDeck.x, onDeck.z)).toBe(true);
     const onStep = quayPoint(quay, -0.05, (QUAY_BACK + QUAY_STEP_Z) / 2);
-    expect(ground.sampleHeight(onStep.x, onStep.z)).toBeCloseTo(quay.top - QUAY_COPING_THICKNESS, 9);
+    expect(ground.sampleHeight(onStep.x, onStep.z)).toBeCloseTo(quay.top - QUAY_COPING_THICKNESS * k, 9);
     expect(ground.onQuay(onStep.x, onStep.z)).toBe(true);
     for (const off of [quayPoint(quay, QUAY_WIDTH / 2 + 0.05, 0), quayPoint(quay, 0, QUAY_BACK - 0.05), quayPoint(quay, 0, QUAY_SEA_FACE + 0.05)]) {
-      expect(ground.sampleHeight(off.x, off.z)).toBe(0.05);
+      expect(ground.sampleHeight(off.x, off.z)).toBe(SAND);
       expect(ground.onQuay(off.x, off.z)).toBe(false);
     }
   });
@@ -133,7 +147,7 @@ describe("settlementGround", () => {
     const noPier = settlementGround({ ...quayPort, decorations: [] }, sand, quaySeed);
     expect(noPier.quay).toBeNull();
     const onDeck = quayPoint(quay, 0.05, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2);
-    expect(noPier.sampleHeight(onDeck.x, onDeck.z)).toBe(0.05);
+    expect(noPier.sampleHeight(onDeck.x, onDeck.z)).toBe(SAND);
     expect(noPier.onQuay(onDeck.x, onDeck.z)).toBe(false);
   });
 
@@ -144,7 +158,7 @@ describe("settlementGround", () => {
         const dx = x - quay.worldX;
         const dz = z - quay.worldZ;
         const localZ = (dx * Math.sin(quay.yaw) + dz * Math.cos(quay.yaw)) / quay.scaleZ;
-        return localZ < QUAY_STEP_Z ? 0.2 : 0.05;
+        return localZ < QUAY_STEP_Z ? 0.2 : SAND;
       },
     };
     const buried = settlementGround(quayPort, drifted, quaySeed);
@@ -162,7 +176,8 @@ describe("standBuilding", () => {
   const quay = ground.quay!;
   const [hx, , hz] = hexToWorld(quayPort.hex);
   const pierRoot = pierOrigin(sand, { x: hx, z: hz }, 0.7);
-  const reach = 0.04;
+  // The quay and the pier's reserve are at the props' scale, so the footprint is too.
+  const reach = 0.04 * k;
 
   it("keeps the pier's land end clear: the deck's width round the root on the sand, the pier's mouth on the quay", () => {
     expect(PIER_MOUTH_RESERVE).toBeCloseTo(PIER_WIDTH / 2, 9);
@@ -174,8 +189,8 @@ describe("standBuilding", () => {
   it("stands a footprint on the deck on the deck's top, not the sand under it, and nearer the pier root than the sand's reserve allows", () => {
     const at = quayPoint(quay, 0.08, -0.15);
     const d = Math.hypot(at.x - pierRoot.x, at.z - pierRoot.z);
-    expect(d).toBeLessThan(PIER_ROOT_RESERVE + reach);
-    expect(d).toBeGreaterThanOrEqual(PIER_MOUTH_RESERVE + reach);
+    expect(d).toBeLessThan(PIER_ROOT_RESERVE * k + reach);
+    expect(d).toBeGreaterThanOrEqual(PIER_MOUTH_RESERVE * k + reach);
     const spot = standBuilding(ground, at, reach, BUILDING_FOOTING, pierRoot, []);
     expect(spot).not.toBeNull();
     expect(spot!.x).toBe(at.x);
@@ -186,7 +201,7 @@ describe("standBuilding", () => {
 
   it("never covers the pier's mouth: a footprint on the deck within the mouth reserve of the root is refused", () => {
     const at = quayPoint(quay, 0, -0.08);
-    expect(Math.hypot(at.x - pierRoot.x, at.z - pierRoot.z)).toBeLessThan(PIER_MOUTH_RESERVE + reach);
+    expect(Math.hypot(at.x - pierRoot.x, at.z - pierRoot.z)).toBeLessThan(PIER_MOUTH_RESERVE * k + reach);
     expect(standBuilding(ground, at, reach, BUILDING_FOOTING, pierRoot, [])).toBeNull();
   });
 
@@ -247,10 +262,10 @@ describe("portBuildings", () => {
     expect(BUILDING_SINK).toBeLessThanOrEqual(0.003);
     expect(BUILDING_FOOTING_MARGIN).toBeGreaterThan(0);
     expect(BUILDING_FOOTING_MARGIN).toBeLessThanOrEqual(0.02);
-    expect(buildingGroundY(0.3)).toBeCloseTo(0.3 - BUILDING_SINK, 12);
+    expect(buildingGroundY(0.3)).toBeCloseTo(0.3 - BUILDING_SINK * BS, 12);
     // A footprint may span what the footing covers, less the sink and the margin: still most of a footing, so beaches stay buildable.
-    expect(buildingMaxSpread(BUILDING_FOOTING)).toBeCloseTo(BUILDING_FOOTING - BUILDING_SINK - BUILDING_FOOTING_MARGIN, 12);
-    expect(buildingMaxSpread(BUILDING_FOOTING * PORT_BUILDING_SCALE_RANGE[0])).toBeGreaterThan(0.09);
+    expect(buildingMaxSpread(BUILDING_FOOTING)).toBeCloseTo(BUILDING_FOOTING - (BUILDING_SINK + BUILDING_FOOTING_MARGIN) * BS, 12);
+    expect(buildingMaxSpread(BUILDING_FOOTING * PORT_BUILDING_SCALE_RANGE[0] * BS)).toBeGreaterThan(0.09 * BS);
   });
 
   it("is deterministic", () => {
@@ -306,9 +321,9 @@ describe("portBuildings", () => {
     for (const b of onFlat) {
       if (b.kind !== "watchtower") continue;
       const port = portOf(b);
-      const [px, , pz] = hexToWorld(port.hex);
+      const c = centreOf(port, flat(0.3));
       const landward = pierRotation(port) + Math.PI;
-      const direction = Math.atan2(b.worldX - px, b.worldZ - pz);
+      const direction = Math.atan2(b.worldX - c.x, b.worldZ - c.z);
       const offLandward = Math.atan2(Math.sin(direction - landward), Math.cos(direction - landward));
       // On flat ground the tower takes its slot exactly (the first candidate), give or take a candidate step.
       expect(Math.min(...endSlots.map((a) => Math.abs(offLandward - a)))).toBeLessThan(Math.PI / 15 + 1e-9);
@@ -319,11 +334,13 @@ describe("portBuildings", () => {
         expect(angleDiff(direction, fortDirection)).toBeLessThanOrEqual(angleDiff(landward + other, fortDirection) + 1e-9);
       }
     }
-    // On the real map no tower falls back to the hex centre.
+    // On the real map no tower falls back to the hex centre, nor stands on the square.
     for (const b of buildings) {
       if (b.kind !== "watchtower") continue;
       const [px, , pz] = hexToWorld(portOf(b).hex);
-      expect(Math.hypot(b.worldX - px, b.worldZ - pz)).toBeGreaterThan(PORT_SQUARE_RADIUS);
+      const c = centreOf(portOf(b), surface);
+      expect(Math.hypot(b.worldX - px, b.worldZ - pz)).toBeGreaterThan(1e-6);
+      expect(Math.hypot(b.worldX - c.x, b.worldZ - c.z)).toBeGreaterThan(PORT_SQUARE_RADIUS * BS);
     }
   });
 
@@ -333,9 +350,9 @@ describe("portBuildings", () => {
       const mine = onFlat.filter((b) => portOf(b) === port);
       expect(mine[0].kind).toBe("watchtower");
       expect(mine[1].kind).toBe("church");
-      const [px, , pz] = hexToWorld(port.hex);
+      const c = centreOf(port, flat(0.3));
       const landward = pierRotation(port) + Math.PI;
-      const direction = Math.atan2(mine[1].worldX - px, mine[1].worldZ - pz);
+      const direction = Math.atan2(mine[1].worldX - c.x, mine[1].worldZ - c.z);
       // On flat ground the church takes the centre slot exactly: straight landward of the square.
       expect(angleDiff(direction, landward)).toBeLessThan(1e-6);
       // Its door faces the square and the water, like the others.
@@ -373,7 +390,9 @@ describe("portBuildings", () => {
     expect(portsSeen).toBeGreaterThan(50);
     // A church is dropped only where no ground on the hex takes its walls' plan: 97–100 % of ports get
     // one over eight seeds of each size (60–68 % when the whole plan circle had to fit the footing's spread).
-    expect(churches / portsSeen).toBeGreaterThanOrEqual(0.95);
+    // At the 350 m hex the crescent is laid out by the quay at BUILDING_SCALE, which leaves the church a little
+    // less ground: 94 % of these ports get one.
+    expect(churches / portsSeen).toBeGreaterThanOrEqual(0.9);
     // Everything stays under the label; the tower sets the minimum (0.027 here, as before the church),
     // the church's cross never comes within 0.05 of it (0.077 at the closest, a church standing high on a slope).
     expect(slack).toBeGreaterThan(0);
@@ -393,6 +412,8 @@ describe("portBuildings", () => {
       expect(Math.hypot(b.worldX - px, b.worldZ - pz)).toBeLessThan(1e-9);
       // On the islet's highest ground (its top at the centre), never below the sea.
       expect(b.worldY).toBeCloseTo(buildingGroundY(Math.max(SEA_LEVEL, 0.3)), 9);
+      // Not at the settlement's centre, which on an islet lies out in the water.
+      expect(islet.sampleHeight(b.worldX, b.worldZ)).toBe(0.3);
       expect(b.worldY).toBeLessThanOrEqual(groundTopY(islet, px, pz, AGED_BUILDING_HALF_DIAGONAL.watchtower * b.scale));
     }
   });
@@ -401,24 +422,26 @@ describe("portBuildings", () => {
     for (const b of buildings) {
       const port = portOf(b);
       const [px, , pz] = hexToWorld(port.hex);
-      const d = Math.hypot(b.worldX - px, b.worldZ - pz);
+      const c = centreOf(port, surface);
+      const fromHex = Math.hypot(b.worldX - px, b.worldZ - pz);
+      const d = Math.hypot(b.worldX - c.x, b.worldZ - c.z);
       const reach = AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
-      expect(d).toBeLessThanOrEqual(PORT_BUILDING_MAX_RADIUS + 1e-9);
-      expect(d + reach).toBeLessThan(HEX_INRADIUS);
+      expect(d).toBeLessThanOrEqual(PORT_BUILDING_MAX_RADIUS * BS + 1e-9);
+      expect(fromHex + reach).toBeLessThan(HEX_INRADIUS);
       // Every corner is under the port's hover volume.
-      expect(d + reach).toBeLessThanOrEqual(PORT_SETTLEMENT_RADIUS + 1e-9);
-      // The buildings ring an open square at the centre; no footprint intrudes on it.
-      expect(d - reach).toBeGreaterThanOrEqual(PORT_SQUARE_RADIUS - 1e-9);
+      expect(fromHex + reach).toBeLessThanOrEqual(PORT_SETTLEMENT_RADIUS + 1e-9);
+      // The buildings ring an open square at the settlement's centre; no footprint intrudes on it.
+      expect(d - reach).toBeGreaterThanOrEqual(PORT_SQUARE_RADIUS * BS - 1e-9);
       // The quay stands where the pier meets the beach; no building covers the pier's land end,
-      // from the sand by the deck's width, from the quay by the pier's mouth.
+      // from the sand by the deck's width, from the quay by the pier's mouth (both at the pier's scale).
       const root = pierOrigin(surface, { x: px, z: pz }, pierRotation(port));
       const ground = settlementGround(port, surface, seed);
-      const reserve = pierRootReserve(ground.onQuay(b.worldX, b.worldZ));
+      const reserve = pierRootReserve(ground.onQuay(b.worldX, b.worldZ)) * k;
       expect(Math.hypot(b.worldX - root.x, b.worldZ - root.z) - reach).toBeGreaterThanOrEqual(reserve - 1e-9);
       for (const other of buildings) {
         if (other === b) continue;
         const gap = Math.hypot(other.worldX - b.worldX, other.worldZ - b.worldZ) - reach - AGED_BUILDING_HALF_DIAGONAL[other.kind] * other.scale;
-        expect(gap).toBeGreaterThanOrEqual(PORT_BUILDING_GAP - 1e-9);
+        expect(gap).toBeGreaterThanOrEqual(PORT_BUILDING_GAP * BS - 1e-9);
       }
     }
   });
@@ -458,9 +481,9 @@ describe("portBuildings", () => {
       worstAbove = Math.max(worstAbove, highest - b.worldY);
       expect(highest).toBeLessThanOrEqual(b.worldY + OVER_TERRAIN_SLACK);
       // The contact rests on the ground, not above it: the highest point is within the sink of the contact.
-      expect(b.worldY - highest).toBeLessThanOrEqual(BUILDING_SINK + 1e-9);
+      expect(b.worldY - highest).toBeLessThanOrEqual(BUILDING_SINK * BS + 1e-9);
       // And nothing floats: the footing's base is under the lowest ground, with the margin to spare.
-      expect(b.worldY - footing).toBeLessThanOrEqual(Math.min(...heights) - BUILDING_FOOTING_MARGIN + OVER_TERRAIN_SLACK);
+      expect(b.worldY - footing).toBeLessThanOrEqual(Math.min(...heights) - BUILDING_FOOTING_MARGIN * BS + OVER_TERRAIN_SLACK);
     }
     // The drawn surface against the field: the placement probes the same lattice surface, so the two never disagree by more than the slack.
     for (const b of buildings) expect(Math.abs(landSurfaceHeight(field, b.worldX, b.worldZ) - surface.sampleHeight(b.worldX, b.worldZ))).toBeLessThan(1e-9);
@@ -544,9 +567,9 @@ describe("portBuildings", () => {
   it("places the buildings behind the pier, on the landward half, facing the water", () => {
     for (const b of buildings) {
       const port = portOf(b);
-      const [px, , pz] = hexToWorld(port.hex);
+      const c = centreOf(port, surface);
       const toWater = pierRotation(port);
-      const toBuilding = Math.atan2(b.worldX - px, b.worldZ - pz);
+      const toBuilding = Math.atan2(b.worldX - c.x, b.worldZ - c.z);
       // More than a right angle away from the docking direction.
       expect(angleDiff(toBuilding, toWater)).toBeGreaterThan(Math.PI / 2);
       expect(angleDiff(b.yaw, toWater)).toBeLessThanOrEqual(PORT_BUILDING_YAW_JITTER + 1e-9);
@@ -556,8 +579,8 @@ describe("portBuildings", () => {
   it("varies scale and tint within their spreads", () => {
     for (const b of buildings) {
       const range = scaleRangeOf(b.kind);
-      expect(b.scale).toBeGreaterThanOrEqual(range[0]);
-      expect(b.scale).toBeLessThanOrEqual(range[1]);
+      expect(b.scale).toBeGreaterThanOrEqual(range[0] * BS - 1e-12);
+      expect(b.scale).toBeLessThanOrEqual(range[1] * BS + 1e-12);
       expect(Math.abs(b.tint - 1)).toBeLessThanOrEqual(PORT_BUILDING_TINT_SPREAD);
     }
     expect(new Set(buildings.map((b) => b.tint.toFixed(4))).size).toBeGreaterThan(buildings.length / 2);
