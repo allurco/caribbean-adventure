@@ -33,7 +33,7 @@ export function SoundLab() {
   return (
     <div className="relative min-h-screen bg-[#0a1929] text-stone-200 font-body">
       <HudSoundControl />
-      <div className="max-w-3xl mx-auto px-4 py-10">
+      <div className="max-w-3xl mx-auto px-4 pt-24 pb-10">
         <h1 className="font-heading text-2xl text-amber-200 tracking-wider">Sound lab</h1>
         <p className="mt-2 text-sm text-stone-400">
           Every sound in <code>src/audio/soundRegistry.ts</code>. Files and credits are listed in <code>NOTICE</code>.{" "}

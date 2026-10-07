@@ -51,7 +51,7 @@ export const SOUNDS: readonly SoundEntry[] = [
     id: "ship-wash",
     file: "ship-wash.ogg",
     kind: "world",
-    volume: 0.7,
+    volume: 0.2,
     loop: false,
     label: "Ship sails a hex (hull wash)",
     credit: {
