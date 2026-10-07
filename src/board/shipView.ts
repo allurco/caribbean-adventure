@@ -44,6 +44,17 @@ export function openingView({ mapView, pins, ...input }: OpeningViewInput): Came
   return { target: pins?.target ?? view.target, distance: pins?.distance ?? view.distance };
 }
 
+/**
+ * Where the camera flies when the turn passes: in hotseat play the new
+ * current player's ship at ship zoom. Null, so the camera stays put, for a
+ * networked client (its own ship does not change with the turn) and when
+ * that ship is missing.
+ */
+export function turnChangeView(input: ShipViewInput): CameraView | null {
+  if (input.playerID != null) return null;
+  return shipView(input);
+}
+
 /** The ship view of the viewer's own ship, or null when it has none. */
 function shipView({ ships, currentPlayer, playerID }: ShipViewInput): CameraView | null {
   const ship = ships[playerID ?? currentPlayer];

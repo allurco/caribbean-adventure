@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { openingView, SHIP_VIEW_DISTANCE } from "./shipView";
+import { openingView, turnChangeView, SHIP_VIEW_DISTANCE } from "./shipView";
 
 // Ship positions with known world centres (hexToWorld, flat-top, size 1):
 // (0,0) → (0, 0); (2,0) → (3, √3); (0,2) → (0, 2√3).
@@ -41,5 +41,27 @@ describe("openingView", () => {
       target: [0, 0, 2 * SQRT3],
       distance: 12,
     });
+  });
+});
+
+describe("turnChangeView", () => {
+  it("flies to the new current player's ship at ship zoom in hotseat play", () => {
+    expect(turnChangeView({ ships, currentPlayer: "0", playerID: null })).toEqual({
+      target: [3, 0, SQRT3],
+      distance: SHIP_VIEW_DISTANCE,
+    });
+    expect(turnChangeView({ ships, currentPlayer: "1" })).toEqual({
+      target: [0, 0, 2 * SQRT3],
+      distance: SHIP_VIEW_DISTANCE,
+    });
+  });
+
+  it("never moves a networked client's camera", () => {
+    expect(turnChangeView({ ships, currentPlayer: "1", playerID: "0" })).toBeNull();
+    expect(turnChangeView({ ships, currentPlayer: "1", playerID: "1" })).toBeNull();
+  });
+
+  it("stays put when the new current player has no ship", () => {
+    expect(turnChangeView({ ships, currentPlayer: "4", playerID: null })).toBeNull();
   });
 });
