@@ -56,6 +56,69 @@ const SHALLOW_SATURATION_BOOST = 0.35;
 const SHALLOW_BOOST_DEPTH = 15; // metres
 const SHALLOW_BOOST_RAMP = 2; // metres
 /**
+ * STYLISTIC, NOT PHYSICS (user decision, #77): the shelf recedes as the
+ * camera pulls out. Close up, clear turquoise water over sunlit sand is the
+ * look we want; at map zoom the same shelf was a saturated bright ring that
+ * the eye landed on before the island. Real distance does the opposite
+ * (aerial perspective softens the shallows first), so the water body over the
+ * shelf is driven by the camera's distance from its focus point: a weight
+ * that is 0 up to SHELF_RECEDE_NEAR_DISTANCE, 1 from SHELF_RECEDE_FAR_DISTANCE,
+ * eased in log distance since zoom is multiplicative (`shelfRecedeWeight`).
+ *
+ * The weight makes the water more opaque rather than veiling it: the water
+ * body is computed for an effective depth
+ *   real × (1 + (SHELF_FAR_DEPTH_SCALE − 1) × weight)
+ *     + SHELF_FAR_DEPTH_OFFSET × weight × smoothstep(0, SHELF_OFFSET_RAMP, real)
+ * (`recededDepth`), and every depth-driven term of the body (absorption on
+ * both legs, seabed fade, deep lift, shallow boost) reads that depth. The
+ * sunlit sand shows through less and the shelf collapses toward the water's
+ * own colour along the gradient it already has: no new hue, and open water,
+ * already opaque, is the same at every distance. A scale alone barely moved
+ * the water right off the sand (three times half a metre is still clear
+ * water over bright sand) and left the pale inner band; the offset is a
+ * floor under the shallowest water, so the island fades into the sea from
+ * the sand edge outward. Between about 3 and 10 m of effective depth the
+ * sand is mostly absorbed but the lift (below) has not come in, a dark teal
+ * trough, so the far offset is chosen to land past it. The lift, added on top
+ * of the seabed close up, is composited under it by (1 − transmittance) as
+ * the shelf recedes (`recededLiftShare`): added, it drew a blue band brighter
+ * than both the shelf inside it and the open water outside.
+ *
+ * The distances are the camera's real distance from its focus point (what
+ * `camera.position.distanceTo(controls.target)` returns), not the `dist` URL
+ * parameter or the map's iso distance: the board multiplies those by the
+ * camera offset vector, whose length is about 0.82, so the small map's zoom
+ * floor is 4.32, its first view 23.7 and its zoom ceiling 28. The shots the
+ * numbers were tuned on: ship zoom 4.3 (weight 0, untouched), 9 (0.03, as
+ * close up), 11.5 (0.23), 15 (0.54), 18 (0.78), first map view (0.98).
+ */
+/** Where the recession starts, real camera-to-focus units: below this the shelf is exactly the close-up shelf. */
+export const SHELF_RECEDE_NEAR_DISTANCE = 8;
+/** Where it is complete, real camera-to-focus units: from here out the shelf is the map-zoom shelf. */
+export const SHELF_RECEDE_FAR_DISTANCE = 26;
+/** Depth multiplier at the far distance: higher narrows the turquoise band and pulls it toward blue sooner. */
+export const SHELF_FAR_DEPTH_SCALE = 3;
+/** Depth added at the far distance, metres: higher dims the water right off the sand (12 lands past the dark trough). */
+export const SHELF_FAR_DEPTH_OFFSET = 12;
+/** Real depth over which the offset ramps in, metres: keeps the waterline continuous; longer leaves a pale lip. */
+export const SHELF_OFFSET_RAMP = 0.2;
+/**
+ * STYLISTIC, NOT PHYSICS (user decision, #77): the shore foam (wash, breaker
+ * line and reef bands, on the sea and up the sand) fades with the same weight,
+ * so at map zoom the coast is a faint line, not a white rim brighter than the
+ * sand. Open water's whitecaps and the ships' hull foam are not touched.
+ */
+/** What is left of the shore foam at the far distance, 0 … 1: lower makes the far coastline quieter. */
+export const SHORE_FOAM_FAR_SHARE = 0.2;
+/**
+ * The camera's real distance from its focus point (world units) as a shared
+ * uniform object, like the surf clock (`surfTimeUniform`, surfMotion.ts):
+ * the water writes it once a frame (Ocean.tsx) and every material that
+ * recedes with it (the water, the land's shore wash in shoreFoamLand.ts)
+ * binds the very same object.
+ */
+export const cameraDistanceUniform: { value: number } = { value: 0 };
+/**
  * STYLISTIC, NOT PHYSICS (user decision, #38): extra reflectance added to the
  * deep-water term past the drop-off. Physical R∞ makes open water near-black
  * indigo (blue ≈ 0.08); this lifts it to a rich mid-blue (not cyan) that still
@@ -173,6 +236,44 @@ export function shallowSaturationBoost(depthMetres: number, redTransmittance = 0
   );
 }
 
+/**
+ * How far the shelf has receded (stylistic), 0 … 1, for a camera
+ * `cameraDistance` world units from its focus point: 0 to the near distance,
+ * 1 from the far one, eased in log distance.
+ */
+export function shelfRecedeWeight(cameraDistance: number): number {
+  return smoothstep(
+    Math.log(SHELF_RECEDE_NEAR_DISTANCE),
+    Math.log(SHELF_RECEDE_FAR_DISTANCE),
+    Math.log(Math.max(cameraDistance, 1e-3))
+  );
+}
+
+/** What is left of the shore foam (stylistic) with the shelf receded by `recede`, 0 … 1: all of it close up. */
+export function shoreFoamRecedeShare(recede: number): number {
+  return 1 + (SHORE_FOAM_FAR_SHARE - 1) * recede;
+}
+
+/** Effective-depth multiplier (stylistic) for the water body with the shelf receded by `recede`: 1 close up. */
+export function recededDepthScale(recede: number): number {
+  return 1 + (SHELF_FAR_DEPTH_SCALE - 1) * recede;
+}
+
+/** The effective depth (stylistic) the water body is computed for over a seabed `realMetres` down, the shelf receded by `recede`: the real depth close up. */
+export function recededDepth(realMetres: number, recede: number): number {
+  return realMetres * recededDepthScale(recede) + SHELF_FAR_DEPTH_OFFSET * recede * smoothstep(0, SHELF_OFFSET_RAMP, realMetres);
+}
+
+/**
+ * Per-channel share of the deep lift (stylistic) the water body takes over a
+ * seabed seen through transmittance `t`, the shelf receded by `recede`: all of
+ * it close up (added on top, #38), (1 − t) at the far distance (composited
+ * under the seabed).
+ */
+export function recededLiftShare(t: Rgb, recede: number): [number, number, number] {
+  return map((i) => 1 + (1 - t[i] - 1) * recede);
+}
+
 /** How much of the (stylistic) deep-water lift applies over a seabed `depthMetres` down, 0 … 1. */
 export function deepWaterLiftWeight(depthMetres: number): number {
   return smoothstep(DEEP_LIFT_START_DEPTH, DEEP_LIFT_FULL_DEPTH, depthMetres);
@@ -225,6 +326,24 @@ export const VISIBLE_SEABED_DEPTH = (() => {
 const vec3 = (v: Rgb) => `vec3(${v.join(", ")})`;
 
 /** GLSL constants and functions matching the TypeScript above. */
+/**
+ * GLSL for the distance weight on its own (`shelfRecedeWeight`,
+ * `shoreFoamRecedeShare`; waterOptics.ts), for materials that recede with the
+ * camera but do not light water (the land's shore wash, shoreFoamLand.ts).
+ * Included by WATER_OPTICS_GLSL, so a shader takes one or the other.
+ */
+export const SHELF_RECEDE_GLSL = `
+  // Stylistic, not physics: how far the shelf has receded with camera
+  // distance (shelfRecedeWeight, waterOptics.ts), and what that leaves of
+  // the shore foam (shoreFoamRecedeShare).
+  float shelfRecedeWeight(float cameraDistance) {
+    return smoothstep(${Math.log(SHELF_RECEDE_NEAR_DISTANCE).toFixed(6)}, ${Math.log(SHELF_RECEDE_FAR_DISTANCE).toFixed(6)}, log(max(cameraDistance, 1e-3)));
+  }
+  float shoreFoamRecedeShare(float recede) {
+    return 1.0 + ${(SHORE_FOAM_FAR_SHARE - 1).toFixed(2)} * recede;
+  }
+`;
+
 export const WATER_OPTICS_GLSL = `
   const vec3 WATER_ABSORPTION = ${vec3(WATER_ABSORPTION)};
   const vec3 WATER_SCATTERING = ${vec3(WATER_SCATTERING)};
@@ -258,6 +377,18 @@ export const WATER_OPTICS_GLSL = `
   float schlickFresnel(float cosTheta) {
     float c = clamp(cosTheta, 0.0, 1.0);
     return WATER_F0 + (1.0 - WATER_F0) * pow(1.0 - c, 5.0);
+  }
+  ${SHELF_RECEDE_GLSL}
+  // Stylistic, not physics: the shelf recedes with camera distance; see
+  // recededDepthScale, recededDepth and recededLiftShare in waterOptics.ts.
+  float recededDepthScale(float recede) {
+    return 1.0 + ${(SHELF_FAR_DEPTH_SCALE - 1).toFixed(2)} * recede;
+  }
+  float recededDepth(float realMetres, float recede) {
+    return realMetres * recededDepthScale(recede) + ${SHELF_FAR_DEPTH_OFFSET.toFixed(2)} * recede * smoothstep(0.0, ${SHELF_OFFSET_RAMP.toFixed(2)}, realMetres);
+  }
+  vec3 recededLiftShare(vec3 t, float recede) {
+    return mix(vec3(1.0), 1.0 - t, recede);
   }
   // Stylistic, not physics: see shallowSaturationBoost in waterOptics.ts.
   float shallowSaturationBoost(float depthMetres, float redTransmittance) {
