@@ -147,7 +147,7 @@ export interface TerrainHeightFieldOptions {
 export interface TerrainHeightField {
   /** Terrain height (world Y) at world (x, z). ~0 at the coast, negative over water. */
   sampleHeight: (x: number, z: number) => number;
-  /** Noise-perturbed signed distance to the coast: positive on land, negative over water, clamped to ±2. */
+  /** Noise-perturbed signed distance to the coast: positive on land, negative over water, clamped to ±MAX_COAST_DISTANCE. */
   sampleCoastDistance: (x: number, z: number) => number;
   /** Blended land elevation (1 beach … 3 mountain) at (x, z); 0 where no land cell is near. */
   sampleElevation: (x: number, z: number) => number;

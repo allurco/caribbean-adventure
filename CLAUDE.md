@@ -21,7 +21,7 @@ npx vitest run src/game/combat.test.ts        # Run a single test file
 npx vitest run -t "flee attempt"              # Run tests matching a name
 ```
 
-Tests use **Vitest** and live next to their source as `*.test.ts`. Game logic is thoroughly unit-tested (~25 suites under `src/game/`); prefer writing tests **before** implementation (TDD). Rendering code in `src/board/` is largely untested — only `TerrainHeightmap` has a test.
+Tests use **Vitest** and live next to their source as `*.test.ts`. Game logic is thoroughly unit-tested (~25 suites under `src/game/`); prefer writing tests **before** implementation (TDD). Under `src/board/` the pure modules (the terrain field, meshes, placement, wave and water maths in `visuals/`, grid and camera helpers) are tested the same way; React components and shaders are not, so keep logic out of them.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 - `Board.tsx` — R3F `<Canvas>` + postprocessing + Tailwind HUD overlay; maps state to the 3D scene and orchestrates all panels/animations.
 - `Ship.tsx` — Ship mesh with per-frame lerp animation (also `SinkingShip`).
 - `HexGrid.tsx` — Hex tile geometry.
-- `visuals/` — Environment rendering: `UnifiedTerrain`, `HexTerrain`, `Ocean`, `TerrainDecorations`, and `TerrainHeightmap.ts` (CPU-side heightmap generation). See **Terrain System** below.
+- `visuals/` — Environment rendering: the terrain height field (`terrainHeightField.ts`, `sharedTerrainField.ts`), the land mesh (`landMesh.ts`, `useLandTerrain.ts`, `LandTerrain.tsx`), `Ocean.tsx` and its wave/water maths, `TerrainDecorations.tsx` with the placement modules, `SunLight.tsx`. See **Terrain System** below.
 - Panels & HUD: `PortPanel`, `MarketPanel`, `ShipyardPanel`, `ShipwrightPanel`, `TavernPanel`, `CombatPanel`, `DraftScreen`, `GameOverScreen`, `Hud*`, tooltips, and animation components.
 
 **`src/App.tsx`** — Wires boardgame.io `Client({ game, board })`. Currently local single-client (no explicit transport); production will use the boardgame.io server with socket transport for 6 players.
@@ -65,9 +65,9 @@ boardgame.io phases in `Game.ts`:
 
 Hexagonal grid uses **cube coordinates** `(q, r, s)` where `s = -q - r`, flat-top orientation. `hexToWorld()` in `hex.ts` converts to Three.js world space (XZ plane, Y up). All coordinate math lives in `hex.ts`.
 
-### Terrain System (GPU)
+### Terrain System
 
-Islands and seafloor are rendered with GPU shaders driven by a heightmap texture. `TerrainHeightmap.ts` builds a `DataTexture` from hex cell data using an SDF (signed distance field) for clean island boundaries; the terrain vertex shader displaces land and squashes water, and `Ocean.tsx` reads the same heightmap for depth/foam. Full rationale (SDF vs IDW, vertex-squash vs discard) is documented in **`docs/terrain-system.md`** — read it before changing terrain/ocean shaders.
+One terrain height field (ADR 0001) drives everything drawn on or under the sea. `terrainHeightField.ts` builds it from `G.cells` and a seed in pure TypeScript: `sampleHeight(x, z)` in world space, a noise-perturbed coastline, `cell.elevation` setting how high land rises, negative under water. `sharedTerrainField.ts` builds it once per map. `landMesh.ts` samples it into one lattice mesh (land above sea level, seabed below); `terrainFieldTexture.ts` bakes it into a texture the ocean, wave displacement and shore foam shaders read; decorations and the port kit sample it on the CPU. Full design and the invariants the tests pin are in **`docs/terrain-system.md`** — read it before changing the field or the terrain/ocean shaders.
 
 ### Multiplayer
 
@@ -95,7 +95,7 @@ All HUD/overlay UI uses **TailwindCSS v4** (via `@tailwindcss/vite` plugin). No 
 | `@react-three/fiber` | React renderer for Three.js |
 | `@react-three/drei` | R3F helpers (MapControls, etc.) |
 | `@react-three/postprocessing` | Bloom / vignette / tone-mapping effects |
-| `simplex-noise` | Procedural noise for map/terrain generation |
+| `simplex-noise` | Noise behind the terrain field's coast, relief and reef crest (`visuals/periodicNoise.ts`) |
 | `tailwindcss` | Utility-first CSS for HUD overlays |
 | `vitest` | Test runner |
 
