@@ -1,11 +1,19 @@
 import { Client } from "boardgame.io/react";
-import { Caribbean } from "./game/Game";
+import { Caribbean, withSetupData } from "./game/Game";
 import { CaribbeanBoard } from "./board/Board";
 import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
+import { parseDevUrlParams } from "./board/devUrlParams";
+
+// Dev URL parameters (#74), read once: a map size and seed pin the generated
+// map, cx/cz/dist pin the camera's first view, view=props opens the prop
+// viewer. Absent, nothing changes. See "Dev URL parameters" in the README.
+const devParams = parseDevUrlParams(window.location.search);
 
 const CaribbeanClient = Client({
-  game: Caribbean,
+  // The local client creates its match without setupData, so the pinned map
+  // is fixed on the game itself; a server will pass it from match creation.
+  game: withSetupData(Caribbean, devParams.setupData),
   board: CaribbeanBoard,
 });
 
@@ -16,10 +24,8 @@ export default function App() {
   if (window.location.hash === "#lab") {
     return <ShaderLab />;
   }
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("view") === "props") {
-    const focus = params.get("focus");
-    return <PropViewer focus={focus === null ? undefined : Number(focus)} />;
+  if (devParams.propViewer) {
+    return <PropViewer focus={devParams.propViewer.focus} />;
   }
-  return <CaribbeanClient />;
+  return <CaribbeanClient cameraTarget={devParams.cameraTarget} cameraDistance={devParams.cameraDistance} />;
 }

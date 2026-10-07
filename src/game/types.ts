@@ -193,6 +193,15 @@ export interface MapCell {
   biome?: Biome; // Only for land hexes: SAND, GRASS, or ROCK
 }
 
+/**
+ * What a match may be created with (boardgame.io `setupData`): a map size
+ * and a generation seed to pin, each chosen at random when left out.
+ */
+export interface CaribbeanSetupData {
+  mapSize?: MapSizeId;
+  mapSeed?: number;
+}
+
 export interface CaribbeanState {
   cells: MapCell[];
   ships: Record<string, ShipState>;
