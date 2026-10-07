@@ -5,10 +5,15 @@ import {
   InstancedMesh,
   Object3D,
   CylinderGeometry,
+  PerspectiveCamera,
+  Vector3,
 } from "three";
-import type { ThreeEvent } from "@react-three/fiber";
+import type { Group, Mesh } from "three";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
-import { hexToWorld } from "../game/hex";
+import { CAMERA_FOV } from "./cameraBounds";
+import { PORT_LABEL_FONT_SIZE, portLabelOpacity, portLabelScale } from "./visuals/portLabel";
+import { hexEquals, hexToWorld } from "../game/hex";
 import type { MapCell } from "../game/types";
 import { WaterHexOutlines } from "./WaterHexOutlines";
 import { hoverEnter, hoverLeave } from "./sharedHover";
@@ -24,8 +29,6 @@ const HIGHLIGHT_DEPTH = 0.02;
 // foot to the tallest top in height: `portHover.ts`), so a pointer over any
 // part of a building or the ground between them shows the tooltip. The
 // buildings themselves are the port's visual (portSettlement.ts).
-// Port name label baseline above the ground
-const PORT_LABEL_HEIGHT = 0.6;
 
 const COLOR_HOVERED = "#facc15";
 const COLOR_ATTACK_TARGET = "#ef4444";
@@ -59,6 +62,7 @@ const highlightGeometry = new ExtrudeGeometry(hexShape, {
 const portHoverGeometry = new CylinderGeometry(PORT_HOVER_RADIUS, PORT_HOVER_RADIUS, 1, 8);
 
 const tempObject = new Object3D();
+const labelWorldPos = new Vector3();
 
 
 // Port hover volume: an invisible cylinder over the settlement (`visible`
@@ -92,27 +96,49 @@ function PortMarker({
   );
 }
 
-// Floating port name label
-function PortLabel({ site: { cell, groundY } }: { site: PortSite }) {
+/** The troika text mesh behind drei's `Text`, with the opacities it reads each frame. */
+type LabelText = Mesh & { fillOpacity: number; outlineOpacity: number };
+
+// Floating port name label: lifted clear of the settlement, its screen size
+// capped and faded close in, back to full on hover (#75, visuals/portLabel.ts)
+function PortLabel({ site: { cell, labelBaseY }, hovered }: { site: PortSite; hovered: boolean }) {
   const [x, , z] = hexToWorld(cell.hex);
+  const groupRef = useRef<Group>(null);
+  const textRef = useRef<LabelText>(null);
+
+  useFrame(({ camera, size }) => {
+    const group = groupRef.current;
+    const text = textRef.current;
+    if (!group || !text) return;
+    // World position, so each world copy (#36) measures its own distance
+    group.getWorldPosition(labelWorldPos);
+    const distance = camera.position.distanceTo(labelWorldPos);
+    const fov = camera instanceof PerspectiveCamera ? camera.fov : CAMERA_FOV;
+    group.scale.setScalar(portLabelScale(distance, fov, size.height));
+    const opacity = portLabelOpacity(distance, hovered);
+    text.fillOpacity = opacity;
+    text.outlineOpacity = opacity;
+  });
 
   if (!cell.portName) return null;
 
   return (
-    <Text
-      position={[x, groundY + PORT_LABEL_HEIGHT, z]}
-      // Upright and facing +z: square on to the camera, which looks due north (cameraBounds.ts)
-      rotation={[0, 0, 0]}
-      fontSize={0.4}
-      color="#fef3c7"
-      anchorX="center"
-      anchorY="bottom"
-      outlineWidth={0.02}
-      outlineColor="#1c1917"
-      raycast={() => null}
-    >
-      {cell.portName}
-    </Text>
+    <group ref={groupRef} position={[x, labelBaseY, z]}>
+      <Text
+        ref={textRef}
+        // Upright and facing +z: square on to the camera, which looks due north (cameraBounds.ts)
+        rotation={[0, 0, 0]}
+        fontSize={PORT_LABEL_FONT_SIZE}
+        color="#fef3c7"
+        anchorX="center"
+        anchorY="bottom"
+        outlineWidth={0.02}
+        outlineColor="#1c1917"
+        raycast={() => null}
+      >
+        {cell.portName}
+      </Text>
+    </group>
   );
 }
 
@@ -130,6 +156,7 @@ export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
     setHover,
     onHexClick,
     onPortHover,
+    hoveredPort,
     interactive,
   } = grid;
   const waterRef = useRef<InstancedMesh>(null!);
@@ -247,7 +274,11 @@ export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
 
       {/* Floating port name labels */}
       {portSites.map((site) => (
-        <PortLabel key={`label-${site.cell.hex.q}-${site.cell.hex.r}`} site={site} />
+        <PortLabel
+          key={`label-${site.cell.hex.q}-${site.cell.hex.r}`}
+          site={site}
+          hovered={hoveredPort !== null && hexEquals(hoveredPort.hex, site.cell.hex)}
+        />
       ))}
     </>
   );
