@@ -51,6 +51,7 @@ import { getBountyForAction, addBounty, shouldSpawnFlotilla } from "./reputation
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
 import { findAccessiblePort } from "./moves";
+import { isValidMapSeed } from "./mapSeed";
 import {
   generateMission,
   canAffordTavern,
@@ -166,8 +167,12 @@ export const Caribbean: Game<CaribbeanState> = {
     // columns (#36); the generator and G share the wrap.
     const preset = getMapPreset(mapSize);
     const wrap: MapWrap = createWrap(preset.columns);
-    // Use the provided seed for map generation, or a random one
-    const mapSeed = setupData?.mapSeed ?? Math.floor(random.Number() * 1000000);
+    // Use the provided seed for map generation if it names exactly one map
+    // (a server's setupData arrives unchecked, #82), else a random one.
+    const requestedSeed: unknown = setupData?.mapSeed;
+    const mapSeed = isValidMapSeed(requestedSeed)
+      ? requestedSeed
+      : Math.floor(random.Number() * 1000000);
     const cells = generateMap(preset, mapSeed, wrap);
 
     const numPlayers = 2;
@@ -184,6 +189,7 @@ export const Caribbean: Game<CaribbeanState> = {
       ships,
       npcs: {},
       mapSize,
+      mapSeed,
       wrap,
       captainDeck: remaining,
       draftHands: hands,

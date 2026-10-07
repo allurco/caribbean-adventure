@@ -208,6 +208,13 @@ export interface CaribbeanState {
   npcs: Record<string, NPCShip>;
   mapSize: MapSizeId;
   /**
+   * The seed the map was actually generated from: setupData's when it is a
+   * valid int32, else the random fallback, so the match record is honest
+   * (#82). Always set by `setup()`; optional only so hand-built states in
+   * tests can leave it out.
+   */
+  mapSeed?: number;
+  /**
    * East–west wrap of the map, or null if it does not wrap. All hex positions in
    * state are kept canonical (column in [0, columns)) under this wrap.
    */

@@ -1,5 +1,6 @@
 import type { CaribbeanSetupData } from "../game/types";
 import type { MapSizeId } from "../game/mapConfig";
+import { isValidMapSeed } from "../game/mapSeed";
 
 /**
  * Dev-only URL parameters (#74), so a URL alone reproduces a map and a view
@@ -46,7 +47,7 @@ export function parseDevUrlParams(search: string): DevUrlParams {
 function parseSetupData(size: string | null, seed: string | null): CaribbeanSetupData | undefined {
   const setupData: CaribbeanSetupData = {};
   if (size !== null && (MAP_SIZES as readonly string[]).includes(size)) setupData.mapSize = size as MapSizeId;
-  const mapSeed = integer(seed);
+  const mapSeed = mapSeedFrom(seed);
   if (mapSeed !== undefined) setupData.mapSeed = mapSeed;
   return Object.keys(setupData).length > 0 ? setupData : undefined;
 }
@@ -58,14 +59,18 @@ function finiteNumber(value: string | null): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-/**
- * A plain decimal integer within int32, or undefined. Not `Number()`'s
- * reading: no hex, no exponent, no sign other than a leading minus, so
- * that a seed the map generator folds to int32 (`seed | 0`) means exactly
- * the map it names and never aliases to another's.
- */
+/** A plain decimal integer, or undefined. Not `Number()`'s reading: no hex, no exponent, no sign other than a leading minus. */
 function integer(value: string | null): number | undefined {
   if (value === null || !/^-?\d+$/.test(value)) return undefined;
-  const n = Number(value);
-  return n >= -2147483648 && n <= 2147483647 ? n : undefined;
+  return Number(value);
+}
+
+/**
+ * A plain decimal integer that is also a valid map seed (within int32, the
+ * rule `setup()` applies too), so the seed means exactly the map it names
+ * and never aliases to another's.
+ */
+function mapSeedFrom(value: string | null): number | undefined {
+  const n = integer(value);
+  return isValidMapSeed(n) ? n : undefined;
 }
