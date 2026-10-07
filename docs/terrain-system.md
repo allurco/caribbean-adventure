@@ -1251,10 +1251,8 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | `src/board/visuals/hullFoam.ts` | Contact foam around a hull |
 | `src/board/shipFoamSources.ts` | Ships' animated positions for the hull foam |
 | `src/board/visuals/foamShading.ts` | Foam union, lace, detail fade, radiance; the surf pulse and churn noise |
-| `src/board/visuals/useTerrainFieldTexture.ts` | The terrain field texture, once per map, for the water and the land |
 | `src/board/visuals/causticFocus.ts` | Caustic maths: focus matrix, Hessian, intensity, depth and LOD fades |
 | `src/board/visuals/seabedCaustics.ts` | Patches the seabed material so its sunlight is focused by the waves |
-| `src/board/visuals/useLandTerrain.ts` | Land and seabed mesh and materials, once per map |
 | `src/board/visuals/SunLight.tsx` | The shadow-casting sun: fits, refits and snaps its shadow box to the view |
 | `src/board/shadowFit.ts` | Shadow box maths: extent from the view's reach, texel, biases, refit hysteresis, depth range |
 | `src/board/visuals/atmosphere.ts` | Sun, sky, haze, shadow and post-processing constants |
