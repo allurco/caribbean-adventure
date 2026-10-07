@@ -5,6 +5,7 @@ import type { CaribbeanState, CaribbeanSetupData } from "./Game";
 import type { Game } from "boardgame.io";
 import { canonicalHex, hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
 import type { MapCell } from "./mapGenerator";
+import { generateMap } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
 import { getMapPreset } from "./mapConfig";
 import { createShipState } from "./economy";
@@ -259,6 +260,59 @@ describe("Caribbean.setup", () => {
     // The pin still wins for the keys it sets.
     const overridden = start(withSetupData(Caribbean, { mapSize: "small", mapSeed: 2 }), { mapSize: "small", mapSeed: 1 });
     expect(overridden.cells).toEqual(start(Caribbean, { mapSize: "small", mapSeed: 2 }).cells);
+  });
+
+  describe("map seed validation (#82)", () => {
+    // A server hands setup() its match's setupData unchecked; a fixed
+    // boardgame.io seed keeps the random fallback reproducible.
+    const start = (setupData: CaribbeanSetupData | Record<string, unknown>) => {
+      const game: Game<CaribbeanState> = {
+        ...Caribbean,
+        seed: "seed-82",
+        setup: (ctx) => Caribbean.setup!(ctx, setupData as CaribbeanSetupData),
+      };
+      const client = Client<CaribbeanState>({ game, numPlayers: 2 });
+      client.start();
+      return client.getState()!.G;
+    };
+    const smallMap = (mapSeed: number) => {
+      const preset = getMapPreset("small");
+      return generateMap(preset, mapSeed, createWrap(preset.columns));
+    };
+
+    it("generates a valid seed's map exactly as the generator does, and records the seed", () => {
+      for (const mapSeed of [1, -7, 2147483647, -2147483648]) {
+        const G = start({ mapSize: "small", mapSeed });
+        expect(G.mapSeed).toBe(mapSeed);
+        expect(G.cells).toEqual(smallMap(mapSeed));
+      }
+    });
+
+    it("falls back to a random seed, not an aliased map, for a seed the generator would fold", () => {
+      // What `seed | 0` would have silently turned each one into.
+      const cases: [unknown, number][] = [
+        [1.5, 1],
+        [2 ** 32 + 1, 1],
+        [2147483648, -2147483648],
+        [NaN, 0],
+        ["1", 1],
+      ];
+      for (const [mapSeed, aliasedTo] of cases) {
+        const G = start({ mapSize: "small", mapSeed });
+        expect(G.mapSeed).not.toBe(mapSeed);
+        expect(G.mapSeed).not.toBe(aliasedTo);
+        expect(Number.isInteger(G.mapSeed)).toBe(true);
+        // The record is honest: the map is the recorded seed's, not the alias's.
+        expect(G.cells).toEqual(smallMap(G.mapSeed!));
+        expect(G.cells).not.toEqual(smallMap(aliasedTo));
+      }
+    });
+
+    it("records the random seed it picks when none is given", () => {
+      const G = start({ mapSize: "small" });
+      expect(Number.isInteger(G.mapSeed)).toBe(true);
+      expect(G.cells).toEqual(smallMap(G.mapSeed!));
+    });
   });
 });
 
