@@ -906,8 +906,10 @@ already opaque, is identical at every zoom. The deep lift, added on top of
 the seabed close up, is composited under it by (1 − transmittance) as the
 shelf recedes, since added it drew a blue band brighter than both sides. The
 shore foam (wash, breaker and reef bands, on the sea and up the sand) fades
-with the same weight to `SHORE_FOAM_FAR_SHARE`, so the far coastline is a
-faint line, not a white rim; whitecaps and hull foam are untouched. A milky
+ahead of the water, reaching `SHORE_FOAM_FAR_SHARE` by
+`SHORE_FOAM_FADE_END` of the weight, so the breaker line is gone before the
+shelf is, and the far coastline is a faint line, not a white rim; whitecaps
+and hull foam are untouched. A milky
 veil and a mix toward the open-sea tone were tried first and rejected: both
 added light, so the shelf went pale grey instead of sinking into the blue.
 The weight reaches the land's shore wash through `cameraDistanceUniform`,
