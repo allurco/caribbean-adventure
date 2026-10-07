@@ -66,7 +66,10 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `dist=<positive number>` | How far the camera starts from its target (the map's iso distance otherwise); the zoom limits still apply |
 | `view=props` | The prop viewer instead of the game, with `focus=<n>` to start close up on entry n |
 | `massifs=1` | Prototype (#83): rock massifs in the terrain height field |
-| `houses=1` | Prototype (#83): tiny-house scale boxes on every port hex |
+| `houses=1` | Prototype (#83, #84): real-size house boxes packed on every port hex |
+| `hexMetres=<positive>` | Experiment (#84): a hex stands for this many metres (115 today); every prop and ship is drawn at 115 / hexMetres and the derived props placed more densely |
+| `scaleWater=1` | Experiment (#84): with `hexMetres`, the water's metres per unit follow the hex scale too |
+| `minDist=<positive>` | Experiment (#84): the zoom floor in world units instead of the map-fraction one |
 
 The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=4.3` opens the same small map every time, at ship zoom over its middle port. The size and seed become the game's boardgame.io `setupData` (merged over whatever match creation passes, so a pin overrides only the keys it sets); the camera values go to the board. Captains and NPCs stay random.
 
