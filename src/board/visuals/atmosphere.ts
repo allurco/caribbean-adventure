@@ -9,7 +9,7 @@
  */
 
 import { PCFShadowMap } from "three";
-import { CAMERA_FOV, CAMERA_OFFSET, CAMERA_PITCH } from "../cameraBounds";
+import { CAMERA_FOV, CAMERA_DIRECTION, CAMERA_PITCH } from "../cameraBounds";
 import type { SunShadowSettings } from "../shadowFit";
 import { sunDirection, viewDirectionXZ } from "./sunDirection";
 import { downwardViewFactor, seaBounceAlbedo } from "./skyEnvironment";
@@ -39,7 +39,7 @@ export const SUN_INTENSITY = 2.5;
 
 /**
  * Sun placement, relative to the camera's view (see sunDirection.ts), so it
- * turns with the camera: the camera looks due north (CAMERA_OFFSET), which
+ * turns with the camera: the camera looks due north (CAMERA_DIRECTION), which
  * puts the sun north-west of the focus; it was tuned with the old diagonal
  * view and kept the same elevation and azimuth when the camera turned (#36).
  *
@@ -65,7 +65,7 @@ export const SUN_INTENSITY = 2.5;
 export const SUN_ELEVATION_DEG = 55;
 export const SUN_AZIMUTH_DEG = -48;
 export const SUN_DIRECTION = sunDirection(
-  viewDirectionXZ(CAMERA_OFFSET),
+  viewDirectionXZ(CAMERA_DIRECTION),
   SUN_ELEVATION_DEG,
   SUN_AZIMUTH_DEG
 );
@@ -115,7 +115,7 @@ export const FILL_INTENSITY = 0.8;
 export const FILL_ELEVATION_DEG = 35;
 export const FILL_AZIMUTH_DEG = 132;
 export const FILL_DIRECTION = sunDirection(
-  viewDirectionXZ(CAMERA_OFFSET),
+  viewDirectionXZ(CAMERA_DIRECTION),
   FILL_ELEVATION_DEG,
   FILL_AZIMUTH_DEG
 );

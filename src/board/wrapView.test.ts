@@ -8,7 +8,7 @@ import {
   wrapCopyRange,
   type GroundFootprint,
 } from "./wrapView";
-import { CAMERA_FOV, CAMERA_MAX_DISTANCE, CAMERA_OFFSET } from "./cameraBounds";
+import { CAMERA_FOV, CAMERA_MAX_DISTANCE, CAMERA_DIRECTION } from "./cameraBounds";
 import { OCEAN_GRID_BASE_CELL, OCEAN_GRID_RINGS, oceanGridCoverage } from "./visuals/oceanGrid";
 import { MAP_PRESETS } from "../game/mapConfig";
 
@@ -45,7 +45,7 @@ describe("groundFootprint", () => {
     // Due south of the focus, looking north (#36): the footprint is a
     // trapezium symmetric about the focus in x, reaching further north (−z,
     // the far edge of a pitched view) than south.
-    const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, 16 / 9)!;
+    const footprint = groundFootprint(CAMERA_DIRECTION, CAMERA_FOV, 16 / 9)!;
 
     it("is symmetric in x about the focus", () => {
       expect(footprint.minX).toBeCloseTo(-footprint.maxX, 12);
@@ -97,7 +97,7 @@ describe("the game's camera on a wrapping map", () => {
 
   for (const aspect of [0.5, 1, SIXTEEN_NINE, 21 / 9, 4]) {
     for (const preset of MAP_PRESETS) {
-      const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, aspect)!;
+      const footprint = groundFootprint(CAMERA_DIRECTION, CAMERA_FOV, aspect)!;
       const viewHeightPerUnit = footprint.maxZ - footprint.minZ;
       const band = mapBand(preset.rows);
       const label = `the ${preset.id} map at aspect ${aspect.toFixed(2)}`;
@@ -157,7 +157,7 @@ describe("the game's camera on a wrapping map", () => {
   it("zooms out to the same distance on every map size", () => {
     // Civ style: the cap does not shrink with the map; a small map shows open
     // sea past its top and bottom rows at full zoom-out instead.
-    const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, SIXTEEN_NINE)!;
+    const footprint = groundFootprint(CAMERA_DIRECTION, CAMERA_FOV, SIXTEEN_NINE)!;
     const band = mapBand(SMALL_ROWS);
     const d = CAMERA_MAX_DISTANCE;
     // The focus that centres the rows on screen (the view reaches further
@@ -174,7 +174,7 @@ describe("the game's camera on a wrapping map", () => {
     // The view is symmetric about the focus (the camera looks due north), so
     // the copies are too: ~68 units of view plus the margin just exceeds two
     // widths of the small map (36).
-    const footprint = groundFootprint(CAMERA_OFFSET, CAMERA_FOV, SIXTEEN_NINE)!;
+    const footprint = groundFootprint(CAMERA_DIRECTION, CAMERA_FOV, SIXTEEN_NINE)!;
     const margin = 3; // WRAP_COPY_MARGIN in Board.tsx
     const ranges = MAP_PRESETS.map((preset) =>
       wrapCopyRange(footprint, CAMERA_MAX_DISTANCE, 1.5 * preset.columns, margin)

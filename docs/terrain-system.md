@@ -299,7 +299,7 @@ never jump. How many copies: `wrapCopyRange` from the view's ground footprint
 at full zoom-out (`CAMERA_MAX_DISTANCE`): at 16:9, five (−2…+2) on the small
 map and three (−1…+1) on the medium and large; a 4:1 super-ultrawide needs up
 to seven on the small map.
-The camera looks **due north** (`CAMERA_OFFSET` in `cameraBounds.ts`: due
+The camera looks **due north** (`CAMERA_DIRECTION` in `cameraBounds.ts`: due
 south of its focus, pitched ~46.7° down, no yaw), so screen-horizontal is
 world x, the wrap axis, and screen-vertical is world z: a horizontal drag
 pans along the wrap only and never changes which rows are on screen, a

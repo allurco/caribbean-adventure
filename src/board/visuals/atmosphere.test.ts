@@ -23,10 +23,10 @@ import { metresToUnits, unitsToMetres } from "./worldScale";
 import { WAVE_CREST_BOUND_UNITS } from "./waveDisplacement";
 import { viewDirectionXZ } from "./sunDirection";
 import { shadowDepthRange, shadowExtentFor, shadowTexel } from "../shadowFit";
-import { CAMERA_MAX_DISTANCE, CAMERA_OFFSET } from "../cameraBounds";
+import { CAMERA_MAX_DISTANCE, CAMERA_DIRECTION } from "../cameraBounds";
 
 describe("the fill light (#63)", () => {
-  const view = viewDirectionXZ(CAMERA_OFFSET);
+  const view = viewDirectionXZ(CAMERA_DIRECTION);
   /** How much of a light's horizontal direction points the way the camera looks. */
   const alongView = (direction: readonly [number, number, number]) =>
     direction[0] * view[0] + direction[2] * view[1];

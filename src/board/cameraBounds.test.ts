@@ -3,7 +3,7 @@ import { PerspectiveCamera, Vector3 } from "three";
 import {
   CAMERA_FOV,
   CAMERA_MAX_DISTANCE,
-  CAMERA_OFFSET,
+  CAMERA_DIRECTION,
   CAMERA_PITCH,
   cameraBoundsFromHexes,
   clampToCameraBounds,
@@ -19,14 +19,19 @@ describe("the game camera", () => {
   // must pan along the wrap axis (world x) only, and a vertical one along
   // world z only, so the camera's yaw is aligned with the map axes.
   const camera = new PerspectiveCamera(CAMERA_FOV, 16 / 9, 0.1, 1000);
-  camera.position.set(...CAMERA_OFFSET).multiplyScalar(20);
+  camera.position.set(...CAMERA_DIRECTION).multiplyScalar(20);
   camera.lookAt(0, 0, 0);
   camera.updateMatrixWorld();
 
   it("sits due south of its focus", () => {
-    expect(CAMERA_OFFSET[0]).toBe(0);
-    expect(CAMERA_OFFSET[1]).toBeGreaterThan(0);
-    expect(CAMERA_OFFSET[2]).toBeGreaterThan(0);
+    expect(CAMERA_DIRECTION[0]).toBe(0);
+    expect(CAMERA_DIRECTION[1]).toBeGreaterThan(0);
+    expect(CAMERA_DIRECTION[2]).toBeGreaterThan(0);
+  });
+
+  it("is placed along a unit direction, so a configured distance is the real camera-to-focus distance (#78)", () => {
+    expect(Math.hypot(...CAMERA_DIRECTION)).toBeCloseTo(1, 12);
+    expect(camera.position.length()).toBeCloseTo(20, 12);
   });
 
   it("keeps the pitch of the old diagonal view (~46.7° down)", () => {

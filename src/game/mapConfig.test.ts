@@ -128,9 +128,23 @@ describe("computeCameraConfig", () => {
   it("frames the same world size as the old hexagons (diameter 36, 54, 75)", () => {
     // The old radius-R hexagon spanned 3R world units east–west; the rectangles
     // are 1.5 units per column wide, so the camera keeps its old framing.
-    expect(computeCameraConfig(getMapPreset("small")).isoDistance).toBeCloseTo(36 * 0.8);
-    expect(computeCameraConfig(getMapPreset("medium")).isoDistance).toBeCloseTo(54 * 0.8);
-    expect(computeCameraConfig(getMapPreset("large")).isoDistance).toBeCloseTo(75 * 0.8);
+    expect(computeCameraConfig(getMapPreset("small")).isoDistance).toBeCloseTo(36 * 0.66);
+    expect(computeCameraConfig(getMapPreset("medium")).isoDistance).toBeCloseTo(54 * 0.66);
+    expect(computeCameraConfig(getMapPreset("large")).isoDistance).toBeCloseTo(75 * 0.66);
+  });
+
+  it("starts where the old unnormalised placement put the camera, within 0.1% (#78)", () => {
+    // The old iso distance 0.8 × span was placed along a vector of length √0.68.
+    for (const preset of MAP_PRESETS) {
+      const { isoDistance } = computeCameraConfig(preset);
+      const span = Math.max(1.5 * preset.columns, Math.sqrt(3) * preset.rows);
+      expect(Math.abs(isoDistance / (span * 0.8 * Math.sqrt(0.68)) - 1)).toBeLessThan(0.001);
+    }
+  });
+
+  it("keeps the old zoom floor, 0.15 of the old iso distance", () => {
+    expect(computeCameraConfig(getMapPreset("small")).zoomFloor).toBeCloseTo(36 * 0.8 * 0.15);
+    expect(computeCameraConfig(getMapPreset("large")).zoomFloor).toBeCloseTo(75 * 0.8 * 0.15);
   });
 
   it("targets the centre of the map", () => {

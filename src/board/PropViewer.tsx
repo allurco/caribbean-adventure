@@ -26,7 +26,7 @@ import {
   VIGNETTE_DARKNESS,
   VIGNETTE_OFFSET,
 } from "./visuals/atmosphere";
-import { CAMERA_FOV, CAMERA_OFFSET } from "./cameraBounds";
+import { CAMERA_DIRECTION, CAMERA_FOV } from "./cameraBounds";
 import { paletteColor } from "./visuals/palette";
 import { PROP_ENTRIES, type PropEntry, type PropGeometryData } from "./propEntries";
 import { layoutRow, propExtent } from "./propLayout";
@@ -138,11 +138,10 @@ export function PropViewer({ entries = PROP_ENTRIES, focus }: PropViewerProps) {
   const target: [number, number, number] = focused ? [props[focus].x, TARGET[1], 0] : TARGET;
   const distance = focused ? CAMERA_DISTANCE / 4 : CAMERA_DISTANCE;
   // Along the game's fixed view direction, at ship zoom.
-  const length = Math.hypot(...CAMERA_OFFSET);
   const position: [number, number, number] = [
-    target[0] + (CAMERA_OFFSET[0] / length) * distance,
-    target[1] + (CAMERA_OFFSET[1] / length) * distance,
-    target[2] + (CAMERA_OFFSET[2] / length) * distance,
+    target[0] + CAMERA_DIRECTION[0] * distance,
+    target[1] + CAMERA_DIRECTION[1] * distance,
+    target[2] + CAMERA_DIRECTION[2] * distance,
   ];
   return (
     <div className="relative w-screen h-screen font-body bg-[#0a1929]">
