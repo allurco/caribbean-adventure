@@ -1,0 +1,141 @@
+/**
+ * The village's placement over 200 seeds of every map size (#87): no
+ * floating or buried buildings, no building across a terrace riser, and
+ * nothing on a street's running surface, the quay or the pier.
+ */
+import { describe, it, expect } from "vitest";
+import { generateMap } from "../../game/mapGenerator";
+import { getMapPreset, type MapSizeId } from "../../game/mapConfig";
+import { createWrap, hexToWorld } from "../../game/hex";
+import type { MapCell } from "../../game/types";
+import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
+import { landSurface } from "./landMesh";
+import { pierOrigin } from "./pierPlacement";
+import { portBuildings, planFootprint, planProbePoints } from "./portSettlement";
+import { portQuays } from "./quayPlacement";
+import { crossesRiser, RETAINING_WALL_DEPTH } from "./townPlateau";
+import { pieceClearRadius, townClutter } from "./townDetailLayout";
+import { BUILDING_FOOTING } from "./buildingGeometry";
+import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
+import {
+  overlaps,
+  pierRect,
+  planPortTowns,
+  polylineDistance,
+  quayRect,
+  rectCorners,
+  villageWalls,
+  VILLAGE_DRY_HEIGHT,
+  VILLAGE_MAX_BURY,
+  VILLAGE_MAX_FOOTING_SHOWN,
+  type PlanRect,
+} from "./villageLayout";
+
+const SEEDS = 200;
+/** Slack for probes between the placement's own, world units (about 13 cm at 65 m per unit). */
+const SLACK = 0.002;
+
+/** The piers as `decorationLayout` places them: from where the drawn beach meets the water. */
+function piersOf(cells: readonly MapCell[], drawn: ReturnType<typeof landSurface>) {
+  const piers: { worldX: number; worldZ: number; rotation: number; scale: number }[] = [];
+  for (const cell of cells) {
+    const [x, , z] = hexToWorld(cell.hex);
+    for (const deco of cell.decorations ?? []) {
+      if (deco.type !== "pier") continue;
+      const scale = (deco.scale ?? 1) * PROP_SCALE;
+      const origin = pierOrigin(drawn, { x: x + deco.position[0], z: z + deco.position[2] }, deco.rotation);
+      piers.push({ worldX: origin.x, worldZ: origin.z, rotation: deco.rotation, scale });
+    }
+  }
+  return piers;
+}
+
+interface Tally {
+  maps: number;
+  ports: number;
+  houses: number;
+  clutter: number;
+  failures: string[];
+}
+
+function sweep(size: MapSizeId): Tally {
+  const tally: Tally = { maps: 0, ports: 0, houses: 0, clutter: 0, failures: [] };
+  const fail = (seed: number, what: string) => {
+    if (tally.failures.length < 20) tally.failures.push(`${size} seed ${seed}: ${what}`);
+  };
+  const preset = getMapPreset(size);
+  const wrap = createWrap(preset.columns);
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    const cells = generateMap(preset, seed, wrap);
+    const terrainSeed = terrainSeedFromCells(cells);
+    const field = createTerrainHeightField(cells, terrainSeed, { wrap });
+    const drawn = landSurface(field);
+    const piers = piersOf(cells, drawn);
+    const kit = portBuildings(cells, drawn, terrainSeed, field.townPlateaus);
+    const quays = portQuays(cells, drawn, terrainSeed);
+    const { ports } = planPortTowns(cells, drawn, { buildings: kit, quays, piers, plateaus: field.townPlateaus }, terrainSeed);
+    const clutter = townClutter(ports, drawn, BUILDING_SCALE, terrainSeed);
+    tally.maps++;
+    tally.ports += ports.length;
+    tally.clutter += clutter.length;
+    for (const port of ports) {
+      const harbour: PlanRect[] = [pierRect(port.pier), ...port.quays.map(quayRect)];
+      // The kit's walls keep off the risers too.
+      for (const b of kit) {
+        if (Math.hypot(b.worldX - port.cx, b.worldZ - port.cz) > 1 || Math.hypot(b.worldX - port.cx, b.worldZ - port.cz) < 1e-9) continue;
+        const corners = planProbePoints(b.worldX, b.worldZ, planFootprint(b.kind, b.scale, b.yaw), 2, 2).map((p) => [p.x, p.z] as const);
+        if (crossesRiser(port.plateau, corners, RETAINING_WALL_DEPTH * BUILDING_SCALE)) fail(seed, `kit ${b.kind} across a riser`);
+      }
+      for (const b of port.buildings) {
+        tally.houses++;
+        const walls = villageWalls(b);
+        const corners = rectCorners(walls);
+        if (crossesRiser(port.plateau, corners, RETAINING_WALL_DEPTH * BUILDING_SCALE)) fail(seed, `${b.variant} across a riser`);
+        for (const s of port.streets) {
+          if (corners.some(([x, z]) => polylineDistance(x, z, s.line) < s.halfWidth) || polylineDistance(b.worldX, b.worldZ, s.line) < s.halfWidth) fail(seed, `${b.variant} on a street`);
+        }
+        if (harbour.some((h) => overlaps(h, walls, 0))) fail(seed, `${b.variant} on the quay or pier`);
+        // On the ground: probed far denser than the placement does.
+        let top = -Infinity;
+        let bottom = Infinity;
+        for (let u = -1; u <= 1.0001; u += 0.2) {
+          for (let v = -1; v <= 1.0001; v += 0.2) {
+            const h = drawn.sampleHeight(walls.x + walls.fz * u * walls.halfW + walls.fx * v * walls.halfD, walls.z - walls.fx * u * walls.halfW + walls.fz * v * walls.halfD);
+            top = Math.max(top, h);
+            bottom = Math.min(bottom, h);
+          }
+        }
+        if (bottom <= VILLAGE_DRY_HEIGHT - SLACK) fail(seed, `${b.variant} on wet ground`);
+        if (top - b.worldY > VILLAGE_MAX_BURY * b.scale + SLACK) fail(seed, `${b.variant} buried by ${(top - b.worldY).toFixed(4)}`);
+        if (b.worldY - bottom > VILLAGE_MAX_FOOTING_SHOWN * b.scale + SLACK) fail(seed, `${b.variant} floating: ${(b.worldY - bottom).toFixed(4)} of footing`);
+        // The footing reaches under the lowest ground.
+        if (b.worldY - BUILDING_FOOTING * b.scale > bottom) fail(seed, `${b.variant} footing short of the ground`);
+      }
+      for (const c of clutter) {
+        if (Math.hypot(c.x - port.cx, c.z - port.cz) > 1) continue;
+        const r = pieceClearRadius(c);
+        for (const s of port.streets) if (polylineDistance(c.x, c.z, s.line) < s.halfWidth) fail(seed, `${c.kind} on a street`);
+        if (harbour.some((h) => overlaps(h, { x: c.x, z: c.z, fx: 0, fz: 1, halfW: r * 0.7, halfD: r * 0.7 }, 0))) fail(seed, `${c.kind} on the quay or pier`);
+        const g = drawn.sampleHeight(c.x, c.z);
+        if (c.y > g + SLACK) fail(seed, `${c.kind} floating`);
+        if (g - c.y > Math.max(0.01, r)) fail(seed, `${c.kind} buried by ${(g - c.y).toFixed(4)}`);
+      }
+    }
+  }
+  return tally;
+}
+
+describe("village placement over 200 seeds per map size (#87)", () => {
+  for (const size of ["small", "medium", "large"] as const) {
+    it(`holds on every ${size} map`, () => {
+      const started = performance.now();
+      const tally = sweep(size);
+      console.log(
+        `village ${size}: ${tally.maps} maps, ${tally.ports} ports, ${(tally.houses / tally.ports).toFixed(1)} houses and ` +
+          `${(tally.clutter / tally.ports).toFixed(1)} clutter pieces per port, in ${((performance.now() - started) / 1000).toFixed(1)} s`
+      );
+      expect(tally.failures).toEqual([]);
+      expect(tally.houses / tally.ports).toBeGreaterThan(20);
+    }, 600000);
+  }
+});

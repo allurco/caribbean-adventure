@@ -11,6 +11,7 @@ import type { AgedColors } from "./agedKit";
 import { agedBuildingColors } from "./agedBuildingColors";
 import type { VillageVariant } from "./villageBuildingGeometry";
 import type { TownPieceColors } from "./townPieces";
+import type { TownWorksColors } from "./townDetailLayout";
 
 const rgb = (name: PaletteName): Rgb => {
   const c = paletteColor(name);
@@ -58,5 +59,16 @@ export function townPieceColors(): TownPieceColors {
     water: hex(0x3d6e74),
     net: hex(0x6b5d4b),
     goods: [hex(0xc8702a), hex(0x9a8a3a), hex(0x7a2e2a), hex(0xd8c8a0)],
+  };
+}
+
+export function townWorksColors(): TownWorksColors {
+  // Pale coral limestone, as the island's builders quarried it, weathered grey.
+  const stone = hex(0xb9ab92);
+  return {
+    wallStone: stone,
+    joint: mul(stone, [0.32, 0.31, 0.3]),
+    coping: mul(stone, [1.08, 1.06, 1.02]),
+    kerb: hex(0x9a8f7e),
   };
 }

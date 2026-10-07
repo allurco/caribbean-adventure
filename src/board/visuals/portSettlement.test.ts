@@ -40,9 +40,11 @@ import {
   PORT_BUILDING_YAW_JITTER,
   WATCHTOWER_SCALE_RANGE,
   settlementCentre,
+  plateauOfPort,
   type PortBuilding,
 } from "./portSettlement";
 import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
+import { crossesRiser, RETAINING_WALL_DEPTH } from "./townPlateau";
 
 /** Inradius of a flat-top hex of size 1: the nearest any edge comes to the centre. */
 const HEX_INRADIUS = Math.sqrt(3) / 2;
@@ -553,6 +555,36 @@ describe("portBuildings", () => {
     expect(standBuilding(settlementGround(noQuay, ramp(0.8), 0), { x: hx, z: hz }, reach, BUILDING_FOOTING, pierRoot, [])).toBeNull();
     // A deeper footing (a larger building) takes it.
     expect(standBuilding(settlementGround(noQuay, ramp(0.8), 0), { x: hx, z: hz }, reach, 0.2, pierRoot, [])).not.toBeNull();
+  });
+
+  it("keeps every building's walls off the town's terrace risers and their retaining walls (#87), and still gives nearly every port its church", () => {
+    let portsSeen = 0;
+    let churches = 0;
+    for (const size of ["small", "medium", "large"] as const) {
+      for (const mapSeed of [3, 11]) {
+        const someCells = generateMap(getMapPreset(size), mapSeed);
+        const someSeed = terrainSeedFromCells(someCells);
+        const someField = createTerrainHeightField(someCells, someSeed);
+        const plateaus = someField.townPlateaus;
+        const placed = portBuildings(someCells, landSurface(someField), someSeed, plateaus);
+        const somePorts = someCells.filter((c) => c.hasPort);
+        portsSeen += somePorts.length;
+        for (const port of somePorts) {
+          const plateau = plateauOfPort(port, plateaus);
+          const [px, , pz] = hexToWorld(port.hex);
+          const mine = placed.filter((b) => Math.hypot(b.worldX - px, b.worldZ - pz) < 1);
+          if (mine.some((b) => b.kind === "church")) churches++;
+          if (!plateau) continue;
+          for (const b of mine) {
+            if (Math.hypot(b.worldX - px, b.worldZ - pz) < 1e-9) continue; // a tower's last-resort fallback
+            const plan = planFootprint(b.kind, b.scale, b.yaw);
+            const corners = planProbePoints(b.worldX, b.worldZ, plan, 2, 2).map((p) => [p.x, p.z] as const);
+            expect(crossesRiser(plateau, corners, RETAINING_WALL_DEPTH * BS)).toBe(false);
+          }
+        }
+      }
+    }
+    expect(churches / portsSeen).toBeGreaterThanOrEqual(0.9);
   });
 
   it("keeps every roof under the port label's baseline", () => {

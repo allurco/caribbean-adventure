@@ -392,8 +392,19 @@ export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACI
     }
     return h;
   };
-  /** A lattice corner as [x, height, z, town flag]. */
+  // Corners as built, per lattice point (unwrapped column, so a copy's x is its own).
+  const corners = new Map<number, [number, number, number, number]>();
+  /** A lattice corner as [x, height, z, town flag]; the same array each time it is asked. */
   const vertex = (ii: number, jj: number): [number, number, number, number] => {
+    const cornerKey = jj * 4_194_304 + ii + 2_097_152;
+    let corner = corners.get(cornerKey);
+    if (!corner) {
+      corner = buildVertex(ii, jj);
+      corners.set(cornerKey, corner);
+    }
+    return corner;
+  };
+  const buildVertex = (ii: number, jj: number): [number, number, number, number] => {
     const shift = jj % 2 === 1 ? step / 2 : 0;
     const column = latticeColumn(lattice, ii);
     const key = jj * cols + column;
@@ -411,23 +422,17 @@ export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACI
     }
     return [minX + ii * step + shift, h, minZ + jj * rowHeight, flag];
   };
-  const sub: [number, number, number][] = [
-    [0, 0, 0],
-    [0, 0, 0],
-    [0, 0, 0],
-  ];
-  // The refined town triangles' sub-vertices are sampled once each too, keyed by position.
-  const subHeights = new Map<string, number>();
-  const refinedField = {
-    sampleHeight: (x: number, z: number) => {
-      const key = `${Math.round(x * 1e6)},${Math.round(z * 1e6)}`;
-      let h = subHeights.get(key);
-      if (h === undefined) {
-        h = field.sampleHeight(x, z);
-        subHeights.set(key, h);
-      }
-      return h;
-    },
+  // The refined town triangles' sub-vertex heights, sampled once each too: per lattice triangle (its first
+  // corner's lattice index and which of the four triangle shapes it is), a lazily filled grid.
+  const N = TOWN_REFINE;
+  const subCount = ((N + 1) * (N + 2)) / 2;
+  const subGrids = new Map<number, Float64Array>();
+  const scratch: [number, number, number] = [0, 0, 0];
+  type Corner = [number, number, number, number];
+  const subY = (grid: Float64Array, a: Corner, b: Corner, c: Corner, i: number, j: number): number => {
+    const o = (i * (2 * N + 3 - i)) / 2 + j;
+    if (Number.isNaN(grid[o])) grid[o] = refinedVertex(field, a, b, c, i, j, scratch)[1];
+    return grid[o];
   };
   return {
     creasesWithin: (x, z, radius) => {
@@ -475,28 +480,73 @@ export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACI
       // Column index and fraction in the unshifted row of the pair (row j when even, row j + 1 when odd).
       const i = Math.floor(u);
       const f = u - i;
-      type Corner = [number, number, number, number];
-      let tri: [Corner, Corner, Corner];
+      let a: Corner;
+      let b: Corner;
+      let c: Corner;
+      // The first corner's lattice cell and the triangle's shape (0–3), which name the triangle for `subGrids`.
+      let anchorI = i;
+      let anchorJ = j;
+      let shape: number;
       if (j % 2 === 0) {
         // Row j unshifted, row j + 1 shifted right by half a step.
-        if (f < v / 2) tri = [vertex(i, j), vertex(i - 1, j + 1), vertex(i, j + 1)];
-        else if (f > 1 - v / 2) tri = [vertex(i + 1, j), vertex(i, j + 1), vertex(i + 1, j + 1)];
-        else tri = [vertex(i, j), vertex(i, j + 1), vertex(i + 1, j)];
+        shape = 0;
+        if (f < v / 2) {
+          a = vertex(i, j);
+          b = vertex(i - 1, j + 1);
+          c = vertex(i, j + 1);
+        } else if (f > 1 - v / 2) {
+          a = vertex(i + 1, j);
+          b = vertex(i, j + 1);
+          c = vertex(i + 1, j + 1);
+          anchorI = i + 1;
+        } else {
+          a = vertex(i, j);
+          b = vertex(i, j + 1);
+          c = vertex(i + 1, j);
+          shape = 1;
+        }
       } else {
         // Row j shifted right by half a step, row j + 1 unshifted.
         const w = 1 - v;
-        if (f < w / 2) tri = [vertex(i - 1, j), vertex(i, j + 1), vertex(i, j)];
-        else if (f > 1 - w / 2) tri = [vertex(i, j), vertex(i + 1, j + 1), vertex(i + 1, j)];
-        else tri = [vertex(i, j + 1), vertex(i + 1, j + 1), vertex(i, j)];
+        shape = 2;
+        if (f < w / 2) {
+          a = vertex(i - 1, j);
+          b = vertex(i, j + 1);
+          c = vertex(i, j);
+          anchorI = i - 1;
+        } else if (f > 1 - w / 2) {
+          a = vertex(i, j);
+          b = vertex(i + 1, j + 1);
+          c = vertex(i + 1, j);
+        } else {
+          a = vertex(i, j + 1);
+          b = vertex(i + 1, j + 1);
+          c = vertex(i, j);
+          anchorJ = j + 1;
+          shape = 3;
+        }
       }
-      const [[ax, ay, az, fa], [bx, by, bz, fb], [cx, cy, cz, fc]] = tri;
+      const ax = a[0];
+      const ay = a[1];
+      const az = a[2];
+      const bx = b[0];
+      const by = b[1];
+      const bz = b[2];
+      const cx = c[0];
+      const cy = c[1];
+      const cz = c[2];
       const det = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
       const wb = ((x - ax) * (cz - az) - (cx - ax) * (z - az)) / det;
       const wc = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / det;
       // Only triangles wholly above the sea are refined (`isRefined`), as the mesh stores its heights (single precision).
-      if (!isRefined(fa + fb + fc, Math.fround(ay), Math.fround(by), Math.fround(cy))) return ay + wb * (by - ay) + wc * (cy - ay);
+      if (!isRefined(a[3] + b[3] + c[3], Math.fround(ay), Math.fround(by), Math.fround(cy))) return ay + wb * (by - ay) + wc * (cy - ay);
       // A refined town triangle (#87): the plane of the sub-triangle under the point, as `buildLandMesh` draws it.
-      const N = TOWN_REFINE;
+      const key = ((anchorJ * cols + latticeColumn(lattice, anchorI)) << 2) + shape;
+      let grid = subGrids.get(key);
+      if (!grid) {
+        grid = new Float64Array(subCount).fill(NaN);
+        subGrids.set(key, grid);
+      }
       const fi = Math.max(0, wb * N);
       const fj = Math.max(0, wc * N);
       const si = Math.min(N - 1, Math.floor(fi));
@@ -504,15 +554,9 @@ export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACI
       const su = fi - si;
       const sv = fj - sj;
       if (su + sv <= 1 || si + sj === N - 1) {
-        refinedVertex(refinedField, tri[0], tri[1], tri[2], si, sj, sub[0]);
-        refinedVertex(refinedField, tri[0], tri[1], tri[2], si + 1, sj, sub[1]);
-        refinedVertex(refinedField, tri[0], tri[1], tri[2], si, sj + 1, sub[2]);
-        return sub[0][1] * (1 - su - sv) + sub[1][1] * su + sub[2][1] * sv;
+        return subY(grid, a, b, c, si, sj) * (1 - su - sv) + subY(grid, a, b, c, si + 1, sj) * su + subY(grid, a, b, c, si, sj + 1) * sv;
       }
-      refinedVertex(refinedField, tri[0], tri[1], tri[2], si + 1, sj + 1, sub[0]);
-      refinedVertex(refinedField, tri[0], tri[1], tri[2], si, sj + 1, sub[1]);
-      refinedVertex(refinedField, tri[0], tri[1], tri[2], si + 1, sj, sub[2]);
-      return sub[0][1] * (su + sv - 1) + sub[1][1] * (1 - su) + sub[2][1] * (1 - sv);
+      return subY(grid, a, b, c, si + 1, sj + 1) * (su + sv - 1) + subY(grid, a, b, c, si, sj + 1) * (1 - su) + subY(grid, a, b, c, si + 1, sj) * (1 - sv);
     },
   };
 }

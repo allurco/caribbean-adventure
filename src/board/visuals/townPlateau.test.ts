@@ -8,7 +8,9 @@ import {
   RISER,
   SHORE_KEEP_BOTTOM,
   SHORE_KEEP_TOP,
+  crossesRiser,
   plateauLevel,
+  plateauPoint,
   plateauPlanDistance,
   riserCentre,
   shoreKeep,
@@ -151,6 +153,29 @@ describe("town plateaus (#87)", () => {
         }
       }
     }
+  });
+
+  it("says when a footprint crosses a riser or the wall at its foot, and not when it stands on one terrace", () => {
+    const p = fieldsOf(1).town.townPlateaus[0];
+    const wall = 0.005;
+    const square = (s: number, across: number, half: number) =>
+      [
+        [-half, -half],
+        [half, -half],
+        [half, half],
+        [-half, half],
+      ].map(([ds, da]) => plateauPoint(p, s + ds, across + da));
+    const c = riserCentre(p, 0);
+    // Off the climbs, on the bare face: across it, on the wall in front of it, and clear on either side.
+    const across = p.climbs[1] / 2;
+    expect(crossesRiser(p, square(c, across, 0.01), wall)).toBe(true);
+    expect(crossesRiser(p, square(c - p.riserFace / 2 - wall / 2 - 0.004, across, 0.003), wall)).toBe(true);
+    expect(crossesRiser(p, square(c - p.riserFace / 2 - wall - 0.02, across, 0.015), wall)).toBe(false);
+    expect(crossesRiser(p, square(c + p.riserFace / 2 + 0.02, across, 0.015), wall)).toBe(false);
+    // Where the main street climbs, the riser is the whole ramp.
+    expect(crossesRiser(p, square(c + p.riserFace / 2 + 0.01, 0, 0.005), wall)).toBe(true);
+    // Far out to the side, past the blend, there is no riser.
+    expect(crossesRiser(p, square(c, p.halfWidth + p.blend + 0.1, 0.01), wall)).toBe(false);
   });
 
   it("is the untouched terrain past its blend, under the shore band and under the sea, so the coastline stays put", () => {

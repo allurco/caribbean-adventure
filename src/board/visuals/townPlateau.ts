@@ -288,6 +288,36 @@ export function plateauLevel(p: TownPlateau, s: number, across?: number): number
   return level;
 }
 
+/**
+ * Whether a footprint (its corners in the world) crosses one of the
+ * plateau's risers where it stands: the riser's run (the steep face, or the
+ * ramp where a street climbs it) plus the retaining wall of depth
+ * `wallDepth` standing at its foot. Only within the terraces' width and
+ * blend, where the risers are.
+ */
+export function crossesRiser(p: TownPlateau, corners: readonly (readonly [number, number])[], wallDepth: number): boolean {
+  let s0 = Infinity;
+  let s1 = -Infinity;
+  let a0 = Infinity;
+  let a1 = -Infinity;
+  let run = 0;
+  for (const [x, z] of corners) {
+    const l = plateauLocal(p, x, z);
+    s0 = Math.min(s0, l.s);
+    s1 = Math.max(s1, l.s);
+    a0 = Math.min(a0, l.across);
+    a1 = Math.max(a1, l.across);
+    run = Math.max(run, p.riserFace + (p.ramp - p.riserFace) * climbWeight(p, l.across));
+  }
+  const reach = p.halfWidth + p.blend;
+  if (a1 < -reach || a0 > reach) return false;
+  for (let k = 0; k < p.steps.length; k++) {
+    const c = riserCentre(p, k);
+    if (s1 > c - run / 2 - wallDepth && s0 < c + run / 2) return true;
+  }
+  return false;
+}
+
 /** Distance from (x, z) to the plateau's plan (0 inside): the square's disc and the terraces' strip. */
 export function plateauPlanDistance(p: TownPlateau, x: number, z: number): number {
   const rx = x - p.x;
