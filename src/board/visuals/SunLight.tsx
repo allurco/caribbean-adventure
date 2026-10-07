@@ -54,7 +54,8 @@ export function SunLight({ color, intensity, offset, shadow }: SunLightProps) {
 
     const distance = camera.position.distanceTo(target);
     const aspect = size.width / Math.max(1, size.height);
-    const wanted = shadowExtentFor(distance, aspect, shadow.fit);
+    // At town zoom the target sits on the ground (#90), above the sea it sees.
+    const wanted = shadowExtentFor(distance, aspect, shadow.fit, target.y);
     if (shadowBoxNeedsRefit(extentRef.current, wanted, shadow.hysteresis)) {
       extentRef.current = wanted;
       const texel = shadowTexel(wanted, shadow.mapSize);

@@ -66,11 +66,16 @@ const toRadians = (deg: number): number => (deg * Math.PI) / 180;
  *   refraction, so on the safe side), plus receiverDepth·cos(e).
  *
  * Clamped to [minExtent, maxExtent]; Infinity (horizon in view) clamps to max.
+ *
+ * `focusHeight` (≥ 0) is how far the camera target sits above the sea: at
+ * town zoom it follows the ground (#90), so the sea and the seabed lie that
+ * much further below it and the view reaches further across them.
  */
-export function shadowExtentFor(distance: number, aspect: number, fit: ShadowFit): number {
+export function shadowExtentFor(distance: number, aspect: number, fit: ShadowFit, focusHeight = 0): number {
   const cosElevation = Math.cos(toRadians(fit.sunElevationDeg));
-  const seaReach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect);
-  const seabedReach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect, fit.receiverDepth);
+  const lift = Math.max(0, focusHeight);
+  const seaReach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect, lift);
+  const seabedReach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect, lift + fit.receiverDepth);
   const wanted = Math.max(
     seaReach + fit.casterHeight * cosElevation,
     seabedReach + fit.receiverDepth * cosElevation
