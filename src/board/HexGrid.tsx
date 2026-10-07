@@ -5,10 +5,20 @@ import {
   InstancedMesh,
   Object3D,
   CylinderGeometry,
+  PerspectiveCamera,
+  Vector3,
 } from "three";
-import type { ThreeEvent } from "@react-three/fiber";
+import type { Camera, Group, Mesh } from "three";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { Text } from "@react-three/drei";
-import { hexToWorld } from "../game/hex";
+import { CAMERA_FOV } from "./cameraBounds";
+import {
+  PORT_LABEL_FONT_SIZE,
+  portLabelOpacity,
+  portLabelScale,
+  portLabelScreenShift,
+} from "./visuals/portLabel";
+import { hexEquals, hexToWorld } from "../game/hex";
 import type { MapCell } from "../game/types";
 import { WaterHexOutlines } from "./WaterHexOutlines";
 import { hoverEnter, hoverLeave } from "./sharedHover";
@@ -24,8 +34,6 @@ const HIGHLIGHT_DEPTH = 0.02;
 // foot to the tallest top in height: `portHover.ts`), so a pointer over any
 // part of a building or the ground between them shows the tooltip. The
 // buildings themselves are the port's visual (portSettlement.ts).
-// Port name label baseline above the ground
-const PORT_LABEL_HEIGHT = 0.6;
 
 const COLOR_HOVERED = "#facc15";
 const COLOR_ATTACK_TARGET = "#ef4444";
@@ -59,6 +67,10 @@ const highlightGeometry = new ExtrudeGeometry(hexShape, {
 const portHoverGeometry = new CylinderGeometry(PORT_HOVER_RADIUS, PORT_HOVER_RADIUS, 1, 8);
 
 const tempObject = new Object3D();
+const labelBase = new Vector3();
+const labelPoint = new Vector3();
+// Height of the label's text block in ems (troika's "normal" line height), for where its top is drawn
+const LABEL_LINE_HEIGHT = 1.2;
 
 
 // Port hover volume: an invisible cylinder over the settlement (`visible`
@@ -92,27 +104,77 @@ function PortMarker({
   );
 }
 
-// Floating port name label
-function PortLabel({ site: { cell, groundY } }: { site: PortSite }) {
+/** The troika text mesh behind drei's `Text`, with the opacities it reads each frame. */
+type LabelText = Mesh & { fillOpacity: number; outlineOpacity: number };
+
+/** CSS pixels down from the viewport's top at which world point `p` is drawn (`p` is overwritten). */
+function screenY(p: Vector3, camera: Camera, viewportHeight: number): number {
+  return ((1 - p.project(camera).y) / 2) * viewportHeight;
+}
+
+// Floating port name label: lifted clear of the settlement, its screen size
+// capped and faded close in, back to full on hover, and kept inside the top of
+// the screen (#75, visuals/portLabel.ts)
+function PortLabel({ site: { cell, groundY, labelBaseY }, hovered }: { site: PortSite; hovered: boolean }) {
   const [x, , z] = hexToWorld(cell.hex);
+  const groupRef = useRef<Group>(null);
+  const textRef = useRef<LabelText>(null);
+
+  useFrame(({ camera, size }) => {
+    const group = groupRef.current;
+    const text = textRef.current;
+    if (!group?.parent || !text) return;
+    // World positions, so each world copy (#36) measures its own label
+    const copy = group.parent;
+    copy.localToWorld(labelBase.set(x, labelBaseY, z));
+    const distance = camera.position.distanceTo(labelBase);
+    const fov = camera instanceof PerspectiveCamera ? camera.fov : CAMERA_FOV;
+    const scale = portLabelScale(distance, fov, size.height);
+    group.scale.setScalar(scale);
+    const opacity = portLabelOpacity(distance, hovered);
+    text.fillOpacity = opacity;
+    text.outlineOpacity = opacity;
+
+    // Bring the label back inside the top edge if the lift carried it off
+    const shift = portLabelScreenShift({
+      baselineY: screenY(labelPoint.copy(labelBase), camera, size.height),
+      topY: screenY(
+        labelPoint.copy(labelBase).setY(labelBase.y + PORT_LABEL_FONT_SIZE * LABEL_LINE_HEIGHT * scale),
+        camera,
+        size.height
+      ),
+      portY: screenY(copy.localToWorld(labelPoint.set(x, groundY, z)), camera, size.height),
+    });
+    if (shift > 0) {
+      // Same depth, `shift` pixels lower on screen
+      labelPoint.copy(labelBase).project(camera);
+      labelPoint.y -= (2 * shift) / size.height;
+      copy.worldToLocal(labelPoint.unproject(camera));
+      group.position.copy(labelPoint);
+    } else {
+      group.position.set(x, labelBaseY, z);
+    }
+  });
 
   if (!cell.portName) return null;
 
   return (
-    <Text
-      position={[x, groundY + PORT_LABEL_HEIGHT, z]}
-      // Upright and facing +z: square on to the camera, which looks due north (cameraBounds.ts)
-      rotation={[0, 0, 0]}
-      fontSize={0.4}
-      color="#fef3c7"
-      anchorX="center"
-      anchorY="bottom"
-      outlineWidth={0.02}
-      outlineColor="#1c1917"
-      raycast={() => null}
-    >
-      {cell.portName}
-    </Text>
+    <group ref={groupRef} position={[x, labelBaseY, z]}>
+      <Text
+        ref={textRef}
+        // Upright and facing +z: square on to the camera, which looks due north (cameraBounds.ts)
+        rotation={[0, 0, 0]}
+        fontSize={PORT_LABEL_FONT_SIZE}
+        color="#fef3c7"
+        anchorX="center"
+        anchorY="bottom"
+        outlineWidth={0.02}
+        outlineColor="#1c1917"
+        raycast={() => null}
+      >
+        {cell.portName}
+      </Text>
+    </group>
   );
 }
 
@@ -130,6 +192,7 @@ export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
     setHover,
     onHexClick,
     onPortHover,
+    hoveredPort,
     interactive,
   } = grid;
   const waterRef = useRef<InstancedMesh>(null!);
@@ -247,7 +310,11 @@ export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
 
       {/* Floating port name labels */}
       {portSites.map((site) => (
-        <PortLabel key={`label-${site.cell.hex.q}-${site.cell.hex.r}`} site={site} />
+        <PortLabel
+          key={`label-${site.cell.hex.q}-${site.cell.hex.r}`}
+          site={site}
+          hovered={hoveredPort !== null && hexEquals(hoveredPort.hex, site.cell.hex)}
+        />
       ))}
     </>
   );

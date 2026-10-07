@@ -1,5 +1,5 @@
 /** The hex grid's per-map and per-turn state, shared by every world copy (#36). */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { Hex, MapWrap } from "../game/hex";
 import { hexToWorld, hexEquals } from "../game/hex";
@@ -11,6 +11,8 @@ import { NO_HOVER, type SharedHover } from "./sharedHover";
 import { perMapCache } from "./visuals/perMapCache";
 import { decorationLayoutOf } from "./visuals/decorationLayout";
 import { PORT_GROUND_PROBE_RADIUS, portHoverVolumeAt, type PortHoverVolume } from "./visuals/portHover";
+import { portLabelBaseY } from "./visuals/portLabel";
+import { CAMERA_PITCH } from "./cameraBounds";
 
 // Minimum outline opacity for hexes the player is acting on. These ignore the
 // distance fade, so targets stay crisp anywhere on the map.
@@ -22,6 +24,8 @@ export interface PortSite {
   cell: MapCell;
   groundY: number;
   hover: PortHoverVolume;
+  /** Where the name label's baseline sits, clear of the buildings as the camera sees them (#75). */
+  labelBaseY: number;
 }
 
 const portSitesOf = perMapCache((cells, wrap): PortSite[] => {
@@ -33,7 +37,12 @@ const portSitesOf = perMapCache((cells, wrap): PortSite[] => {
     .map((cell) => {
       const [x, , z] = hexToWorld(cell.hex);
       const groundY = groundTopY(field, x, z, PORT_GROUND_PROBE_RADIUS);
-      return { cell, groundY, hover: portHoverVolumeAt(cell.hex, groundY, buildings) };
+      return {
+        cell,
+        groundY,
+        hover: portHoverVolumeAt(cell.hex, groundY, buildings),
+        labelBaseY: portLabelBaseY({ x, z }, groundY, buildings, CAMERA_PITCH),
+      };
     });
 });
 
@@ -66,6 +75,8 @@ export interface HexGridState {
   setHover: Dispatch<SetStateAction<SharedHover>>;
   onHexClick: (hex: Hex) => void;
   onPortHover?: (cell: MapCell | null) => void;
+  /** The port under the pointer, in any copy (its label stays readable close in, #75). */
+  hoveredPort: MapCell | null;
   interactive: boolean;
 }
 
@@ -82,6 +93,15 @@ export function useHexGrid({
   // Hovered water-cell index and the copy it is hovered in (land is rendered and hit-tested elsewhere)
   const [hover, setHover] = useState<SharedHover>(NO_HOVER);
   const hoveredId = hover.id;
+  // The hovered port, kept here as well as passed on, so its label can stay readable (#75)
+  const [hoveredPort, setHoveredPort] = useState<MapCell | null>(null);
+  const handlePortHover = useCallback(
+    (cell: MapCell | null) => {
+      setHoveredPort(cell);
+      onPortHover?.(cell);
+    },
+    [onPortHover]
+  );
 
   // Water cells, the only hexes this grid hit-tests, and their grid lines (built once per map)
   const lineData = gridLineData(cells, wrap);
@@ -168,7 +188,8 @@ export function useHexGrid({
     lines,
     setHover,
     onHexClick,
-    onPortHover,
+    onPortHover: onPortHover && handlePortHover,
+    hoveredPort,
     interactive,
   };
 }
