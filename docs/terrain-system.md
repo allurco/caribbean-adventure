@@ -334,6 +334,20 @@ small map at distance 28 on a 16:9 screen: ~61 units of view against 30 of
 rows), so only east–west panning worked. The ocean grid is centred under
 the focus and reaches past the view's reach at full zoom-out on the widest
 screen, so its edge stays off screen with the focus anywhere in the band.
+The zoom-in floor is `CAMERA_MIN_DISTANCE` (0.8), a **town zoom** (#90):
+the #84 village and fort were approved from about that close. From the old
+ship-zoom floor (`OLD_CAMERA_MIN_DISTANCE`, 4.32) out, every view is as it
+was. Closer in, the focus leaves the sea plane: `groundFollow.ts` eases it
+onto this field's height (averaged over a 0.4-unit disc, never below the
+sea) between distance 4.32 and 1.5, and lifts it further wherever the camera
+or the first 0.5 units of its line of sight would come within 0.2 units of
+the ground, so zooming onto a hilltop never puts the camera in the hill. The
+map-bounds clamp applies it after every controls update, moving the camera
+by the same delta. The camera's near plane shrinks in proportion below the
+old floor (`cameraNearFor`, 0.1 → 0.0185 at the floor), the shadow fit
+measures the view's reach from the lifted focus (`shadowExtentFor`'s
+`focusHeight`), and the port labels fade out entirely between camera
+distances 3 and 2, hover or not (`portLabel.ts`).
 The sea past the rows needs nothing drawn: the ocean shader treats
 everything outside the field's bounds as open sea (the field texture clamps
 in t but every read is guarded by `terrainFieldInside`; the seabed prepass
@@ -1062,7 +1076,14 @@ displace.
   off screen at ship zoom are frustum-culled. The outer ring reaches 95.2
   units from the focus after snapping, against the 80.5 the camera can see
   at full zoom-out on a 4:1 screen (`oceanGridReach`); the inner ring 7.2
-  against the 6.6 of the closest ship zoom at 16:9. Where a ring meets the
+  against the 6.6 of ship zoom (4.32) at 16:9. Below that the view itself
+  shrinks, but the focus climbs onto the ground (#90) and the sea lies
+  further below it; with the ground-follow easing in from 4.32 to 1.5 the
+  reach stays under 6.6 with the focus on a mountain hex's ground (1.4) at
+  every zoom, and under 6.5 at the floor over the highest peak. Over a peak
+  at a zoom around 2 the top corners can reach ~7.8, onto the 0.2-unit ring,
+  whose cells are no larger on screen there than the fine ring's at the old
+  floor. Where a ring meets the
   finer ring inside it, its edge cells are split into fans through the finer
   ring's boundary vertices, so there are no T-junctions and the displaced
   mesh cannot crack (the test counts every inner edge in two triangles and
@@ -1162,8 +1183,11 @@ things also widen the depth range, which `shadowDepthRange` checks against
 the near and far planes (0.5 and 150) in `atmosphere.test.ts`. At full
 zoom-out (distance 28) the 16:9 view reaches ~43 units across the sea, so
 the box sits at the 25-unit cap, as before: 50 units across, a 0.79 m texel.
-From ship zoom (distance 3.5–4.3; `CAMERA_MIN_DISTANCE`, 4.32, is as close
-as the zoom allows on every map size) the seabed term sets the box: it fits to 10.2–11.4
+At the town-zoom floor (distance 0.8, #90) the box is 6.1 units with the
+focus on the sea, 7.2 over a town 0.4 up and 10 over a 1.4-high hilltop
+(the reach is measured from the lifted focus): a 0.19–0.32 m texel, about
+4–7 screen pixels there, which the PCF disc softens. From ship zoom
+(distance 3.5–4.3, the old floor) the seabed term sets the box: it fits to 10.2–11.4
 units, a 0.32–0.36 m texel, 2.2–2.5× finer than the cap. The top-corner ray
 descends at only ~24°, so the 1.46 units of seabed depth add ~4 units of
 reach; without the seabed the box would be 6.8–8.1 units. From ship zoom up
