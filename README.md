@@ -62,7 +62,7 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 |---|---|
 | `size=small\|medium\|large` | Map size (random otherwise) |
 | `seed=<integer>` | Map generation seed: a plain decimal integer from -2147483648 to 2147483647 (random otherwise) |
-| `cx=<x>&cz=<z>` | Where the camera looks on the first frame, in world units (both needed; the map's middle otherwise) |
+| `cx=<x>&cz=<z>` | Where the camera looks on the first frame, in world units (both needed; the map's middle otherwise); `cy=<y>` lifts that point off sea level |
 | `dist=<positive number>` | How far the camera starts from its target (the map's iso distance otherwise); the zoom limits still apply |
 | `view=props` | The prop viewer instead of the game, with `focus=<n>` to start close up on entry n |
 | `massifs=1` | Prototype (#83): rock massifs in the terrain height field |

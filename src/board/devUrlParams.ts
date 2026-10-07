@@ -10,7 +10,7 @@ import type { MapSizeId } from "../game/mapConfig";
 export interface DevUrlParams {
   /** `?size=small|medium|large&seed=<int32>`: the map to generate. */
   setupData?: CaribbeanSetupData;
-  /** `?cx=&cz=`: where the camera looks at first (both needed). */
+  /** `?cx=&cz=`: where the camera looks at first (both needed); `&cy=` its height (default sea level). */
   cameraTarget?: [number, number, number];
   /** `?dist=`: how far from its target the camera starts (positive). */
   cameraDistance?: number;
@@ -46,7 +46,8 @@ export function parseDevUrlParams(search: string): DevUrlParams {
 
   const cx = finiteNumber(params.get("cx"));
   const cz = finiteNumber(params.get("cz"));
-  if (cx !== undefined && cz !== undefined) out.cameraTarget = [cx, 0, cz];
+  // `&cy=` lifts the target off sea level (a close look at a hilltop fort, #84).
+  if (cx !== undefined && cz !== undefined) out.cameraTarget = [cx, finiteNumber(params.get("cy")) ?? 0, cz];
 
   const dist = finiteNumber(params.get("dist"));
   if (dist !== undefined && dist > 0) out.cameraDistance = dist;

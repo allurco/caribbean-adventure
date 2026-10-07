@@ -48,6 +48,7 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?cx=12")).toEqual({});
     expect(parseDevUrlParams("?cz=13.9&dist=4.3")).toEqual({ cameraDistance: 4.3 });
     expect(parseDevUrlParams("?cx=-3&cz=0")).toEqual({ cameraTarget: [-3, 0, 0] });
+    expect(parseDevUrlParams("?cx=-3&cz=0&cy=0.8")).toEqual({ cameraTarget: [-3, 0.8, 0] });
     expect(parseDevUrlParams("?dist=0")).toEqual({});
     expect(parseDevUrlParams("?dist=-2")).toEqual({});
     expect(parseDevUrlParams("?cx=nope&cz=1&dist=Infinity")).toEqual({});

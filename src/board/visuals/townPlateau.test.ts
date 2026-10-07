@@ -9,10 +9,17 @@ import {
   SHORE_KEEP_BOTTOM,
   SHORE_KEEP_TOP,
   FORT_PIER_GAP,
+  FORT_ROAD_GRADE,
+  FORT_ROAD_MAX_LEGS,
   FORT_TOWN_GAP,
   fortPadWeight,
+  fortRoadAt,
+  plateauLevel,
+  plateauLocal,
   plateauPlanDistance,
+  riserCentre,
   shoreKeep,
+  streetCarveAt,
   type TownPlateau,
 } from "./townPlateau";
 import { FORT_KEEP_TOP, portHasFort } from "./portFort";
@@ -87,10 +94,12 @@ describe("town plateaus (#84)", () => {
           if (s >= p.steps[k] + p.ramp && s < next) level = p.levels[k + 1];
         }
         if (level < 0) continue;
-        // Only where no other plateau, and no fort's pad, reaches.
+        // Only where no other plateau, and no fort's pad or road, reaches.
         if ((town.townPlateaus ?? []).some((o) => o !== p && plateauPlanDistance(o, x, z) < o.blend)) continue;
         if ((town.townPlateaus ?? []).some((o) => o.fort && fortPadWeight(o.fort, x, z) > 0)) continue;
-        expect(town.sampleHeight(x, z)).toBeCloseTo(level, 12);
+        if ((town.townPlateaus ?? []).some((o) => o.fortRoad && fortRoadAt(o.fortRoad, x, z).weight > 0)) continue;
+        // A street is carved into its terrace by up to its carve depth.
+        expect(town.sampleHeight(x, z)).toBeCloseTo(level - streetCarveAt(p, x, z) * p.carve, 12);
         checked++;
       }
       expect(checked).toBeGreaterThan(50);
@@ -102,7 +111,8 @@ describe("town plateaus (#84)", () => {
       const { plain, town } = fields(seed);
       for (const p of town.townPlateaus ?? []) {
         // Rays from the centre out past the blend (and any fort's pad), in
-        // 0.004 steps: no step more than the untouched terrain's own plus 0.02.
+        // 0.004 steps: no step more than the untouched terrain's own plus
+        // 0.02 and a riser's rise over its steep face.
         for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
           let prev = town.sampleHeight(p.x, p.z);
           let prevPlain = plain.sampleHeight(p.x, p.z);
@@ -111,7 +121,7 @@ describe("town plateaus (#84)", () => {
             const z = p.z + Math.cos(a) * r;
             const h = town.sampleHeight(x, z);
             const h0 = plain.sampleHeight(x, z);
-            expect(Math.abs(h - prev)).toBeLessThan(Math.abs(h0 - prevPlain) + 0.02);
+            expect(Math.abs(h - prev)).toBeLessThan(Math.abs(h0 - prevPlain) + 0.02 + RISER * SCALE * 0.5);
             prev = h;
             prevPlain = h0;
           }
@@ -163,6 +173,74 @@ describe("town plateaus (#84)", () => {
     expect(forts).toBeGreaterThan(0);
   });
 
+  it("lays a main street, two back lanes and one or two cross lanes inside the plan, carved into the ground", () => {
+    for (const seed of SEEDS) {
+      const { town } = fields(seed);
+      for (const p of town.townPlateaus ?? []) {
+        const kinds = p.streets.map((s) => s.kind);
+        expect(kinds.filter((k) => k === "main")).toHaveLength(1);
+        expect(kinds.filter((k) => k === "back")).toHaveLength(2);
+        expect(kinds.filter((k) => k === "cross").length).toBeGreaterThanOrEqual(1);
+        for (const street of p.streets) {
+          for (const end of [street.from, street.to]) expect(plateauPlanDistance(p, end[0], end[1])).toBeLessThan(1e-9);
+        }
+        // The main street's middle is carved the full depth below its edge's ground.
+        const main = p.streets[0];
+        const mx = (main.from[0] + main.to[0]) / 2;
+        const mz = (main.from[1] + main.to[1]) / 2;
+        expect(streetCarveAt(p, mx, mz)).toBe(1);
+      }
+    }
+  });
+
+  it("makes each riser a steep face, but a ramp where the main street climbs it", () => {
+    for (const seed of SEEDS) {
+      const { town } = fields(seed);
+      for (const p of town.townPlateaus ?? []) {
+        for (let k = 0; k < p.steps.length; k++) {
+          const c = riserCentre(p, k);
+          const rise = p.levels[k + 1] - p.levels[k];
+          if (rise < 1e-6) continue;
+          // Halfway between the main street and a back lane, clear of both climbs.
+          const edge = p.climbs[1] / 2;
+          // Off the streets the whole rise is within the face; on the main street it is spread over the ramp.
+          expect(plateauLevel(p, c + p.riserFace / 2, edge) - plateauLevel(p, c - p.riserFace / 2, edge)).toBeCloseTo(rise, 9);
+          expect(plateauLevel(p, c + p.riserFace / 2, 0) - plateauLevel(p, c - p.riserFace / 2, 0)).toBeLessThan(rise * 0.6);
+        }
+      }
+    }
+  });
+
+  it("runs a fort road from the fort's pad to the town at no more than its grade (or as near as its legs allow)", () => {
+    let roads = 0;
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const preset = getMapPreset("small");
+      const wrap = createWrap(preset.columns);
+      const cells = generateMap(preset, seed, wrap);
+      const town = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap, townPlateaus: { scale: SCALE, buildingScale: SCALE * 1.125 } });
+      for (const p of town.townPlateaus ?? []) {
+        if (!p.fort) continue;
+        const road = p.fortRoad;
+        expect(road).toBeDefined();
+        if (!road) continue;
+        roads++;
+        const [sx, sz] = road.points[0];
+        expect(Math.hypot(sx - p.fort.x, sz - p.fort.z)).toBeLessThanOrEqual(p.fort.padRadius + 1e-9);
+        const [ex, ez] = road.points[road.points.length - 1];
+        expect(plateauPlanDistance(p, ex, ez)).toBeLessThan(1e-9);
+        const { s, across } = plateauLocal(p, ex, ez);
+        expect(road.levels[road.levels.length - 1]).toBeCloseTo(plateauLevel(p, s, across), 12);
+        let length = 0;
+        for (let i = 1; i < road.points.length; i++) length += Math.hypot(road.points[i][0] - road.points[i - 1][0], road.points[i][1] - road.points[i - 1][1]);
+        const grade = Math.abs(road.levels[0] - road.levels[road.levels.length - 1]) / length;
+        // Within the grade unless the legs ran out (a citadel high over its town); never a cliff.
+        if (road.points.length < FORT_ROAD_MAX_LEGS + 1) expect(grade).toBeLessThanOrEqual(FORT_ROAD_GRADE * 1.05);
+        expect(grade).toBeLessThan(0.35);
+      }
+    }
+    expect(roads).toBeGreaterThan(0);
+  });
+
   it("is the untouched terrain past its blend, under the shore band and under the sea, so the coastline stays put", () => {
     for (const seed of SEEDS) {
       const { plain, town } = fields(seed);
@@ -173,10 +251,13 @@ describe("town plateaus (#84)", () => {
         if (h0 <= SHORE_KEEP_BOTTOM) expect(h1).toBe(h0);
         if (h0 > 0) expect(h1).toBeGreaterThan(0);
         const beyond = (town.townPlateaus ?? []).every(
-          (o) => plateauPlanDistance(o, x, z) >= o.blend && (!o.fort || fortPadWeight(o.fort, x, z) === 0)
+          (o) =>
+            plateauPlanDistance(o, x, z) >= o.blend &&
+            (!o.fort || fortPadWeight(o.fort, x, z) === 0) &&
+            (!o.fortRoad || fortRoadAt(o.fortRoad, x, z).weight === 0)
         );
         if (beyond) expect(h1).toBe(h0);
       }
     }
-  });
+  }, 30000);
 });

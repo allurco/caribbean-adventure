@@ -17,8 +17,18 @@ import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { metresToUnits } from "./worldScale";
 import { VISIBLE_SEABED_DEPTH } from "./waterOptics";
+import { TOWN_REFINE, townGround, type TownSurface } from "./townGround";
 
 export { VISIBLE_SEABED_DEPTH };
+
+/** How near a town a lattice corner must be for its triangles to be refined (#84): a lattice step and a quarter, so every town feature sits where the refinement is whole. */
+export const TOWN_FLAG_MARGIN = 0.15 * 1.25;
+/** The town's ground colours (#84), linear RGB: weathered setts, trodden earth, the fort road's gravel. */
+const TOWN_SURFACE_COLORS: Readonly<Record<Exclude<TownSurface, "ground">, Rgb>> = {
+  paved: [0.3, 0.27, 0.22],
+  earth: [0.36, 0.26, 0.16],
+  road: [0.42, 0.34, 0.24],
+};
 
 /** Lattice edge length in world units (a hex is 2 units across); fine enough to resolve the interior relief. */
 export const LAND_MESH_SPACING = 0.15;
@@ -308,6 +318,17 @@ export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACI
     }
     return [minX + ii * step + shift, h, minZ + jj * rowHeight];
   };
+  const town = field.townPlateaus && field.townPlateaus.length > 0 ? townGround(field.townPlateaus, lattice.period, TOWN_FLAG_MARGIN) : undefined;
+  const flags = new Map<string, number>();
+  const flagAt = (x: number, z: number): number => {
+    const key = `${Math.round(x * 1e4)},${Math.round(z * 1e4)}`;
+    let f = flags.get(key);
+    if (f === undefined) {
+      f = town?.flag(x, z) ? 1 : 0;
+      flags.set(key, f);
+    }
+    return f;
+  };
   return {
     creasesWithin: (x, z, radius) => {
       // The lattice vertices inside the disc...
@@ -371,7 +392,11 @@ export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACI
       const det = (bx - ax) * (cz - az) - (cx - ax) * (bz - az);
       const wb = ((x - ax) * (cz - az) - (cx - ax) * (z - az)) / det;
       const wc = ((bx - ax) * (z - az) - (x - ax) * (bz - az)) / det;
-      return ay + wb * (by - ay) + wc * (cy - ay);
+      const plane = ay + wb * (by - ay) + wc * (cy - ay);
+      if (!town) return plane;
+      // A refined town triangle (#84): the plane blended to the field by its corners' flags, as `buildLandMesh` draws it.
+      const m = (1 - wb - wc) * flagAt(ax, az) + wb * flagAt(bx, bz) + wc * flagAt(cx, cz);
+      return m > 0 ? plane + m * (field.sampleHeight(x, z) - plane) : plane;
     },
   };
 }
@@ -504,7 +529,36 @@ export function buildLandMesh(
     push3(Math.max(vy[a], vy[b], vy[c]) > SEA_LEVEL ? land : seabed, a, b, c);
   }
 
-  const aboveWaterTriangleCount = land.length / 3;
+  // The #84 town ground: lattice triangles near a town are refined (townGround.ts).
+  const town = field.townPlateaus && field.townPlateaus.length > 0 ? townGround(field.townPlateaus, period, TOWN_FLAG_MARGIN) : undefined;
+  const flagOf = new Int8Array(town ? cols * rows : 0).fill(-1);
+  const flagged = (v: number): number => {
+    if (!town) return 0;
+    if (flagOf[v] < 0) flagOf[v] = town.flag(pointX(v), pointZ(v)) ? 1 : 0;
+    return flagOf[v];
+  };
+  const landTriangles = land.length / 3;
+  const refined = new Uint8Array(landTriangles);
+  let aboveWaterTriangleCount = 0;
+  // A refined triangle's edges are cut in TOWN_REFINE; an unrefined neighbour
+  // across one is drawn as a coplanar fan to those cuts, so no T-junction opens.
+  const edgeKey = (a: number, b: number) => (a < b ? a * latticeSize + b : b * latticeSize + a);
+  const cutEdges = new Set<number>();
+  for (let t = 0; t < landTriangles; t++) {
+    refined[t] = town && (flagged(land.data[t * 3]) || flagged(land.data[t * 3 + 1]) || flagged(land.data[t * 3 + 2])) ? 1 : 0;
+    if (!refined[t]) continue;
+    for (let k = 0; k < 3; k++) cutEdges.add(edgeKey(land.data[t * 3 + k], land.data[t * 3 + ((k + 1) % 3)]));
+  }
+  const cutsOf = (t: number): number => {
+    let cuts = 0;
+    for (let k = 0; k < 3; k++) if (cutEdges.has(edgeKey(land.data[t * 3 + k], land.data[t * 3 + ((k + 1) % 3)]))) cuts++;
+    return cuts;
+  };
+  for (let t = 0; t < landTriangles; t++) {
+    if (refined[t]) aboveWaterTriangleCount += TOWN_REFINE * TOWN_REFINE;
+    else if (cutEdges.size > 0 && cutsOf(t) > 0) aboveWaterTriangleCount += 3 + (TOWN_REFINE - 1) * cutsOf(t);
+    else aboveWaterTriangleCount += 1;
+  }
   const positions = new Float32Array(aboveWaterTriangleCount * 9);
   const colors = new Float32Array(aboveWaterTriangleCount * 9);
   const normals = new Float32Array(aboveWaterTriangleCount * 9);
@@ -516,10 +570,99 @@ export function buildLandMesh(
 
   // Land: flat, one normal and one colour per face, for the low-poly look.
   const sample: LandFaceSample = { height: 0, normalY: 1, noise: 0, cavity: 0, coral: 0 };
-  for (let t = 0; t < aboveWaterTriangleCount; t++) {
+  let out = 0;
+  /** One flat face from three points, coloured from the face sample (and the town's surface, if any). */
+  const emitFace = (p: ArrayLike<number>, cavity: number, surface: TownSurface | undefined) => {
+    const ux = p[3] - p[0];
+    const uy = p[4] - p[1];
+    const uz = p[5] - p[2];
+    const wx = p[6] - p[0];
+    const wy = p[7] - p[1];
+    const wz = p[8] - p[2];
+    const nx = uy * wz - uz * wy;
+    const ny = uz * wx - ux * wz;
+    const nz = ux * wy - uy * wx;
+    const nl = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+    const cx = (p[0] + p[3] + p[6]) / 3;
+    const cz = (p[2] + p[5] + p[8]) / 3;
+    sample.height = (p[1] + p[4] + p[7]) / 3;
+    sample.normalY = ny / nl;
+    sample.noise = boundaryNoise(bandNoise, cx, cz);
+    sample.cavity = cavity;
+    sample.coral = 0;
+    let [r, g, bl] = landFaceColor(palette, sample, occlusion);
+    let shade = 0.93 + hash(cx, cz) * 0.14;
+    if (surface && surface !== "ground") {
+      [r, g, bl] = TOWN_SURFACE_COLORS[surface];
+      // Setts and trodden earth: a stronger face-to-face variation than the open ground's.
+      shade = 0.8 + hash(cx * 1.7, cz * 1.3) * 0.36;
+    }
+    for (let k = 0; k < 3; k++) {
+      const o = out * 9 + k * 3;
+      positions[o] = p[k * 3];
+      positions[o + 1] = p[k * 3 + 1];
+      positions[o + 2] = p[k * 3 + 2];
+      colors[o] = r * shade;
+      colors[o + 1] = g * shade;
+      colors[o + 2] = bl * shade;
+      normals[o] = nx / nl;
+      normals[o + 1] = ny / nl;
+      normals[o + 2] = nz / nl;
+    }
+    out++;
+  };
+  const N = TOWN_REFINE;
+  const face = new Float64Array(9);
+  for (let t = 0; t < landTriangles; t++) {
     const a = land.data[t * 3];
     const b = land.data[t * 3 + 1];
     const c = land.data[t * 3 + 2];
+    if (refined[t] && town) {
+      // Sub-vertex (i, j): a + (b − a)·i/N + (c − a)·j/N, as weights on the corners so shared edges agree exactly.
+      const fa = flagged(a);
+      const fb = flagged(b);
+      const fc = flagged(c);
+      const ca = pointCavity(a);
+      const cb = pointCavity(b);
+      const cc = pointCavity(c);
+      const vertices = new Float64Array(((N + 1) * (N + 2)) / 2 * 4);
+      const index = (i: number, j: number) => ((i * (2 * N + 3 - i)) / 2 + j) * 4;
+      for (let i = 0; i <= N; i++) {
+        for (let j = 0; j <= N - i; j++) {
+          const wb = i / N;
+          const wc = j / N;
+          const wa = (N - i - j) / N;
+          const x = pointX(a) * wa + pointX(b) * wb + pointX(c) * wc;
+          const z = pointZ(a) * wa + pointZ(b) * wb + pointZ(c) * wc;
+          const plane = pointY(a) * wa + pointY(b) * wb + pointY(c) * wc;
+          const m = fa * wa + fb * wb + fc * wc;
+          const y = m > 0 ? plane + m * (field.sampleHeight(x, z) - plane) : plane;
+          const o = index(i, j);
+          vertices[o] = x;
+          vertices[o + 1] = y;
+          vertices[o + 2] = z;
+          vertices[o + 3] = ca * wa + cb * wb + cc * wc;
+        }
+      }
+      const put = (k: number, i: number, j: number) => {
+        const o = index(i, j);
+        face[k * 3] = vertices[o];
+        face[k * 3 + 1] = vertices[o + 1];
+        face[k * 3 + 2] = vertices[o + 2];
+        return vertices[o + 3];
+      };
+      for (let i = 0; i < N; i++) {
+        for (let j = 0; j < N - i; j++) {
+          const cav = (put(0, i, j) + put(1, i + 1, j) + put(2, i, j + 1)) / 3;
+          emitFace(face, cav, town.surface((face[0] + face[3] + face[6]) / 3, (face[2] + face[5] + face[8]) / 3));
+          if (j < N - 1 - i) {
+            const cav2 = (put(0, i + 1, j) + put(1, i + 1, j + 1) + put(2, i, j + 1)) / 3;
+            emitFace(face, cav2, town.surface((face[0] + face[3] + face[6]) / 3, (face[2] + face[5] + face[8]) / 3));
+          }
+        }
+      }
+      continue;
+    }
     const ax = pointX(a);
     const az = pointZ(a);
     const ux = pointX(b) - ax;
@@ -543,8 +686,45 @@ export function buildLandMesh(
     sample.coral = reef > 0 ? reef * coralPatch(bandNoise, cx, cz) : 0;
     const [r, g, bl] = landFaceColor(palette, sample, occlusion);
     const shade = 0.93 + hash(cx, cz) * 0.14;
+    if (cutEdges.size > 0 && cutsOf(t) > 0) {
+      // A fan from the centroid to the corners and the cuts on the cut edges: the same plane, colour and normal.
+      const ring: number[] = [];
+      const corners = [a, b, c];
+      for (let k = 0; k < 3; k++) {
+        const p = corners[k];
+        const q = corners[(k + 1) % 3];
+        ring.push(pointX(p), pointY(p), pointZ(p));
+        if (!cutEdges.has(edgeKey(p, q))) continue;
+        // The cut points as the refined side computes them (weights on the two ends, the third weight zero).
+        for (let i = 1; i < TOWN_REFINE; i++) {
+          const wq = i / TOWN_REFINE;
+          const wp = (TOWN_REFINE - i) / TOWN_REFINE;
+          ring.push(pointX(p) * wp + pointX(q) * wq, pointY(p) * wp + pointY(q) * wq, pointZ(p) * wp + pointZ(q) * wq);
+        }
+      }
+      const centre = [(pointX(a) + pointX(b) + pointX(c)) / 3, (pointY(a) + pointY(b) + pointY(c)) / 3, (pointZ(a) + pointZ(b) + pointZ(c)) / 3];
+      const count = ring.length / 3;
+      for (let e = 0; e < count; e++) {
+        const f = (e + 1) % count;
+        const tri = [centre[0], centre[1], centre[2], ring[e * 3], ring[e * 3 + 1], ring[e * 3 + 2], ring[f * 3], ring[f * 3 + 1], ring[f * 3 + 2]];
+        for (let k = 0; k < 3; k++) {
+          const o = out * 9 + k * 3;
+          positions[o] = tri[k * 3];
+          positions[o + 1] = tri[k * 3 + 1];
+          positions[o + 2] = tri[k * 3 + 2];
+          colors[o] = r * shade;
+          colors[o + 1] = g * shade;
+          colors[o + 2] = bl * shade;
+          normals[o] = nx / nl;
+          normals[o + 1] = ny / nl;
+          normals[o + 2] = nz / nl;
+        }
+        out++;
+      }
+      continue;
+    }
     for (let k = 0; k < 3; k++) {
-      const o = t * 9 + k * 3;
+      const o = out * 9 + k * 3;
       writePoint(o, land.data[t * 3 + k]);
       colors[o] = r * shade;
       colors[o + 1] = g * shade;
@@ -553,6 +733,7 @@ export function buildLandMesh(
       normals[o + 1] = ny / nl;
       normals[o + 2] = nz / nl;
     }
+    out++;
   }
 
   // Seabed: smooth, with the field's own normal and a colour per point, so

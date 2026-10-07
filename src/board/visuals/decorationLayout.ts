@@ -21,9 +21,12 @@ import { shoreBoulders, type ShoreBoulder } from "./shoreBoulders";
 import { PROP_DENSITY, PROP_SCALE } from "./propScale";
 import { lerpRange, seedOf, stream } from "./variationStream";
 import { AGED_BUILDING_HALF_DIAGONAL } from "./agedBuildingGeometry";
+import { fortRoadDistance, plateauPlanDistance } from "./townPlateau";
 
 /** A watchtower this close to a fort port's square is that port's, and the fort's keep replaces it (#84). */
 const FORT_TOWER_REACH = 1.2;
+/** Trees, rocks and shrubs keep this far outside a town plateau's plan (#84). */
+const TOWN_CLEAR_MARGIN = 0.02;
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -186,11 +189,20 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
   // #84 forts (only with the experiment's town plateaus): the fort's keep
   // takes over from its port's watchtower, and nothing grows or stands on
   // the fort's pad.
-  const fortPlateaus = (field.townPlateaus ?? []).filter((p) => p.fort);
-  if (fortPlateaus.length > 0) {
+  // The detail pass: nothing grows inside a town's plan (its streets,
+  // terraces and walls) or on the fort road either.
+  const plateaus = field.townPlateaus ?? [];
+  const fortPlateaus = plateaus.filter((p) => p.fort);
+  if (plateaus.length > 0) {
     const onPad = (x: number, z: number, margin: number) =>
       fortPlateaus.some((p) => p.fort && Math.hypot(x - p.fort.x, z - p.fort.z) < p.fort.padRadius + margin);
-    const keep = <T extends { worldX: number; worldZ: number }>(items: readonly T[]) => items.filter((d) => !onPad(d.worldX, d.worldZ, 0));
+    const inTown = (x: number, z: number) =>
+      plateaus.some(
+        (p) =>
+          plateauPlanDistance(p, x, z) < TOWN_CLEAR_MARGIN ||
+          (p.fortRoad !== undefined && fortRoadDistance(p.fortRoad, x, z) < p.fortRoad.halfWidth + p.fortRoad.shoulder)
+      );
+    const keep = <T extends { worldX: number; worldZ: number }>(items: readonly T[]) => items.filter((d) => !onPad(d.worldX, d.worldZ, 0) && !inTown(d.worldX, d.worldZ));
     const keptBuildings = buildings.filter(
       (b) =>
         !(b.kind === "watchtower" && fortPlateaus.some((p) => Math.hypot(b.worldX - p.x, b.worldZ - p.z) < FORT_TOWER_REACH)) &&
