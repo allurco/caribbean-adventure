@@ -99,6 +99,17 @@ describe("soundEventsFrom", () => {
     expect(soundEventsFrom(state, structuredClone(state))).toEqual([]);
   });
 
+  it("keeps the draft silent: a ship given its captain is set up, not sailed or bought", () => {
+    const prev = makeState();
+    const next = withShip(prev, "0", {
+      captain: { id: "c1", name: "Henry Morgan", nation: "England", ability: "Raid" },
+      position: hex(2, 0),
+      shipClass: "Flute",
+      gold: 70,
+    });
+    expect(soundEventsFrom(prev, next)).toEqual([]);
+  });
+
   it("emits a sail when a player's ship changes hex", () => {
     const prev = makeState();
     const next = withShip(prev, "0", { position: hex(1, 0) });

@@ -41,7 +41,10 @@ export function soundEventsFrom(prev: CaribbeanState | undefined, next: Caribbea
 
   for (const [shipId, after] of Object.entries(next.ships)) {
     const before = prev.ships[shipId];
-    if (before && before !== after) events.push(...shipEvents(shipId, before, after, next, inCombat));
+    // A ship whose captain changed was just set up by the draft pick (home
+    // port, class, gold), which is not a voyage or a purchase.
+    const drafted = before?.captain?.id !== after.captain?.id;
+    if (before && before !== after && !drafted) events.push(...shipEvents(shipId, before, after, next, inCombat));
   }
 
   for (const [npcId, after] of Object.entries(next.npcs)) {
