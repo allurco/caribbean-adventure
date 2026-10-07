@@ -65,6 +65,7 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `cx=<x>&cz=<z>` | Where the camera looks on the first frame, in world units (both needed; the map's middle otherwise) |
 | `dist=<positive number>` | How far the camera starts from its target, in world units (the map's iso distance otherwise); the zoom limits still apply |
 | `view=props` | The prop viewer instead of the game, with `focus=<n>` to start close up on entry n |
+| `view=sound` | The sound lab instead of the game: every registered sound with play/stop, a loop toggle, its volume and its source, for approving sounds by ear |
 
 The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=3.55` opens the same small map every time, at ship zoom over its middle port. The size and seed become the game's boardgame.io `setupData` (merged over whatever match creation passes, so a pin overrides only the keys it sets); the camera values go to the board. Captains and NPCs stay random.
 
@@ -74,7 +75,8 @@ The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=1
 src/
 ├── game/    Game rules: pure TypeScript, no React or Three.js
 ├── board/   Rendering: React components, 3D scene, and HUD
-├── lab/     Shader experiments (open the app at /#lab)
+├── audio/   Sound: the registry, settings, the state-diff events, three.js playback
+├── lab/     Shader experiments (open the app at /#lab) and the sound lab (/?view=sound)
 └── App.tsx  Wires the game to the board via boardgame.io
 docs/        Design notes (for example, terrain-system.md)
 ```
@@ -87,4 +89,4 @@ This is a personal project being built in the open. Ideas and bug reports are we
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Third-party assets (the CC0 sounds under `public/sounds/`) are listed with their sources in [NOTICE](NOTICE).

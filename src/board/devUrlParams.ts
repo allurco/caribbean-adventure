@@ -17,6 +17,8 @@ export interface DevUrlParams {
   cameraDistance?: number;
   /** `?view=props`, with `&focus=n` to start close up on entry n. */
   propViewer?: { focus?: number };
+  /** `?view=sound`: the sound lab (#73). */
+  soundLab?: true;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -40,6 +42,7 @@ export function parseDevUrlParams(search: string): DevUrlParams {
     const focus = integer(params.get("focus"));
     out.propViewer = focus !== undefined && focus >= 0 ? { focus } : {};
   }
+  if (params.get("view") === "sound") out.soundLab = true;
 
   return out;
 }

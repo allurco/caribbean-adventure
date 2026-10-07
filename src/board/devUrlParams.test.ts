@@ -61,6 +61,11 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?view=other&focus=3")).toEqual({});
   });
 
+  it("opens the sound lab", () => {
+    expect(parseDevUrlParams("?view=sound")).toEqual({ soundLab: true });
+    expect(parseDevUrlParams("?view=sounds")).toEqual({});
+  });
+
   it("reads every parameter from one URL", () => {
     expect(parseDevUrlParams("?size=small&seed=1&cx=12&cz=13.9&dist=4.3")).toEqual({
       setupData: { mapSize: "small", mapSeed: 1 },

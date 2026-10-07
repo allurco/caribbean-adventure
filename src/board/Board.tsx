@@ -84,6 +84,10 @@ import { GameOverScreen } from "./GameOverScreen";
 import { DockingAnimation } from "./DockingAnimation";
 import { TurnChangeAnimation } from "./TurnChangeAnimation";
 import { MissionCompleteToast } from "./MissionCompleteToast";
+import { CameraAudioListener } from "./CameraAudioListener";
+import { HudSoundControl } from "./HudSoundControl";
+import { useAudioUnlock } from "../audio/useAudioUnlock";
+import { useGameSounds } from "../audio/useGameSounds";
 import type { Mission } from "../game/types";
 
 interface SinkingShipData {
@@ -322,6 +326,9 @@ function Scene({
 
   return (
     <>
+      {/* The ears of the game: the audio listener rides on the camera (#73) */}
+      <CameraAudioListener />
+
       {/* Horizon haze: background matches the fog so the far edge dissolves */}
       <color attach="background" args={[HAZE_COLOR]} />
       <fog attach="fog" args={[HAZE_COLOR, HAZE_NEAR, HAZE_FAR]} />
@@ -505,6 +512,11 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   const currentPlayer = ctx.currentPlayer;
   const currentShipState = G.ships[currentPlayer];
+
+  // Sound (#73): audio unlocks on the first click (the draft pick), then
+  // every change of G plays the sounds its moves map to.
+  useAudioUnlock();
+  useGameSounds(G);
 
   // Track previous player to detect turn changes
   const prevPlayerRef = useRef<string | null>(null);
@@ -802,6 +814,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onEndTurn={() => props.events.endTurn!()}
         />
       )}
+
+      {/* Sound: mute and volume, under the turn bar */}
+      {currentShipState && <HudSoundControl />}
 
       {/* Bottom-left: unified HUD panel */}
       {currentShipState && (
