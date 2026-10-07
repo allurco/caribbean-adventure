@@ -10,6 +10,7 @@ import {
   rockVariation,
   type RockVariation,
 } from "./rockVariation";
+import { PROP_SCALE } from "./worldScale";
 
 /** A cone-shaped summit: `height` at the origin, falling `fall` per unit of distance. */
 const peak = (height: number, fall: number): GroundField => ({
@@ -24,8 +25,11 @@ const tilted = (height: number, slopeX: number): GroundField => ({
 });
 
 const ORIGIN = { x: 0, z: 0 };
+/** Distances that hinge on a rock's reach are at the props' scale, as the rocks are. */
+const k = PROP_SCALE;
 
-const request = (scale: number, biome: Biome, rotation = 0): RockRequest => ({ scale, rotation, biome });
+/** A rock at the generator's decoration `scale`, drawn at PROP_SCALE as the layout passes it. */
+const request = (scale: number, biome: Biome, rotation = 0): RockRequest => ({ scale: scale * PROP_SCALE, rotation, biome });
 
 /** The rock's variation once it stands at `spot`, exactly as `Rocks.tsx` derives it from the layout. */
 function drawnAt(spot: { x: number; y: number; z: number }, rock: RockRequest): RockVariation {
@@ -109,16 +113,16 @@ describe("placeRock", () => {
   });
 
   it("drops a rock that cannot fit on the land rather than letting its rim overhang the water", () => {
-    // The smallest large rock at scale 1.6 reaches 0.22 × 1.6 × 2.2 × 0.75 × 0.85 ≈ 0.49 units.
-    const field = coast(0.45);
+    // The smallest large rock at scale 1.6 reaches 0.22 × 1.6 × 2.2 × 0.75 × 0.85 ≈ 0.49 units (× PROP_SCALE).
+    const field = coast(0.45 * k);
     for (let i = 0; i < 40; i++) {
-      expect(placeRock(field, { x: 0.25, z: 0 }, ORIGIN, request(1.6, "ROCK", i * 0.37))).toBeNull();
+      expect(placeRock(field, { x: 0.25 * k, z: 0 }, ORIGIN, request(1.6, "ROCK", i * 0.37))).toBeNull();
     }
   });
 
   it("fits a smaller rock where the requested one would overhang: each nudge candidate re-hashes the variation", () => {
-    const field = coast(0.75);
-    const requested = { x: 0.25, z: 0 };
+    const field = coast(0.75 * k);
+    const requested = { x: 0.25 * k, z: 0 };
     let rescued = 0;
     for (let i = 0; i < 40; i++) {
       const rock = request(1.6, "ROCK", i * 0.37);
@@ -126,9 +130,9 @@ describe("placeRock", () => {
       const spot = placeRock(field, requested, ORIGIN, rock);
       if (!spot) continue;
       const radius = rockDrawnRadius(drawnAt(spot, rock));
-      expect(spot.x + radius).toBeLessThan(0.75);
+      expect(spot.x + radius).toBeLessThan(0.75 * k);
       expect(field.sampleHeight(spot.x + radius, spot.z)).toBeGreaterThan(MIN_GROUND_HEIGHT);
-      if (requested.x + asRequested >= 0.75) rescued++;
+      if (requested.x + asRequested >= 0.75 * k) rescued++;
     }
     expect(rescued).toBeGreaterThan(5);
   });
@@ -147,13 +151,13 @@ describe("placeRock", () => {
     // Rocks.tsx draws every stone "small". A grass stone probed at the biome's
     // medium class (×1.5) overhung the probe but not the screen, and was nudged
     // back from a coast or cliff edge it fitted on.
-    const requested = { x: 0.4, z: 0 };
+    const requested = { x: 0.4 * k, z: 0 };
     for (let i = 0; i < 20; i++) {
       const stone: RockRequest = { ...request(1, "GRASS", i * 0.37), sizeClass: "small", sink: 0.01 };
       const drawn = rockDrawnRadius(drawnAt({ ...requested, y: 0 }, stone));
       const asMedium = rockDrawnRadius(drawnAt({ ...requested, y: 0 }, { ...stone, sizeClass: "medium" }));
       // Land ends just past the drawn rim: the stone fits as drawn, not as a medium rock.
-      const coastX = requested.x + drawn + 0.02;
+      const coastX = requested.x + drawn + 0.02 * k;
       expect(requested.x + asMedium).toBeGreaterThan(coastX);
       const spot = placeRock(coast(coastX), requested, ORIGIN, stone);
       expect(spot).not.toBeNull();

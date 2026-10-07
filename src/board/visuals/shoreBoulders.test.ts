@@ -5,7 +5,7 @@ import { canonicalHex, createWrap, hexToWorld, neighbors, type Hex, type MapWrap
 import type { Biome, MapCell } from "../../game/types";
 import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
 import { ROCK_VARIANT_REACH } from "./rockGeometry";
-import { metresToUnits } from "./worldScale";
+import { metresToUnits, PROP_DENSITY, PROP_SCALE } from "./worldScale";
 import {
   BOULDER_SAMPLES_PER_EDGE,
   BOULDERS_PER_COAST_EDGE,
@@ -69,11 +69,11 @@ const coastEdges = (list: readonly MapCell[]) =>
   list.reduce((sum, c) => sum + neighbors(c.hex).filter((n) => !isLand(n, wrap)).length, 0);
 
 describe("shoreBoulders", () => {
-  it("places about BOULDERS_PER_COAST_EDGE boulders per rock or grass coastal edge", () => {
+  it("places about BOULDERS_PER_COAST_EDGE boulders per rock or grass coastal edge, PROP_DENSITY times over", () => {
     const edges = coastEdges(coastal.filter(bouldered));
     expect(edges).toBeGreaterThan(30);
-    expect(boulders.length).toBeGreaterThan(edges * BOULDERS_PER_COAST_EDGE * 0.7);
-    expect(boulders.length).toBeLessThan(edges * BOULDERS_PER_COAST_EDGE * 1.3);
+    expect(boulders.length).toBeGreaterThan(edges * BOULDERS_PER_COAST_EDGE * PROP_DENSITY * 0.7);
+    expect(boulders.length).toBeLessThan(edges * BOULDERS_PER_COAST_EDGE * PROP_DENSITY * 1.3);
     expect(boulders.length).toBeLessThanOrEqual(edges * BOULDER_SAMPLES_PER_EDGE);
   });
 
@@ -89,7 +89,7 @@ describe("shoreBoulders", () => {
   it("places boulders on rock coasts and on grass coasts", () => {
     for (const biome of ["ROCK", "GRASS"] as const) {
       const list = shoreBoulders(rebiomed(cells, biome), field, wrap, seed);
-      expect(list.length).toBeGreaterThan(coastEdges(coastal) * BOULDERS_PER_COAST_EDGE * 0.7);
+      expect(list.length).toBeGreaterThan(coastEdges(coastal) * BOULDERS_PER_COAST_EDGE * PROP_DENSITY * 0.7);
     }
   });
 
@@ -178,8 +178,8 @@ describe("shoreBoulders", () => {
     }
   });
 
-  it("never shrinks a boulder below a visible size", () => {
-    for (const b of boulders) expect(b.reach).toBeGreaterThan(0.05);
+  it("never shrinks a boulder below a visible size (at PROP_SCALE)", () => {
+    for (const b of boulders) expect(b.reach).toBeGreaterThan(0.05 * PROP_SCALE);
   });
 
   it("sits emergent boulders on the ground and submerged ones under the surface on the seabed", () => {

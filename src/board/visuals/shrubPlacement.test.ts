@@ -26,6 +26,7 @@ import {
   SHRUBS_PER_SAND_CELL,
   type PlacedProps,
 } from "./shrubPlacement";
+import { PROP_DENSITY, PROP_SCALE } from "./worldScale";
 
 const TAU = Math.PI * 2;
 
@@ -41,7 +42,7 @@ function placedPropsOf(cells: readonly MapCell[], field: GroundField, seed: numb
         worldY: 0.3,
         worldZ: hexZ + deco.position[2],
         rotation: deco.rotation,
-        scale: deco.scale ?? 1,
+        scale: (deco.scale ?? 1) * PROP_SCALE,
         biome: cell.biome,
       };
       if (deco.type === "tree") placed.trees.push(data);
@@ -82,9 +83,9 @@ const grassCell = (q: number, r: number, extra: Partial<MapCell> = {}): MapCell 
 });
 
 describe("placeShrubs", () => {
-  it("places one to three clusters per grass cell and one to three tufts per sand cell", () => {
-    expect(SHRUBS_PER_GRASS_CELL).toEqual([1, 3]);
-    expect(SHRUBS_PER_SAND_CELL).toEqual([1, 3]);
+  it("places one to three clusters per grass cell and one to three tufts per sand cell, PROP_DENSITY times over", () => {
+    expect(SHRUBS_PER_GRASS_CELL).toEqual([PROP_DENSITY, 3 * PROP_DENSITY]);
+    expect(SHRUBS_PER_SAND_CELL).toEqual([PROP_DENSITY, 3 * PROP_DENSITY]);
     expect(SHRUB_KIND_BY_BIOME).toEqual({ GRASS: "bush", SAND: "tuft", ROCK: null });
   });
 
@@ -106,18 +107,18 @@ describe("placeShrubs", () => {
     }
   });
 
-  it("covers the sand and grass cells: at least one shrub on most of them, never more than three", () => {
+  it("covers the sand and grass cells: shrubs on most of them, never more than the cell's maximum", () => {
     const eligible = cells.filter(takesShrubs);
     expect(eligible.length).toBeGreaterThan(10);
-    expect(shrubs.length).toBeGreaterThanOrEqual(eligible.length * 0.8);
-    expect(shrubs.length).toBeLessThanOrEqual(eligible.length * 3);
+    expect(shrubs.length).toBeGreaterThanOrEqual(eligible.length * PROP_DENSITY * 0.8);
+    expect(shrubs.length).toBeLessThanOrEqual(eligible.length * 3 * PROP_DENSITY);
     const perCell = new Map<MapCell, number>();
     for (const shrub of shrubs) {
       const cell = cellOf(shrub);
       expect(cell).toBeDefined();
       perCell.set(cell!, (perCell.get(cell!) ?? 0) + 1);
     }
-    for (const count of perCell.values()) expect(count).toBeLessThanOrEqual(3);
+    for (const count of perCell.values()) expect(count).toBeLessThanOrEqual(3 * PROP_DENSITY);
     expect(perCell.size).toBeGreaterThanOrEqual(eligible.length * 0.6);
   });
 
