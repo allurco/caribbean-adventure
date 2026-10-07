@@ -246,7 +246,10 @@ function Scene({
     return () => controls.removeEventListener("change", clamp);
   }, [clampFocus, camera, ground]);
 
-  // The near plane closes in with the zoom (cameraNearFor, #90)
+  // The near plane closes in with the zoom (cameraNearFor, #90). Priority -1
+  // runs it before Ocean copies the projection inverse (priority 0) and the
+  // seabed prepass (> 0), so both see this frame's near plane; a negative
+  // priority does not take over rendering.
   useFrame(({ camera: view }) => {
     const target = controlsRef.current?.target;
     if (!target || !(view instanceof PerspectiveCamera)) return;
@@ -254,7 +257,7 @@ function Scene({
     if (view.near === near) return;
     view.near = near;
     view.updateProjectionMatrix();
-  });
+  }, -1);
 
   // A port's tooltip (and any hover) follows the scene as the camera moves
   // under a still pointer (re-tested on the next frame, after the clamp above)
