@@ -293,7 +293,8 @@ function Scene({
         { x, z, distance: targetDistance.current },
         0.08
       );
-      target.set(step.x, 0, step.z);
+      // Keep the ground follow's height; the clamp on update corrects it
+      target.set(step.x, target.y, step.z);
       camera.position.copy(target).addScaledVector(direction.normalize(), step.distance);
       if (step.arrived) isAnimating.current = false;
 
