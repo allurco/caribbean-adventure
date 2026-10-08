@@ -4,11 +4,13 @@ import { PrototypeSwitcher } from "./PrototypeSwitcher";
 import { VariantA } from "./VariantA";
 import { VariantB } from "./VariantB";
 import { VariantC } from "./VariantC";
+import { VariantD } from "./VariantD";
 
 /**
  * THROWAWAY PROTOTYPE for #104: "what should the out-of-game online shell
  * look like?" Three structurally different variants of the same six screens
- * on stub data. `?view=prototype-shell&variant=A|B|C&screen=signin|home|room|lobby|party|queue`.
+ * on stub data. D merges B's structure with A's harbour.
+ * `?view=prototype-shell&variant=A|B|C|D&screen=signin|home|room|lobby|party|queue`.
  * Delete once a direction is chosen.
  */
 export function ShellPrototype() {
@@ -37,6 +39,7 @@ export function ShellPrototype() {
       {variant === "A" && <VariantA screen={screen} go={go} />}
       {variant === "B" && <VariantB screen={screen} go={go} />}
       {variant === "C" && <VariantC screen={screen} go={go} />}
+      {variant === "D" && <VariantD screen={screen} go={go} />}
       {import.meta.env.DEV && (
         <PrototypeSwitcher variant={variant} screen={screen} onCycleVariant={cycleVariant} onScreen={setScreen} />
       )}

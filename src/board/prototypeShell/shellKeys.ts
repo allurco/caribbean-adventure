@@ -7,6 +7,7 @@ export const VARIANTS = [
   { key: "A", name: "Harbour backdrop" },
   { key: "B", name: "Classic launcher" },
   { key: "C", name: "Captain's logbook" },
+  { key: "D", name: "Harbour launcher" },
 ] as const;
 export type VariantKey = (typeof VARIANTS)[number]["key"];
 
