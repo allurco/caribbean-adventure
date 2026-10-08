@@ -63,7 +63,7 @@ function SignIn({ go }: VariantProps) {
   const [email, setEmail] = useState("");
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-end sm:justify-center p-4 pb-28 sm:pb-4">
-      <h1 className="font-heading text-4xl sm:text-6xl text-amber-50 tracking-[0.12em] drop-shadow-[0_4px_12px_rgba(0,0,0,0.7)] mb-2 text-center">Project Caribbean</h1>
+      <h1 className="font-heading text-4xl sm:text-6xl text-amber-50 tracking-[0.12em] drop-shadow-[0_4px_12px_rgba(0,0,0,0.7)] mb-2 text-center">Caribbean Merchant</h1>
       <p className="text-amber-100/80 italic mb-6 drop-shadow text-center">The harbourmaster keeps the register. Sign it to sail.</p>
       <div className={`relative ${PARCHMENT} w-full max-w-md px-8 pt-8 pb-14 rotate-[-0.6deg]`}>
         <div className="font-heading text-xs uppercase tracking-[0.3em] text-stone-700 text-center mb-1">Letter of marque</div>

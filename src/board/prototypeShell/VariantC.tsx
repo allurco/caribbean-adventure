@@ -95,7 +95,7 @@ function SignIn({ go }: VariantProps) {
     <div className="relative w-full max-w-[460px] h-full max-h-[680px] rounded-md bg-[#3a1d10] shadow-[0_30px_60px_rgba(0,0,0,0.7)] [background-image:radial-gradient(ellipse_at_40%_30%,rgba(140,70,30,0.35),transparent_60%)] flex flex-col items-center justify-center px-8 text-center">
       <div className="absolute inset-4 border-2 border-[#c9a45c]/40 rounded-sm pointer-events-none" />
       <div className="text-[#d9b56a] text-xs tracking-[0.4em] uppercase font-heading">The log of</div>
-      <div className="text-[#e8c77a] text-4xl sm:text-5xl mt-2 font-heading tracking-wider leading-tight">Project Caribbean</div>
+      <div className="text-[#e8c77a] text-4xl sm:text-5xl mt-2 font-heading tracking-wider leading-tight">Caribbean Merchant</div>
       <div className="w-16 h-px bg-[#c9a45c]/60 my-6" />
       {/* the bookplate */}
       <div className={`${PAGE} w-full max-w-xs px-6 py-5 text-left`}>

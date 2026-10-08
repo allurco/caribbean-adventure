@@ -30,9 +30,9 @@ function NavRail({ screen, go }: VariantProps) {
   return (
     <nav className="flex sm:flex-col sm:w-52 shrink-0 bg-black/40 border-b sm:border-b-0 sm:border-r border-amber-800/30">
       <div className="hidden sm:block px-5 py-5 font-heading text-amber-100 text-lg tracking-[0.15em] leading-tight">
-        Project
-        <br />
         Caribbean
+        <br />
+        Merchant
       </div>
       <div className="flex sm:flex-col flex-1 sm:flex-none">
         {NAV.map((n) => (
@@ -137,7 +137,7 @@ function SignIn({ go }: VariantProps) {
         <div className="absolute left-[18%] top-[44%] w-40 h-10 bg-[#3f5d2e] rounded-t-[60%] opacity-80" />
         <div className="absolute left-[60%] top-[47%] w-24 h-6 bg-[#4b6b35] rounded-t-[60%] opacity-70" />
         <div className="absolute bottom-6 left-6 sm:bottom-12 sm:left-12">
-          <div className="font-heading text-amber-50 text-3xl sm:text-6xl tracking-[0.1em] drop-shadow-lg">Project Caribbean</div>
+          <div className="font-heading text-amber-50 text-3xl sm:text-6xl tracking-[0.1em] drop-shadow-lg">Caribbean Merchant</div>
           <div className="text-amber-50/90 mt-1 drop-shadow">Six captains. One sea. Play over days or in an evening.</div>
         </div>
       </div>
