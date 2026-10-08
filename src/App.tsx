@@ -5,6 +5,7 @@ import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { SoundLab } from "./lab/SoundLab";
 import { parseDevUrlParams } from "./board/devUrlParams";
+import { ShellPrototype } from "./board/prototypeShell/ShellPrototype";
 
 // Dev URL parameters (#74), read once: a map size and seed pin the generated
 // map, cx/cz/dist pin the camera's first view, view=props opens the prop
@@ -32,6 +33,10 @@ export default function App() {
   }
   if (devParams.soundLab) {
     return <SoundLab />;
+  }
+  // Throwaway prototype of the online shell (#104): ?view=prototype-shell&variant=A&screen=home
+  if (devParams.shellPrototype) {
+    return <ShellPrototype />;
   }
   return <CaribbeanClient cameraTarget={devParams.cameraTarget} cameraDistance={devParams.cameraDistance} />;
 }

@@ -19,6 +19,8 @@ export interface DevUrlParams {
   propViewer?: { focus?: number };
   /** `?view=sound`: the sound lab (#73). */
   soundLab?: true;
+  /** `?view=prototype-shell`: the throwaway online-shell prototype; it reads its own `variant` and `screen`. */
+  shellPrototype?: true;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -43,6 +45,7 @@ export function parseDevUrlParams(search: string): DevUrlParams {
     out.propViewer = focus !== undefined && focus >= 0 ? { focus } : {};
   }
   if (params.get("view") === "sound") out.soundLab = true;
+  if (params.get("view") === "prototype-shell") out.shellPrototype = true;
 
   return out;
 }
