@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { usePhoneOrientation } from "../rotateGate/usePhoneOrientation";
 import type { Screen, VariantProps } from "./shellKeys";
 import { DCrewChip } from "./variantD/DCrewChip";
 import { DNavRail } from "./variantD/DNavRail";
@@ -6,6 +7,7 @@ import { DPartyDock } from "./variantD/DPartyDock";
 import { DTabBar } from "./variantD/DTabBar";
 import { DWindowBand } from "./variantD/DWindowBand";
 import { HarbourWindow } from "./variantD/HarbourWindow";
+import { DLandscape } from "./variantD/landscape/DLandscape";
 import { TITLES } from "./variantD/nav";
 import { DHome } from "./variantD/screens/DHome";
 import { DLobby } from "./variantD/screens/DLobby";
@@ -25,8 +27,10 @@ import { usePeriodFonts } from "./variantD/usePeriodFonts";
  * left (chat folded), both 224 px on the same 24 px edge, and the screen as
  * one parchment sheet (820 px at most) under a hanging nameboard, centred in
  * the space to their right and top-aligned with the nav board. Nothing runs
- * full height; the harbour shows round all of it. Under 768 px the nav board becomes a bottom tab bar and
- * the party board a chip in the header.
+ * full height; the harbour shows round all of it. A touch phone held
+ * sideways gets DLandscape (side nav, short sign, seal cluster); held
+ * upright it gets the rotate gate (App). A narrow desktop window under
+ * 768 px keeps the bottom tab bar and the party chip in the header.
  */
 
 const BODIES: Record<Exclude<Screen, "signin">, (p: VariantProps) => ReactNode> = {
@@ -39,6 +43,7 @@ const BODIES: Record<Exclude<Screen, "signin">, (p: VariantProps) => ReactNode> 
 
 export function VariantD({ screen, go }: VariantProps) {
   usePeriodFonts();
+  const landscape = usePhoneOrientation() === "landscape";
   if (screen === "signin") {
     return (
       <div className="absolute inset-0 bg-[#082633]">
@@ -48,6 +53,16 @@ export function VariantD({ screen, go }: VariantProps) {
     );
   }
   const Body = BODIES[screen];
+  if (landscape) {
+    return (
+      <div className="absolute inset-0 bg-[#082633]">
+        <HarbourWindow />
+        <DLandscape screen={screen} go={go}>
+          <Body screen={screen} go={go} />
+        </DLandscape>
+      </div>
+    );
+  }
   const { title, meta } = TITLES[screen];
   const showDock = screen !== "party";
   return (

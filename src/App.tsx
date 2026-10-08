@@ -6,6 +6,9 @@ import { PropViewer } from "./board/PropViewer";
 import { SoundLab } from "./lab/SoundLab";
 import { parseDevUrlParams } from "./board/devUrlParams";
 import { ShellPrototype } from "./board/prototypeShell/ShellPrototype";
+import { useLandscapeLockOnFirstTap } from "./board/rotateGate/landscapeLock";
+import { RotateGate } from "./board/rotateGate/RotateGate";
+import { usePhoneOrientation } from "./board/rotateGate/usePhoneOrientation";
 
 // Dev URL parameters (#74), read once: a map size and seed pin the generated
 // map, cx/cz/dist pin the camera's first view, view=props opens the prop
@@ -20,7 +23,26 @@ const CaribbeanClient = Client({
   board: CaribbeanBoard,
 });
 
+/**
+ * Phones are landscape-only (#104), for every view. Held upright, the rotate
+ * gate covers the view and the view goes inert; it is never unmounted, so
+ * the game and its canvas carry on underneath. The first tap on a phone also
+ * asks Android to go full screen and lock to landscape.
+ */
 export default function App() {
+  useLandscapeLockOnFirstTap();
+  const gated = usePhoneOrientation() === "portrait";
+  return (
+    <>
+      <div className="contents" inert={gated}>
+        <View />
+      </div>
+      {gated && <RotateGate />}
+    </>
+  );
+}
+
+function View() {
   // Visit http://localhost:5173/#lab for the shader sandbox,
   // http://localhost:5173/?view=props for the prop viewer (#59) and
   // http://localhost:5173/?view=sound for the sound lab (#73); anything

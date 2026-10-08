@@ -3,7 +3,27 @@
 @theme {
   --font-heading: "Cinzel", serif;
   --font-body: "Inter", sans-serif;
+
+  /* the rotate gate's phone (#104): rest upright, swing onto its side, hold, swing back */
+  --animate-turn-ship: turn-ship 3.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  @keyframes turn-ship {
+    0%,
+    18% {
+      transform: rotate(0deg);
+    }
+    42%,
+    78% {
+      transform: rotate(90deg);
+    }
+    100% {
+      transform: rotate(0deg);
+    }
+  }
 }
+
+/* A touch phone held sideways (#104). Must agree with phoneOrientation.ts:
+   coarse pointer, landscape, short side (here the height) at most 540 px. */
+@custom-variant phl (@media (pointer: coarse) and (orientation: landscape) and (max-height: 540px));
 
 html,
 body,

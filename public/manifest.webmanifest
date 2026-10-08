@@ -1,0 +1,9 @@
+{
+  "name": "Caribbean Merchant",
+  "short_name": "Caribbean Merchant",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#082633",
+  "theme_color": "#082633"
+}
