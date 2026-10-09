@@ -56,3 +56,30 @@ public/sounds/sea-waves-loop.ogg
   URL:     https://opengameart.org/content/beach-ocean-waves
   Licence: CC0
   Changes: four clips crossfaded into one seamless 9.7 s loop, mono
+
+public/sounds/sea-wide-loop.ogg
+  The ambience bed's wide layer, heard at map zoom. A mix of two CC0 sources:
+  Source:  "wind1" (wind1.wav, synthesized in Pure Data)
+  Author:  lukerustltd
+  URL:     https://opengameart.org/content/wind1
+  Licence: CC0
+  Source:  "Sea and river wave sounds" (VistulaShort.mp3)
+  Author:  randommind
+  URL:     https://opengameart.org/content/sea-and-river-wave-sounds
+  Licence: CC0
+  Changes: wind over the waves low-passed and echoed into a distant wash,
+           crossfaded into one seamless 24 s loop, mono, loudness-normalised
+
+public/sounds/sea-close-loop.ogg
+  The ambience bed's close layer, heard at ship zoom. A mix of two CC0 sources:
+  Source:  "Sea and river wave sounds" (VistulaShort.mp3), the main layer
+  Author:  randommind
+  URL:     https://opengameart.org/content/sea-and-river-wave-sounds
+  Licence: CC0
+  Source:  "40 CC0 water / splash / slime SFX" (loop_water_01.ogg)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/40-cc0-water-splash-slime-sfx
+  Licence: CC0
+  Changes: waves lapping near with a 2.3 kHz hum notched out, a quiet water
+           trickle under them, crossfaded into one seamless 20 s loop, mono,
+           loudness-normalised
