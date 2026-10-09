@@ -30,11 +30,12 @@ Tests use **Vitest** and live next to their source as `*.test.ts`. Game logic is
 **`src/game/`** — All game logic. No rendering, no React, no Three.js. Pure functions plus the boardgame.io `Game` definition. Boardgame.io uses Immer internally, so moves mutate `G` directly.
 
 Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that composes them:
-- `Game.ts` — `Game<CaribbeanState>` definition: `setup()`, the two-phase flow, and all `moves` (moves delegate to pure `can*/apply*` helpers in the modules below). Also exports `MOVES_PER_TURN` and `getMaxMoves()`.
+- `Game.ts` — `Game<CaribbeanState>` definition: `setup()`, the two-phase flow, and all `moves` (moves delegate to pure `can*/apply*` helpers in the modules below). Also exports `MOVES_PER_TURN`, `getMaxMoves()`, and `withSetupData` / `withGeneratedMap` (a game whose `setup()` starts on a pinned size and seed, or on a map already generated).
 - `types.ts` — All shared types, including `CaribbeanState` (the root G shape: `cells`, `ships`, `npcs`, `captainDeck`, `draftHands`, `combat?`, `floatingLoot`, …). Re-exported from `Game.ts` for convenience.
 - `hex.ts` — Pure hex-grid math (cube coords, neighbors, distance, `hexToWorld`).
 - `constants.ts` — Ship specs/costs, upgrade definitions, repair costs.
 - `mapConfig.ts` / `mapGenerator.ts` — Map size presets + procedural map generation (islands, ports, biomes).
+- `mapRequest.ts` — `resolveMapRequest` (picks the map size and seed: pinned, else random) and `generateMapFor` (runs the generator for that request). Shared by `setup()` and the map worker.
 - `moves.ts` — Movement helpers (`validMoveTargets`, `findAccessiblePort`).
 - `combat.ts` — Ship-vs-ship combat resolution (seamanship, cannons, boarding, flee, damage/loot).
 - `economy.ts` — Buy/sell goods, upgrades, repair, buying ships, jury-rig.
@@ -53,7 +54,11 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 - `visuals/` — Environment rendering: the terrain height field (`terrainHeightField.ts`, `sharedTerrainField.ts`), the land mesh (`landMesh.ts`, `useLandTerrain.ts`, `LandTerrain.tsx`), `Ocean.tsx` and its wave/water maths, `TerrainDecorations.tsx` with the placement modules, `SunLight.tsx`. See **Terrain System** below.
 - Panels & HUD: `PortPanel`, `MarketPanel`, `ShipyardPanel`, `ShipwrightPanel`, `TavernPanel`, `CombatPanel`, `DraftScreen`, `GameOverScreen`, `Hud*`, tooltips, and animation components.
 
-**`src/App.tsx`** — Wires boardgame.io `Client({ game, board })`. Currently local single-client (no explicit transport); production will use the boardgame.io server with socket transport for 6 players.
+**`src/audio/`** — Sound, played through three.js audio only: `soundRegistry.ts` (every sound and its CC0 credit; a test keeps it in step with `public/sounds/` and `NOTICE`), `audioEngine.ts` (one `AudioListener` on the camera, unlock on the first user gesture), `audioSettings.ts` (mute and master volume, saved per browser), `soundEvents.ts` / `eventSounds.ts` (game-state changes to sounds, played by `useGameSounds`), and the open-sea ambience bed (`ambienceBed.ts`, with `ambienceMix.ts` crossfading its two layers by camera distance). Keep the logic in the pure modules; `src/board/` only mounts the listener and feeds the bed.
+
+**`src/lab/`** — Dev sandboxes, isolated from game code: the sound lab (`SoundLab.tsx`, at `?view=sound`) to audition every sound and tune the ambience bed, and the shader lab (`ShaderLab.tsx`, at `#lab`).
+
+**`src/App.tsx`** — Routes to the labs, the prop viewer (`?view=props`), or the game. Dev URL parameters (size, seed, camera) are parsed in `src/board/devUrlParams.ts`. For the game, `loadGameClient.ts` generates the map first, in a Web Worker (`src/mapWorker/`, falling back to the main thread when there is no worker or it fails), because boardgame.io's `setup()` is synchronous; it then creates `Client({ game: withGeneratedMap(Caribbean, map), board })`. `GameClientLoader.tsx` shows `MapLoadingScreen` until the client is ready. Currently local single-client (no explicit transport); production will use the boardgame.io server with socket transport for 6 players, where `setup()` still generates the map itself.
 
 ### Game Flow (phases)
 
