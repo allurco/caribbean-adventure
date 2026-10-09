@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
-import { Caribbean, MOVES_PER_TURN, getMaxMoves, withSetupData } from "./Game";
+import { Caribbean, MOVES_PER_TURN, getMaxMoves, withGeneratedMap, withSetupData } from "./Game";
+import { generateMapFor } from "./mapRequest";
 import type { CaribbeanState, CaribbeanSetupData } from "./Game";
 import type { Game } from "boardgame.io";
 import { canonicalHex, hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
@@ -239,6 +240,27 @@ describe("Caribbean.setup", () => {
       return client.getState()!.G;
     };
     expect(start(1).cells).not.toEqual(start(2).cells);
+  });
+
+  it("starts a match on a map generated ahead of setup, the same as setup would generate (#124)", () => {
+    const start = (game: Game<CaribbeanState>) => {
+      const client = Client<CaribbeanState>({ game, numPlayers: 2 });
+      client.start();
+      return client.getState()!.G;
+    };
+    for (const request of [
+      { mapSize: "small", mapSeed: 1 },
+      { mapSize: "medium", mapSeed: -42 },
+      { mapSize: "large", mapSeed: 31337 },
+    ] as const) {
+      const ahead = start(withGeneratedMap(Caribbean, { ...request, cells: generateMapFor(request) }));
+      const inSetup = start(withSetupData(Caribbean, request));
+      expect(ahead.mapSize).toBe(request.mapSize);
+      expect(ahead.mapSeed).toBe(request.mapSeed);
+      expect(ahead.wrap).toEqual(inSetup.wrap);
+      expect(ahead.cells).toEqual(inSetup.cells);
+      expect(Object.keys(ahead.ships)).toEqual(Object.keys(inSetup.ships));
+    }
   });
 
   it("leaves the game as it is with no setupData", () => {
