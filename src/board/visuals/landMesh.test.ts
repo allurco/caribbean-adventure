@@ -601,9 +601,9 @@ describe("buildLandMesh", () => {
     // best of three still took ~490 ms on a GitHub runner. The limit only guards
     // against gross regressions. The town refinement (#87) cuts the land round
     // every port into ~3 m triangles and makes the build about 1.5× slower
-    // (~200 to ~340 ms locally); a runner measured 663 ms before it, so ~1000 ms
-    // is expected there and the limit leaves headroom above that.
-    expect(best).toBeLessThan(1200);
+    // (~200 to ~340 ms locally); a runner measured 663 ms before it and 1234 ms
+    // after it, so the limit sits well above that to keep runner noise out.
+    expect(best).toBeLessThan(2000);
   }, 20000);
 });
 
