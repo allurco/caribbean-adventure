@@ -6,6 +6,7 @@ import { useAudioSettings } from "../audio/useAudioSettings";
 import { useAudioUnlock } from "../audio/useAudioUnlock";
 import { HudSoundControl } from "../board/HudSoundControl";
 import { SoundLabRow } from "./SoundLabRow";
+import { SoundLabAmbience } from "./SoundLabAmbience";
 
 /**
  * The sound lab (#73): `?view=sound` lists every registered sound with
@@ -43,6 +44,7 @@ export function SoundLab() {
             <span className="text-amber-400">Audio starts with your first click.</span>
           )}
         </p>
+        <SoundLabAmbience masterGain={masterGain(settings)} />
         <ul className="mt-6 flex flex-col gap-3">
           {SOUNDS.map((sound) => (
             <SoundLabRow key={sound.id} sound={sound} masterGain={masterGain(settings)} />

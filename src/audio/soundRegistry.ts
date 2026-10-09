@@ -7,7 +7,7 @@
 
 export type SoundKind = "ui" | "world" | "ambience";
 
-export type SoundId = "ui-click" | "ship-wash" | "coins" | "cannon-fire" | "sea-waves";
+export type SoundId = "ui-click" | "ship-wash" | "coins" | "cannon-fire" | "sea-waves" | "sea-wide" | "sea-close";
 
 export interface SoundCredit {
   /** The source's title, as published. */
@@ -106,6 +106,38 @@ export const SOUNDS: readonly SoundEntry[] = [
       url: "https://opengameart.org/content/beach-ocean-waves",
       licence: "CC0",
       changes: "four clips crossfaded into one seamless 9.7 s loop, mono",
+    },
+  },
+  {
+    id: "sea-wide",
+    file: "sea-wide-loop.ogg",
+    kind: "ambience",
+    volume: 0.5,
+    loop: true,
+    label: "Ambience bed: wide sea (map zoom)",
+    credit: {
+      title: "wind1 (wind1.wav)",
+      author: "lukerustltd",
+      url: "https://opengameart.org/content/wind1",
+      licence: "CC0",
+      changes:
+        "synthesized wind over a distant, muffled wash of waves (Sea and river wave sounds, randommind), one seamless 24 s loop, mono",
+    },
+  },
+  {
+    id: "sea-close",
+    file: "sea-close-loop.ogg",
+    kind: "ambience",
+    volume: 0.5,
+    loop: true,
+    label: "Ambience bed: close water (ship zoom)",
+    credit: {
+      title: "Sea and river wave sounds (VistulaShort)",
+      author: "randommind",
+      url: "https://opengameart.org/content/sea-and-river-wave-sounds",
+      licence: "CC0",
+      changes:
+        "waves lapping near, a mains hum notched out, with a water trickle (40 CC0 water / splash / slime SFX, rubberduck) under it, one seamless 20 s loop, mono",
     },
   },
 ];

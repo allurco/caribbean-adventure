@@ -89,6 +89,7 @@ import { DockingAnimation } from "./DockingAnimation";
 import { TurnChangeAnimation } from "./TurnChangeAnimation";
 import { MissionCompleteToast } from "./MissionCompleteToast";
 import { CameraAudioListener } from "./CameraAudioListener";
+import { AmbienceBedDriver } from "./AmbienceBedDriver";
 import { HudSoundControl } from "./HudSoundControl";
 import { useAudioUnlock } from "../audio/useAudioUnlock";
 import { useGameSounds } from "../audio/useGameSounds";
@@ -354,6 +355,8 @@ function Scene({
     <>
       {/* The ears of the game: the audio listener rides on the camera (#73) */}
       <CameraAudioListener />
+      {/* Wind and waves, crossfading with the zoom */}
+      <AmbienceBedDriver />
 
       {/* Horizon haze: background matches the fog so the far edge dissolves */}
       <color attach="background" args={[HAZE_COLOR]} />
