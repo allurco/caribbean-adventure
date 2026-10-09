@@ -67,7 +67,7 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `view=props` | The prop viewer instead of the game, with `focus=<n>` to start close up on entry n |
 | `view=sound` | The sound lab instead of the game: every registered sound with play/stop, a loop toggle, its volume and its source, for approving sounds by ear |
 
-The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=4.32` opens the same small map every time, at ship zoom over its middle port, and `/?size=small&seed=1&cx=15.5&cz=24.45&dist=0.8` at town zoom over Crescent Harbor's tower. The size and seed become the game's boardgame.io `setupData` (merged over whatever match creation passes, so a pin overrides only the keys it sets); the camera values go to the board. Captains and NPCs stay random.
+The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=4.32` opens the same small map every time, at ship zoom over its middle port, and `/?size=small&seed=1&cx=15.5&cz=24.45&dist=0.8` at town zoom over Crescent Harbor's tower. The size and seed choose the map the local client generates before its match starts (in a Web Worker, see `src/mapWorker/`); the camera values go to the board. Captains and NPCs stay random.
 
 ## Project structure
 
@@ -77,6 +77,7 @@ src/
 ├── board/   Rendering: React components, 3D scene, and HUD
 ├── audio/   Sound: the registry, settings, the state-diff events, three.js playback
 ├── lab/     Shader experiments (open the app at /#lab) and the sound lab (/?view=sound)
+├── mapWorker/  Generates the map in a Web Worker, with a main-thread fallback
 └── App.tsx  Wires the game to the board via boardgame.io
 docs/        Design notes (for example, terrain-system.md)
 ```
