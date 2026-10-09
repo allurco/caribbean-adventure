@@ -21,9 +21,10 @@
  *   dry-stone retaining walls stand against, except where the main street or
  *   a back lane climbs it: there it is the full `RAMP`, so the street runs up
  *   a slope with the wall either side of it.
- * - The streets: a main street straight up the terraces from the square, a
- *   back lane either side of it, and a lane across the middle of the first
- *   one or two terraces, all clear of the square, which is the port kit's.
+ * - The streets: a main street straight up the terraces out of the square's
+ *   paving, a back lane either side of it, and a lane across the middle of
+ *   the first one or two terraces, the lanes clear of the square, which is
+ *   the port kit's (the kit stands round the main street's mouth).
  *   Each is carved `STREET_CARVE` (about 0.5 m) into its
  *   terrace, flat across most of its width and rising to the terrace at its
  *   edges, where the kerb stones stand.
@@ -78,6 +79,8 @@ export const STREET_FLAT = 0.6;
 /** At the building scale: a retaining wall's depth at its foot (in front of the riser's face), and a kerb stone's width (`townDetailLayout.ts`). */
 export const RETAINING_WALL_DEPTH = 0.012;
 export const KERB_WIDTH = 0.008;
+/** The square's paved disc, as a share of its radius: the main street runs out of it (`townGround.ts` paves both). */
+export const SQUARE_PAVED = 0.55;
 /** The back lanes' offset from the main street, at the building scale: two house depths and the main street between them. */
 export const BACK_LANE_OFFSET = 0.58;
 /** Across a riser, the ramp narrows to the face over this much either side of a climbing street, at scale 1. */
@@ -230,14 +233,17 @@ export const riserCentre = (p: TownPlateau, k: number): number => p.steps[k] + p
 
 /**
  * The streets of a planned plateau: the main street, the back lanes either
- * side and a lane across each of the first one or two terraces. Every one
- * leaves the square at its inland edge, where the first terrace's ramp
- * starts: the square is the port kit's, and a street through it would run
- * under the church (#87).
+ * side and a lane across each of the first one or two terraces. The lanes
+ * leave the square at its inland edge, where the first terrace's ramp
+ * starts. The main street runs out of the square's paving (#91): the field
+ * is planned before any building, and the port kit keeps off the streets
+ * (`settlementGround`), so the kit is then planned round the street's mouth
+ * and no church stands across it, as one did when it started at the ramp.
  */
 function planStreets(p: TownPlateau, mainHalf: number, laneHalf: number, back: number): TownStreet[] {
   const start = p.steps[0];
-  const streets: TownStreet[] = [{ kind: "main", from: plateauPoint(p, start, 0), to: plateauPoint(p, p.length, 0), halfWidth: mainHalf }];
+  const mouth = p.squareRadius * SQUARE_PAVED;
+  const streets: TownStreet[] = [{ kind: "main", from: plateauPoint(p, mouth, 0), to: plateauPoint(p, p.length, 0), halfWidth: mainHalf }];
   for (const side of [1, -1]) {
     streets.push({ kind: "back", from: plateauPoint(p, start, side * back), to: plateauPoint(p, p.length - laneHalf, side * back), halfWidth: laneHalf });
   }

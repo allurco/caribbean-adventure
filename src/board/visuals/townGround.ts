@@ -15,12 +15,11 @@
  * `surface` says what a point of the town's ground is, for its colour:
  * setts on the main street and the square, packed earth on the lanes.
  */
-import { nearestCopyX, plateauLookup, plateauPlanDistance, streetDistance, type TownPlateau } from "./townPlateau";
+import { nearestCopyX, plateauLookup, plateauPlanDistance, SQUARE_PAVED, streetDistance, type TownPlateau } from "./townPlateau";
 
 /** Cuts per lattice edge of a refined triangle: 0.15 / 10, about 3 m at the 350 m hex. */
 export const TOWN_REFINE = 10;
-/** The square's paved disc, as a share of the plateau's square radius. */
-export const SQUARE_PAVED = 0.55;
+export { SQUARE_PAVED };
 
 export type TownSurface = "paved" | "earth" | "ground";
 

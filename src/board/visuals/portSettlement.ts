@@ -317,7 +317,9 @@ export interface SettlementGround extends GroundField {
  * With the port's town `plateau` (#87), footprints across its terrace
  * risers or on its streets and their kerbs are refused (`standBuilding`),
  * as the village's are; the plateau keeps its square one level out past the
- * kit and starts its streets beyond it, so the kit seldom meets either.
+ * kit and starts its lanes beyond it, so the kit seldom meets a riser, and
+ * the main street runs out of the square's paving, so the kit stands round
+ * its mouth rather than across it (#91).
  */
 export function settlementGround(cell: MapCell, field: GroundField, seed: number, plateau?: TownPlateau): SettlementGround {
   const quay = placeQuay(cell, field, seed);
