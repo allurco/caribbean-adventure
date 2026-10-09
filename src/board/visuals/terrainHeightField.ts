@@ -13,7 +13,8 @@
  *            blendedTarget is a smooth kernel-weighted average of nearby land
  *            cells' elevation heights and relief is non-negative multi-octave
  *            noise (rolling low down, ridged on mountains) whose amplitude
- *            follows the blended elevation.
+ *            follows the blended elevation; round each port the town plateau
+ *            (`townPlateau.ts`) levels terraces and carves streets into it.
  *
  * Both branches are 0 at d = 0, so the coast sits at sea level, and land hex
  * edges are never boundary edges, so adjacent land hexes never dip.
@@ -23,7 +24,8 @@ import { hexToWorld, wrapWorldWidth, type MapWrap } from "../../game/hex";
 import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
 import { seamStrip, withSeamImages, wrapIntoStrip } from "./seamStrip";
 import { seabedDepth } from "./seabedProfile";
-import { metresToUnits, unitsToMetres } from "./worldScale";
+import { BUILDING_SCALE, PROP_SCALE, metresToUnits, unitsToMetres } from "./worldScale";
+import { applyTownPlateaus, planTownPlateau, plateauLookup, type PlateauLookup, type TownPlateau } from "./townPlateau";
 
 /** World height that each land elevation rises to (1 beach, 2 jungle, 3 mountain). */
 export const ELEVATION_HEIGHTS = { 1: 0.3, 2: 0.75, 3: 1.4 } as const;
@@ -142,6 +144,12 @@ export interface TerrainHeightFieldOptions {
    * the seam from the cells on the other side (#36).
    */
   wrap?: MapWrap;
+  /**
+   * Level a terraced town plateau round each port's quay square and carve
+   * its streets (`townPlateau.ts`, #87). On by default: the field every
+   * consumer draws has them. Off gives the natural land, for tests.
+   */
+  towns?: boolean;
 }
 
 export interface TerrainHeightField {
@@ -170,6 +178,8 @@ export interface TerrainHeightField {
   bounds: TerrainBounds;
   /** The world width the field repeats over in x (the wrap width), or null. */
   periodX: number | null;
+  /** The town plateaus levelled into the land, one per port with a pier (#87); empty with `towns` off. */
+  townPlateaus: readonly TownPlateau[];
 }
 
 /** Seeded PRNG (mulberry32), same as the map generator's. */
@@ -517,6 +527,30 @@ export function createTerrainHeightField(
   };
 
   const scratch: [number, number] = [0, 0];
+  // Filled once the natural land is defined (below); empty until then, so the plans see the land without them.
+  let plateaus: readonly TownPlateau[] = [];
+  let plateausNear: PlateauLookup = () => plateaus;
+
+  const naturalLandHeight = (x: number, z: number, d: number): number => {
+    const blended = blendLand(x, z, scratch);
+    const target = blended ? scratch[0] : ELEVATION_HEIGHTS[1];
+    const elevation = blended ? scratch[1] : 1;
+    // Soft toe on beaches (#38): d²/(d + toe) leaves the waterline with zero
+    // slope and becomes d − toe inland, so a beach meets the water
+    // tangentially instead of rising at 34° from it. It fades out from beach
+    // (elevation 1) to jungle (2): rocky coasts still meet the sea steeply.
+    const toe = SHORE_TOE * Math.max(0, Math.min(1, 2 - elevation));
+    const inland = toe > 0 ? (d * d) / (d + toe) : d;
+    const t = 1 - Math.min(inland / SHORE_RAMP, 1);
+    const ramp = 1 - t * t;
+    if (reliefScale === 0) return target * ramp;
+    const relief = reliefScale * reliefAmplitude(elevation) * reliefShape(reliefNoise, x, z, elevation);
+    // Relief is scaled by the original ramp squared (no toe): it already
+    // vanishes with zero slope at the shore.
+    const tr = 1 - Math.min(d / SHORE_RAMP, 1);
+    const reliefRamp = 1 - tr * tr;
+    return target * ramp + relief * reliefRamp * reliefRamp;
+  };
 
   const sampleHeight = (x: number, z: number): number => {
     const d = sampleCoastDistance(x, z);
@@ -531,25 +565,25 @@ export function createTerrainHeightField(
       const top = Math.max(shelf, crest) + (h * h * REEF_BLEND) / 4;
       return SEA_LEVEL + metresToUnits(shelf + (top - shelf) * rise);
     }
-    const blended = blendLand(x, z, scratch);
-    const target = blended ? scratch[0] : ELEVATION_HEIGHTS[1];
-    const elevation = blended ? scratch[1] : 1;
-    // Soft toe on beaches (#38): d²/(d + toe) leaves the waterline with zero
-    // slope and becomes d − toe inland, so a beach meets the water
-    // tangentially instead of rising at 34° from it. It fades out from beach
-    // (elevation 1) to jungle (2): rocky coasts still meet the sea steeply.
-    const toe = SHORE_TOE * Math.max(0, Math.min(1, 2 - elevation));
-    const inland = toe > 0 ? (d * d) / (d + toe) : d;
-    const t = 1 - Math.min(inland / SHORE_RAMP, 1);
-    const ramp = 1 - t * t;
-    if (reliefScale === 0) return SEA_LEVEL + target * ramp;
-    const relief = reliefScale * reliefAmplitude(elevation) * reliefShape(reliefNoise, x, z, elevation);
-    // Relief is scaled by the original ramp squared (no toe): it already
-    // vanishes with zero slope at the shore.
-    const tr = 1 - Math.min(d / SHORE_RAMP, 1);
-    const reliefRamp = 1 - tr * tr;
-    return SEA_LEVEL + target * ramp + relief * reliefRamp * reliefRamp;
+    const land = naturalLandHeight(x, z, d);
+    // The town plateaus (#87): terraces and streets round each port square, above the shore band only.
+    const near = plateausNear(x, z);
+    return SEA_LEVEL + (near.length > 0 ? applyTownPlateaus(near, x, z, land, strip ? strip.width : null) : land);
   };
+
+  // Each port's plateau is planned on the natural land (the list is still
+  // empty while they are planned), then they are all applied at once.
+  if (options.towns ?? true) {
+    const planned: TownPlateau[] = [];
+    for (const cell of cells) {
+      const pier = cell.hasPort ? cell.decorations?.find((deco) => deco.type === "pier") : undefined;
+      if (!pier) continue;
+      const [px, , pz] = hexToWorld(cell.hex);
+      planned.push(planTownPlateau({ x: px, z: pz, toWater: pier.rotation }, (sx, sz) => sampleHeight(inStrip(sx), sz), PROP_SCALE, BUILDING_SCALE));
+    }
+    plateaus = planned;
+    plateausNear = plateauLookup(planned, strip ? strip.width : null);
+  }
 
   const sampleElevation = (x: number, z: number): number => {
     const out: [number, number] = [0, 0];
@@ -567,5 +601,6 @@ export function createTerrainHeightField(
     isNearSeabed: (x, z) => isNearSeabed(inStrip(x), z),
     bounds,
     periodX: strip ? strip.width : null,
+    townPlateaus: plateaus,
   };
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
-import { hexToWorld } from "../../game/hex";
+import { createWrap, hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
 import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
@@ -40,9 +40,11 @@ import {
   PORT_BUILDING_YAW_JITTER,
   WATCHTOWER_SCALE_RANGE,
   settlementCentre,
+  plateauOfPort,
   type PortBuilding,
 } from "./portSettlement";
 import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
+import { crossesRiser, RETAINING_WALL_DEPTH } from "./townPlateau";
 
 /** Inradius of a flat-top hex of size 1: the nearest any edge comes to the centre. */
 const HEX_INRADIUS = Math.sqrt(3) / 2;
@@ -553,6 +555,58 @@ describe("portBuildings", () => {
     expect(standBuilding(settlementGround(noQuay, ramp(0.8), 0), { x: hx, z: hz }, reach, BUILDING_FOOTING, pierRoot, [])).toBeNull();
     // A deeper footing (a larger building) takes it.
     expect(standBuilding(settlementGround(noQuay, ramp(0.8), 0), { x: hx, z: hz }, reach, 0.2, pierRoot, [])).not.toBeNull();
+  });
+
+  it("keeps the kit's tavern, warehouse and house on the town's square (#87): over 30 small maps nearly as many as with no riser or street to keep off", () => {
+    const withTown: Record<string, number> = {};
+    const without: Record<string, number> = {};
+    const preset = getMapPreset("small");
+    const wrap = createWrap(preset.columns);
+    for (let mapSeed = 1; mapSeed <= 30; mapSeed++) {
+      const someCells = generateMap(preset, mapSeed, wrap);
+      const someSeed = terrainSeedFromCells(someCells);
+      const someField = createTerrainHeightField(someCells, someSeed, { wrap });
+      const drawn = landSurface(someField);
+      for (const b of portBuildings(someCells, drawn, someSeed, someField.townPlateaus)) withTown[b.kind] = (withTown[b.kind] ?? 0) + 1;
+      // The same ground, but nothing refused for the town's risers or streets.
+      for (const b of portBuildings(someCells, drawn, someSeed)) without[b.kind] = (without[b.kind] ?? 0) + 1;
+    }
+    for (const kind of ["tavern", "warehouse", "house"] as const) {
+      expect(without[kind]).toBeGreaterThan(30);
+      expect(withTown[kind] ?? 0).toBeGreaterThanOrEqual(0.85 * without[kind]);
+    }
+    expect(withTown.church).toBe(without.church);
+    expect(withTown.watchtower).toBe(without.watchtower);
+  }, 60000);
+
+  it("keeps every building's walls off the town's terrace risers and their retaining walls (#87), and still gives nearly every port its church", () => {
+    let portsSeen = 0;
+    let churches = 0;
+    for (const size of ["small", "medium", "large"] as const) {
+      for (const mapSeed of [3, 11]) {
+        const someCells = generateMap(getMapPreset(size), mapSeed);
+        const someSeed = terrainSeedFromCells(someCells);
+        const someField = createTerrainHeightField(someCells, someSeed);
+        const plateaus = someField.townPlateaus;
+        const placed = portBuildings(someCells, landSurface(someField), someSeed, plateaus);
+        const somePorts = someCells.filter((c) => c.hasPort);
+        portsSeen += somePorts.length;
+        for (const port of somePorts) {
+          const plateau = plateauOfPort(port, plateaus);
+          const [px, , pz] = hexToWorld(port.hex);
+          const mine = placed.filter((b) => Math.hypot(b.worldX - px, b.worldZ - pz) < 1);
+          if (mine.some((b) => b.kind === "church")) churches++;
+          if (!plateau) continue;
+          for (const b of mine) {
+            if (Math.hypot(b.worldX - px, b.worldZ - pz) < 1e-9) continue; // a tower's last-resort fallback
+            const plan = planFootprint(b.kind, b.scale, b.yaw);
+            const corners = planProbePoints(b.worldX, b.worldZ, plan, 2, 2).map((p) => [p.x, p.z] as const);
+            expect(crossesRiser(plateau, corners, RETAINING_WALL_DEPTH * BS)).toBe(false);
+          }
+        }
+      }
+    }
+    expect(churches / portsSeen).toBeGreaterThanOrEqual(0.9);
   });
 
   it("keeps every roof under the port label's baseline", () => {

@@ -42,6 +42,7 @@ function rampField(): TerrainHeightField {
     sampleCoastDistance: (_x, z) => 0.5 * (z - bounds.minZ) - 1,
     sampleElevation: () => 0,
     periodX: null,
+    townPlateaus: [],
     isNearLand: () => false,
     isNearSeabed: () => false,
     bounds,

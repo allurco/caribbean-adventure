@@ -19,7 +19,10 @@ import { landSurface } from "./landMesh";
 import { placeShrubs } from "./shrubPlacement";
 import { shoreBoulders, type ShoreBoulder } from "./shoreBoulders";
 import { lerpRange, seedOf, stream } from "./variationStream";
-import { PROP_DENSITY, PROP_SCALE } from "./worldScale";
+import { BUILDING_SCALE, PROP_DENSITY, PROP_SCALE } from "./worldScale";
+import { planPortTowns, type PortTownPlan, type VillageBuilding } from "./villageLayout";
+import { townClutter, townKeepOut, type PiecePlacement } from "./townDetailLayout";
+import { SHRUB_FOOTPRINT_RADIUS } from "./shrubGeometry";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
 export const ROCK_RADIUS = ROCK_UNIT_RADIUS;
@@ -93,7 +96,20 @@ export interface DecorationPlacements {
   buildings: PortBuilding[];
   /** Derived bushes and dry tufts on sand and grass cells (#49). */
   shrubs: ReturnType<typeof placeShrubs>;
+  /** Each port's village on its town plateau (#87): its houses, its clutter and each port's plan. */
+  village: VillageLayout;
 }
+
+/** A port village as laid out: the houses, the town's clutter and each port's plan (streets, footprints, plateau). */
+export interface VillageLayout {
+  buildings: VillageBuilding[];
+  clutter: PiecePlacement[];
+  ports: PortTownPlan[];
+}
+
+/** Radii a prop keeps from a town (`townKeepOut`), at scale 1: a tree's crown (so it does not grow through a roof), a rock's body, a shrub's foliage. */
+const TREE_TOWN_RADIUS = 0.15;
+const ROCK_TOWN_RADIUS = ROCK_UNIT_RADIUS * 1.5;
 
 /** Where each decoration stands on a map (and wrap). */
 export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): DecorationPlacements {
@@ -170,14 +186,27 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
     });
   }
 
-  const stones = smallStones(cells, field, seed);
-  const buildings = portBuildings(cells, drawn, seed);
+  const plateaus = field.townPlateaus;
+  const buildings = portBuildings(cells, drawn, seed, plateaus);
   const quays = portQuays(cells, drawn, seed);
+  // The village gathers round the port kit on its town plateau (#87), and its clutter round both.
+  const town = planPortTowns(cells, drawn, { buildings, quays, piers, plateaus }, seed);
+  const clutter = townClutter(town.ports, drawn, BUILDING_SCALE, seed);
+  const village: VillageLayout = { buildings: town.buildings, clutter, ports: town.ports };
+  // Trees, rocks, stones, shrubs and boulders stay out of the town's plan, its buildings and its clutter.
+  const inTown = townKeepOut(town.ports, clutter, field.periodX);
+  const outside = <T extends { worldX: number; worldZ: number; scale: number }>(items: readonly T[], radius: number) =>
+    items.filter((d) => !inTown(d.worldX, d.worldZ, radius * d.scale));
+  const keptTrees = outside(trees, TREE_TOWN_RADIUS);
+  const keptRocks = outside(rocks, ROCK_TOWN_RADIUS);
+  const stones = outside(smallStones(cells, field, seed), ROCK_TOWN_RADIUS);
   // The port kit is placed first so the shrubs keep off it.
-  const shrubs = placeShrubs(cells, field, seed, { trees, rocks, stones, piers, quays, buildings });
-  const boulders = shoreBoulders(cells, field, wrap, seed);
+  const shrubs = placeShrubs(cells, field, seed, { trees: keptTrees, rocks: keptRocks, stones, piers, quays, buildings }).filter(
+    (s) => !inTown(s.worldX, s.worldZ, SHRUB_FOOTPRINT_RADIUS[s.kind] * s.scale)
+  );
+  const boulders = shoreBoulders(cells, field, wrap, seed).filter((b) => !inTown(b.worldX, b.worldZ, b.reach));
 
-  return { trees, rocks, stones, shoreBoulders: boulders, piers, shrubs, quays, buildings };
+  return { trees: keptTrees, rocks: keptRocks, stones, shoreBoulders: boulders, piers, shrubs, quays, buildings, village };
 }
 
 /** `decorationLayout`, once per map and wrap (`perMapCache`). */

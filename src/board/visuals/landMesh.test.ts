@@ -599,8 +599,11 @@ describe("buildLandMesh", () => {
     expect(triangleCount).toBeGreaterThan(0);
     // One-time build; ~150-170 ms locally with the seabed in metres (#38), and the
     // best of three still took ~490 ms on a GitHub runner. The limit only guards
-    // against gross regressions.
-    expect(best).toBeLessThan(750);
+    // against gross regressions. The town refinement (#87) cuts the land round
+    // every port into ~3 m triangles and makes the build about 1.5× slower
+    // (~200 to ~340 ms locally); a runner measured 663 ms before it and 1234 ms
+    // after it, so the limit sits well above that to keep runner noise out.
+    expect(best).toBeLessThan(2000);
   }, 20000);
 });
 

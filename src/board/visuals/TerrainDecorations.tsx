@@ -6,6 +6,7 @@ import { ShoreBoulderMeshes } from "./ShoreBoulderMeshes";
 import { Piers } from "./Piers";
 import { Quays } from "./Quays";
 import { PortBuildings } from "./PortBuildings";
+import { PortVillage } from "./PortVillage";
 import type { DecorationLayout } from "./useDecorationLayout";
 
 /**
@@ -30,6 +31,8 @@ export function TerrainDecorations({ layout: decorationsByType, waveSlopes }: { 
       <Quays quays={decorationsByType.quays} />
 
       <PortBuildings buildings={decorationsByType.buildings} />
+
+      <PortVillage geometry={decorationsByType.villageGeometry} />
     </>
   );
 }
