@@ -2,9 +2,9 @@ import type { Game } from "boardgame.io";
 import { INVALID_MOVE } from "boardgame.io/core";
 import { hex, hexEquals, canonicalHex, createWrap, wrappedDistance, wrappedNeighbors } from "./hex";
 import type { MapWrap } from "./hex";
-import { generateMap } from "./mapGenerator";
 import { getMapPreset } from "./mapConfig";
-import type { MapSizeId } from "./mapConfig";
+import { generateMapFor, resolveMapRequest } from "./mapRequest";
+import type { GeneratedMap } from "./mapRequest";
 import type {
   CaribbeanSetupData,
   CaribbeanState,
@@ -51,7 +51,6 @@ import { getBountyForAction, addBounty, shouldSpawnFlotilla } from "./reputation
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
 import { findAccessiblePort } from "./moves";
-import { isValidMapSeed } from "./mapSeed";
 import {
   generateMission,
   canAffordTavern,
@@ -81,6 +80,46 @@ export function withSetupData(
   return {
     ...game,
     setup: (ctx, matchSetupData?: CaribbeanSetupData) => game.setup!(ctx, { ...matchSetupData, ...setupData }),
+  };
+}
+
+/**
+ * The game started on `map`, generated before the match was created (in the
+ * map worker, #124), so `setup()` stays synchronous and skips generating.
+ * For the local client, which creates its match itself; `map` must come from
+ * `generateMapFor`, so it is exactly the map `setup()` would have made for
+ * its size and seed.
+ */
+export function withGeneratedMap(game: Game<CaribbeanState>, map: GeneratedMap): Game<CaribbeanState> {
+  return { ...game, setup: () => createInitialState(map) };
+}
+
+/** The state a match starts in, on `map`: the players' ships, the captain draft, no NPCs yet. */
+function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap): CaribbeanState {
+  // The map is a rectangle that wraps east–west, a cylinder as wide as its
+  // columns (#36); the generator and G share the wrap.
+  const wrap: MapWrap = createWrap(getMapPreset(mapSize).columns);
+
+  const numPlayers = 2;
+  const deck = createCaptainDeck(Math.random);
+  const { hands, remaining } = dealHands(deck, numPlayers);
+
+  const ships: Record<string, ReturnType<typeof createShipState>> = {};
+  for (let i = 0; i < numPlayers; i++) {
+    ships[String(i)] = createShipState(hex(0, 0));
+  }
+
+  return {
+    cells,
+    ships,
+    npcs: {},
+    mapSize,
+    mapSeed,
+    wrap,
+    captainDeck: remaining,
+    draftHands: hands,
+    floatingLoot: [],
+    npcIdCounter: 0,
   };
 }
 
@@ -159,43 +198,9 @@ export const Caribbean: Game<CaribbeanState> = {
   },
 
   setup: ({ random }, setupData?: CaribbeanSetupData) => {
-    // Use provided map size, or pick randomly
-    const mapSizes: MapSizeId[] = ["small", "medium", "large"];
-    const mapSize: MapSizeId =
-      setupData?.mapSize ?? mapSizes[Math.floor(random.Number() * mapSizes.length)];
-    // The map is a rectangle that wraps east–west, a cylinder as wide as its
-    // columns (#36); the generator and G share the wrap.
-    const preset = getMapPreset(mapSize);
-    const wrap: MapWrap = createWrap(preset.columns);
-    // Use the provided seed for map generation if it names exactly one map
-    // (a server's setupData arrives unchecked, #82), else a random one.
-    const requestedSeed: unknown = setupData?.mapSeed;
-    const mapSeed = isValidMapSeed(requestedSeed)
-      ? requestedSeed
-      : Math.floor(random.Number() * 1000000);
-    const cells = generateMap(preset, mapSeed, wrap);
-
-    const numPlayers = 2;
-    const deck = createCaptainDeck(Math.random);
-    const { hands, remaining } = dealHands(deck, numPlayers);
-
-    const ships: Record<string, ReturnType<typeof createShipState>> = {};
-    for (let i = 0; i < numPlayers; i++) {
-      ships[String(i)] = createShipState(hex(0, 0));
-    }
-
-    return {
-      cells,
-      ships,
-      npcs: {},
-      mapSize,
-      mapSeed,
-      wrap,
-      captainDeck: remaining,
-      draftHands: hands,
-      floatingLoot: [],
-      npcIdCounter: 0,
-    };
+    // The provided size and seed, else random ones (see resolveMapRequest).
+    const request = resolveMapRequest(setupData, random.Number);
+    return createInitialState({ ...request, cells: generateMapFor(request) });
   },
 
   // Top-level moves/turn serve as defaults when tests override phases
