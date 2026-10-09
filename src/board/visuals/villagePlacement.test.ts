@@ -35,6 +35,11 @@ import {
 } from "./villageLayout";
 
 const SEEDS = 200;
+/**
+ * Seeds per test. One synchronous test per map size blocked its worker for
+ * ~40 s on a runner, long enough for vitest's own worker RPC to time out.
+ */
+const SEEDS_PER_TEST = 20;
 /** Slack for probes between the placement's own, world units (about 13 cm at 65 m per unit). */
 const SLACK = 0.002;
 
@@ -66,14 +71,14 @@ interface Tally {
   failures: string[];
 }
 
-function sweep(size: MapSizeId): Tally {
+function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
   const tally: Tally = { maps: 0, ports: 0, houses: 0, clutter: 0, kit: 0, stones: 0, failures: [] };
   const fail = (seed: number, what: string) => {
     if (tally.failures.length < 20) tally.failures.push(`${size} seed ${seed}: ${what}`);
   };
   const preset = getMapPreset(size);
   const wrap = createWrap(preset.columns);
-  for (let seed = 1; seed <= SEEDS; seed++) {
+  for (let seed = firstSeed; seed <= lastSeed; seed++) {
     const cells = generateMap(preset, seed, wrap);
     const terrainSeed = terrainSeedFromCells(cells);
     const field = createTerrainHeightField(cells, terrainSeed, { wrap });
@@ -146,19 +151,22 @@ function sweep(size: MapSizeId): Tally {
 
 describe("village placement over 200 seeds per map size (#87)", () => {
   for (const size of ["small", "medium", "large"] as const) {
-    it(`holds on every ${size} map`, () => {
-      const started = performance.now();
-      const tally = sweep(size);
-      console.log(
-        `village ${size}: ${tally.maps} maps, ${tally.ports} ports, ${(tally.houses / tally.ports).toFixed(1)} houses and ` +
-          `${(tally.clutter / tally.ports).toFixed(1)} clutter pieces, ${(tally.kit / tally.ports).toFixed(2)} kit buildings and ` +
-          `${(tally.stones / tally.ports).toFixed(0)} kerb and edge stones per port, in ${((performance.now() - started) / 1000).toFixed(1)} s`
-      );
-      expect(tally.failures).toEqual([]);
-      expect(tally.houses / tally.ports).toBeGreaterThan(20);
-      // The watchtower and church, and most of the tavern, warehouse and house, at every port; the kerbs drawn.
-      expect(tally.kit / tally.ports).toBeGreaterThan(2.5);
-      expect(tally.stones / tally.ports).toBeGreaterThan(50);
-    }, 600000);
+    for (let first = 1; first <= SEEDS; first += SEEDS_PER_TEST) {
+      const last = Math.min(SEEDS, first + SEEDS_PER_TEST - 1);
+      it(`holds on every ${size} map, seeds ${first} to ${last}`, () => {
+        const started = performance.now();
+        const tally = sweep(size, first, last);
+        console.log(
+          `village ${size} seeds ${first}-${last}: ${tally.maps} maps, ${tally.ports} ports, ${(tally.houses / tally.ports).toFixed(1)} houses and ` +
+            `${(tally.clutter / tally.ports).toFixed(1)} clutter pieces, ${(tally.kit / tally.ports).toFixed(2)} kit buildings and ` +
+            `${(tally.stones / tally.ports).toFixed(0)} kerb and edge stones per port, in ${((performance.now() - started) / 1000).toFixed(1)} s`
+        );
+        expect(tally.failures).toEqual([]);
+        expect(tally.houses / tally.ports).toBeGreaterThan(20);
+        // The watchtower and church, and most of the tavern, warehouse and house, at every port; the kerbs drawn.
+        expect(tally.kit / tally.ports).toBeGreaterThan(2.5);
+        expect(tally.stones / tally.ports).toBeGreaterThan(50);
+      }, 120000);
+    }
   }
 });
