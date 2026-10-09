@@ -5,7 +5,7 @@
  * or the pier, no kit building on a street, a lane or their kerbs, and no
  * kerb or edge stone inside a building's walls.
  */
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset, type MapSizeId } from "../../game/mapConfig";
 import { createWrap, hexToWorld } from "../../game/hex";
@@ -36,8 +36,9 @@ import {
 
 const SEEDS = 200;
 /**
- * Seeds per test. One synchronous test per map size blocked its worker for
- * ~40 s on a runner, long enough for vitest's own worker RPC to time out.
+ * Seeds per test. The sweep takes ~2 minutes on a runner; run as one block it
+ * starves the worker's event loop past vitest's 60 s RPC timeout, so it runs in
+ * short tests with a macrotask yield before each (see the `beforeEach` below).
  */
 const SEEDS_PER_TEST = 20;
 /** Slack for probes between the placement's own, world units (about 13 cm at 65 m per unit). */
@@ -150,6 +151,9 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
 }
 
 describe("village placement over 200 seeds per map size (#87)", () => {
+  // Tests in a file chain on microtasks, so without this the worker never reaches
+  // its message queue between them and vitest's onTaskUpdate RPC times out.
+  beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
   for (const size of ["small", "medium", "large"] as const) {
     for (let first = 1; first <= SEEDS; first += SEEDS_PER_TEST) {
       const last = Math.min(SEEDS, first + SEEDS_PER_TEST - 1);
