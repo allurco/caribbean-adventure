@@ -18,6 +18,9 @@ import {
   rectCorners,
   villageStance,
   villageWalls,
+  wallGround,
+  BEACH_MAX_SPREAD,
+  BEACH_TOP,
   VILLAGE_MAX_BURY,
   VILLAGE_MAX_FOOTING_SHOWN,
   type PlanRect,
@@ -97,6 +100,23 @@ describe("the port village (#87)", () => {
       expect(top - b.worldY).toBeLessThanOrEqual(VILLAGE_MAX_BURY * b.scale + 0.002);
       expect(b.worldY - bottom).toBeLessThanOrEqual(VILLAGE_MAX_FOOTING_SHOWN * b.scale + 0.002);
       expect(b.worldY).toBeGreaterThan(0);
+    }
+  });
+
+  it("stands a building on the beach only on near-level ground, sitting square on its lowest point, so none leans with the slope (#91)", () => {
+    const low = BEACH_TOP - 0.005;
+    // Inland the usual rule: the uphill side may be buried a little, or the footing show.
+    expect(villageStance(0.1, 0.1 + VILLAGE_MAX_BURY * 0.8, 1)).toBeCloseTo(0.1, 12);
+    expect(villageStance(0.1, 0.1 + VILLAGE_MAX_BURY + VILLAGE_MAX_FOOTING_SHOWN * 0.5, 1)).toBeCloseTo(0.1 + VILLAGE_MAX_FOOTING_SHOWN * 0.5, 12);
+    // On the beach: level ground stands on its lowest point; a slope more than `BEACH_MAX_SPREAD` across is refused.
+    expect(villageStance(low, low + BEACH_MAX_SPREAD * 0.9, 1)).toBe(low);
+    expect(villageStance(low, low + BEACH_MAX_SPREAD * 1.1, 1)).toBeUndefined();
+    expect(BEACH_MAX_SPREAD).toBeLessThan(VILLAGE_MAX_BURY * 0.5);
+    for (const b of village.buildings) {
+      const { bottom, top } = wallGround(ground, villageWalls(b));
+      if (bottom >= BEACH_TOP) continue;
+      expect(top - bottom).toBeLessThanOrEqual(BEACH_MAX_SPREAD * b.scale + 1e-12);
+      expect(b.worldY).toBeCloseTo(bottom, 12);
     }
   });
 
