@@ -20,7 +20,8 @@
  * under its walls unless that would bury the uphill side by more than
  * `VILLAGE_MAX_BURY`, and a spot that would show more than
  * `VILLAGE_MAX_FOOTING_SHOWN` of footing downhill is refused (on the beach
- * only `BEACH_FOOTING` of that, so no waterfront building sits askew).
+ * only near-level ground, `BEACH_MAX_SPREAD`, so no waterfront building
+ * sits askew).
  * Nothing stands outside the hex, on wet ground, across a terrace riser or
  * its retaining wall, on a street, on the quay or the pier, or over another
  * building.
@@ -48,9 +49,16 @@ const SQRT3 = Math.sqrt(3);
 /** At scale 1: how far a building's uphill side may sink into the ground, and how much footing may show downhill. */
 export const VILLAGE_MAX_BURY = 0.05;
 export const VILLAGE_MAX_FOOTING_SHOWN = 0.03;
-/** On the beach (under this height) the footing may show only `BEACH_FOOTING` of the limit. */
+/**
+ * On the beach (walls on ground under this height) a building stands only
+ * where the ground under its walls spans at most `BEACH_MAX_SPREAD` (at
+ * scale 1, about a third of a metre at the building scale), on its lowest
+ * point, so neither a buried uphill side nor a shown footing tilts it
+ * against the sand's slope (#91: the beach used to take 60% of the usual
+ * footing and the full bury, and houses there leant visibly).
+ */
 export const BEACH_TOP = SHORE_KEEP_TOP + 0.01;
-export const BEACH_FOOTING = 0.6;
+export const BEACH_MAX_SPREAD = 0.015;
 /** Lowest ground a building's walls may stand on. */
 export const VILLAGE_DRY_HEIGHT = SEA_LEVEL + 0.02 * K;
 /** Clear margin round the port kit's buildings: wide round the civic ones, narrower round its house and warehouse. */
@@ -366,13 +374,14 @@ export function wallGround(ground: GroundField, walls: PlanRect): { bottom: numb
  * The ground contact of a building of `scale` whose walls stand on ground
  * from `bottom` to `top`: the lowest ground, unless that would bury the
  * uphill side by more than `VILLAGE_MAX_BURY`; undefined where that would
- * show more than `VILLAGE_MAX_FOOTING_SHOWN` of footing (on the beach,
- * `BEACH_FOOTING` of it).
+ * show more than `VILLAGE_MAX_FOOTING_SHOWN` of footing. On the beach, the
+ * lowest ground, and undefined where the ground spans more than
+ * `BEACH_MAX_SPREAD`.
  */
 export function villageStance(bottom: number, top: number, scale: number): number | undefined {
+  if (bottom < BEACH_TOP) return top - bottom > BEACH_MAX_SPREAD * scale ? undefined : bottom;
   const y = Math.max(bottom, top - VILLAGE_MAX_BURY * scale);
-  const beach = bottom < BEACH_TOP ? BEACH_FOOTING : 1;
-  return y - bottom > VILLAGE_MAX_FOOTING_SHOWN * scale * beach ? undefined : y;
+  return y - bottom > VILLAGE_MAX_FOOTING_SHOWN * scale ? undefined : y;
 }
 
 /** The village on every port hex with a town plateau, standing on `ground` (the drawn land), and each port's plan; `seed` is the terrain seed. */

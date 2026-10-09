@@ -242,7 +242,7 @@ export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
  * What the builds below come to. A gabled piece is its footing 10 and
  * plinth course 18 (the course 8 under its cap 10), walls 4 × 18 panels +
  * 8 corner facets, two gables of 3, four eave streaks of 2, the roof
- * (`agedRoofTriangles`: 244 house and warehouse, 312 tavern), a door 50,
+ * (`agedRoofTriangles`: 280 house, 288 warehouse, 364 tavern), a door 50,
  * and its windows (62 each), hatch (22) or sign (10). The tower is its
  * footing 10 and plinth course 18, body 16, the blocks (about 370, varying
  * with the courses the hash lays), slit recesses and streaks 20, ledge 28,
@@ -250,16 +250,16 @@ export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
  * separate mesh. The church is its footing 10 and plinth course 18, walls
  * 80, back gable 3, eave streaks 8, the bell-gable facade 100 (base 18,
  * shoulders 8, screen foot 4, piers, reveals and sills 24, arch spandrels
- * 32, band 4, sides 4, pediment 6), the roof 332, cross 22, two bells 48,
+ * 32, band 4, sides 4, pediment 6), the roof 388, cross 22, two bells 48,
  * door 50 with its recess 2 and stone surround 50, six slit windows 24 and
  * twenty quoin blocks 40.
  */
 export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
-  warehouse: 466,
-  tavern: 618,
-  house: 466,
+  warehouse: 510,
+  tavern: 670,
+  house: 502,
   watchtower: 580,
-  church: 787,
+  church: 843,
 };
 
 const FOOTING_SHADE = 0.85;

@@ -423,8 +423,8 @@ describe("buildAgedBuildingGeometry", () => {
       expect(c.window.top).toBeLessThan(AGED_BUILDING_WALL_TOP.church);
     });
 
-    it("stays within its budget of 800 triangles", () => {
-      expect(AGED_BUILDING_TRIANGLES.church).toBeLessThanOrEqual(800);
+    it("stays within its budget of 850 triangles (its roof's strips closed underneath, #91)", () => {
+      expect(AGED_BUILDING_TRIANGLES.church).toBeLessThanOrEqual(850);
       expect(g.vertexCount / 3).toBe(AGED_BUILDING_TRIANGLES.church);
     });
   });
@@ -434,19 +434,14 @@ describe("buildAgedBuildingGeometry", () => {
       const hits = backfacingFirstHits(built[kind]);
       // The tower's chipped proud blocks have one non-planar side each, which can fold a sliver inwards
       // at the foot; a few grazing rays of nearly twenty thousand meet one of two such slivers in the
-      // bottom course. The roofs' tile strips have no underside (they lie on the slab), so where a
-      // strip overshoots the slab's eave edge a ray climbing from below the horizon can enter the open
-      // underside and leave through the strip's end; the camera's pitch is fixed well above the
-      // horizon, so the game never sees it. Everything else is clean.
-      const tolerated =
-        kind === "watchtower"
-          ? hits.filter((h) => h.point[1] < 0.05)
-          : hits.filter((h) => h.direction[1] > 0 && h.point[1] < AGED_BUILDING_WALL_TOP[kind]);
+      // bottom course. The roofs' tile strips are closed underneath where they overshoot the slab's
+      // eave (#91), so no ray from below enters one. Everything else is clean.
+      const tolerated = kind === "watchtower" ? hits.filter((h) => h.point[1] < 0.05) : [];
       expect(new Set(tolerated.map((h) => h.triangle)).size).toBeLessThanOrEqual(2);
       const rest = hits.filter((h) => !tolerated.includes(h));
       expect(rest.map((h) => `${kind} triangle ${h.triangle} at ${h.point.map((v) => v.toFixed(3)).join(", ")}`)).toEqual([]);
     }
-    // Nearly twenty thousand rays against up to 800 triangles per kind: a few seconds under a loaded suite.
+    // Nearly twenty thousand rays against up to 850 triangles per kind: a few seconds under a loaded suite.
   }, 30_000);
 
   it("has no triangle wound inside out under a sound one on the same plane (a concave outline fanned from the wrong corner)", () => {

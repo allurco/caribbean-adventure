@@ -8,9 +8,11 @@
  *   irregular stones whose joints show dark, broken where a street climbs
  *   the riser. Their height follows the ground, so they fade out with the
  *   plateau into the hillside.
- * - Kerb stones along both edges of the main street, standing a hand proud
- *   of the street's carved bed, broken at the lanes that cross it; sparse
- *   edge stones along the lanes. None stands in a building's walls.
+ * - Kerb stones along both edges of every street, standing a hand proud of
+ *   the street's carved bed, broken where another street crosses: dressed on
+ *   the main street, a rougher and lower run on the lanes (#91: the sparse
+ *   edge stones the lanes had read as debris). None stands in a building's
+ *   walls.
  *
  * Pieces, placed for `townPieces.ts` models (`townClutter`): a fountain on
  * the square; market stalls round it; a cart or two parked at its edge;
@@ -35,6 +37,7 @@ import {
   plateauPoint,
   RETAINING_WALL_DEPTH,
   riserCentre,
+  SQUARE_PAVED,
   streetDistance,
   type TownPlateau,
 } from "./townPlateau";
@@ -57,10 +60,15 @@ const WALL_REACH = 0.6;
 const KERB_LENGTH = 0.016;
 const KERB_GAP = 0.0015;
 const KERB_PROUD = 0.0025;
-/** Edge stones along the lanes: spacing, size, how many are left out. */
-const EDGE_STONE_SPACING = 0.045;
-const EDGE_STONE_SIZE = 0.007;
-const EDGE_STONE_SKIP = 0.4;
+/**
+ * The lanes' kerb (#91), rougher than the main street's: its stones' length
+ * range as a share of `KERB_LENGTH`, how proud it stands (lower), and how
+ * far a stone may sit off the line or its top off level (building scale).
+ */
+const LANE_KERB_LENGTH: readonly [number, number] = [0.7, 1.3];
+const LANE_KERB_PROUD = 0.0016;
+const LANE_KERB_WANDER = 0.0007;
+const LANE_KERB_HEAVE = 0.0008;
 /** A garden's half extents at scale 1 (its fence's outline, `townPieces.ts`). */
 const GARDEN_HALF: readonly [number, number] = [0.062, 0.052];
 
@@ -169,20 +177,23 @@ function retainingWalls(b: FacetBuilder, p: TownPlateau, ground: GroundField, k:
   }
 }
 
-/** A kerb or edge stone: its plan rectangle (facing along its length), its bottom and top, and its tone's shade. */
+/** A kerb stone: its plan rectangle (facing along its length), its bottom and top, and its tone's shade. */
 export interface EdgeStone extends PlanRect {
   y0: number;
   y1: number;
   shade: number;
-  /** A kerb of the main street (its top lighter), else a lane's edge stone. */
+  /** A kerb of the main street (dressed, its top lighter), else of a lane (rougher). */
   kerb: boolean;
 }
 
 /**
- * Kerbs along the main street's edges and edge stones along the lanes, at
- * building scale `k`: broken where another street crosses, and left out
- * wherever one would stand in a building's `walls` (the kit's or the
- * village's), so no kerb runs through a wall.
+ * Kerbs along both edges of every street, at building scale `k` (#91): on
+ * the main street dressed stones laid end to end; on the lanes a rougher,
+ * lower run, its stones of uneven length, a little off the line and off
+ * level, so it reads as old fieldstone and not as a clean slab, yet as one
+ * kerb rather than scattered debris. Broken where another street crosses,
+ * and left out wherever one would stand in a building's `walls` (the kit's
+ * or the village's), so no kerb runs through a wall.
  */
 export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number, walls: readonly PlanRect[]): EdgeStone[] {
   const stones: EdgeStone[] = [];
@@ -196,38 +207,30 @@ export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number,
     const tz = (z1 - z0) / len;
     const nx = -tz;
     const nz = tx;
+    const main = street.kind === "main";
     const others = p.streets.filter((s) => s !== street);
     const next = stream(seedOf([Math.round(x0 * 1e3), Math.round(z0 * 1e3)], 0x4e2b));
     for (const side of [-1, 1]) {
-      if (street.kind === "main") {
-        // The kerb starts where the square's paving ends.
-        const start = Math.max(0, p.squareRadius * 0.55 - Math.hypot(x0 - p.x, z0 - p.z));
-        const stone = KERB_LENGTH * k;
-        for (let t = start; t + stone < len; t += stone + KERB_GAP * k) {
-          const d = street.halfWidth - kerbW / 2;
-          const x = x0 + tx * (t + stone / 2) + nx * side * d;
-          const z = z0 + tz * (t + stone / 2) + nz * side * d;
-          if (others.some((o) => streetDistance(o, x, z) < o.halfWidth + kerbW)) continue;
-          const outside = ground.sampleHeight(x + nx * side * kerbW, z + nz * side * kerbW);
-          const inside = ground.sampleHeight(x - nx * side * kerbW, z - nz * side * kerbW);
-          const shade = 0.85 + next() * 0.3;
-          const kerb: EdgeStone = { x, z, fx: tx, fz: tz, halfW: kerbW / 2, halfD: stone / 2, y0: Math.min(inside, outside) - kerbW, y1: outside + KERB_PROUD * k, shade, kerb: true };
-          if (!inWalls(kerb)) stones.push(kerb);
-        }
-      } else {
-        for (let t = EDGE_STONE_SPACING * k * next(); t < len; t += EDGE_STONE_SPACING * k * (0.6 + next() * 0.8)) {
-          if (next() < EDGE_STONE_SKIP) continue;
-          const d = street.halfWidth + EDGE_STONE_SIZE * k * 0.3;
-          const x = x0 + tx * t + nx * side * d;
-          const z = z0 + tz * t + nz * side * d;
-          if (others.some((o) => streetDistance(o, x, z) < o.halfWidth + EDGE_STONE_SIZE * k)) continue;
-          const g = ground.sampleHeight(x, z);
-          const size = EDGE_STONE_SIZE * k * (0.7 + next() * 0.6);
-          const yaw = next() * Math.PI;
-          const shade = 0.75 + next() * 0.35;
-          const edge: EdgeStone = { x, z, fx: Math.sin(yaw), fz: Math.cos(yaw), halfW: size * 0.4, halfD: size / 2, y0: g - size * 0.5, y1: g + size * 0.35, shade, kerb: false };
-          if (!inWalls(edge)) stones.push(edge);
-        }
+      // The main street's kerb starts where the square's paving ends.
+      const start = main ? Math.max(0, p.squareRadius * SQUARE_PAVED - Math.hypot(x0 - p.x, z0 - p.z)) : 0;
+      let t = start;
+      while (t < len) {
+        const stone = KERB_LENGTH * k * (main ? 1 : LANE_KERB_LENGTH[0] + next() * (LANE_KERB_LENGTH[1] - LANE_KERB_LENGTH[0]));
+        const wander = main ? 0 : (next() * 2 - 1) * LANE_KERB_WANDER * k;
+        const heave = main ? 0 : (next() * 2 - 1) * LANE_KERB_HEAVE * k;
+        const shade = main ? 0.85 + next() * 0.3 : 0.72 + next() * 0.38;
+        const here = t;
+        t += stone + KERB_GAP * k;
+        if (here + stone > len) break;
+        const d = street.halfWidth - kerbW / 2 + wander;
+        const x = x0 + tx * (here + stone / 2) + nx * side * d;
+        const z = z0 + tz * (here + stone / 2) + nz * side * d;
+        if (others.some((o) => streetDistance(o, x, z) < o.halfWidth + kerbW)) continue;
+        const outside = ground.sampleHeight(x + nx * side * kerbW, z + nz * side * kerbW);
+        const inside = ground.sampleHeight(x - nx * side * kerbW, z - nz * side * kerbW);
+        const proud = (main ? KERB_PROUD : LANE_KERB_PROUD) * k + heave;
+        const kerb: EdgeStone = { x, z, fx: tx, fz: tz, halfW: kerbW / 2, halfD: stone / 2, y0: Math.min(inside, outside) - kerbW, y1: outside + proud, shade, kerb: main };
+        if (!inWalls(kerb)) stones.push(kerb);
       }
     }
   }

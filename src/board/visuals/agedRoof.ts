@@ -69,8 +69,8 @@ export const tileStripCount = (s: AgedRoofSpec) => Math.max(3, Math.round((2 * (
  */
 export const roofReachU = (s: AgedRoofSpec) =>
   s.halfU + AGED_ROOF_OVERHANG + (TILE_OVERSHOOT + TILE_SLIP) * Math.cos(roofPitch(s)) + TILE_THICKNESS * Math.sin(roofPitch(s));
-/** Slabs 2 × 12, strips 10 each, cap segments 6 each plus two ends, two wedge caps. */
-export const agedRoofTriangles = (s: AgedRoofSpec) => 24 + tileStripCount(s) * 10 * 2 + RIDGE_CAP_SEGMENTS * 6 + 2 + 2;
+/** Slabs 2 × 12, strips 12 each (closed boxes), cap segments 6 each plus two ends, two wedge caps. */
+export const agedRoofTriangles = (s: AgedRoofSpec) => 24 + tileStripCount(s) * 12 * 2 + RIDGE_CAP_SEGMENTS * 6 + 2 + 2;
 
 /** Each slab starts this far along its own top from the ridge, so its inner bottom corner lies on the midline. */
 const slabStart = (s: AgedRoofSpec) => AGED_ROOF_THICKNESS * Math.tan(roofPitch(s));
@@ -104,6 +104,11 @@ function addSlope(b: FacetBuilder, s: AgedRoofSpec, side: -1 | 1, roof: Rgb, see
     const min: Vec3 = [side > 0 ? inner : -outer, 0, zc - width / 2];
     const max: Vec3 = [side > 0 ? outer : -inner, TILE_THICKNESS, zc + width / 2];
     b.box(min, max, color, { bottom: false });
+    // Where it hangs past the slab's eave the strip is closed underneath: seen
+    // from below (a far slope steeper than the view) an open end shows hollow.
+    const edge = Math.max(inner, length);
+    const under = (x: number, z: number): Vec3 => [side * x, 0, z];
+    b.outwardQuad(under(edge, min[2]), under(outer, min[2]), under(outer, max[2]), under(edge, max[2]), [side * (edge + outer) / 2, 1, zc], color);
   }
   b.rotate(from, b.vertexCount(), "z", -side * pitch);
   b.translate(from, b.vertexCount(), [0, s.ridge, 0]);

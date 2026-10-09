@@ -9,6 +9,7 @@ import {
   SHORE_KEEP_BOTTOM,
   SHORE_KEEP_TOP,
   SQUARE_END,
+  SQUARE_PAVED,
   crossesRiser,
   footprintOnStreet,
   plateauLocal,
@@ -141,15 +142,36 @@ describe("town plateaus (#87)", () => {
     }
   });
 
-  it("keeps the square one level out to the port kit's reach, and starts every street at its inland edge (the kit stands on the square, off the streets)", () => {
+  it("keeps the square one level out to the port kit's reach, and starts the lanes at its inland edge", () => {
     for (const seed of SEEDS) {
       for (const p of fieldsOf(seed).town.townPlateaus) {
         expect(p.steps[0]).toBeCloseTo(SQUARE_END * SCALE, 12);
         // The kit's church, straight inland of the square, reaches a quarter unit inland at most (portSettlement.test.ts).
         expect(p.steps[0]).toBeGreaterThan(0.26);
         for (const street of p.streets) {
+          if (street.kind === "main") continue;
           for (const end of [street.from, street.to]) expect(plateauLocal(p, end[0], end[1]).s).toBeGreaterThanOrEqual(p.steps[0] - 1e-9);
         }
+      }
+    }
+  });
+
+  it("runs the main street out of the square's paving, so the port kit is planned round its mouth (#91)", () => {
+    for (const seed of SEEDS) {
+      for (const p of fieldsOf(seed).town.townPlateaus) {
+        const main = p.streets.find((s) => s.kind === "main")!;
+        const from = plateauLocal(p, main.from[0], main.from[1]);
+        expect(from.s).toBeCloseTo(p.squareRadius * SQUARE_PAVED, 12);
+        expect(from.across).toBeCloseTo(0, 12);
+        // A building on the axis between the paving and the first riser stands on the street.
+        const mid = (p.squareRadius * SQUARE_PAVED + p.steps[0]) / 2;
+        const rect = [
+          [-0.01, -0.01],
+          [0.01, -0.01],
+          [0.01, 0.01],
+          [-0.01, 0.01],
+        ].map(([ds, da]) => plateauPoint(p, mid + ds, da));
+        expect(footprintOnStreet(p, rect, 0)).toBe(true);
       }
     }
   });
@@ -172,8 +194,8 @@ describe("town plateaus (#87)", () => {
     expect(footprintOnStreet(p, rect(mid, main.halfWidth + 0.02 + 0.001, 0.01, 0.02), 0)).toBe(false);
     // The margin widens the street by the kerbs.
     expect(footprintOnStreet(p, rect(mid, main.halfWidth + 0.02 + 0.001, 0.01, 0.02), 0.002)).toBe(true);
-    // Past the street's start, on the square.
-    expect(footprintOnStreet(p, rect(p.steps[0] - main.halfWidth - 0.02, 0, 0.01, 0.01), 0)).toBe(false);
+    // Past the street's start, on the square's paving.
+    expect(footprintOnStreet(p, rect(p.squareRadius * SQUARE_PAVED - main.halfWidth - 0.02, 0, 0.01, 0.01), 0)).toBe(false);
   });
 
   it("makes each riser a steep face, but a ramp where the main street climbs it", () => {
