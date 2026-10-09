@@ -83,8 +83,11 @@ const LEAN: Readonly<Record<VillageVariant, readonly [number, number]>> = {
   warehouse: [AGED_LEAN * 0.6, -AGED_LEAN * 0.4],
 };
 
-/** Per building: the merchant's house, with its balcony and two chimneys, is the most. */
-export const VILLAGE_TRIANGLE_BUDGET = 1050;
+/**
+ * Per building: the merchant's house, with its balcony and two chimneys, is
+ * the most (1074, with its roof's strips closed underneath, #91).
+ */
+export const VILLAGE_TRIANGLE_BUDGET = 1100;
 
 export interface VillageBuildingGeometry {
   data: FacetGeometryData;

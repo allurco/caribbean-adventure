@@ -115,7 +115,9 @@ describe("addAgedRoof", () => {
       const cx = (corners[0][0] + corners[1][0] + corners[2][0]) / 3;
       // The slab undersides (looking down and back under the roof; the eave end faces look down and out):
       // their plane passes through the eave underside at the wall line.
-      if (n[1] < -0.5 && n[0] * Math.sign(cx) < 0) {
+      // The strips' closed bottoms lie on the slab's top plane, not under it.
+      const onTop = corners.every(([x, y]) => Math.abs(y + Math.abs(x) * slope - house.ridge) < 1e-6);
+      if (n[1] < -0.5 && n[0] * Math.sign(cx) < 0 && !onTop) {
         for (const [x, y] of corners) expect(y + Math.abs(x) * slope).toBeCloseTo(roofEaveUnderside(house) + house.halfU * slope, 6);
         undersides++;
       }
@@ -125,6 +127,22 @@ describe("addAgedRoof", () => {
     }
     expect(undersides).toBe(2 * 2);
     expect(apexFound).toBe(true);
+  });
+
+  it("closes every strip underneath, so a strip hanging past the eave shows no hollow end from below (#91)", () => {
+    for (const spec of [house, tavern]) {
+      const { g } = build({ ...spec, ridgeAlong: "z" });
+      const slope = (spec.ridge - spec.eave) / spec.halfU;
+      let closed = 0;
+      for (let t = 0; t < g.vertexCount / 3; t++) {
+        const n = normal(g, t * 3);
+        if (n[1] > -0.5) continue;
+        // On the slab's top plane: a strip's underside, not the slab's.
+        const corners = [vertex(g, t * 3), vertex(g, t * 3 + 1), vertex(g, t * 3 + 2)];
+        if (corners.every(([x, y]) => Math.abs(y + Math.abs(x) * slope - spec.ridge) < 1e-6)) closed++;
+      }
+      expect(closed).toBe(2 * tileStripCount(spec) * 2);
+    }
   });
 
   it("makes one slope mossy and the other pale", () => {
