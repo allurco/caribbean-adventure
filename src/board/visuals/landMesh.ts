@@ -17,7 +17,7 @@ import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { metresToUnits } from "./worldScale";
 import { VISIBLE_SEABED_DEPTH } from "./waterOptics";
-import { TOWN_REFINE, townGround, type TownSurface } from "./townGround";
+import { pavingTone, TOWN_REFINE, townGround, type TownSurface } from "./townGround";
 
 export { VISIBLE_SEABED_DEPTH };
 
@@ -767,7 +767,7 @@ export function buildLandMesh(
     }
   };
 
-  // Land: flat, one normal and one colour per face, for the low-poly look.
+  // Land: flat, one normal and one colour per face, for the low-poly look (but a town's paving, shaded smoothly).
   const sample: LandFaceSample = { height: 0, normalY: 1, noise: 0, cavity: 0, coral: 0 };
   let out = 0;
   const N = TOWN_REFINE;
@@ -780,6 +780,8 @@ export function buildLandMesh(
   let coarseNoise = 0;
   /** Whether the refined triangle being emitted has any paving or lane on it. */
   let coarseSurfaced = false;
+  /** The paving's normals are the field's, by central differences a sub-face's edge across. */
+  const pavingStep = spacing / N;
   /** One refined sub-triangle from sub-vertices p, q, r: coloured from its own height, slope and cavity, or the town's surface. */
   const emitSubFace = (p: number, q: number, r: number) => {
     face[0] = subVertices[p];
@@ -810,9 +812,34 @@ export function buildLandMesh(
     sample.cavity = (subVertices[p + 3] + subVertices[q + 3] + subVertices[r + 3]) / 3;
     sample.coral = 0;
     const surface = town && coarseSurfaced ? town.surface(cx, cz) : "ground";
-    // Setts and trodden earth vary more from face to face than the open ground.
-    const rgb: Rgb = surface === "ground" ? landFaceColor(palette, sample, occlusion) : TOWN_SURFACE_COLORS[surface];
-    const shade = surface === "ground" ? 0.93 + hash(cx, cz) * 0.14 : 0.8 + hash(cx * 1.7, cz * 1.3) * 0.36;
+    if (surface !== "ground") {
+      // Setts and trodden earth are shaded smoothly (#91): each vertex its
+      // tone and the field's own normal, the same in every face that meets
+      // there, so the paving's triangles do not show as a checkerboard.
+      const rgb = TOWN_SURFACE_COLORS[surface];
+      for (let k = 0; k < 3; k++) {
+        const x = face[k * 3];
+        const z = face[k * 3 + 2];
+        const tone = pavingTone(x, z);
+        const gx = (field.sampleHeight(x + pavingStep, z) - field.sampleHeight(x - pavingStep, z)) / (2 * pavingStep);
+        const gz = (field.sampleHeight(x, z + pavingStep) - field.sampleHeight(x, z - pavingStep)) / (2 * pavingStep);
+        const gl = Math.sqrt(gx * gx + 1 + gz * gz);
+        const o = out * 9 + k * 3;
+        positions[o] = x;
+        positions[o + 1] = face[k * 3 + 1];
+        positions[o + 2] = z;
+        colors[o] = rgb[0] * tone;
+        colors[o + 1] = rgb[1] * tone;
+        colors[o + 2] = rgb[2] * tone;
+        normals[o] = -gx / gl;
+        normals[o + 1] = 1 / gl;
+        normals[o + 2] = -gz / gl;
+      }
+      out++;
+      return;
+    }
+    const rgb: Rgb = landFaceColor(palette, sample, occlusion);
+    const shade = 0.93 + hash(cx, cz) * 0.14;
     faceColor[0] = rgb[0] * shade;
     faceColor[1] = rgb[1] * shade;
     faceColor[2] = rgb[2] * shade;

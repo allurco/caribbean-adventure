@@ -21,6 +21,36 @@ import { nearestCopyX, plateauLookup, plateauPlanDistance, SQUARE_PAVED, streetD
 export const TOWN_REFINE = 10;
 export { SQUARE_PAVED };
 
+/**
+ * The paving's tone (#91): a multiplier on the setts' and the lanes' colour
+ * within this range, varying smoothly over patches about `PAVING_TONE_CELL`
+ * across (about 1.3 m), so worn and fresh stretches show without the
+ * per-face jumps that drew the ground's triangles as a checkerboard.
+ */
+export const PAVING_TONE: readonly [number, number] = [0.86, 1.1];
+const PAVING_TONE_CELL = 0.02;
+
+/** A lattice corner's value in [0, 1). */
+function latticeValue(i: number, j: number): number {
+  const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+/** The paving's tone at (x, z): value noise on a `PAVING_TONE_CELL` lattice, smoothly interpolated (`PAVING_TONE`). */
+export function pavingTone(x: number, z: number): number {
+  const u = x / PAVING_TONE_CELL;
+  const v = z / PAVING_TONE_CELL;
+  const i = Math.floor(u);
+  const j = Math.floor(v);
+  const fu = u - i;
+  const fv = v - j;
+  const su = fu * fu * (3 - 2 * fu);
+  const sv = fv * fv * (3 - 2 * fv);
+  const top = latticeValue(i, j) + (latticeValue(i + 1, j) - latticeValue(i, j)) * su;
+  const bottom = latticeValue(i, j + 1) + (latticeValue(i + 1, j + 1) - latticeValue(i, j + 1)) * su;
+  return PAVING_TONE[0] + (top + (bottom - top) * sv) * (PAVING_TONE[1] - PAVING_TONE[0]);
+}
+
 export type TownSurface = "paved" | "earth" | "ground";
 
 export interface TownGround {

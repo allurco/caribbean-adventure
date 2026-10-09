@@ -4,7 +4,7 @@ import { getMapPreset } from "../../game/mapConfig";
 import { createWrap } from "../../game/hex";
 import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells, type TerrainHeightField } from "./terrainHeightField";
 import { buildLandMesh, landSurface, TOWN_FLAG_MARGIN } from "./landMesh";
-import { townGround, TOWN_REFINE } from "./townGround";
+import { PAVING_TONE, pavingTone, townGround, TOWN_REFINE } from "./townGround";
 import { plateauPoint } from "./townPlateau";
 
 function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightField } {
@@ -91,6 +91,50 @@ describe("town ground (#87)", () => {
       return out;
     };
     expect(faces(fine.land.positions)).toEqual(faces(coarse.land.positions));
+  });
+
+  it("shades the setts and the lanes smoothly: a vertex has one colour and one normal in every paved face that meets there, so no facet checkerboard shows (#91)", () => {
+    const ground = townGround(plateaus, town.periodX, TOWN_FLAG_MARGIN);
+    if (!ground) throw new Error("no town ground");
+    const { positions, colors, normals } = fine.land;
+    const seen = new Map<string, number[]>();
+    let shared = 0;
+    for (let t = 0; t < positions.length / 9; t++) {
+      const o = t * 9;
+      const cx = (positions[o] + positions[o + 3] + positions[o + 6]) / 3;
+      const cz = (positions[o + 2] + positions[o + 5] + positions[o + 8]) / 3;
+      const surface = ground.surface(cx, cz);
+      if (surface === "ground") continue;
+      for (let k = 0; k < 3; k++) {
+        const v = o + k * 3;
+        const key = `${surface}:${positions[v].toFixed(5)},${positions[v + 2].toFixed(5)}`;
+        const shade = [colors[v], colors[v + 1], colors[v + 2], normals[v], normals[v + 1], normals[v + 2]];
+        const before = seen.get(key);
+        if (!before) {
+          seen.set(key, shade);
+          continue;
+        }
+        for (let i = 0; i < 6; i++) expect(shade[i]).toBeCloseTo(before[i], 5);
+        shared++;
+      }
+    }
+    expect(shared).toBeGreaterThan(1000);
+  });
+
+  it("varies the paving's tone smoothly over the ground, within a weathered range", () => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let x = 0; x < 2; x += 0.0037) {
+      const z = 13 + x * 0.7;
+      const a = pavingTone(x, z);
+      lo = Math.min(lo, a);
+      hi = Math.max(hi, a);
+      // A step much finer than a sub-face changes it by little: no per-face jumps.
+      expect(Math.abs(pavingTone(x + 0.001, z) - a)).toBeLessThan(0.03);
+    }
+    expect(lo).toBeGreaterThanOrEqual(PAVING_TONE[0]);
+    expect(hi).toBeLessThanOrEqual(PAVING_TONE[1]);
+    expect(hi - lo).toBeGreaterThan((PAVING_TONE[1] - PAVING_TONE[0]) * 0.5);
   });
 
   it("is sampled by the placement surface exactly as drawn, at the vertices and inside the triangles", () => {

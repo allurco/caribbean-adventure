@@ -150,9 +150,11 @@ by at most `RISER` (about 4 m); risers that are a steep `RISER_FACE` (about
 main street or a back lane climbs; and the streets (a main street up the
 terraces, a back lane either side, a cross lane on the first one or two
 terraces) carved `STREET_CARVE` (about half a metre) into their terraces.
-Every street leaves the square at its inland edge, where the first ramp
-starts: the square is the kit's, and a street across it ran under the
-church.
+The lanes leave the square at its inland edge, where the first ramp
+starts; the main street runs out of the square's paved disc
+(`SQUARE_PAVED`), so the port kit, placed later and kept off the streets,
+stands round its mouth instead of across it (#91: the church used to
+stand straight inland of the square with its back to the street's start).
 Outside the plan the plateau fades into the slope over `BLEND`, and it is
 weighted by the natural height from 0 at `SHORE_KEEP_BOTTOM` to 1 at
 `SHORE_KEEP_TOP`, so below the shore band the field, the coastline, the
@@ -277,7 +279,11 @@ across a cut edge is drawn as a coplanar fan from its centroid to the
 cuts, so no T-junction opens, and because no refined triangle reaches the
 waterline none borders the (uncut) seabed mesh. Sub-faces are coloured as
 any land face, or as setts (the main street and the paved middle of the
-square) and trodden earth (the lanes). `landSurface` samples the same
+square) and trodden earth (the lanes). The setts and the earth are shaded
+smoothly (#91): each vertex takes the field's normal (central differences
+a sub-face across) and a tone from smooth value noise (`pavingTone`), the
+same in every face that meets there, so the paving does not show its
+triangles as a checkerboard as flat per-face shading did. `landSurface` samples the same
 sub-triangles (each refined triangle's heights cached once), so buildings
 and clutter stand on the ground as drawn. Cost: on the large map the land
 triangles go from about 81k to 298k and the benchmark build from about
