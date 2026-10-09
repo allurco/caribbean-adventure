@@ -1,6 +1,6 @@
 /**
  * The village's placement over 200 seeds of every map size (#87): no
- * floating or buried buildings, no building (the port kit's included)
+ * floating or buried buildings, none askew on the beach (#91), no building (the port kit's included)
  * across a terrace riser, nothing on a street's running surface, the quay
  * or the pier, no kit building on a street, a lane or their kerbs, and no
  * kerb or edge stone inside a building's walls.
@@ -28,6 +28,8 @@ import {
   quayRect,
   rectCorners,
   villageWalls,
+  BEACH_MAX_SPREAD,
+  BEACH_TOP,
   VILLAGE_DRY_HEIGHT,
   VILLAGE_MAX_BURY,
   VILLAGE_MAX_FOOTING_SHOWN,
@@ -133,6 +135,8 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
         if (bottom <= VILLAGE_DRY_HEIGHT - SLACK) fail(seed, `${b.variant} on wet ground`);
         if (top - b.worldY > VILLAGE_MAX_BURY * b.scale + SLACK) fail(seed, `${b.variant} buried by ${(top - b.worldY).toFixed(4)}`);
         if (b.worldY - bottom > VILLAGE_MAX_FOOTING_SHOWN * b.scale + SLACK) fail(seed, `${b.variant} floating: ${(b.worldY - bottom).toFixed(4)} of footing`);
+        // On the beach, near-level ground only (#91).
+        if (bottom < BEACH_TOP - SLACK && top - bottom > BEACH_MAX_SPREAD * b.scale + SLACK) fail(seed, `${b.variant} askew on the beach: ground spans ${(top - bottom).toFixed(4)}`);
         // The footing reaches under the lowest ground.
         if (b.worldY - BUILDING_FOOTING * b.scale > bottom) fail(seed, `${b.variant} footing short of the ground`);
       }
