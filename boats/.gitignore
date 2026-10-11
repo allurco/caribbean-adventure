@@ -1,0 +1,14 @@
+build/*
+!build/*.blend
+__pycache__/
+*.blend1
+# Agent working notes (decision ledger, plans) stay local: they are private.
+.superpowers/
+docs/superpowers/
+.pytest_cache/
+.DS_Store
+renders/
+
+# Third-party kitbash binaries. Provenance is tracked in assets/kitbash/README.md.
+assets/kitbash/**
+!assets/kitbash/README.md
