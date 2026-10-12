@@ -139,7 +139,8 @@ describe("the ships at the 350 m hex", () => {
     expect(SHIP_HULL_BOXES.Galleon).toEqual([0.5, 0.35, 0.8].map((v) => v * SHIP_SCALE));
     expect(SHIP_HULL_BOXES.Sloop).toEqual([0.25, 0.2, 0.65].map((v) => v * SHIP_SCALE));
     expect(SHIP_HULL_BOXES.Flute).toEqual([0.4, 0.3, 0.6].map((v) => v * SHIP_SCALE));
-    expect(SHIP_HULL_BOXES.Frigate).toEqual([0.35, 0.28, 0.7].map((v) => v * SHIP_SCALE));
+    // The Frigate's box comes from its model at SHIP_SCALE (shipHull.test.ts): 38 m long.
+    expect(SHIP_HULL_BOXES.Frigate[2]).toBeCloseTo((38 / 65) * SHIP_SCALE, 12);
     expect(shipHullBox(undefined)).toEqual([0.3, 0.25, 0.7].map((v) => v * SHIP_SCALE));
     expect(shipHullBox("Galleon")).toBe(SHIP_HULL_BOXES.Galleon);
     expect(SHIP_RIDE_HEIGHT).toBe(0.12 * SHIP_SCALE);
