@@ -1,10 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
-import { Vector3, Mesh, MathUtils } from "three";
+import { useGLTF } from "@react-three/drei";
+import { Vector3, Mesh, MathUtils, Group } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
 import { shipFoamSources } from "./shipFoamSources";
 import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, shipHullBox } from "./shipHull";
+import { type ShipModel, SHIP_MODELS, SHIP_MODEL_ROTATION_Y, shipModel, shipModelScale, shipModelUrl } from "./shipModels";
+
+const modelUrl = (model: ShipModel) => shipModelUrl(model, import.meta.env.BASE_URL);
+
+// Fetch the models as the board loads, not when the first ship of a class appears.
+for (const model of Object.values(SHIP_MODELS)) if (model) useGLTF.preload(modelUrl(model), false, false);
 
 const DURATION = 0.4; // seconds
 const SINK_DURATION = 2.0; // seconds for sinking animation
@@ -43,7 +50,7 @@ export function Ship({
   onPointerLeave?: () => void;
   onClick?: () => void;
 }) {
-  const ref = useRef<Mesh>(null!);
+  const ref = useRef<Group>(null!);
   const from = useMemo(() => new Vector3(), []);
   const to = useMemo(() => new Vector3(), []);
   const prevTarget = useRef<[number, number, number] | null>(null);
@@ -53,18 +60,19 @@ export function Ship({
   const foamPrevPosition = useRef<Vector3 | null>(null);
   const foamSpeed = useRef(0);
   const hullLength = shipHullBox(shipClass)[2];
+  const model = shipModel(shipClass);
 
   useEffect(() => {
     if (!foamId) return;
     return () => shipFoamSources.remove(foamId);
   }, [foamId]);
 
-  const meshRef = useCallback(
-    (mesh: Mesh | null) => {
-      if (!mesh) return;
-      ref.current = mesh;
+  const groupRef = useCallback(
+    (group: Group | null) => {
+      if (!group) return;
+      ref.current = group;
       if (!initialized.current) {
-        mesh.position.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
+        group.position.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
         prevTarget.current = position;
         to.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
         initialized.current = true;
@@ -130,11 +138,18 @@ export function Ship({
     }
   });
 
+  const box = (
+    <mesh castShadow receiveShadow>
+      <boxGeometry args={[...shipHullBox(shipClass)]} />
+      <meshStandardMaterial color={color} />
+    </mesh>
+  );
+
+  // The group sails and turns; the box or the model inside it is what is drawn
+  // and hit, so hover and click work over the whole model.
   return (
-    <mesh
-      ref={meshRef}
-      castShadow
-      receiveShadow
+    <group
+      ref={groupRef}
       onPointerEnter={(e) => {
         e.stopPropagation();
         onPointerEnter?.();
@@ -148,9 +163,37 @@ export function Ship({
         onClick?.();
       }}
     >
-      <boxGeometry args={[...shipHullBox(shipClass)]} />
-      <meshStandardMaterial color={color} />
-    </mesh>
+      {model ? (
+        <Suspense fallback={box}>
+          <ShipModelMesh model={model} />
+        </Suspense>
+      ) : (
+        box
+      )}
+    </group>
+  );
+}
+
+/**
+ * A class's generated model in its own frame (real metres, origin at the
+ * waterline amidships, bow along −Z), placed in the ship's group: scaled to
+ * ship scale, turned onto the heading, and lowered from the ride height so
+ * its waterline sits on the sea. Suspends while the file loads.
+ */
+function ShipModelMesh({ model }: { model: ShipModel }) {
+  const { scene } = useGLTF(modelUrl(model), false, false);
+  // One copy per ship: the nodes are its own, the geometry and materials shared.
+  const copy = useMemo(() => {
+    const clone = scene.clone(true);
+    clone.traverse((object) => {
+      if ((object as Mesh).isMesh) object.castShadow = object.receiveShadow = true;
+    });
+    return clone;
+  }, [scene]);
+  return (
+    <group position-y={-SHIP_RIDE_HEIGHT} rotation-y={SHIP_MODEL_ROTATION_Y} scale={shipModelScale()}>
+      <primitive object={copy} />
+    </group>
   );
 }
 
