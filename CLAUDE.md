@@ -58,6 +58,8 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 
 **`src/lab/`** — Dev sandboxes, isolated from game code: the sound lab (`SoundLab.tsx`, at `?view=sound`) to audition every sound and tune the ambience bed, and the shader lab (`ShaderLab.tsx`, at `#lab`).
 
+**`boats/`** — The ship generator, in Python, outside the web app: it drives Blender to build the Frigate, Galleon, Flute and Sloop procedurally (package `boats/frigate/`, one `*Params` per ship) and exports each as a lighter board-variant `.glb` (`export.export_board`, run inside Blender) held to the budget in `board.py`. Its tests are pure and run without Blender: `cd boats && uv run --with pytest pytest tests/ -q`. Only the `.blend` sources under `boats/build/` are tracked; the exported `.glb`s, the baked textures and renders are git-ignored.
+
 **`src/App.tsx`** — Routes to the labs, the prop viewer (`?view=props`), or the game. Dev URL parameters (size, seed, camera) are parsed in `src/board/devUrlParams.ts`. For the game, `loadGameClient.ts` generates the map first, in a Web Worker (`src/mapWorker/`, falling back to the main thread when there is no worker or it fails), because boardgame.io's `setup()` is synchronous; it then creates `Client({ game: withGeneratedMap(Caribbean, map), board })`. `GameClientLoader.tsx` shows `MapLoadingScreen` until the client is ready. Currently local single-client (no explicit transport); production will use the boardgame.io server with socket transport for 6 players, where `setup()` still generates the map itself.
 
 ### Game Flow (phases)
