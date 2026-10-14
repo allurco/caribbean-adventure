@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ShipState } from "../game/types";
+import type { CaribbeanState, ShipState } from "../game/types";
+import { playerViewFor } from "../game/playerView";
 import { meterPercent, shipCardView } from "./hudShipCardView";
 
 const ship = (over: Partial<ShipState> = {}): ShipState => ({
@@ -88,5 +89,15 @@ describe("shipCardView", () => {
       { good: "Spice", amount: 1 },
     ]);
     expect(view.upgrades).toEqual(["Chain Shot", "unknown_upgrade"]);
+  });
+});
+
+describe("shipCardView over a stripped view (#109)", () => {
+  it("draws a rival's ship the seat has not scouted as an empty hold", () => {
+    const rival = ship({ cargo: { Wood: 2, Sugar: 0, Rum: 1, Spice: 0 }, gold: 60, stashedGold: 30 });
+    const G = { ships: { "0": ship(), "1": rival }, npcs: {}, draftHands: {}, captainDeck: [] } as unknown as CaribbeanState;
+    const seen = playerViewFor(G, "0").ships["1"];
+    expect(shipCardView(seen).cargo).toEqual([]);
+    expect(shipCardView(seen).stats).toEqual(shipCardView(ship()).stats);
   });
 });

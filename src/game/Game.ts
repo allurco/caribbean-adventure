@@ -158,7 +158,7 @@ const movesBudgetTurn = {
 export const Caribbean: Game<CaribbeanState> = {
   name: "caribbean",
 
-  // Each seat sees only its own hidden information; no seat is a spectator (#109).
+  // Each seat sees only its own hidden information; a client with no seat is a spectator (#109).
   playerView: ({ G, playerID }) => playerViewFor(G, playerID),
 
   endIf: ({ G }) => {
