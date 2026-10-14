@@ -57,6 +57,7 @@ export function Ship({
   initialHeading = 0,
   foamId,
   foamPlayer = false,
+  onUnderway,
 }: {
   position: [number, number, number];
   /** The owner's colour: the box, or the model's pennant, hull stripe and main-course band (#134). */
@@ -84,6 +85,8 @@ export function Ship({
   foamId?: string;
   /** A player's ship, which keeps its hull foam ahead of the NPCs when more than SHIP_FOAM_CAP register. */
   foamPlayer?: boolean;
+  /** Told when the ship gets under way (true) and when it comes to rest at the end of its course (false). */
+  onUnderway?: (underway: boolean) => void;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
   onClick?: () => void;
@@ -95,6 +98,7 @@ export function Ship({
   const motion = useRef<ShipMotion>(restingMotion(position[0], position[2], initialHeading));
   const reducedMotion = usePrefersReducedMotion();
   const foamSpeed = useRef(0);
+  const wasUnderway = useRef(false);
   /** Written in place each frame (the registry copies it), so registering allocates nothing. */
   const foamSource = useRef<ShipFoamSource>({ x: 0, z: 0, headingX: 0, headingZ: 1, hullLength: 0, beam: 0, roundness: 0, speed: 0, player: false });
   const hull = shipHullBox(shipClass);
@@ -143,6 +147,11 @@ export function Ship({
     }
 
     const m = (motion.current = stepMotion(motion.current, delta, reducedMotion));
+    const underway = m.voyage !== null;
+    if (underway !== wasUnderway.current) {
+      wasUnderway.current = underway;
+      onUnderway?.(underway);
+    }
     ref.current.position.set(m.x, position[1] + SHIP_WATERLINE_Y, m.z);
     ref.current.rotation.y = m.heading;
 

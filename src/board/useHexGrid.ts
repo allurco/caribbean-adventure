@@ -57,8 +57,12 @@ export interface HexGridProps {
   validTargets: Hex[];
   attackTargets?: Hex[];
   onHexClick: (hex: Hex) => void;
+  /** A click on water that is not a target. */
+  onMiss?: () => void;
   onPortHover?: (cell: MapCell | null) => void;
   interactive: boolean;
+  /** When this changes (a new turn), the hover is dropped, so nothing stale is previewed. */
+  resetKey?: string;
   /** The displaced sea the grid lines float on (#38 step 8). */
   surface: WaterGridLinesOptions["surface"];
 }
@@ -75,10 +79,14 @@ export interface HexGridState {
   attackWaterIndices: ReadonlySet<number>;
   attackTargetPositions: [number, number, number][];
   hoveredPos: [number, number, number] | null;
+  /** The target hex under the pointer, in any copy. */
+  hoveredHex: Hex | null;
   isHoveredAttackTarget: boolean;
   lines: WaterGridLines;
   setHover: Dispatch<SetStateAction<SharedHover>>;
   onHexClick: (hex: Hex) => void;
+  /** A click on water that is not a target. */
+  onMiss?: () => void;
   onPortHover?: (cell: MapCell | null) => void;
   /** The port under the pointer, in any copy (its label stays readable close in, #75). */
   hoveredPort: MapCell | null;
@@ -92,13 +100,21 @@ export function useHexGrid({
   validTargets,
   attackTargets = [],
   onHexClick,
+  onMiss,
   onPortHover,
   interactive,
+  resetKey,
   surface,
 }: HexGridProps): HexGridState {
   // Hovered water-cell index and the copy it is hovered in (land is rendered and hit-tested elsewhere)
   const [hover, setHover] = useState<SharedHover>(NO_HOVER);
-  const hoveredId = hover.id;
+  // A new turn drops the hover (state adjusted while rendering, as React's docs advise for a changed prop)
+  const [hoverResetKey, setHoverResetKey] = useState(resetKey);
+  if (hoverResetKey !== resetKey) {
+    setHoverResetKey(resetKey);
+    setHover(NO_HOVER);
+  }
+  const hoveredId = hoverResetKey === resetKey ? hover.id : NO_HOVER.id;
   // The hovered port, kept here as well as passed on, so its label can stay readable (#75)
   const [hoveredPort, setHoveredPort] = useState<MapCell | null>(null);
   const handlePortHover = useCallback(
@@ -166,12 +182,13 @@ export function useHexGrid({
 
   const outlineEmphasis = useMemo(() => {
     const emphasis = new Map<number, number>();
-    allWaterInteractive.forEach((i) => emphasis.set(i, OUTLINE_OPACITY_TARGET));
+    // Attack targets stand out; move targets do not, the reach draws its own outline (#213)
+    attackWaterIndices.forEach((i) => emphasis.set(i, OUTLINE_OPACITY_TARGET));
     if (hoveredCell && hoveredId !== null) {
       emphasis.set(hoveredId, OUTLINE_OPACITY_HOVERED);
     }
     return emphasis;
-  }, [allWaterInteractive, hoveredCell, hoveredId]);
+  }, [attackWaterIndices, hoveredCell, hoveredId]);
 
   // Water hex grid: one line per shared edge, fading with distance from the
   // camera focus and across the shallows, riding the waves; acted-on hexes stay strong
@@ -190,10 +207,12 @@ export function useHexGrid({
     attackWaterIndices,
     attackTargetPositions,
     hoveredPos,
+    hoveredHex: hoveredCell?.hex ?? null,
     isHoveredAttackTarget,
     lines,
     setHover,
     onHexClick,
+    onMiss,
     onPortHover: onPortHover && handlePortHover,
     hoveredPort,
     interactive,

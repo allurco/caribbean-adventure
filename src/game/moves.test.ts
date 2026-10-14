@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validMoveTargets, findAccessiblePort } from "./moves";
+import { validMoveTargets, findAccessiblePort, dockingHexes } from "./moves";
 import { hex, hexEquals, hexRect, offsetToHex, createWrap, NO_WRAP } from "./hex";
 import type { MapCell } from "./mapGenerator";
 
@@ -149,5 +149,14 @@ describe("findAccessiblePort on a wrapped map", () => {
     const cells: MapCell[] = [cell(0, 0), port];
     expect(findAccessiblePort(hex(8, -4), cells, wrap)).toBe(port);
     expect(findAccessiblePort(hex(8, -4), cells, NO_WRAP)).toBeUndefined();
+  });
+});
+
+describe("dockingHexes", () => {
+  it("lists every port's docking hex and nothing else", () => {
+    const port: MapCell = { ...cell(1, 0, "island", true), dockingHex: hex(0, 0) };
+    const noDock: MapCell = cell(3, 0, "island", true);
+    const cells: MapCell[] = [cell(0, 0), port, cell(2, 0, "island"), noDock];
+    expect(dockingHexes(cells)).toEqual([hex(0, 0)]);
   });
 });
