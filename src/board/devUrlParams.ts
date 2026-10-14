@@ -23,6 +23,10 @@ export interface DevUrlParams {
   seaBuoys?: true;
   /** `?stats=1`: a corner readout of fps, draw calls and triangles (#162), in dev builds only. */
   renderStats?: true;
+  /** `?seedGallery=1`: the 12-seed contact sheet instead of the game (#161), in dev builds only. */
+  seedGallery?: true;
+  /** `?snapshot=1`: one gallery shot (#161): the draft picks itself and the board posts its picture to the gallery, in dev builds only. */
+  gallerySnapshot?: true;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -49,6 +53,11 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   if (params.get("view") === "sound") out.soundLab = true;
   if (params.get("buoys") === "1") out.seaBuoys = true;
   if (params.get("stats") === "1") out.renderStats = true;
+  // Dev-only routes (#161): the DEV guard drops even their names from production builds.
+  if (import.meta.env.DEV) {
+    if (params.get("seedGallery") === "1") out.seedGallery = true;
+    if (params.get("snapshot") === "1") out.gallerySnapshot = true;
+  }
 
   return out;
 }

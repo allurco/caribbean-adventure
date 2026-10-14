@@ -8,10 +8,11 @@ interface GameClientLoaderProps {
   cameraDistance?: number;
   seaBuoys?: boolean;
   renderStats?: boolean;
+  gallerySnapshot?: boolean;
 }
 
 /** The game once its client (and so its map, #124) is ready; the loading screen until then. */
-export function GameClientLoader({ client, cameraTarget, cameraDistance, seaBuoys, renderStats }: GameClientLoaderProps) {
+export function GameClientLoader({ client, cameraTarget, cameraDistance, seaBuoys, renderStats, gallerySnapshot }: GameClientLoaderProps) {
   const [GameClientView, setGameClientView] = useState<GameClient>();
 
   useEffect(() => {
@@ -26,5 +27,5 @@ export function GameClientLoader({ client, cameraTarget, cameraDistance, seaBuoy
   }, [client]);
 
   if (!GameClientView) return <MapLoadingScreen />;
-  return <GameClientView cameraTarget={cameraTarget} cameraDistance={cameraDistance} seaBuoys={seaBuoys} renderStats={renderStats} />;
+  return <GameClientView cameraTarget={cameraTarget} cameraDistance={cameraDistance} seaBuoys={seaBuoys} renderStats={renderStats} gallerySnapshot={gallerySnapshot} />;
 }
