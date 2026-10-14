@@ -226,6 +226,23 @@ describe("soundEventsFrom", () => {
     expect(soundEventsFrom(prev, makeState())).toEqual([]);
   });
 
+  it("emits a player turning pirate once, when they first do (#201)", () => {
+    const prev = makeState({ pirates: {} });
+    const next = makeState({ pirates: { "0": { turn: 2, cause: "board" } } });
+    expect(soundEventsFrom(prev, next)).toEqual([{ type: "turnedPirate", playerId: "0", cause: "board" }]);
+    expect(soundEventsFrom(next, structuredClone(next))).toEqual([]);
+  });
+
+  it("emits each newly collected pirate bounty (#201)", () => {
+    const claim = { captorId: "1", pirateId: "0", nation: "England" as const, gold: 25, turn: 3 };
+    const prev = makeState({ bountyClaims: [] });
+    const next = makeState({ bountyClaims: [claim] });
+    expect(soundEventsFrom(prev, next)).toEqual([
+      { type: "pirateBountyClaimed", captorId: "1", pirateId: "0", nation: "England", gold: 25 },
+    ]);
+    expect(soundEventsFrom(next, structuredClone(next))).toEqual([]);
+  });
+
   it("emits a ship going derelict", () => {
     const prev = makeState();
     expect(soundEventsFrom(prev, withShip(prev, "1", { isDerelict: true }))).toEqual([
