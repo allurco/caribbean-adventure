@@ -20,6 +20,16 @@ export function parseAccountRoute(search: string): AccountRoute | null {
   return null;
 }
 
+/**
+ * `?skipLogin=1`: open the local hotseat game without signing in. With a
+ * backend configured the root URL is the sign-in screen; this is the
+ * temporary way past it while the game is still played locally, until the
+ * online entry (#125) gives signed-in players their own way in.
+ */
+export function skipsLogin(search: string): boolean {
+  return new URLSearchParams(search).get("skipLogin") === "1";
+}
+
 export function accountPath(): string {
   return "/?view=account";
 }

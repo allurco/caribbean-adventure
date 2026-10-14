@@ -5,8 +5,8 @@ import { useAccountClient, useAccountSession } from "./useAccount";
 
 /**
  * A small corner link over the hotseat game to the account page (#105),
- * shown only when a backend is configured: "Sign in", or "Your captain" once
- * signed in. The online entry point (#125) supersedes it.
+ * shown only when a backend is configured: "Your captain" once signed in, or
+ * "Sign in" when the game was opened with `?skipLogin=1`. The online entry point (#125) supersedes it.
  */
 export function AccountLink({ config }: { config: SupabaseConfig }) {
   const client = useAccountClient(config);

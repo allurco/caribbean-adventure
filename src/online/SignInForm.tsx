@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from "react";
 import type { AccountClient } from "./accountClient";
-import { accountPath } from "./accountRoute";
 import { sendMagicLink } from "./accountService";
 import { BTN_BRASS, INPUT, LABEL } from "./shellStyles";
 
@@ -17,7 +16,7 @@ export function SignInForm({ client }: { client: AccountClient }) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setState({ phase: "sending" });
-    const result = await sendMagicLink(client, email, window.location.origin + accountPath());
+    const result = await sendMagicLink(client, email, window.location.origin + window.location.pathname + window.location.search);
     setState(result.ok ? { phase: "sent", email: email.trim() } : { phase: "editing", error: result.error });
   }
 
