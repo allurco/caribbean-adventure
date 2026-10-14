@@ -1,7 +1,8 @@
 /**
  * The one terrain height field (ADR 0001).
  *
- * A pure function of the map cells and a seed that every visual consumer
+ * A pure function of the map cells and the world seed (`G.mapSeed`, ADR 0007)
+ * that every visual consumer
  * samples. No Three.js here so it stays unit-testable; GPU consumers bake a
  * texture from `sampleHeight`, CPU consumers call it directly.
  *
@@ -22,6 +23,8 @@
 import type { MapCell } from "../../game/types";
 import { hexToWorld, wrapWorldWidth, type MapWrap } from "../../game/hex";
 import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
+import { SEED_FEATURES, type SeedFeature } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
 import { seamStrip, withSeamImages, wrapIntoStrip } from "./seamStrip";
 import { seabedDepth } from "./seabedProfile";
 import { BUILDING_SCALE, PROP_SCALE, metresToUnits, unitsToMetres } from "./worldScale";
@@ -180,35 +183,8 @@ export interface TerrainHeightField {
   periodX: number | null;
   /** The town plateaus levelled into the land, one per port with a pier (#87); empty with `towns` off. */
   townPlateaus: readonly TownPlateau[];
-}
-
-/** Seeded PRNG (mulberry32), same as the map generator's. */
-function mulberry32(seed: number): () => number {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/**
- * A deterministic seed for the field derived from the map itself, so every
- * client and every consumer gets the same coastline without storing a seed in G.
- */
-export function terrainSeedFromCells(cells: readonly MapCell[]): number {
-  let h = 0x811c9dc5;
-  const mix = (n: number) => {
-    h = Math.imul(h ^ (n & 0xffff), 0x01000193);
-  };
-  for (const cell of cells) {
-    if (cell.terrain !== "island") continue;
-    mix(cell.hex.q + 1024);
-    mix(cell.hex.r + 1024);
-    mix(cell.elevation);
-  }
-  return h >>> 0;
+  /** The world seed (`G.mapSeed`) the field was built from, for consumers that seed their own features off the same world (the land mesh's bands). */
+  worldSeed: number;
 }
 
 const KEY_OFFSET = 1024;
@@ -312,17 +288,17 @@ function reliefShape(noise: PlaneNoise, x: number, z: number, elevation: number)
  */
 export function createTerrainHeightField(
   cells: readonly MapCell[],
-  seed: number,
+  worldSeed: number,
   options: TerrainHeightFieldOptions = {}
 ): TerrainHeightField {
   const coastNoiseAmplitude = options.coastNoiseAmplitude ?? COAST_NOISE_AMPLITUDE;
-  const rng = mulberry32(seed);
   const reliefScale = options.reliefScale ?? 1;
   const noisePeriod = options.wrap ? wrapWorldWidth(options.wrap) : null;
-  const coastNoise = createPlaneNoise(rng, noisePeriod);
-  const reliefNoise = createPlaneNoise(rng, noisePeriod);
-  // Drawn after the others so adding it left the coast and relief unchanged.
-  const reefNoise = createPlaneNoise(rng, noisePeriod);
+  // Each noise on its own named sub-seed of the world seed, so none shifts another (ADR 0007).
+  const noise = (feature: SeedFeature) => createPlaneNoise(stream(subSeed(worldSeed, feature)), noisePeriod);
+  const coastNoise = noise(SEED_FEATURES.coastNoise);
+  const reliefNoise = noise(SEED_FEATURES.reliefNoise);
+  const reefNoise = noise(SEED_FEATURES.reefNoise);
 
   // On a wrapping map the field is built over one strip a wrap wide, from the
   // cells plus their images just past either edge, and every sampler moves its
@@ -602,5 +578,6 @@ export function createTerrainHeightField(
     bounds,
     periodX: strip ? strip.width : null,
     townPlateaus: plateaus,
+    worldSeed,
   };
 }

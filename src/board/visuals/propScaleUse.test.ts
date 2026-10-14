@@ -29,7 +29,7 @@ import { BUILDING_SINK, BUILDING_FOOTING_MARGIN, buildingGroundY, buildingMaxSpr
 import { PORT_HOVER_MARGIN, PORT_HOVER_RADIUS, portHoverVolume } from "./portHover";
 import { BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { decorationLayout } from "./decorationLayout";
-import { terrainSeedFromCells } from "./terrainHeightField";
+
 import { sharedTerrainField } from "./sharedTerrainField";
 import { landSurface } from "./landMesh";
 import { SHIP_HULL_BOXES, SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, shipHullBox } from "../shipHull";
@@ -37,7 +37,7 @@ import { SHIP_HULL_BOXES, SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, shipHullBox } from 
 const preset = getMapPreset("small");
 const wrap = createWrap(preset.columns);
 const cells = generateMap(preset, 1, wrap);
-const seed = terrainSeedFromCells(cells);
+const seed = 1;
 
 const scaled = (range: readonly [number, number], k: number) => [range[0] * k, range[1] * k];
 
@@ -63,7 +63,7 @@ describe("the derived props at the 350 m hex", () => {
 });
 
 describe("the generator's decorations at the 350 m hex", () => {
-  const layout = decorationLayout(cells, wrap);
+  const layout = decorationLayout(cells, wrap, seed);
   const decorations = cells.flatMap((c) => c.decorations ?? []);
   const authored = (type: string) => decorations.filter((d) => d.type === type).map((d) => d.scale ?? 1);
 
@@ -92,7 +92,7 @@ describe("the generator's decorations at the 350 m hex", () => {
 });
 
 describe("the port kit at the 350 m hex", () => {
-  const drawn = landSurface(sharedTerrainField(cells, wrap));
+  const drawn = landSurface(sharedTerrainField(cells, wrap, seed));
 
   it("draws every quay at PROP_SCALE across, along and up", () => {
     const quays = portQuays(cells, drawn, seed);

@@ -3,8 +3,8 @@
  *
  * The map generator only emits rocks on some cells, so beaches and grassland
  * read as bare. This derives one small stone per SAND or GRASS cell that has
- * no rock of its own (and is not a port), placed from a per-cell hash of the
- * cell's coordinates and the map's terrain seed, so nothing is stored in G
+ * no rock of its own (and is not a port), placed from the cell's own sub-seed of
+ * the world seed (`G.mapSeed`, ADR 0007), so nothing is stored in G
  * and every client draws the same stones. Each stone is placed once from its
  * canonical cell; the world copies redraw the same instances.
  */
@@ -13,7 +13,10 @@ import type { Biome, MapCell } from "../../game/types";
 import type { GroundField } from "./groundPlacement";
 import { placeRock } from "./rockPlacement";
 import type { DecorationData } from "./useDecorationLayout";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { mapCellId } from "./islands";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
+import { lerpRange } from "./variationStream";
 import { PROP_DENSITY, PROP_SCALE } from "./worldScale";
 
 /** Stones per cell, by biome (`PROP_DENSITY` times the authored one): ROCK cells already have outcrops and get none. */
@@ -31,7 +34,6 @@ export const STONE_SCALE_RANGE: readonly [number, number] = [0.6 * PROP_SCALE, 1
 
 /** A stone sinks a little less than an outcrop. */
 const STONE_SINK = 0.01 * PROP_SCALE;
-const STONE_SALT = 0x5d7a3c91;
 const TAU = Math.PI * 2;
 
 const STONES_PER_CELL: Readonly<Record<Biome, number>> = {
@@ -42,8 +44,8 @@ const STONES_PER_CELL: Readonly<Record<Biome, number>> = {
 
 const hasRock = (cell: MapCell): boolean => (cell.decorations ?? []).some((d) => d.type === "rock");
 
-/** The stones for every eligible cell, on the ground; `seed` is the map's terrain seed. */
-export function smallStones(cells: readonly MapCell[], field: GroundField, seed: number): DecorationData[] {
+/** The stones for every eligible cell, on the ground; `worldSeed` is `G.mapSeed`. */
+export function smallStones(cells: readonly MapCell[], field: GroundField, worldSeed: number): DecorationData[] {
   const stones: DecorationData[] = [];
   for (const cell of cells) {
     if (cell.terrain !== "island" || cell.hasPort || !cell.biome || hasRock(cell)) continue;
@@ -52,11 +54,11 @@ export function smallStones(cells: readonly MapCell[], field: GroundField, seed:
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     const anchor = { x: hexX, z: hexZ };
-    // The seed goes in through the salt: seedOf quantises its values by 4096 (a
-    // 12-bit shift into int32), which would drop a 32-bit seed's top 12 bits.
-    const next = stream(seedOf([cell.hex.q, cell.hex.r], STONE_SALT ^ seed));
+    const id = mapCellId(cell);
+    const next = stream(subSeed(worldSeed, SEED_FEATURES.smallStones, id));
 
     for (let i = 0; i < count; i++) {
+      const look = subSeed(worldSeed, SEED_FEATURES.stoneLook, id, i);
       const angle = next() * TAU;
       const distance = Math.sqrt(next()) * STONE_SPREAD;
       const rotation = next() * TAU;
@@ -70,6 +72,7 @@ export function smallStones(cells: readonly MapCell[], field: GroundField, seed:
         biome: cell.biome,
         sink: STONE_SINK,
         sizeClass: "small",
+        seed: look,
       });
       if (!ground) continue;
       stones.push({
@@ -80,6 +83,7 @@ export function smallStones(cells: readonly MapCell[], field: GroundField, seed:
         rotation,
         scale,
         biome: cell.biome,
+        seed: look,
       });
     }
   }

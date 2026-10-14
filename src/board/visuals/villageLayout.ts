@@ -38,7 +38,10 @@ import { SEA_LEVEL } from "./terrainHeightField";
 import { BUILDING_SCALE } from "./worldScale";
 import { LAND_MESH_SPACING } from "./landMesh";
 import { TOWN_REFINE } from "./townGround";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { mapCellId, type PortId } from "./islands";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
+import { lerpRange } from "./variationStream";
 import { crossesRiser, KERB_WIDTH, plateauPlanDistance, RETAINING_WALL_DEPTH, SHORE_KEEP_TOP, type TownPlateau, type TownStreet } from "./townPlateau";
 import { VILLAGE_EAVE, VILLAGE_PLAN, type VillageVariant } from "./villageBuildingGeometry";
 
@@ -79,7 +82,6 @@ const WAREHOUSE_SETBACK_STEP = 0.02 * K;
 /** Most houses in one port. */
 const MAX_HOUSES = 55;
 const YAW_JITTER = 0.06;
-const SALT = 0x2c6e9b13;
 /** The gaps along a frontage, the odd yard, and how far a frontage may sit back. */
 const FRONTAGE_GAP: readonly [number, number] = [0.003 * K, 0.015 * K];
 const YARD_CHANCE = 0.08;
@@ -129,6 +131,8 @@ export interface TownLane {
 
 /** One port's village as laid out: what its clutter must keep clear of and gathers round. */
 export interface PortTownPlan {
+  /** The port's stable id (`islands.ts`), which the town's seeded details key off. */
+  portId: PortId;
   /** The hex centre. */
   cx: number;
   cz: number;
@@ -384,8 +388,8 @@ export function villageStance(bottom: number, top: number, scale: number): numbe
   return y - bottom > VILLAGE_MAX_FOOTING_SHOWN * scale ? undefined : y;
 }
 
-/** The village on every port hex with a town plateau, standing on `ground` (the drawn land), and each port's plan; `seed` is the terrain seed. */
-export function planPortTowns(cells: readonly MapCell[], ground: GroundField, kit: PortKit, seed: number): { buildings: VillageBuilding[]; ports: PortTownPlan[] } {
+/** The village on every port hex with a town plateau, standing on `ground` (the drawn land), and each port's plan; `worldSeed` is `G.mapSeed`. */
+export function planPortTowns(cells: readonly MapCell[], ground: GroundField, kit: PortKit, worldSeed: number): { buildings: VillageBuilding[]; ports: PortTownPlan[] } {
   const town: VillageBuilding[] = [];
   const ports: PortTownPlan[] = [];
   for (const cell of cells) {
@@ -405,7 +409,8 @@ export function planPortTowns(cells: readonly MapCell[], ground: GroundField, ki
       const [nx, , nz] = hexToWorld(n);
       return [(nx - cx) / SQRT3, (nz - cz) / SQRT3];
     });
-    const next = stream(seedOf([cell.hex.q, cell.hex.r], SALT ^ seed));
+    const portId = mapCellId(cell);
+    const next = stream(subSeed(worldSeed, SEED_FEATURES.village, portId));
     const here: VillageBuilding[] = [];
 
     // Taken already: the kit's buildings with their margins, the quay and the pier deck.
@@ -481,7 +486,7 @@ export function planPortTowns(cells: readonly MapCell[], ground: GroundField, ki
       halfD: AGED_BUILDING_PLAN[b.kind].halfD * b.scale,
     }));
     walls.push(...here.map(villageWalls));
-    ports.push({ cx, cz, plateau, pier, quays, footprints: placed, walls, streets, buildings: here });
+    ports.push({ portId, cx, cz, plateau, pier, quays, footprints: placed, walls, streets, buildings: here });
   }
   return { buildings: town, ports };
 }

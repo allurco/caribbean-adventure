@@ -1,16 +1,14 @@
 /**
  * Per-shrub variation (issue #49). Pure, no Three.js.
  *
- * A shrub's look is derived deterministically from its placement (the
- * `palmVariation.ts` pattern), so a map draws the same vegetation on every
- * client: a width and a height stretch, a tint of the kind's colours and a
- * sway phase. The placement itself (shrubPlacement.ts) comes from a hash of
- * the whole terrain seed and the cell, so the seed reaches everything here
- * through it.
+ * A shrub's look is derived deterministically from its own sub-seed of the
+ * world seed (the `palmVariation.ts` pattern), set where it was placed
+ * (shrubPlacement.ts), so a map draws the same vegetation on every client: a
+ * width and a height stretch, a tint of the kind's colours and a sway phase.
  */
 import { PALETTE_HEX } from "./palette";
 import type { ShrubKind } from "./shrubGeometry";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { lerpRange, stream } from "./variationStream";
 
 /** Where a shrub stands, after ground placement. */
 export interface ShrubPlacement {
@@ -21,6 +19,11 @@ export interface ShrubPlacement {
   /** Turn about the vertical axis (radians). */
   rotation: number;
   scale: number;
+  /**
+   * The prop's own sub-seed of the world seed (`subSeed(G.mapSeed, feature, cellId, index…)`,
+   * ADR 0007), set where it was placed: its look draws from it alone.
+   */
+  seed: number;
 }
 
 export interface ShrubVariation {
@@ -60,10 +63,9 @@ export const SHRUB_WIDTH_RANGE: readonly [number, number] = [0.85, 1.2];
 export const SHRUB_HEIGHT_RANGE: readonly [number, number] = [0.8, 1.25];
 
 const TAU = Math.PI * 2;
-const SHRUB_VARIATION_SALT = 0x71c3a5e9;
 
 export function shrubVariation(p: ShrubPlacement): ShrubVariation {
-  const next = stream(seedOf([p.worldX, p.worldZ, p.rotation, p.scale], SHRUB_VARIATION_SALT));
+  const next = stream(p.seed);
   const width = p.scale * lerpRange(SHRUB_WIDTH_RANGE, next());
   const height = p.scale * lerpRange(SHRUB_HEIGHT_RANGE, next());
   const tint = 1 + (next() * 2 - 1) * SHRUB_TINT_SPREAD;

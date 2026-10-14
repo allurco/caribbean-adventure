@@ -33,8 +33,8 @@ function town(seed: number) {
   const preset = getMapPreset("small");
   const wrap = createWrap(preset.columns);
   const cells = generateMap(preset, seed, wrap);
-  const field = sharedTerrainField(cells, wrap);
-  const layout = decorationLayout(cells, wrap);
+  const field = sharedTerrainField(cells, wrap, seed);
+  const layout = decorationLayout(cells, wrap, seed);
   return { cells, field, ground: landSurface(field), layout };
 }
 
@@ -121,7 +121,7 @@ describe("the port village (#87)", () => {
   });
 
   it("raises retaining walls and kerbs on the plateaus", () => {
-    const works = townWorks(village.ports, ground, BUILDING_SCALE, COLORS);
+    const works = townWorks(village.ports, ground, BUILDING_SCALE, COLORS, 1);
     expect(works.vertexCount / 3).toBeGreaterThan(1000);
     for (let i = 0; i < works.vertexCount; i += 11) {
       const x = works.positions[i * 3];

@@ -9,6 +9,7 @@ import {
   type ShrubPlacement,
 } from "./shrubVariation";
 import { SHRUB_KINDS } from "./shrubGeometry";
+import { subSeed } from "./subSeed";
 import { PALETTE_HEX } from "./palette";
 
 const TAU = Math.PI * 2;
@@ -30,6 +31,7 @@ function placement(i: number): ShrubPlacement {
     worldZ: Math.sin(i * 0.7) * 5 - i * 0.05,
     rotation: (i * 2.39996) % TAU,
     scale: 0.8 + (i % 7) * 0.07,
+    seed: subSeed(1, "shrubLook", i),
   };
 }
 
@@ -129,9 +131,14 @@ describe("shrubVariation", () => {
     expect(Math.max(...phases) - Math.min(...phases)).toBeGreaterThan(Math.PI);
   });
 
-  it("varies between neighbouring shrubs", () => {
+  it("draws its look from its own seed, not from where it stands", () => {
+    const moved = { ...shrubs[10], worldX: shrubs[10].worldX + 0.05, worldZ: shrubs[10].worldZ - 0.3 };
+    expect(shrubVariation(moved)).toEqual(shrubVariation(shrubs[10]));
+  });
+
+  it("varies between neighbouring shrubs (their own seeds)", () => {
     const a = shrubVariation(shrubs[10]);
-    const b = shrubVariation({ ...shrubs[10], worldX: shrubs[10].worldX + 0.05 });
+    const b = shrubVariation({ ...shrubs[10], seed: shrubs[11].seed });
     expect(a.tint[1]).not.toBeCloseTo(b.tint[1], 3);
     expect(a.scale[1]).not.toBeCloseTo(b.scale[1], 3);
     expect(a.phase).not.toBeCloseTo(b.phase, 3);

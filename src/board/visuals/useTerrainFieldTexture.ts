@@ -21,19 +21,19 @@ export interface TerrainFieldTexture {
   wrap: MapWrap;
 }
 
-/** The bake (CPU side), once per map and wrap. */
-const bakedFieldOf = perMapCache((cells, wrap) => {
+/** The bake (CPU side), once per map, wrap and world seed. */
+const bakedFieldOf = perMapCache((cells, wrap, worldSeed) => {
   const outward = createReefOutward(cells, wrap);
-  return bakeTerrainField(sharedTerrainField(cells, wrap), {
+  return bakeTerrainField(sharedTerrainField(cells, wrap, worldSeed), {
     sampleReef: createReefMask(cells, wrap),
     sampleReefWindward: (x, z) => reefWindwardWeight(outward(x, z)),
   });
 });
 
 /** The map's terrain field texture; built once per map and disposed when the map changes or the owner unmounts. */
-export function useTerrainFieldTexture(cells: readonly MapCell[], wrap: MapWrap): TerrainFieldTexture {
+export function useTerrainFieldTexture(cells: readonly MapCell[], wrap: MapWrap, worldSeed: number): TerrainFieldTexture {
   const field = useMemo(() => {
-    const { data, width, height, bounds } = bakedFieldOf(cells, wrap);
+    const { data, width, height, bounds } = bakedFieldOf(cells, wrap, worldSeed);
     const texture = new DataTexture(data, width, height, RGBAFormat, HalfFloatType);
     texture.minFilter = LinearFilter;
     texture.magFilter = LinearFilter;
@@ -41,7 +41,7 @@ export function useTerrainFieldTexture(cells: readonly MapCell[], wrap: MapWrap)
     texture.wrapT = ClampToEdgeWrapping;
     texture.needsUpdate = true;
     return { texture, bounds, wrap };
-  }, [cells, wrap]);
+  }, [cells, wrap, worldSeed]);
   useEffect(() => () => field.texture.dispose(), [field]);
   return field;
 }

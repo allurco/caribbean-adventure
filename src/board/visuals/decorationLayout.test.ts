@@ -32,7 +32,7 @@ describe("decorationLayout", () => {
       const preset = getMapPreset(size);
       const wrap = createWrap(preset.columns);
       const cells = generateMap(preset, seed, wrap);
-      return { cells, layout: decorationLayout(cells, wrap), field: sharedTerrainField(cells, wrap) };
+      return { cells, layout: decorationLayout(cells, wrap, seed), field: sharedTerrainField(cells, wrap, seed) };
     });
   });
 
@@ -63,7 +63,7 @@ describe("decorationLayout", () => {
     const preset = getMapPreset("small");
     const wrap = createWrap(preset.columns);
     const cells = generateMap(preset, 1, wrap);
-    const layout = decorationLayout(cells, wrap);
+    const layout = decorationLayout(cells, wrap, 1);
     const pierCells = cells.filter((c) => pierRotation(c) !== undefined);
     expect(layout.piers).toHaveLength(pierCells.length);
     for (const pier of layout.piers) {

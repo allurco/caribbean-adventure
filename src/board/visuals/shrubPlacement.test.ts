@@ -3,7 +3,7 @@ import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createWrap, hexToWorld, type MapWrap } from "../../game/hex";
 import type { MapCell } from "../../game/types";
-import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField } from "./terrainHeightField";
 import { MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { smallStones } from "./smallStones";
 import { PORT_GROUND_PROBE_RADIUS as PORT_MARKER_RADIUS } from "./portHover";
@@ -48,6 +48,7 @@ function placedPropsOf(cells: readonly MapCell[], field: GroundField, seed: numb
         worldY: 0.3,
         worldZ: hexZ + deco.position[2],
         rotation: deco.rotation,
+        seed: 0,
         scale: (deco.scale ?? 1) * PROP_SCALE,
         biome: cell.biome,
       };
@@ -61,7 +62,7 @@ function placedPropsOf(cells: readonly MapCell[], field: GroundField, seed: numb
 
 function layoutOf(size: "small" | "medium" | "large", mapSeed: number, wrap: MapWrap = null) {
   const cells = generateMap(getMapPreset(size), mapSeed, wrap);
-  const seed = terrainSeedFromCells(cells);
+  const seed = mapSeed;
   const field = createTerrainHeightField(cells, seed, { wrap });
   const placed = placedPropsOf(cells, field, seed);
   return { cells, seed, field, placed, shrubs: placeShrubs(cells, field, seed, placed) };
@@ -208,7 +209,7 @@ describe("placeShrubs", () => {
 
   it("keeps clear of a tree standing in the cell", () => {
     const cell = grassCell(0, 0, { decorations: [{ type: "tree", position: [0.2, 0, 0.1], rotation: 0, scale: 1 }] });
-    const tree: DecorationData = { type: "tree", worldX: 0.2, worldY: 0.5, worldZ: 0.1, rotation: 0, scale: 1 };
+    const tree: DecorationData = { type: "tree", worldX: 0.2, worldY: 0.5, worldZ: 0.1, rotation: 0, scale: 1, seed: 0 };
     const props: PlacedProps = { trees: [tree], rocks: [], stones: [], piers: [] };
     let found = 0;
     for (let s = 0; s < 40; s++) {
@@ -224,7 +225,7 @@ describe("placeShrubs", () => {
   it("keeps off the pier deck on a port cell: the planks from its land end out PIER_LENGTH at its scale", () => {
     const cell = grassCell(0, 0, { hasPort: true, biome: "SAND" });
     // The layout puts a pier's origin at its land end, here 0.5 out from the cell centre.
-    const pier: DecorationData = { type: "pier", worldX: 0, worldY: 0, worldZ: 0.5, rotation: 0, scale: PROP_SCALE };
+    const pier: DecorationData = { type: "pier", worldX: 0, worldY: 0, worldZ: 0.5, rotation: 0, scale: PROP_SCALE, seed: 0 };
     const props: PlacedProps = { trees: [], rocks: [], stones: [], piers: [pier] };
     const [deck] = shrubObstacles(props);
     // Facing 0 points along +z (sin 0, cos 0), as Piers.tsx turns the deck.
@@ -277,7 +278,7 @@ describe("the port kit's keep-out at the 350 m hex", () => {
 
   it("covers the drawn pier deck at its scale, from its land end out, and nothing past it", () => {
     const rotation = 0.9;
-    const pier: DecorationData = { type: "pier", worldX: 3, worldY: 0, worldZ: -2, rotation, scale: PROP_SCALE };
+    const pier: DecorationData = { type: "pier", worldX: 3, worldY: 0, worldZ: -2, rotation, scale: PROP_SCALE, seed: 0 };
     const obstacles = shrubObstacles({ trees: [], rocks: [], stones: [], piers: [pier] });
     const along = { x: Math.sin(rotation), z: Math.cos(rotation) };
     const across = { x: along.z, z: -along.x };
@@ -313,7 +314,7 @@ describe("the port kit's keep-out at the 350 m hex", () => {
     for (const mapSeed of [1, 2, 3, 4, 5]) {
       const preset = getMapPreset("small");
       const wrap = createWrap(preset.columns);
-      const layout = decorationLayout(generateMap(preset, mapSeed, wrap), wrap);
+      const layout = decorationLayout(generateMap(preset, mapSeed, wrap), wrap, mapSeed);
       buildings += layout.buildings.length;
       const kit = shrubObstacles({ trees: [], rocks: [], stones: [], piers: layout.piers, quays: layout.quays, buildings: layout.buildings });
       const clashes = layout.shrubs.filter((s) => kit.some((o) => segmentDistance(s.worldX, s.worldZ, o) < o.radius + SHRUB_FOOTPRINT_RADIUS[s.kind] * s.scale));

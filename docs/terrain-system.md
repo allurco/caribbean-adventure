@@ -31,7 +31,7 @@ G.cells + seed ──▶ terrainHeightField.ts   sampleHeight(x, z), sampleCoast
 
 ## 1. The Height Field (terrainHeightField.ts)
 
-**What it is.** `createTerrainHeightField(cells, seed, options)` returns a
+**What it is.** `createTerrainHeightField(cells, worldSeed, options)` returns a
 `TerrainHeightField`: `sampleHeight(x, z)` is the terrain's world Y at any
 world XZ (flat-top hexes, `hexToWorld`); `sampleCoastDistance` the
 noise-perturbed signed distance to the coast, positive on land, negative
@@ -42,9 +42,12 @@ without sampling. Plain TypeScript with no Three.js, so it is unit-tested.
 Building it is linear in the number of coastline edges and a sample is O(1):
 a hex look-up and a scan of the coast segments indexed to that hex, sorted
 by a lower bound on their distance so the scan stops early and the result is
-exact. The seed is `terrainSeedFromCells(cells)`, a hash of the land cells'
-positions and elevations, so every client and every consumer gets the same
-coastline without a seed stored in `G`.
+exact. The seed is the world seed, `G.mapSeed` (ADR 0007), and each of the
+field's three noises (coast, relief, reef crest) draws from its own named
+sub-seed of it (`subSeed(worldSeed, SEED_FEATURES.coastNoise)` and so on,
+`seedFeatures.ts`), so no noise shifts another and every client and consumer
+gets the same coastline. The field keeps its `worldSeed` for consumers that
+seed their own features off the same world (the land mesh's bands).
 
 **Coast.** The land/water boundary is the set of hex edges between a land
 hex and a non-land neighbour (water and reef alike). The coast distance `d`
@@ -171,8 +174,9 @@ and plans independent of the other ports.
 **Invariants the tests pin (`terrainHeightField.test.ts`).**
 
 - *Determinism.* The same cells and seed give identical heights, a different
-  seed a different coastline, and `terrainSeedFromCells` is stable for a map
-  and differs between maps.
+  seed a different coastline, on the same cells too; shifting the relief's
+  sub-seed leaves the coast and seabed alone, the reef's the coast and land
+  (`seededWorld.test.ts`).
 - *Continuity across land hex edges.* Along the segment between two adjacent
   land centres the height never jumps (0.004-unit steps move it by under
   0.01–0.02; under 0.06 on every land/land edge of a generated map) and
@@ -248,7 +252,8 @@ vertex positions, so the mesh and every CPU sample agree.
 **Colour.** `landFaceColor` bands each face by its mean height: wet sand at
 the waterline drying over the first `WET_SAND_TOP` (0.03), dry sand fading
 to jungle over 0.42–0.55 and jungle to highland over 1.0–1.2, each boundary
-shifted by a fixed-seed noise so no contour shows; rock blended in by
+shifted by a noise on the world seed's `landBandNoise` sub-seed (so each map
+has its own pattern) so no contour shows; rock blended in by
 steepness (~50–62°) at any height; and a cheap occlusion term that darkens a
 face sitting below the mean of a ring of lattice points round it. Under
 water: wet sand to clean seabed sand within half a metre, the deep seabed
@@ -438,11 +443,12 @@ placed on a slope sinks in instead of floating. `rockVariation.ts` derives
 each rock's look from a hash of its placement (the `palmVariation.ts`
 pattern): variant, a base colour by biome with a tint within ±15% of it, a
 per-axis stretch, a small tilt, a bury depth and a size class by the cell's
-biome (large outcrops on `ROCK`, medium on `GRASS`, small on `SAND`). The
-hash covers the rock's X, Z, rotation and scale but never its Y, so the
-placement can derive the same variation before it knows the ground height.
+biome (large outcrops on `ROCK`, medium on `GRASS`, small on `SAND`). It
+draws from the rock's own sub-seed (`seed` on the placement: its cell, its
+decoration and companion index), never from its position, so the placement
+derives the same variation before it knows where the rock ends up.
 `smallStones.ts` adds one derived stone per `SAND`/`GRASS` cell without a
-rock or port, from a per-cell hash of its coordinates and the terrain seed;
+rock or port, from the cell's `smallStones` sub-seed of the world seed;
 the densities are named constants. `Rocks.tsx` draws one `InstancedMesh`
 per variant on a white material, with `instanceColor` carrying the base
 colour times the tint. Instance counts (10-seed average, generator rocks +
@@ -500,9 +506,8 @@ the shader bends by weight², so a bush top moves about 5% of its height and
 a blade tip about 15%, against a frond tip's weight of 1), and the crown
 mask is 0 throughout, so the palm's crown twist and frond flutter leave
 shrubs alone. `shrubPlacement.ts` derives one to three shrubs per `SAND`/`GRASS`
-cell (`SHRUBS_PER_GRASS_CELL`, `SHRUBS_PER_SAND_CELL`, both `[1, 3]`) from a
-per-cell hash of the cell's coordinates and the whole terrain seed, as the
-stones do, within `SHRUB_SPREAD` (0.68) of the centre: wider than the
+cell (`SHRUBS_PER_GRASS_CELL`, `SHRUBS_PER_SAND_CELL`, both `[1, 3]`) from
+the cell's `shrubs` sub-seed of the world seed, as the stones do, within `SHRUB_SPREAD` (0.68) of the centre: wider than the
 stones' 0.55 because the generator keeps its trees and rocks within ±0.35
 of the centre, so the outer ring is where a grass cell has room left.
 Each shrub goes through `placeOnGround` with a probe the size of its stem
@@ -542,8 +547,8 @@ land cell's edge onto a water neighbour, the wrap respected so a seam edge
 onto land across it is not a coast) it samples `BOULDER_SAMPLES_PER_EDGE` (3)
 points along the edge,
 each offset `BOULDER_OFFSET_RANGE` (−0.45 inland … +0.2 offshore) from it,
-tries `BOULDER_KEEP_SHARE` (0.22) of them by a hash of the cell, edge and the
-whole terrain seed (`variationStream.ts`, the seed through the salt), and
+tries `BOULDER_KEEP_SHARE` (0.22) of them from the edge's own sub-seed of the
+world seed (`subSeed(worldSeed, "shoreBoulders", cellId, edgeIndex)`), and
 keeps those whose signed coast distance in the field is within `SHORE_BAND`
 (−0.3 … +0.4), so they follow the noisy coastline, not the hex edge; the
 edge a pier faces (its rotation points at the docking hex) is left clear.
@@ -619,7 +624,7 @@ are the faceted kit's heights; the aged kit below raises the house and
 the warehouse.)
 `portSettlement.ts` places a watchtower on the fort's side and up to three
 other buildings (kind order, scale ±8%, tint ±8% and yaw jitter ±8° from
-a hash of the cell and the whole terrain seed) on the landward half of the
+the port's `portBuildings` sub-seed of the world seed) on the landward half of the
 hex, facing the docking hex. The `PortMarker` is an invisible hover volume
 (#59: `visible` false, no shadow; R3F still raycasts it, like the water
 hexes) sized by `portHover.ts` to the settlement as placed: the
@@ -831,11 +836,11 @@ high and higher to either side, so the deck is lifted until it stands
 footprint is probed as `placeOnGround` does and the whole quay is lowered
 onto the lowest point should the ground fall away, so it never floats
 (on generated maps it never has to). Width and depth vary ±10–15 % per
-port from a hash of the cell and the whole terrain seed, as instance
+port from the port's `quay` sub-seed of the world seed, as instance
 scale. `Quays.tsx` draws one `InstancedMesh` per world copy, on the seabed
 prepass layer too. `quayTopAt(quay, point)` is the seam for the
 settlement: the deck or step height under a world point over a placed
-quay, or undefined off it; `quayTopY(cell, field, seed, point)` is the
+quay, or undefined off it; `quayTopY(cell, field, worldSeed, point)` is the
 same for a cell, placing the quay first.
 
 **Standing on the ground (#59).** A building stands ON the ground, never

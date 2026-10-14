@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import type { MapCell } from "../../game/types";
 import { hexGrid, hexToWorld, worldToHex } from "../../game/hex";
 import { createReefMask } from "./reefMask";
-import { createTerrainHeightField, terrainSeedFromCells, type TerrainHeightField } from "./terrainHeightField";
+import { createTerrainHeightField, type TerrainHeightField } from "./terrainHeightField";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { LAND_MESH_SPACING } from "./landMesh";
@@ -46,6 +46,7 @@ function rampField(): TerrainHeightField {
     isNearLand: () => false,
     isNearSeabed: () => false,
     bounds,
+    worldSeed: 0,
   };
 }
 
@@ -311,7 +312,7 @@ describe("terrainFieldTexture", () => {
   it("is fine enough (≥ 12 texels per unit) for a smooth surf outline, even on the large map", () => {
     expect(TERRAIN_TEXELS_PER_UNIT).toBeGreaterThanOrEqual(12);
     const cells = generateMap(getMapPreset("large"), 31337);
-    const { bounds } = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const { bounds } = createTerrainHeightField(cells, 31337);
     const longSide = Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
     // The cap must not lower the density on the largest map.
     expect(Math.ceil(longSide * TERRAIN_TEXELS_PER_UNIT)).toBeLessThanOrEqual(TERRAIN_TEXTURE_MAX_SIZE);

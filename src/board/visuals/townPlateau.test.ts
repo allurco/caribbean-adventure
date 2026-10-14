@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createWrap } from "../../game/hex";
-import { createTerrainHeightField, terrainSeedFromCells, type TerrainHeightField } from "./terrainHeightField";
+import { createTerrainHeightField, type TerrainHeightField } from "./terrainHeightField";
 import {
   MAX_TERRACES,
   RISER,
@@ -30,7 +30,7 @@ function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightF
   const preset = getMapPreset("small");
   const wrap = createWrap(preset.columns);
   const cells = generateMap(preset, seed, wrap);
-  const terrainSeed = terrainSeedFromCells(cells);
+  const terrainSeed = seed;
   return {
     plain: createTerrainHeightField(cells, terrainSeed, { wrap, towns: false }),
     town: createTerrainHeightField(cells, terrainSeed, { wrap }),
@@ -263,7 +263,7 @@ describe("town plateaus (#87)", () => {
       // Each port alone on the map plans the same plateau it plans among the others.
       const alone = createTerrainHeightField(
         cells.map((c) => (c === ports[ports.length - 1] || !c.hasPort ? c : { ...c, hasPort: false })),
-        terrainSeedFromCells(cells),
+        seed,
         { wrap }
       );
       expect(alone.townPlateaus[0]).toEqual(town.townPlateaus[town.townPlateaus.length - 1]);

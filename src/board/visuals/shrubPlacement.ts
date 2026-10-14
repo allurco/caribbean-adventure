@@ -3,8 +3,8 @@
  *
  * The map generator only emits trees and rocks, so grassland and beaches read
  * as bare between the palms. This derives one to three bush clusters per
- * GRASS cell and one to three dry tufts per SAND cell, placed from a per-cell
- * hash of the cell's coordinates and the map's terrain seed (the
+ * GRASS cell and one to three dry tufts per SAND cell, placed from the cell's
+ * own sub-seed of the world seed (`G.mapSeed`, ADR 0007; the
  * `smallStones.ts` pattern), so nothing is stored in G and every client draws
  * the same vegetation. Each shrub stands on the height field, keeps clear of
  * the cell's trees, rocks, stones and pier and of the port marker, and is
@@ -19,7 +19,10 @@ import { ROCK_SIZE_CLASS_SCALE, rockSizeClass } from "./rockVariation";
 import { SHRUB_FOOTPRINT_RADIUS, type ShrubKind } from "./shrubGeometry";
 import type { ShrubPlacement } from "./shrubVariation";
 import type { DecorationData } from "./useDecorationLayout";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { mapCellId } from "./islands";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
+import { lerpRange } from "./variationStream";
 import { PROP_DENSITY, PROP_SCALE } from "./worldScale";
 import { PIER_LENGTH, PIER_WIDTH } from "./pierGeometry";
 import { QUAY_BACK, QUAY_SEA_FACE, QUAY_WIDTH } from "./quayGeometry";
@@ -79,7 +82,6 @@ const SHRUB_PLACEMENT: Omit<GroundPlacementOptions, "footprintRadius"> = {
   maxSlope: 1.2,
   maxBury: SHRUB_MAX_BURY,
 };
-const SHRUB_SALT = 0x3e9c57d1;
 const TAU = Math.PI * 2;
 
 const SHRUBS_PER_CELL: Readonly<Record<Biome, readonly [number, number]>> = {
@@ -194,11 +196,11 @@ const clear = (x: number, z: number, radius: number, obstacles: readonly ShrubOb
 const obstacleReach = (o: ShrubObstacle) =>
   o.radius + SHRUB_SPREAD + SHRUB_FOOTPRINT_RADIUS.bush * SHRUB_SCALE_RANGE[1] + SHRUB_CLEARANCE;
 
-/** The shrubs for every sand or grass cell, on the ground; `seed` is the map's terrain seed. */
+/** The shrubs for every sand or grass cell, on the ground; `worldSeed` is `G.mapSeed`. */
 export function placeShrubs(
   cells: readonly MapCell[],
   field: GroundField,
-  seed: number,
+  worldSeed: number,
   placed: PlacedProps
 ): ShrubPlacement[] {
   const obstacles = shrubObstacles(placed);
@@ -212,9 +214,8 @@ export function placeShrubs(
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     const anchor = { x: hexX, z: hexZ };
-    // The seed goes in through the salt: seedOf quantises its values by 4096 (a
-    // 12-bit shift into int32), which would drop a 32-bit seed's top 12 bits.
-    const next = stream(seedOf([cell.hex.q, cell.hex.r], SHRUB_SALT ^ seed));
+    const id = mapCellId(cell);
+    const next = stream(subSeed(worldSeed, SEED_FEATURES.shrubs, id));
     const count = min + Math.floor(next() * (max - min + 1));
 
     // Only this cell's props can touch its shrubs; neighbours' props are too far.
@@ -240,7 +241,7 @@ export function placeShrubs(
         // Other shrubs of this cell may touch but not overlap.
         if (!placedHere.every((o) => segmentDistance(ground.x, ground.z, o) >= o.radius + radius)) continue;
 
-        shrubs.push({ kind, worldX: ground.x, worldY: ground.y, worldZ: ground.z, rotation, scale });
+        shrubs.push({ kind, worldX: ground.x, worldY: ground.y, worldZ: ground.z, rotation, scale, seed: subSeed(worldSeed, SEED_FEATURES.shrubLook, id, i) });
         placedHere.push({ ax: ground.x, az: ground.z, bx: ground.x, bz: ground.z, radius });
         break;
       }

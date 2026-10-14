@@ -20,14 +20,14 @@ export interface DecorationLayout extends Omit<DecorationPlacements, "shrubs"> {
   villageGeometry: BufferGeometry;
 }
 
-/** Places every decoration on the height field once per map (and wrap). */
-export function useDecorationLayout(cells: MapCell[], wrap: MapWrap): DecorationLayout {
+/** Places every decoration on the height field once per map (and wrap), seeded from `worldSeed` (`G.mapSeed`). */
+export function useDecorationLayout(cells: MapCell[], wrap: MapWrap, worldSeed: number): DecorationLayout {
   // Collect all decorations with their world positions
-  const decorationsByType = decorationLayoutOf(cells, wrap);
+  const decorationsByType = decorationLayoutOf(cells, wrap, worldSeed);
   // One clock for everything that sways, so reduced motion stops palms and shrubs together.
   const sway = useSwayClock();
   const palms = usePalmTrees(decorationsByType.trees, sway);
   const shrubs = useShrubs(decorationsByType.shrubs, sway);
-  const villageGeometry = usePortVillage(cells, wrap);
+  const villageGeometry = usePortVillage(cells, wrap, worldSeed);
   return useMemo(() => ({ ...decorationsByType, palms, shrubs, villageGeometry }), [decorationsByType, palms, shrubs, villageGeometry]);
 }

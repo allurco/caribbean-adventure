@@ -32,4 +32,4 @@ The board is to look varied the way a Minecraft world does (#158): every map see
 - Every seeded visual slice tests S1 (same seed and size, fresh caches, deep-equal) and S2 (two seeds, measurably different output), and from 5b on sweeps 200 seeds per size.
 - A planted `Math.random` in game or render code fails `npm run lint`, and a test keeps the rule in place.
 - Two clients on one seed draw one world; a replay or shared seed reproduces the draft.
-- `seedOf` (quantised) stays only until the modules that use it move to `subSeed`; new code uses `subSeed`.
+- The board is on `G.mapSeed` (#165): the terrain field's three noises, the land mesh's bands and every decoration, port kit, village and town detail draw from named sub-seeds (`seedFeatures.ts`); `terrainSeedFromCells` is gone. A prop's look draws from its own sub-seed (`seed` on its placement), never from its position. `seedOf` (quantised) is left only to the fixed mesh vocabulary every map shares (house wear, quay courses, vertex colour jitter), which is not world-seeded; new code uses `subSeed`.

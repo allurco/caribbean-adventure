@@ -1,8 +1,8 @@
 /**
  * Per-rock variation (issue #49). Pure, no Three.js.
  *
- * A rock's look is derived deterministically from its decoration data and
- * its cell's biome, so the same map draws the same rocks on every client:
+ * A rock's look is derived deterministically from its own sub-seed of the
+ * world seed and its cell's biome, so the same map draws the same rocks on every client:
  * which of the faceted variants it uses, a base colour by biome with a tint
  * within ±15% of it, a non-uniform stretch, a small tilt, how deep it is
  * buried, and a size class (large outcrops on ROCK cells, medium on GRASS,
@@ -16,7 +16,7 @@
  */
 import type { Biome } from "../../game/types";
 import { ROCK_UNIT_RADIUS, ROCK_VARIANT_COUNT, rockVariantRadii } from "./rockGeometry";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { lerpRange, stream } from "./variationStream";
 import { PROP_SCALE } from "./worldScale";
 
 /** Where a rock stands, after ground placement. */
@@ -29,6 +29,11 @@ export interface RockPlacement {
   scale: number;
   /** Biome of the rock's cell; unknown counts as grass. */
   biome?: Biome;
+  /**
+   * The prop's own sub-seed of the world seed (`subSeed(G.mapSeed, feature, cellId, index…)`,
+   * ADR 0007), set where it was placed: its look draws from it alone.
+   */
+  seed: number;
 }
 
 export type RockSizeClass = "large" | "medium" | "small";
@@ -124,11 +129,12 @@ function cappedScale(variant: number, scale: readonly [number, number, number]):
 
 /**
  * The rock's variation; `sizeClass` overrides the biome's (small stones).
- * Hashes the placement's X, Z, rotation and scale, never its Y, so the
- * placement can derive the same variation before it knows the ground height.
+ * It draws from the rock's own `seed` and reads its scale, rotation and
+ * biome, never its position, so the placement can derive the same variation
+ * before it knows where the rock ends up.
  */
 export function rockVariation(p: RockPlacement, sizeClass: RockSizeClass = rockSizeClass(p.biome)): RockVariation {
-  const next = stream(seedOf([p.worldX, p.worldZ, p.rotation, p.scale], 0x2f6b1a7d));
+  const next = stream(p.seed);
   const base = p.scale * ROCK_SIZE_CLASS_SCALE[sizeClass];
   const variant = Math.min(ROCK_VARIANT_COUNT - 1, Math.floor(next() * ROCK_VARIANT_COUNT));
   const tint = 1 + (next() * 2 - 1) * ROCK_TINT_SPREAD;

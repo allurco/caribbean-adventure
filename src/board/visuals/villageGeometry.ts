@@ -47,8 +47,8 @@ function sources() {
   return sourcesBuilt;
 }
 
-/** The villages of a decoration layout, their works standing on `ground` (the drawn land), as one soup. */
-export function villageGeometry(layout: Pick<DecorationPlacements, "village">, ground: GroundField): FacetGeometryData {
+/** The villages of a decoration layout, their works standing on `ground` (the drawn land) and seeded from `worldSeed` (`G.mapSeed`), as one soup. */
+export function villageGeometry(layout: Pick<DecorationPlacements, "village">, ground: GroundField, worldSeed: number): FacetGeometryData {
   const { list, index } = sources();
   const at = (key: string): number => {
     const i = index.get(key);
@@ -69,10 +69,10 @@ export function villageGeometry(layout: Pick<DecorationPlacements, "village">, g
     })),
     ...clutter.map((c) => ({ source: at(`${c.kind}#${c.variant}`), x: c.x, y: c.y, z: c.z, yaw: c.yaw, scale: c.scale })),
   ];
-  return mergeVillage(list, instances, [townWorks(ports, ground, BUILDING_SCALE, townWorksColors())]);
+  return mergeVillage(list, instances, [townWorks(ports, ground, BUILDING_SCALE, townWorksColors(), worldSeed)]);
 }
 
-/** `villageGeometry` for a map, once per map and wrap (`perMapCache`). */
-export const villageGeometryOf = perMapCache((cells: readonly MapCell[], wrap: MapWrap) =>
-  villageGeometry(decorationLayoutOf(cells, wrap), landSurface(sharedTerrainField(cells, wrap)))
+/** `villageGeometry` for a map, once per map, wrap and world seed (`perMapCache`). */
+export const villageGeometryOf = perMapCache((cells: readonly MapCell[], wrap: MapWrap, worldSeed: number) =>
+  villageGeometry(decorationLayoutOf(cells, wrap, worldSeed), landSurface(sharedTerrainField(cells, wrap, worldSeed)), worldSeed)
 );

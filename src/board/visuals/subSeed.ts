@@ -14,6 +14,12 @@
  */
 export { stream } from "./variationStream";
 
+/**
+ * The world seed of a match: `G.mapSeed`, which `setup()` always sets. Hand-built
+ * states (tests) may leave it out, and then draw the world of seed 0.
+ */
+export const worldSeedOf = (state: { mapSeed?: number }): number => state.mapSeed ?? 0;
+
 /** A stable id in a sub-seed: a string key, or a 32-bit integer (signed or unsigned). */
 export type SeedId = string | number;
 

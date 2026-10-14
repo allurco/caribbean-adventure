@@ -30,7 +30,7 @@ import {
   QUAY_WIDTH_RANGE,
   type QuayPlacement,
 } from "./quayPlacement";
-import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField, SEA_LEVEL } from "./terrainHeightField";
 import { PROP_SCALE } from "./worldScale";
 
 const flat = (height: number): GroundField => ({ sampleHeight: () => height });
@@ -118,7 +118,7 @@ describe("quayAt", () => {
     const wrap = createWrap(columns);
     const width = wrapWorldWidth(wrap);
     const cells = generateMap(getMapPreset("small"), 11);
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+    const field = createTerrainHeightField(cells, 11, { wrap });
     const ports = cells.filter((c) => c.hasPort);
     expect(ports.length).toBeGreaterThan(0);
     for (const cell of ports) {
@@ -157,7 +157,7 @@ describe("placeQuay", () => {
   it("on generated maps, every port's quay stands at its pier root, above the sand at its sea face and never floating", () => {
     for (const mapSeed of [11, 23, 47]) {
       const cells = generateMap(getMapPreset("small"), mapSeed);
-      const terrainSeed = terrainSeedFromCells(cells);
+      const terrainSeed = mapSeed;
       const field = createTerrainHeightField(cells, terrainSeed);
       const quays = portQuays(cells, field, terrainSeed);
       const ports = cells.filter((c) => c.hasPort);
@@ -191,7 +191,7 @@ describe("placeQuay", () => {
     const lifts: number[] = [];
     for (const mapSeed of [11, 23, 47, 61, 83]) {
       const cells = generateMap(getMapPreset("small"), mapSeed);
-      const terrainSeed = terrainSeedFromCells(cells);
+      const terrainSeed = mapSeed;
       const field = createTerrainHeightField(cells, terrainSeed);
       for (const q of portQuays(cells, field, terrainSeed)) lifts.push(q.worldY);
     }

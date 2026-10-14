@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createWrap } from "../../game/hex";
-import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells, type TerrainHeightField } from "./terrainHeightField";
+import { createTerrainHeightField, SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { buildLandMesh, landSurface, TOWN_FLAG_MARGIN } from "./landMesh";
 import { PAVING_TONE, pavingTone, townGround, TOWN_REFINE } from "./townGround";
 import { plateauPoint } from "./townPlateau";
@@ -11,7 +11,7 @@ function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightF
   const preset = getMapPreset("small");
   const wrap = createWrap(preset.columns);
   const cells = generateMap(preset, seed, wrap);
-  const terrainSeed = terrainSeedFromCells(cells);
+  const terrainSeed = seed;
   return {
     plain: createTerrainHeightField(cells, terrainSeed, { wrap, towns: false }),
     town: createTerrainHeightField(cells, terrainSeed, { wrap }),

@@ -5,18 +5,20 @@ import { createWrap } from "../../game/hex";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { landSurface } from "./landMesh";
 import { streetDistance } from "./townPlateau";
-import { streetEdgeStones } from "./townDetailLayout";
+import { streetEdgeStones, type TownSeed } from "./townDetailLayout";
 import { BUILDING_SCALE } from "./worldScale";
 
 const preset = getMapPreset("small");
 const wrap = createWrap(preset.columns);
-const field = sharedTerrainField(generateMap(preset, 1, wrap), wrap);
+const field = sharedTerrainField(generateMap(preset, 1, wrap), wrap, 1);
+/** Any town will do for the kerbs' shape: the stream only varies them. */
+const TOWN: TownSeed = { worldSeed: 1, portId: "0,0" };
 const ground = landSurface(field);
 
 describe("street edge stones (#91)", () => {
   it("lines both sides of every street, lanes included, with a kerb that runs on, not scattered stones", () => {
     for (const p of field.townPlateaus) {
-      const stones = streetEdgeStones(p, ground, BUILDING_SCALE, []);
+      const stones = streetEdgeStones(p, ground, BUILDING_SCALE, [], TOWN);
       for (const street of p.streets) {
         const len = Math.hypot(street.to[0] - street.from[0], street.to[1] - street.from[1]);
         const tx = (street.to[0] - street.from[0]) / len;
@@ -51,7 +53,7 @@ describe("street edge stones (#91)", () => {
 
   it("stands every kerb a little proud of the ground beside it and sunk into it below", () => {
     for (const p of field.townPlateaus) {
-      for (const s of streetEdgeStones(p, ground, BUILDING_SCALE, [])) {
+      for (const s of streetEdgeStones(p, ground, BUILDING_SCALE, [], TOWN)) {
         const g = ground.sampleHeight(s.x, s.z);
         expect(s.y0).toBeLessThan(g);
         expect(s.y1).toBeGreaterThan(g);
