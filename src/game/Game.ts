@@ -46,7 +46,7 @@ import {
   applyJuryRig,
 } from "./economy";
 import { createCaptainDeck, dealHands, findHomePort } from "./captains";
-import { moveAllNPCs, spawnMerchant, createFlotillaShip, getPortCells } from "./npcManager";
+import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { getBountyForAction, addBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
@@ -135,51 +135,6 @@ export function getMaxMoves(ship: {
   // Mast damage reduces movement (1 damage = -1 move)
   const mastDamage = ship.damage?.masts ?? 0;
   return Math.max(1, base - mastDamage);
-}
-
-/**
- * Spawn a flotilla to hunt a player who has accumulated enough bounty with a nation.
- * The flotilla spawns at a port belonging to that nation and hunts the target player.
- */
-function spawnFlotillaForPlayer(
-  G: CaribbeanState,
-  nation: string,
-  targetPlayerId: string
-): void {
-  // Find a port belonging to this nation to spawn the flotilla
-  const ports = getPortCells(G.cells);
-  const nationPort = ports.find((p) => p.nation === nation);
-
-  if (!nationPort) {
-    return; // No port found for this nation
-  }
-
-  // Check if there's already a flotilla from this nation hunting this player
-  const existingFlotilla = Object.values(G.npcs).find(
-    (npc) =>
-      npc.role === "FLOTILLA" &&
-      npc.nation === nation &&
-      npc.huntingTargetId === targetPlayerId
-  );
-
-  if (existingFlotilla) {
-    return; // Already have a flotilla hunting this player
-  }
-
-  // Generate a unique ID for the flotilla
-  G.npcIdCounter++;
-  const flotillaId = `flotilla-${G.npcIdCounter}`;
-
-  // Create the flotilla ship (Frigates are the standard warship)
-  const flotilla = createFlotillaShip(
-    flotillaId,
-    nationPort.hex,
-    nation as "England" | "France" | "Spain" | "Netherlands",
-    "Frigate",
-    targetPlayerId
-  );
-
-  G.npcs[flotillaId] = flotilla;
 }
 
 export const Caribbean: Game<CaribbeanState> = {

@@ -14,6 +14,7 @@ import {
   createNPCShip,
   shouldDespawn,
   despawnNPC,
+  spawnFlotillaForPlayer,
 } from "./npcManager";
 
 function createTestState(cells: MapCell[]): CaribbeanState {
@@ -36,11 +37,11 @@ function createSimpleMapWithPorts(): MapCell[] {
   return [
     { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
     { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
-    { hex: hex(2, 0), terrain: "island", elevation: 2, hasPort: true, nation: "Spain" },
+    { hex: hex(2, 0), terrain: "island", elevation: 2, hasPort: true, nation: "Spain", dockingHex: hex(1, 0) },
     { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
     { hex: hex(1, 1), terrain: "water", elevation: 0, hasPort: false },
     { hex: hex(0, 2), terrain: "water", elevation: 0, hasPort: false },
-    { hex: hex(-1, 2), terrain: "island", elevation: 2, hasPort: true, nation: "England" },
+    { hex: hex(-1, 2), terrain: "island", elevation: 2, hasPort: true, nation: "England", dockingHex: hex(0, 2) },
     { hex: hex(-1, 1), terrain: "water", elevation: 0, hasPort: false },
     { hex: hex(-1, 0), terrain: "water", elevation: 0, hasPort: false },
     { hex: hex(0, -1), terrain: "water", elevation: 0, hasPort: false },
@@ -486,5 +487,113 @@ describe("integration: full merchant lifecycle", () => {
       // If still exists, should have moved from start
       expect(hexEquals(npc.position, startPos)).toBe(false);
     }
+  });
+});
+
+describe("NPCs spawn on the water beside their port (#189)", () => {
+  function dockedPortsMap(): MapCell[] {
+    return [
+      { hex: hex(0, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(2, 0), terrain: "island", elevation: 1, hasPort: true, nation: "Spain", dockingHex: hex(1, 0) },
+      { hex: hex(0, 1), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(-1, 2), terrain: "island", elevation: 1, hasPort: true, nation: "England", dockingHex: hex(0, 1) },
+    ];
+  }
+
+  function cellUnder(G: CaribbeanState, h: Hex): MapCell {
+    return G.cells.find((c) => hexEquals(c.hex, h))!;
+  }
+
+  for (const roll of [0, 0.99]) {
+    it(`a merchant starts on its spawn port's docking hex (roll ${roll})`, () => {
+      const G = createTestState(dockedPortsMap());
+      const id = spawnMerchant(G, () => roll);
+      expect(id).not.toBeNull();
+      const npc = G.npcs[id!];
+      const spawnPort = cellUnder(G, npc.spawnPortHex);
+
+      expect(spawnPort.hasPort).toBe(true);
+      expect(cellUnder(G, npc.position).terrain).toBe("water");
+      expect(npc.position).toEqual(spawnPort.dockingHex);
+      // The route still names the port cells
+      expect(cellUnder(G, npc.destinationPortHex).hasPort).toBe(true);
+      expect(hexEquals(npc.destinationPortHex, npc.spawnPortHex)).toBe(false);
+    });
+  }
+
+  it("a merchant sails from the docking hex to its destination port and despawns", () => {
+    const G = createTestState(dockedPortsMap());
+    const id = spawnMerchant(G, () => 0)!;
+    expect(cellUnder(G, G.npcs[id].position).terrain).toBe("water");
+    for (let turn = 0; turn < 5 && G.npcs[id]; turn++) moveAllNPCs(G);
+    expect(G.npcs[id]).toBeUndefined();
+  });
+
+  it("a port without a docking hex is never a spawn point", () => {
+    for (const roll of [0, 0.5, 0.99]) {
+      const cells = dockedPortsMap();
+      delete cells[4].dockingHex; // England
+      const G = createTestState(cells);
+      const id = spawnMerchant(G, () => roll)!;
+      expect(G.npcs[id].nation).toBe("Spain");
+      expect(G.npcs[id].position).toEqual(hex(1, 0));
+    }
+  });
+
+  it("a merchant takes another free water hex beside the port when the dock is occupied", () => {
+    const cells = [...dockedPortsMap(), { hex: hex(2, -1), terrain: "water", elevation: 0, hasPort: false } as MapCell];
+    const G = createTestState(cells);
+    G.npcs["blocker"] = createNPCShip("blocker", hex(1, 0), hex(-1, 2), "Spain", "Flute", () => 0.5);
+    const id = spawnMerchant(G, () => 0)!; // Spain
+    const npc = G.npcs[id];
+    expect(cellUnder(G, npc.position).terrain).toBe("water");
+    expect(hexEquals(npc.position, hex(1, 0))).toBe(false);
+    expect(hexDistance(npc.position, hex(2, 0))).toBe(1);
+  });
+
+  it("no merchant spawns when the port has no free water beside it", () => {
+    const cells: MapCell[] = [
+      { hex: hex(1, 0), terrain: "water", elevation: 0, hasPort: false },
+      { hex: hex(2, 0), terrain: "island", elevation: 1, hasPort: true, nation: "Spain", dockingHex: hex(1, 0) },
+      { hex: hex(-1, 2), terrain: "island", elevation: 1, hasPort: true, nation: "England" },
+    ];
+    const G = createTestState(cells);
+    G.npcs["blocker"] = createNPCShip("blocker", hex(1, 0), hex(-1, 2), "Spain", "Flute", () => 0.5);
+    expect(spawnMerchant(G, () => 0)).toBeNull();
+    expect(Object.keys(G.npcs)).toEqual(["blocker"]);
+  });
+
+  it("a flotilla starts on its nation's port docking hex and hunts from there", () => {
+    const G = createTestState(dockedPortsMap());
+    G.ships["0"] = { position: hex(0, 0) } as CaribbeanState["ships"][string];
+    const id = spawnFlotillaForPlayer(G, "England", "0");
+    expect(id).not.toBeNull();
+    const flotilla = G.npcs[id!];
+
+    expect(cellUnder(G, flotilla.position).terrain).toBe("water");
+    expect(flotilla.position).toEqual(hex(0, 1));
+    expect(flotilla.spawnPortHex).toEqual(hex(-1, 2));
+    expect(flotilla.role).toBe("FLOTILLA");
+    expect(flotilla.huntingTargetId).toBe("0");
+
+    // From that start it has open water to sail
+    const path = findPath(flotilla.position, hex(1, 0), G.cells, {}, G.npcs, NO_WRAP);
+    expect(path.length).toBeGreaterThan(1);
+  });
+
+  it("a flotilla does not spawn on land when its nation's ports have no docking hex", () => {
+    const cells = dockedPortsMap();
+    delete cells[4].dockingHex;
+    const G = createTestState(cells);
+    expect(spawnFlotillaForPlayer(G, "England", "0")).toBeNull();
+    expect(Object.keys(G.npcs)).toHaveLength(0);
+  });
+
+  it("only one flotilla per nation hunts a player", () => {
+    const G = createTestState(dockedPortsMap());
+    expect(spawnFlotillaForPlayer(G, "Spain", "0")).not.toBeNull();
+    expect(spawnFlotillaForPlayer(G, "Spain", "0")).toBeNull();
+    expect(Object.keys(G.npcs)).toHaveLength(1);
   });
 });
