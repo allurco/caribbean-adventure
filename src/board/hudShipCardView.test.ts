@@ -52,7 +52,7 @@ describe("shipCardView", () => {
     expect(view.stats).toEqual([
       { label: "Cannons", value: "1" },
       { label: "Scouting", value: "2" },
-      { label: "Speed", value: "3" },
+      { label: "Moves", value: "3" },
       { label: "Cargo", value: "3/4" },
     ]);
   });

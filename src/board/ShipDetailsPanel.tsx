@@ -99,7 +99,7 @@ export function ShipDetailsPanel({ ship, onClose, onStashGold }: ShipDetailsPane
           Crew: {ship.stats?.crew.current}/{ship.stats?.crew.max}
         </div>
         <div>Cannons: {ship.stats?.cannons}</div>
-        <div>Speed: {ship.stats?.maneuverability}</div>
+        <div>Moves per turn: {ship.stats?.maneuverability}</div>
         <div>Scouting: {ship.stats?.scouting}</div>
         <div>
           Cargo: {totalCargo}/{ship.maxCargo}

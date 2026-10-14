@@ -72,7 +72,7 @@ export function ShipyardPanel({ ship, onBuyShip }: ShipyardPanelProps) {
               {currentStats && (
                 <div className="space-y-0.5 mb-2">
                   <StatCompare
-                    label="Speed"
+                    label="Moves"
                     current={currentStats.maneuverability}
                     next={specs.maneuverability}
                   />
