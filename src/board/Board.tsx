@@ -83,6 +83,7 @@ import { RenderStatsOverlay } from "./RenderStatsOverlay";
 import { DevSeedControl } from "./DevSeedControl";
 import { PLAYER_COLOURS } from "./shipOwnerColour";
 import { npcShipLook, playerShipLook } from "./shipLook";
+import type { ShipFlag } from "./shipFlags";
 import { GallerySnapshot } from "../lab/GallerySnapshot";
 import { STARTER_SHIP_CLASSES } from "../game/types";
 import { createRenderStatsFeed } from "./renderStats";
@@ -97,6 +98,8 @@ interface SinkingShipData {
   shipClass?: ShipClass;
   /** The heading it last sailed on, which it goes down facing. */
   heading: number;
+  /** The flag it flew, which goes down limp with it (#204). */
+  flag: ShipFlag | null;
 }
 
 /**
@@ -456,6 +459,7 @@ function Scene({
           position={ship.position}
           color={ship.color}
           shipClass={ship.shipClass}
+          flag={ship.flag}
           heading={ship.heading}
           onComplete={() => onSinkingComplete(ship.id)}
         />
@@ -614,6 +618,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         color: PLAYER_COLOURS[id] ?? "#888888",
         shipClass: prevSnapshots[id].shipClass,
         heading: headings[id] ?? 0,
+        // The flag it flew, from its last state: it has left G.ships (#204).
+        flag: playerShipLook(G, id, prevSnapshots[id]).flag,
       }));
 
       setSinkingShips((prev) => {
@@ -628,7 +634,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     prevShipSnapshotsRef.current = G.ships;
     for (const id of removedIds) delete headings[id];
     shipHeadingsRef.current = headings;
-  }, [G.ships, G.wrap]);
+  }, [G]);
 
   // Detect when current player docks at a new port
   useEffect(() => {

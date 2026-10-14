@@ -27,6 +27,13 @@ describe("playerShipLook", () => {
     expect(playerShipLook(G, "1").flag).toBe("France");
   });
 
+  it("flies a sunk ship's last flag, from its last state, once it has left G (#204)", () => {
+    const G = state({ "1": { turn: 2, cause: "sink" } });
+    const last = { captain: { id: "c5", name: "Mary", nation: "Spain", ability: "" } } as Parameters<typeof playerShipLook>[2];
+    expect(playerShipLook({ ...G, ships: {} }, "0", last)).toEqual({ colour: PLAYER_COLOURS["0"], flag: "Spain" });
+    expect(playerShipLook(G, "1", last).flag).toBe("JollyRoger");
+  });
+
   it("reads a game without a pirates record as no pirates", () => {
     expect(playerShipLook(state(undefined), "0").flag).toBe("England");
   });
