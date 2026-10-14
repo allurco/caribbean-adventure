@@ -85,8 +85,7 @@ import { PortTooltip } from "./PortTooltip";
 import { ShipDetailsPanel } from "./ShipDetailsPanel";
 import { PortPanel } from "./PortPanel";
 import { DraftScreen } from "./DraftScreen";
-import { HudCaptainCard } from "./HudCaptainCard";
-import { HudShipCard } from "./HudShipCard";
+import { HudParchmentPanel } from "./HudParchmentPanel";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
 import { GameOverScreen } from "./GameOverScreen";
@@ -893,23 +892,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {/* Sound: mute and volume, under the turn bar */}
       {currentShipState && <HudSoundControl />}
 
-      {/* Bottom-left: unified HUD panel */}
+      {/* Bottom-left: captain and ship cards on parchment */}
       {currentShipState && (
-        <div className="absolute bottom-4 left-4 flex rounded-xl overflow-hidden border border-amber-800/30 bg-gradient-to-br from-stone-900/92 via-amber-950/88 to-stone-950/92 shadow-2xl shadow-black/50 backdrop-blur-md">
-          {/* Captain half */}
-          <div className="w-52 p-3.5 border-r border-amber-800/20">
-            <HudCaptainCard
-              captain={currentShipState.captain}
-              playerIndex={currentPlayer}
-              playerColor={PLAYER_COLORS[currentPlayer] ?? "#888"}
-            />
-          </div>
-
-          {/* Ship half */}
-          <div className="w-60 p-3.5">
-            <HudShipCard ship={currentShipState} />
-          </div>
-        </div>
+        <HudParchmentPanel
+          ship={currentShipState}
+          playerIndex={currentPlayer}
+          playerColor={PLAYER_COLORS[currentPlayer] ?? "#888"}
+        />
       )}
 
       {/* Action buttons - only in main phase */}
