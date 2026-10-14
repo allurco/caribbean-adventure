@@ -83,6 +83,47 @@ export function shadowExtentFor(distance: number, aspect: number, fit: ShadowFit
   return Math.min(fit.maxExtent, Math.max(fit.minExtent, wanted));
 }
 
+/** Half-sides of the shadow box: across the sun (the box's x) and along it (its y, in the sun's vertical plane). */
+export interface ShadowBox {
+  halfWidth: number;
+  halfHeight: number;
+}
+
+/**
+ * The shadow box fitted side by side (#169), tighter than the square
+ * `shadowExtentFor` under a low sun.
+ *
+ * The shadow camera looks along the sun with world up as its up, so its x
+ * axis is level and across the sun, and its y axis lies in the sun's vertical
+ * plane. A receiver at ground offset `a` along the sun's azimuth and height
+ * `y` lands at a·sin(e) + y·cos(e) up the box, but at its plain offset across
+ * it. So across the sun the box needs only the view's reach on the sea and
+ * the seabed, with no height margin; along it, each layer's reach shrinks by
+ * sin(e) and gains its height's cos(e). Under a 22° sun that makes the box
+ * about 0.4 of the square's height: the same map then spends its texels on
+ * level ground about evenly in both directions, instead of stretching each
+ * one 1/sin(e) = 2.7× long down the long shadows.
+ *
+ * Each side is clamped to [minExtent, maxExtent]; Infinity (horizon in view)
+ * clamps to max.
+ */
+export function shadowBoxFor(distance: number, aspect: number, fit: ShadowFit, focusHeight = 0): ShadowBox {
+  const e = toRadians(fit.sunElevationDeg);
+  const lift = Math.max(0, focusHeight);
+  const seaReach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect, lift);
+  const seabedReach = groundViewReach(distance, fit.pitch, fit.fovDeg, aspect, lift + fit.receiverDepth);
+  const clamp = (v: number) => Math.min(fit.maxExtent, Math.max(fit.minExtent, v));
+  return {
+    halfWidth: clamp(Math.max(seaReach, seabedReach)),
+    halfHeight: clamp(
+      Math.max(
+        seaReach * Math.sin(e) + fit.casterHeight * Math.cos(e),
+        seabedReach * Math.sin(e) + fit.receiverDepth * Math.cos(e)
+      )
+    ),
+  };
+}
+
 /** World-unit size of one shadow-map texel for a box of `extent` half-width. */
 export function shadowTexel(extent: number, mapSize: number): number {
   return (2 * extent) / mapSize;

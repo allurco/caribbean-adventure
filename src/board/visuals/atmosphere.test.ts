@@ -1,79 +1,38 @@
 import { describe, it, expect } from "vitest";
 import { PCFSoftShadowMap } from "three";
 import {
-  FILL_AZIMUTH_DEG,
-  FILL_DIRECTION,
-  FILL_ELEVATION_DEG,
-  FILL_INTENSITY,
-  FILL_OFFSET,
   SHADOW_CASTER_HEIGHT,
   SHADOW_EXTENT,
   SHADOW_EXTENT_MIN,
   SHADOW_MAP_TYPE,
-  SUN_AZIMUTH_DEG,
-  SUN_DIRECTION,
-  SUN_DISTANCE,
-  SUN_ELEVATION_DEG,
-  SUN_INTENSITY,
-  SUN_SHADOW,
+  sunShadowFor,
 } from "./atmosphere";
+import { GOLDEN_HOUR, lightingFor } from "./lighting";
 import { SEABED_FLOOR_DEPTH } from "./seabedProfile";
 import { SEABED_FADE_END, seabedVisibility } from "./waterOptics";
 import { metresToUnits, unitsToMetres } from "./worldScale";
 import { WAVE_CREST_BOUND_UNITS } from "./waveDisplacement";
-import { viewDirectionXZ } from "./sunDirection";
-import { shadowDepthRange, shadowExtentFor, shadowTexel } from "../shadowFit";
-import { CAMERA_DIRECTION, CAMERA_MAX_DISTANCE, CAMERA_MIN_DISTANCE } from "../cameraBounds";
+import { shadowBoxFor, shadowDepthRange, shadowTexel } from "../shadowFit";
+import { CAMERA_MAX_DISTANCE, CAMERA_MIN_DISTANCE } from "../cameraBounds";
 
-describe("the fill light (#63)", () => {
-  const view = viewDirectionXZ(CAMERA_DIRECTION);
-  /** How much of a light's horizontal direction points the way the camera looks. */
-  const alongView = (direction: readonly [number, number, number]) =>
-    direction[0] * view[0] + direction[2] * view[1];
-
-  it("comes from behind the camera, where the sun is in front of it", () => {
-    // Every wall the player sees faces the camera, and so faces away from a
-    // sun in front of it; only a light from behind the camera reaches them.
-    expect(alongView(SUN_DIRECTION)).toBeGreaterThan(0);
-    expect(alongView(FILL_DIRECTION)).toBeLessThan(0);
-  });
-
-  it("swings to the opposite side of the view from the sun", () => {
-    expect(Math.sign(FILL_AZIMUTH_DEG)).toBe(-Math.sign(SUN_AZIMUTH_DEG));
-    expect(Math.sign(FILL_DIRECTION[0])).toBe(-Math.sign(SUN_DIRECTION[0]));
-  });
-
-  it("sits lower than the sun, as bounce light does", () => {
-    expect(FILL_ELEVATION_DEG).toBeLessThan(SUN_ELEVATION_DEG);
-    expect(FILL_ELEVATION_DEG).toBeGreaterThan(0);
-  });
-
-  it("is a fraction of the sun's strength, never a second key light", () => {
-    const ratio = FILL_INTENSITY / SUN_INTENSITY;
-    expect(ratio).toBeGreaterThanOrEqual(0.15);
-    expect(ratio).toBeLessThanOrEqual(0.4);
-  });
-
-  it("is mounted along its direction at the sun's distance", () => {
-    expect(Math.hypot(...FILL_OFFSET)).toBeCloseTo(SUN_DISTANCE, 6);
-    FILL_OFFSET.forEach((component, axis) => {
-      expect(component).toBeCloseTo(FILL_DIRECTION[axis] * SUN_DISTANCE, 6);
-    });
-    // Behind the camera on the right, above the target.
-    const elevation = (FILL_ELEVATION_DEG * Math.PI) / 180;
-    expect(FILL_OFFSET[1]).toBeCloseTo(SUN_DISTANCE * Math.sin(elevation), 6);
-    expect(Math.hypot(FILL_OFFSET[0], FILL_OFFSET[2])).toBeCloseTo(SUN_DISTANCE * Math.cos(elevation), 6);
-    expect(FILL_OFFSET[0]).toBeGreaterThan(0);
-    expect(FILL_OFFSET[2]).toBeGreaterThan(0);
-  });
-});
+const golden = lightingFor(GOLDEN_HOUR);
+const SUN_SHADOW = sunShadowFor(golden.sun);
 
 describe("the sun's shadow camera", () => {
   const heights = { min: -metresToUnits(SEABED_FLOOR_DEPTH), max: SHADOW_CASTER_HEIGHT };
 
-  it("keeps the whole scene between its near and far planes at every box extent", () => {
+  it("fits to the sun's elevation", () => {
+    expect(SUN_SHADOW.fit.sunElevationDeg).toBe(golden.sun.elevationDeg);
+  });
+
+  it.each([
+    ["golden hour", GOLDEN_HOUR],
+    ["midday", 12],
+  ])("keeps the whole scene between its near and far planes at every box height (%s)", (_label, time) => {
+    const { sun } = lightingFor(time);
+    const sunDistance = Math.hypot(...sun.offset);
     for (const extent of [SHADOW_EXTENT_MIN, (SHADOW_EXTENT_MIN + SHADOW_EXTENT) / 2, SHADOW_EXTENT]) {
-      const { near, far } = shadowDepthRange(extent, SUN_DISTANCE, SUN_ELEVATION_DEG, heights);
+      const { near, far } = shadowDepthRange(extent, sunDistance, sun.elevationDeg, heights);
       expect(near).toBeGreaterThan(SUN_SHADOW.near);
       expect(far).toBeLessThan(SUN_SHADOW.far);
     }
@@ -101,15 +60,24 @@ describe("the sun's shadow camera", () => {
     expect(SUN_SHADOW.fit.receiverDepth).toBeLessThan(metresToUnits(SEABED_FLOOR_DEPTH));
   });
 
-  it("sits at the cap at full zoom-out and well under it at ship zoom", () => {
-    const texelMetres = (distance: number) =>
-      unitsToMetres(shadowTexel(shadowExtentFor(distance, 16 / 9, SUN_SHADOW.fit), SUN_SHADOW.mapSize));
-    expect(shadowExtentFor(CAMERA_MAX_DISTANCE, 16 / 9, SUN_SHADOW.fit)).toBe(SHADOW_EXTENT);
-    expect(texelMetres(CAMERA_MAX_DISTANCE)).toBeCloseTo(0.79, 2);
+  it("sits at the cap across the sun at full zoom-out and well under it at ship zoom", () => {
+    const box = (distance: number) => shadowBoxFor(distance, 16 / 9, SUN_SHADOW.fit);
+    const texelMetres = (extent: number) => unitsToMetres(shadowTexel(extent, SUN_SHADOW.mapSize));
+    expect(box(CAMERA_MAX_DISTANCE).halfWidth).toBe(SHADOW_EXTENT);
+    expect(texelMetres(box(CAMERA_MAX_DISTANCE).halfWidth)).toBeCloseTo(0.79, 2);
     // CAMERA_MIN_DISTANCE is as close as the zoom allows; 3.5 is the ship-zoom design point.
-    expect(shadowExtentFor(CAMERA_MIN_DISTANCE, 16 / 9, SUN_SHADOW.fit)).toBeLessThan(SHADOW_EXTENT * 0.5);
-    expect(texelMetres(CAMERA_MIN_DISTANCE)).toBeLessThan(0.38);
-    expect(texelMetres(3.5)).toBeLessThan(0.34);
+    expect(box(CAMERA_MIN_DISTANCE).halfWidth).toBeLessThan(SHADOW_EXTENT * 0.5);
+    expect(texelMetres(box(CAMERA_MIN_DISTANCE).halfWidth)).toBeLessThan(0.38);
+    expect(texelMetres(box(3.5).halfWidth)).toBeLessThan(0.34);
+  });
+
+  it("keeps the golden-hour shadows sharp at ship zoom: the ground texel down their length stays under 0.45 m", () => {
+    // A light-space texel spans texel / sin(elevation) of level ground along the sun.
+    const sin = Math.sin((golden.sun.elevationDeg * Math.PI) / 180);
+    for (const distance of [CAMERA_MIN_DISTANCE, 3.5]) {
+      const along = unitsToMetres(shadowTexel(shadowBoxFor(distance, 16 / 9, SUN_SHADOW.fit).halfHeight, SUN_SHADOW.mapSize)) / sin;
+      expect(along).toBeLessThan(0.45);
+    }
   });
 
   it("does not ask for the deprecated PCFSoft filter, which three 0.182 replaces with PCF", () => {
