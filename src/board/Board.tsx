@@ -71,6 +71,11 @@ import { reachClick, reachConfirm, selectionKey } from "./routeSelection";
 import { clipToWater, reachEdges, ribbonPositions, waterHexTriangles } from "./reachOutline";
 import { useRouteSailing } from "./useRouteSailing";
 import { RouteHint } from "./RouteHint";
+import { RegionBorders } from "./RegionBorders";
+import { RegionLabels } from "./RegionLabels";
+import { RegionTooltip } from "./RegionTooltip";
+import { useRegionBorders } from "./useRegionBorders";
+import { regionAt, regionLabels } from "./regionMap";
 import { useTurnHandoff } from "./useTurnHandoff";
 import { controlsLocked, holdsNpcs } from "./turnHandoff";
 import { TurnEndedBanner } from "./TurnEndedBanner";
@@ -420,6 +425,9 @@ function Scene({
     () => ({ displacements: waves.displacements, terrainField }),
     [waves.displacements, terrainField]
   );
+  // The regions (#239): faint borders on the water and each region's name
+  const regionBorderLines = useRegionBorders(G.cells, G.wrap, waveSurface);
+  const regionNames = useMemo(() => regionLabels(G.cells, G.regions ?? [], G.wrap), [G.cells, G.regions, G.wrap]);
   const grid = useHexGrid({
     surface: waveSurface,
     cells: G.cells,
@@ -549,6 +557,10 @@ function Scene({
 
       <HexGrid grid={grid} copy={copy} />
 
+      {/* The regions' borders and names (#239) */}
+      <RegionBorders lines={regionBorderLines} />
+      <RegionLabels labels={regionNames} />
+
       {/* The turn's reach and the previewed route (#213) */}
       <ReachOverlay reach={reachShapes} target={targetShape} dots={routeDotPoints} />
 
@@ -644,9 +656,21 @@ function Scene({
           hasShipyard={hoveredPort.hasShipyard}
           ship={G.ships[currentPlayer]}
           market={hoveredPort.market}
+          regionName={regionAt(G.cells, G.regions ?? [], hoveredPort.hex)?.name}
         />
         </PointerCopy>
       )}
+
+      {/* The region of the hovered sea hex (#239) */}
+      {grid.hoveredHex && !hoveredShipId && !hoveredPort && (() => {
+        const region = regionAt(G.cells, G.regions ?? [], grid.hoveredHex);
+        if (!region) return null;
+        return (
+          <PointerCopy x={hexToWorld(grid.hoveredHex)[0]} period={period}>
+            <RegionTooltip position={hexToWorld(grid.hoveredHex)} region={region} />
+          </PointerCopy>
+        );
+      })()}
 
       <MapControls
         ref={controlsRef}

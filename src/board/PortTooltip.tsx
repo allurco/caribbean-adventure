@@ -10,6 +10,8 @@ interface PortTooltipProps {
   hasShipyard?: boolean;
   ship: ShipState;
   market?: PortMarket;
+  /** The region the port lies in (#239). */
+  regionName?: string;
 }
 
 const GOOD_COLORS: Record<GoodType, string> = {
@@ -26,6 +28,7 @@ export function PortTooltip({
   hasShipyard,
   ship,
   market,
+  regionName,
 }: PortTooltipProps) {
   const isBanned = isBannedAtPort(ship, nation);
   const isPiratePort = nation === "Pirate";
@@ -51,6 +54,7 @@ export function PortTooltip({
         {/* Nation label */}
         <div className={`text-[10px] mb-1 ${isPiratePort ? "text-gray-500" : "text-amber-400/60"}`}>
           {isPiratePort ? "Pirate Haven" : `${nation ?? "Unknown"} Territory`}
+          {regionName && <span> · {regionName}</span>}
         </div>
 
         {/* In-Demand good */}
