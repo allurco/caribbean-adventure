@@ -1035,7 +1035,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           attackMode={attackMode}
           spyglassMode={spyglassMode}
           attackTargetHexes={attackTargetHexes}
-          spyglassTargetHexes={spyglassTargetHexes}
+          // Another seat's scouting reach is not this seat's to offer (#110)
+          spyglassTargetHexes={mayAct ? spyglassTargetHexes : []}
           sinkingShips={sinkingShips}
           npcs={shownNpcs}
           // Another seat's turn locks the board like a hand-off does (#110)

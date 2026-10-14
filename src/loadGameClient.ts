@@ -1,5 +1,4 @@
 import { Client } from "boardgame.io/react";
-import { Local } from "boardgame.io/multiplayer";
 import { Caribbean, PLAYER_COUNT, withGeneratedMap, withHotseatView } from "./game/Game";
 import type { CaribbeanSetupData } from "./game/Game";
 import { resolveMapRequest } from "./game/mapRequest";
@@ -26,7 +25,8 @@ export async function loadGameClient(setupData: CaribbeanSetupData | undefined) 
  * view (`playerView`, #109), as a networked seat would.
  */
 export async function loadSeatClient(setupData: CaribbeanSetupData | undefined) {
-  const map = await generateMap(setupData);
+  // Its own chunk: the multiplayer module brings the socket.io client, which the hotseat game never needs.
+  const [map, { Local }] = await Promise.all([generateMap(setupData), import("boardgame.io/multiplayer")]);
   return Client({ game: withGeneratedMap(Caribbean, map), board: CaribbeanBoard, numPlayers: PLAYER_COUNT, multiplayer: Local() });
 }
 
