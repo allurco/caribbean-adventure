@@ -1166,6 +1166,27 @@ bright as dry sand). `PALETTE_SURF` is gone.
   foam, the band included, fades out over the last metre of water
   (`SHIP_FOAM_SHALLOW_METRES`) and is nothing on land. Distances wrap
   east–west.
+- *Wakes* (`wakeTrail.ts`, `wakeFoam.ts`, #144). The water keeps each
+  ship's recent path from the same registry: a point every
+  `WAKE_POINT_SPACING` (0.3 units) sailed above `WAKE_MIN_SPEED`, the ship
+  itself as the trail's newest end, aged on the wave clock's step (so
+  frozen, and laying nothing, under reduced motion) and dropped after
+  `WAKE_LIFETIME_SECONDS` (4.5 s) or past `WAKE_MAX_LENGTH` (7 units) of
+  path. All ships share `WAKE_POINT_BUDGET` (48) points, kept in the order
+  they were laid, so a full budget drops the oldest first; the shader reads
+  them as up to 48 segments (two `vec4` each) and skips a segment where the
+  pixel is past its reach. Positions are unwrapped onto the trail, so a ship
+  crossing the seam leaves one wake; a jump over `WAKE_BREAK_DISTANCE`
+  starts a new trail; a ship that leaves the registry (sunk) lays nothing
+  more and its wake fades where it was. The foam has a turbulent **centre
+  line** about a beam wide, strongest just astern, widening and fading with
+  age, and two **Kelvin arms** at asin(1/3) ≈ 19.47° either side of the
+  path from the bow (`s · tan 19.47°` off the path, `s` astern of the bow),
+  thin lines that widen and fade with age and are stronger at speed (the
+  segment's length over the time between its ends). The water takes the
+  strongest of the hull foam and the wake, so they join without a seam,
+  through the same lace and depth fade; the arms fade out under a couple of
+  pixels like the contact line.
 
 *Foam above the island.* The water plane stops showing where the land mesh
 rises above the waterline, so on its own the wash was cut off at the beach.
@@ -1401,6 +1422,8 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | `src/board/visuals/shoreFoamLand.ts` | Patches the land material so the wash runs up the sand |
 | `src/board/visuals/hullFoam.ts` | Contact foam around a hull |
 | `src/board/visuals/hullContact.ts` | Contact line, bow wave and wet band at a hull's waterline |
+| `src/board/visuals/wakeTrail.ts` | Each ship's recent path for its wake: points, ages, the shared budget |
+| `src/board/visuals/wakeFoam.ts` | Wake foam: the turbulent centre line and the Kelvin arms |
 | `src/board/shipFoamSources.ts` | Ships' animated positions for the hull foam |
 | `src/board/visuals/foamShading.ts` | Foam union, lace, detail fade, radiance; the surf pulse and churn noise |
 | `src/board/visuals/causticFocus.ts` | Caustic maths: focus matrix, Hessian, intensity, depth and LOD fades |
