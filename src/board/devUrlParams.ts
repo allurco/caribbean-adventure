@@ -21,6 +21,8 @@ export interface DevUrlParams {
   soundLab?: true;
   /** `?buoys=1`: buoys on the CPU sea surface around the camera focus, to check it rides the drawn water (#141). */
   seaBuoys?: true;
+  /** `?stats=1`: a corner readout of fps, draw calls and triangles (#162), in dev builds only. */
+  renderStats?: true;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -46,6 +48,7 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   }
   if (params.get("view") === "sound") out.soundLab = true;
   if (params.get("buoys") === "1") out.seaBuoys = true;
+  if (params.get("stats") === "1") out.renderStats = true;
 
   return out;
 }

@@ -72,11 +72,19 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?buoys=yes")).toEqual({});
   });
 
+  it("shows the render stats overlay", () => {
+    expect(parseDevUrlParams("?stats=1")).toEqual({ renderStats: true });
+    expect(parseDevUrlParams("?stats=0")).toEqual({});
+    expect(parseDevUrlParams("?stats=true")).toEqual({});
+    expect(parseDevUrlParams("?stats")).toEqual({});
+  });
+
   it("reads every parameter from one URL", () => {
-    expect(parseDevUrlParams("?size=small&seed=1&cx=12&cz=13.9&dist=4.3")).toEqual({
+    expect(parseDevUrlParams("?size=small&seed=1&cx=12&cz=13.9&dist=4.3&stats=1")).toEqual({
       setupData: { mapSize: "small", mapSeed: 1 },
       cameraTarget: [12, 0, 13.9],
       cameraDistance: 4.3,
+      renderStats: true,
     });
   });
 });
