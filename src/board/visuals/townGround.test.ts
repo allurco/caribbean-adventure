@@ -117,6 +117,9 @@ describe("town ground (#87)", () => {
     const { positions, colors, normals } = fine.land;
     const seen = new Map<string, number[]>();
     let shared = 0;
+    // The largest difference at a shared vertex, asserted once: one expect per
+    // component was most of the test's time, close to the 5 s default on a slow CI runner.
+    let worst = 0;
     for (let t = 0; t < positions.length / 9; t++) {
       const o = t * 9;
       const cx = (positions[o] + positions[o + 3] + positions[o + 6]) / 3;
@@ -135,10 +138,12 @@ describe("town ground (#87)", () => {
           seen.set(key, shade);
           continue;
         }
-        for (let i = 0; i < 6; i++) expect(shade[i]).toBeCloseTo(before[i], 5);
+        for (let i = 0; i < 6; i++) worst = Math.max(worst, Math.abs(shade[i] - before[i]));
         shared++;
       }
     }
+    // toBeCloseTo(…, 5)'s bound (NaN fails it too).
+    expect(worst < 5e-6, `largest difference ${worst}`).toBe(true);
     expect(shared).toBeGreaterThan(1000);
   });
 

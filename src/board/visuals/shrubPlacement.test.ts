@@ -326,7 +326,8 @@ describe("the port kit's keep-out at the 350 m hex", () => {
       }
     }
     expect(buildings).toBeGreaterThan(10);
-  });
+    // Generates and decorates five maps: ~3.3 s on a CI runner, near the 5 s default.
+  }, 30_000);
 });
 
 describe("placeShrubs scaled by each island's look (#177)", () => {

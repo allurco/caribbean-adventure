@@ -45,6 +45,47 @@ function soup(mesh: LandMeshData) {
 
 const buildSoup = (...args: Parameters<typeof buildLandMesh>) => soup(buildLandMesh(...args));
 
+/**
+ * The land mesh benchmark's budget, as a multiple of `calibrationWorkload`'s time
+ * on the same machine in the same run. The build of the large map measured 2.8 to
+ * 3.9× the workload locally (alone, and with the whole suite running alongside);
+ * the budget leaves about 3× headroom above that, as the old 2000 ms limit did
+ * over the ~690 ms build, so only a gross regression fails it.
+ */
+const LAND_MESH_BUDGET = 12;
+
+/**
+ * A fixed amount of the kind of work the land mesh build does — float maths,
+ * typed-array writes, short-lived arrays and a keyed map — to time the machine
+ * by. Returns a number that depends on all of it, so none of it is optimised away.
+ */
+function calibrationWorkload(): number {
+  const n = 2_000_000;
+  const out = new Float32Array(n * 3);
+  const seen = new Map<number, number>();
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    const x = (i % 1000) * 0.013;
+    const z = Math.floor(i / 1000) * 0.017;
+    const p = [x, Math.sin(x * 1.7) * Math.cos(z * 2.3) + Math.sqrt(x * x + z * z) * 1e-3, z];
+    out.set(p, i * 3);
+    if (i % 4 === 0) seen.set(Math.round(p[1] * 1e4) * 1000 + (i % 1000), i);
+    sum += p[1];
+  }
+  return sum + seen.size + out[n * 3 - 2];
+}
+
+/**
+ * The first index where two arrays differ (by `Object.is`, as `toEqual` compares
+ * numbers), or -1 when they are the same length and equal everywhere. `toEqual`
+ * on arrays of a whole map's mesh is several times slower than building it.
+ */
+function firstDifference(a: Float32Array, b: Float32Array): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (!Object.is(a[i], b[i])) return i;
+  return a.length === b.length ? -1 : n;
+}
+
 function singleIsland(): MapCell[] {
   return hexGrid(4).map((h) =>
     h.q === 0 && h.r === 0
@@ -536,7 +577,10 @@ describe("buildLandMesh", () => {
     expect(LAND_MESH_SPACING).toBeLessThanOrEqual(0.15);
   });
 
-  // Builds the whole lattice without skipping open water: ~2 s locally, ~3x that on CI runners.
+  // Builds the whole lattice without skipping open water. It took ~3 s locally and
+  // ~18 s on a CI runner, nearly all of it in toEqual over the two meshes' arrays,
+  // so they are compared element by element instead (~0.3 s locally); the limit
+  // stays generous for a slow runner.
   it("skipping open water yields exactly the full-lattice mesh", () => {
     const cells = generateMap(getMapPreset("small"),7);
     const field = createTerrainHeightField(cells, 7);
@@ -544,9 +588,9 @@ describe("buildLandMesh", () => {
     const full = buildSoup(field, { skipOpenWater: false });
     expect(fast.triangleCount).toBeGreaterThan(0);
     expect(fast.triangleCount).toBe(full.triangleCount);
-    expect(fast.positions).toEqual(full.positions);
-    expect(fast.colors).toEqual(full.colors);
-  }, 20000);
+    expect(firstDifference(fast.positions, full.positions)).toBe(-1);
+    expect(firstDifference(fast.colors, full.colors)).toBe(-1);
+  }, 30_000);
 
   describe("on a map that wraps east–west (#36)", () => {
     const columns = 12;
@@ -616,29 +660,37 @@ describe("buildLandMesh", () => {
     // Wrapped, as the game builds it (#36).
     const wrap = createWrap(columns);
     const cells = generateMap({ columns, rows }, 31337, wrap);
-    // Best of three, so JIT warm-up and a stray GC pause don't count against the build.
+    // Best of three, so JIT warm-up and a stray GC pause don't count against the
+    // build, each run next to a run of the calibration workload so both see the
+    // machine in the same state.
     let best = Infinity;
+    let calibration = Infinity;
     let mesh: ReturnType<typeof buildLandMesh> | undefined;
     for (let run = 0; run < 3; run++) {
-      const start = performance.now();
+      let start = performance.now();
+      expect(calibrationWorkload()).not.toBeNaN();
+      calibration = Math.min(calibration, performance.now() - start);
+      start = performance.now();
       const field = createTerrainHeightField(cells, 31337, { wrap });
       mesh = buildLandMesh(field);
       best = Math.min(best, performance.now() - start);
     }
+    const ratio = best / calibration;
     const { triangleCount, aboveWaterTriangleCount } = mesh!;
     console.log(
       `Land mesh, large map (${columns}×${rows}): ${triangleCount} triangles ` +
-        `(${aboveWaterTriangleCount} above water), best of 3 in ${best.toFixed(1)}ms`
+        `(${aboveWaterTriangleCount} above water), best of 3 in ${best.toFixed(1)}ms, ` +
+        `${ratio.toFixed(2)}× the calibration workload (${calibration.toFixed(1)}ms)`
     );
     expect(triangleCount).toBeGreaterThan(0);
-    // One-time build; ~150-170 ms locally with the seabed in metres (#38), and the
-    // best of three still took ~490 ms on a GitHub runner. The limit only guards
-    // against gross regressions. The town refinement (#87) cuts the land round
-    // every port into ~3 m triangles and makes the build about 1.5× slower
-    // (~200 to ~340 ms locally); a runner measured 663 ms before it and 1234 ms
-    // after it, so the limit sits well above that to keep runner noise out.
-    expect(best).toBeLessThan(2000);
-  }, 20000);
+    // A one-time build; the budget only guards against gross regressions. It is a
+    // ratio to a fixed workload timed in the same process, not milliseconds: a
+    // GitHub runner is 1.5 to 4× slower than a dev machine and varies run to run
+    // (after the bigger towns of #217 the build took ~690 ms locally, 950 to
+    // 1370 ms on runners, and 2490 ms on one slow runner, past the old 2000 ms
+    // limit), and the calibration slows down with it. See LAND_MESH_BUDGET.
+    expect(ratio).toBeLessThan(LAND_MESH_BUDGET);
+  }, 60_000);
 });
 
 describe("landSurfaceHeight", () => {
@@ -653,7 +705,7 @@ describe("landSurfaceHeight", () => {
     cells = generateMap(getMapPreset("small"), 11);
     wrappedField = createTerrainHeightField(cells, 11, { wrap });
     landPositions = buildLandMesh(wrappedField).land.positions;
-  });
+  }, 30_000);
 
   it("is the drawn surface: the field at every lattice vertex and the plane of the emitted triangle between them", () => {
     const field = wrappedField;
@@ -675,7 +727,8 @@ describe("landSurfaceHeight", () => {
     expect(checked).toBeGreaterThan(1000);
     // toBeCloseTo(…, 4)'s bound.
     expect(worst).toBeLessThan(5e-5);
-  });
+    // ~0.8 s locally but ~4 s on a CI runner, so past the 5 s default is in reach.
+  }, 20_000);
 
   it("repeats across the wrap seam and differs from the field between the lattice points where the ground curves", () => {
     const width = wrapWorldWidth(wrap);
