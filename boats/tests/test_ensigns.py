@@ -1,4 +1,4 @@
-"""Which ensign each ship wears, and the galleon's CROSS OF BURGUNDY. No bpy.
+"""The two ensigns the generator can still draw, and the CROSS OF BURGUNDY. No bpy.
 
 `colours.py` argued the British Red Ensign of 1707-1800 at length and then
 hardcoded it, which made the un-earned colours state a FRIGATE detail living
@@ -61,14 +61,11 @@ def _arm_b(s: float, d: float) -> tuple:
 # --- each ship wears her own -------------------------------------------------
 
 
-def test_each_ship_wears_her_own_ensign():
-    assert F.ensign is RED
-    assert G.ensign is BURGUNDY
-
-
-def test_the_frigate_s_ensign_is_the_one_colours_py_argued_for():
-    """UNCHANGED, because she is frozen and her atlas has shipped."""
-    assert F.ensign is st.EnsignKind.RED_ENSIGN
+def test_no_ship_wears_either_ensign_any_more():
+    """#163: every flag is the owner's colours. Both ensigns stay drawable
+    (the rest of this file pins them), but neither ship flies one."""
+    assert F.ensign is None
+    assert G.ensign is None
     assert len(st.EnsignKind) == 2
 
 

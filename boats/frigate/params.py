@@ -74,12 +74,11 @@ class ShipParams:
     # this name and raises on one it does not know, rather than silently
     # giving a galleon a Roman goddess.
     figurehead: str = "minerva"
-    # The national colours she wears until the player earns the black. A SHIP
-    # PROPERTY, because which flag a hull flew is a fact about that hull's
-    # navy and century and not about flags; see `shiptype.EnsignKind`.
-    # None is NO national colours: her flag has the one state, the device,
-    # and no switchable second state (`colours.states_of`).
-    ensign: st.EnsignKind | None = st.EnsignKind.RED_ENSIGN
+    # National colours. None on every ship (#163): a ship's flags are the
+    # owner's colours and nothing else, so her flag has the one state, the
+    # device, and no switchable second state (`colours.states_of`). The
+    # ensigns `shiptype.EnsignKind` names stay drawable, but no ship flies one.
+    ensign: st.EnsignKind | None = None
 
     chase_ports: int = 2         # stern chasers, cut in the transom
     # CARRIAGE FLOOR to BARREL AXIS, for every gun: the cannon is ONE shared
@@ -464,7 +463,8 @@ class FrigateParams(ShipParams):
     stern_form: st.SternForm = field(default=st.FRIGATE_STERN)
     rail_form: st.RailForm = field(default=st.FRIGATE_RAILS)
     figurehead: str = "minerva"
-    ensign: st.EnsignKind = st.EnsignKind.RED_ENSIGN
+    # NO NATIONAL COLOURS (#163): her flag is the owner's and nothing else.
+    ensign: st.EnsignKind | None = None
     chase_ports: int = 2
     gallery_windows: int = 5
     collection: str = "Frigate"
@@ -757,10 +757,8 @@ class GalleonParams(ShipParams):
         default=st.StripeForm(wale="lower_wale"))
     # A CROWNED LION RAMPANT, not a goddess. See `frigate.lion` for why.
     figurehead: str = "lion"
-    # THE CROSS OF BURGUNDY, not the 1785 bicolour. See `shiptype.EnsignKind`:
-    # a galleon predates the bicolour by two centuries, and the Red Ensign's
-    # own fourth reason refuses an anachronism that size.
-    ensign: st.EnsignKind = st.EnsignKind.CROSS_OF_BURGUNDY
+    # NO NATIONAL COLOURS (#163): her flag is the owner's and nothing else.
+    ensign: st.EnsignKind | None = None
     chase_ports: int = 2
     # CARRIAGE FLOOR to BARREL AXIS 0.94, not the frigate's 0.83. Her sills
     # are ruled 0.60-0.75 m over the serving deck 1.0 m inboard, and on 0.83
@@ -1220,7 +1218,8 @@ class SloopParams(ShipParams):
     stripe_form: st.StripeForm = field(
         default=st.StripeForm(band=(-0.32, -0.07), span=(0.25, 0.86)))
     figurehead: str = "minerva"
-    ensign: st.EnsignKind = st.EnsignKind.RED_ENSIGN
+    # NO NATIONAL COLOURS (#163): her flag is the owner's and nothing else.
+    ensign: st.EnsignKind | None = None
     chase_ports: int = 0
     # CARRIAGE FLOOR to BARREL AXIS: her barrels' underside ~0.09 m over the
     # 0.22 sill and their tops ~0.04 m under the open lid
