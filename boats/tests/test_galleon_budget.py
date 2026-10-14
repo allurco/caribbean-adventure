@@ -56,6 +56,8 @@ GALLEON_OBJECTS = (
     # Task 11, the maintainer's third ruling A': the chase platform under the stern
     # chasers.
     "Chase_Platform",
+    # The owner's colours (issue #134).
+    "Pennant", "Hull_Stripe",
 )
 
 # TRIANGLES, per object, read off `build.rebuild(GalleonParams())` in
@@ -79,11 +81,11 @@ GALLEON_OBJECTS = (
 # riser under Deck_Main's end, Chase_Platform 92 -> 148; the total is
 # 52,564.
 GALLEON_SCENE = {
-    "Hull": 14160, "Bulwarks": 2150, "Ceiling_Lower": 728,
-    "Castle_Forecastle": 204, "Castle_Quarter": 544, "Castle_Poop": 224,
+    "Hull": 14688, "Bulwarks": 2206, "Ceiling_Lower": 748,
+    "Castle_Forecastle": 204, "Castle_Quarter": 564, "Castle_Poop": 204,
     "Deck_Main": 716, "Deck_Forecastle": 284, "Deck_Quarter": 428,
     "Deck_Poop": 248, "Deck_Lower": 572,
-    "Transom": 188, "Stern_Gallery": 3304, "Stern_Carving": 2732,
+    "Transom": 188, "Stern_Gallery": 3536, "Stern_Carving": 2732,
     "Channels": 168, "Chainplates": 360, "Headrails": 532, "Beakhead": 24,
     # Task 10: the unsplit flight. 12 frame timbers at 12 apiece
     # (head.beakhead_deck_triangles) and 3 grating cards at 2 apiece
@@ -98,7 +100,7 @@ GALLEON_SCENE = {
     "Sails": 2578, "Jolly_Roger": 80,
     # The mizzen's lee pair of backstays is cast off on a mast setting a
     # lateen (`ropes.cast_off_to_lee`). Derived below.
-    "Rigging": 890,
+    "Rigging": 1010,
     "Figurehead": 960, "Sail_Patches": 252,
     # Task 8a, read off `build.rebuild(GalleonParams())` with `rudder` and
     # `cannons` in her passes: 123 objects, 46,318 triangles. The rudder is
@@ -115,7 +117,10 @@ GALLEON_SCENE = {
     **{f"Barrel_{i:02d}": 156 for i in range(8)},
     **{f"Anchor_{i:02d}": 1180 for i in range(2)},
     **{f"Lantern_{i:02d}": 196 for i in range(3)},
-    "Chase_Platform": 148,
+    "Chase_Platform": 104,
+    # The owner's colours (issue #134): her masthead pennant and her hull
+    # stripe on her lower wale, each a plain white material of its own.
+    "Pennant": 24, "Hull_Stripe": 470,
 }
 
 # Every pass label `build._passes` knows, read off its source because the
@@ -134,7 +139,7 @@ def test_the_pass_labels_were_read():
 # --- her table ---------------------------------------------------------------
 
 
-def test_the_scene_is_52564_triangles_in_141_objects():
+def test_the_scene_is_53970_triangles_in_143_objects():
     """Measured in Blender. 35,438 in 34 objects before Task 8a (35,352 in
     33 with the lower gun deck built; the split beakhead flight put 432 + 18
     where the planked stub drew 364, and added `Beakhead_Grating`); the
@@ -147,13 +152,13 @@ def test_the_scene_is_52564_triangles_in_141_objects():
     hull's top opened over it -16: 52,508. Final review 3's platform to
     the skin and end cap with its riser +56: 52,564. See
     `GALLEON_SCENE`."""
-    assert len(GALLEON_OBJECTS) == len(set(GALLEON_OBJECTS)) == 141
+    assert len(GALLEON_OBJECTS) == len(set(GALLEON_OBJECTS)) == 143
     assert set(GALLEON_SCENE) == set(GALLEON_OBJECTS)
-    assert sum(GALLEON_SCENE.values()) == 52564
+    assert sum(GALLEON_SCENE.values()) == 53970
     assert GALLEON_SCENE["Chase_Platform"] \
         == profiles.chase_platform_triangles(G)
     # each opened closing quad is 4 quads, 8 triangles, under the subsurf
-    assert 14176 - GALLEON_SCENE["Hull"] \
+    assert 14704 - GALLEON_SCENE["Hull"] \
         == 8 * len(profiles.hull_open_top_bands(G))
     assert GALLEON_SCENE["Headrails"] == head.headrail_triangles(G)
     assert GALLEON_SCENE["Rudder"] == rudder.triangle_count(G)
@@ -239,8 +244,8 @@ def test_the_beakhead_deck_spends_the_rails_line():
 
 
 @pytest.mark.parametrize("key, spend", [
-    ("hull", 17182), ("decks", 3080), ("stern", 7196), ("rails", 1234),
-    ("masts", 2664), ("sails", 2658), ("rigging", 890), ("cannons", 10736),
+    ("hull", 18256), ("decks", 3036), ("stern", 7428), ("rails", 1234),
+    ("masts", 2664), ("sails", 2682), ("rigging", 1010), ("cannons", 10736),
     ("furniture", 5550), ("dressing", 1374),
 ])
 def test_her_spend_per_line_is_the_ledgers(key, spend):
@@ -260,7 +265,7 @@ def test_her_rigging_and_canvas_are_derived_not_just_recorded():
     re-derived off-Blender: two triangles per rope segment, and a fixed grid
     per sail (5 square + 1 lateen) plus the flag."""
     rope_tris = 2 * sum(ropes.segments(r) for _k, r in ropes.all_ropes(G))
-    assert rope_tris == GALLEON_SCENE["Rigging"] == 890
+    assert rope_tris == GALLEON_SCENE["Rigging"] == 1010
     quads = (profiles.SAIL_NU - 1) * (profiles.SAIL_NV - 1)
     flag = (profiles.FLAG_NU - 1) * (profiles.FLAG_NV - 1)
     from frigate import damage
@@ -269,11 +274,13 @@ def test_her_rigging_and_canvas_are_derived_not_just_recorded():
 
 
 def test_her_hull_line_carries_the_rudder_she_now_builds():
+    # the 42 m hull's, and the owner's stripe on the hull line too
     hull = GALLEON_SCENE["Hull"] + GALLEON_SCENE["Bulwarks"] \
         + GALLEON_SCENE["Ceiling_Lower"] + GALLEON_SCENE["Rudder"]
-    assert hull == 17182 <= budget.line_of(G, "hull").budget
+    assert hull == 17786 <= budget.line_of(G, "hull").budget
     why = budget.line_of(G, "hull").budget_why
-    for figure in ("Rudder 144", "Hull 14,160", "17,182", "90%"):
+    for figure in ("Rudder 144", "Hull 14,688", "17,786", "Hull_Stripe 470",
+                   "18,256", "96%"):
         assert figure in why, figure
     assert "does not build yet" not in why
 
@@ -600,7 +607,7 @@ def test_her_decks_line_is_re_derived_for_the_chase_platform():
     assert budget.component_of(G, "Chase_Platform") == "decks"
     line = budget.line_of(G, "decks")
     spent = budget.totals(G, GALLEON_SCENE)["decks"]
-    assert spent == 3080 <= line.budget == 3100
-    for figure in ("Chase_Platform 148", "3,080", "3,100", "99%"):
+    assert spent == 3036 <= line.budget == 3100
+    for figure in ("Chase_Platform 104", "3,036", "3,100", "98%"):
         assert figure in line.budget_why, figure
     assert G.budget.total == sum(ln.budget for ln in G.budget.lines)

@@ -75,9 +75,9 @@ def test_the_lateen_yard_is_as_long_as_the_mast_it_crosses():
     """
     foot = profiles.mast_foot(G, "mizzen")
     span = profiles.mast_truck_z(G, "mizzen") - foot[2]
-    assert span == pytest.approx(17.02, abs=0.02)
+    assert span == pytest.approx(21.93, abs=0.02)
     assert profiles.lateen_length(G, "mizzen") == pytest.approx(
-        13.96, abs=0.02)
+        17.99, abs=0.02)   # 13.96 on the 34 m hull
     assert profiles.lateen_length(G, "mizzen") / span == \
         pytest.approx(G.rig.lateen.length_frac, abs=1e-9)
 
@@ -92,12 +92,12 @@ def test_the_lateen_yard_lies_fore_and_aft_with_its_peak_AFT_and_UP():
     what a lateen peak does.
     """
     heel, slings, peak, radius = profiles.lateen_spar(G, "mizzen")
-    assert heel == pytest.approx((0.0, -7.67, 10.34), abs=0.02)
-    assert peak == pytest.approx((0.0, -17.71, 20.04), abs=0.02)
+    assert heel == pytest.approx((0.0, -9.34, 12.20), abs=0.02)   # 42 m
+    assert peak == pytest.approx((0.0, -22.28, 24.70), abs=0.02)
     assert peak[1] < slings[1] < heel[1]      # peak aft, heel forward
     assert peak[2] > slings[2] > heel[2]      # peak up, heel down
     # radius_frac 0.013 of a 13.96 m yard (was 0.21 on 16.17 m)
-    assert radius == pytest.approx(0.18, abs=0.01)
+    assert radius == pytest.approx(0.23, abs=0.01)
     # It rakes at its stated angle above the horizontal.
     rake = math.degrees(math.atan2(peak[2] - heel[2], heel[1] - peak[1]))
     assert rake == pytest.approx(G.rig.lateen.rake_deg, abs=0.01)
@@ -124,12 +124,12 @@ def test_the_peak_stays_under_its_own_truck_and_the_heel_over_its_own_deck():
     """
     heel, _slings, peak, _r = profiles.lateen_spar(G, "mizzen")
     truck = profiles.mast_truck_z(G, "mizzen")
-    assert truck - peak[2] == pytest.approx(1.04, abs=0.03)
+    assert truck - peak[2] == pytest.approx(1.34, abs=0.03)
     assert peak[2] < truck
 
     t = profiles.t_of_y(G, heel[1])
     deck = profiles.deck_z_at(G, t, 0.0, G.quarter_rise)
-    assert heel[2] - deck == pytest.approx(3.26, abs=0.03)
+    assert heel[2] - deck == pytest.approx(5.08, abs=0.03)
     assert heel[2] > deck
 
 

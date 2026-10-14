@@ -4,9 +4,10 @@ What makes a sloop a sloop, against the frigate, the galleon and the flute,
 with both endpoints of every figure named:
 
   * SMALL: stem-at-the-rail to taffrail 18 m, inside the issue's 15-20 m,
-    against the flute's 30, the galleon's 34 and the frigate's 38;
+    against the flute's 30, the frigate's 38 and the galleon's 42;
   * ONE MAST, raking aft, setting a GAFF MAINSAIL with a GAFF TOPSAIL over
-    it, and two headsails on a LONG bowsprit: the Jamaica sloop of the
+    it and a flying SQUARE TOPSAIL on her topmast, and two headsails on a
+    LONG bowsprit: the Jamaica sloop of the
     1710s-20s, which is what the Caribbean's pirates sailed most;
   * a LOW, FLUSH deck and a handful of light guns in the bulwark.
 """
@@ -43,11 +44,15 @@ def test_waterline_to_rail_cap_amidships_is_low():
     assert rail / S.loa < 0.113
 
 
-def test_one_mast_setting_a_gaff_mainsail_and_a_gaff_topsail():
+def test_one_mast_setting_a_gaff_mainsail_a_gaff_topsail_and_a_square_topsail():
+    """The square topsail is the maintainer's ruling: it gives her a
+    stronger silhouette at ship zoom, set forward of the topmast alongside
+    the gaff rig (`tests/test_sloop_topsail.py`)."""
     assert S.rig.mast_names() == ("main",)
     kinds = [s.kind for s in S.rig.mast("main").sails]
-    assert kinds == [st.SailKind.GAFF, st.SailKind.GAFF_TOPSAIL]
-    assert not S.rig.has_square_sails()
+    assert kinds == [st.SailKind.GAFF, st.SailKind.GAFF_TOPSAIL,
+                     st.SailKind.SQUARE]
+    assert S.rig.has_square_sails()
     assert S.rig.tops() == ()
 
 
@@ -77,6 +82,16 @@ def test_each_outer_headsail_tacks_further_out_and_is_hoisted_higher():
                     for s in sorted(S.rig.headsails, key=lambda s: s.tier))
     assert outer.tack[1] > inner.tack[1]
     assert outer.throat[2] > inner.throat[2]
+
+
+def test_no_patch_is_sewn_to_a_headsail():
+    """Her two headsails overlap, seen from abeam, along the jib's leech
+    and the forestaysail's luff, held apart only by their bellies; a patch
+    standing 35 mm off the forestaysail there stood in the jib (5 face
+    pairs, once the square topsail joined the draw). The frigate, the
+    galleon and the flute set no headsail, so their draws do not move."""
+    from frigate import wind
+    assert all(q["mast"] is not None for q in wind.sail_patches(S))
 
 
 def test_her_foremost_guns_breeches_stand_clear_of_each_other():

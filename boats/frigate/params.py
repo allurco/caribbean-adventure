@@ -64,6 +64,9 @@ class ShipParams:
     damage_form: st.DamageForm = field(default_factory=st.DamageForm)
     # WHERE HER WALES ARE PAINTED. The frigate's one band by default.
     livery_form: st.LiveryForm = field(default_factory=st.LiveryForm)
+    # WHERE HER HULL STRIPE, in her owner's colour, runs (`frigate.owner`).
+    # The frigate's main wale by default.
+    stripe_form: st.StripeForm = field(default_factory=st.StripeForm)
 
     # WHICH CARVING STANDS ON THE STEM HEAD. Not cosmetic and not a material:
     # the head rails die into the figure's own bounding box, so the carving
@@ -74,7 +77,9 @@ class ShipParams:
     # The national colours she wears until the player earns the black. A SHIP
     # PROPERTY, because which flag a hull flew is a fact about that hull's
     # navy and century and not about flags; see `shiptype.EnsignKind`.
-    ensign: st.EnsignKind = st.EnsignKind.RED_ENSIGN
+    # None is NO national colours: her flag has the one state, the device,
+    # and no switchable second state (`colours.states_of`).
+    ensign: st.EnsignKind | None = st.EnsignKind.RED_ENSIGN
 
     chase_ports: int = 2         # stern chasers, cut in the transom
     # CARRIAGE FLOOR to BARREL AXIS, for every gun: the cannon is ONE shared
@@ -220,7 +225,13 @@ class ShipParams:
         self.furniture_plan.validate()
         self.damage_form.validate()
         self.livery_form.validate()
+        self.stripe_form.validate()
         self._validate_plan_fields()
+        if self.ensign is not None and \
+                not isinstance(self.ensign, st.EnsignKind):
+            raise ValueError(
+                f"ensign is a shiptype.EnsignKind or None (no national "
+                f"colours), got {self.ensign!r}")
         if self.chase_ports not in (0, 2):
             raise ValueError(
                 f"chase_ports is 0 or 2 (a pair cut either side of the "
@@ -505,9 +516,9 @@ GALLEON_HULL = st.HullForm(
     # 2.59 m on this 11.0 m beam is 0.235.
     tumble_floor=0.52,
     forefoot_span=0.22,   # keel-underside-at-the-stem is -0.30 m, as the frigate's is
-    forefoot_rise=4.00,
+    forefoot_rise=5.00,   # draft 5.30 less the 0.30 the stem foot stands under the water
     tuck_span=0.26,       # a high round tuck under a square transom
-    tuck_rise=1.90,       # frigate 1.30
+    tuck_rise=2.34,       # frigate 1.30; 1.90 on the 4.30 m draft, scaled with it
     bilge_root=2.60,      # a fuller, boxier midship section
     bilge_slope=0.90,
 )
@@ -635,13 +646,13 @@ GALLEON_FURNITURE = st.FurniturePlan(
         # at hatch_aft (3.3412), against the launch's 0.20 m rule.
         # HATCH_AFT'S AFT COAMING (y 0.327) to the MAIN MAST'S FORE FACE
         # (y -0.20) 0.527 m.
-        ("hatch_fore", 0.3676, 0.00, 0.0),
-        ("hatch_main", 0.4176, 0.00, 0.0),
-        ("hatch_aft",  0.4676, 0.00, 0.0),
+        ("hatch_fore", 0.3964, 0.00, 0.0),
+        ("hatch_main", 0.4369, 0.00, 0.0),
+        ("hatch_aft",  0.4774, 0.00, 0.0),
         # The launch over the waist, y 0.601..6.601: her STEM to the
         # FORECASTLE BREAK 3.26 m, her TRANSOM to the MAIN MAST'S FORE FACE
         # 0.801 m.
-        ("boat",       0.3941, 0.00, 0.0),
+        ("boat",       0.4179, 0.00, 0.0),
         # Barrels in HER PORT-COLUMN GAPS (both rows share columns, 0.0582
         # apart from t 0.20): the four gaps in the waist, mid-way between
         # columns 1|2, 2|3, 3|4, 4|5. The gap at 0.5200 is the main mast's
@@ -674,7 +685,7 @@ GALLEON_FURNITURE = st.FurniturePlan(
     # under it at its AFT end (cap 5.0002), the low one; and its SKID
     # UNDERSIDE (1.61 - 0.85 deep - `BOAT_SKID_DROP` 0.26) clears every
     # hatch coaming by at least 0.220 m (see the hatches above).
-    boat_on_skids=1.61,
+    boat_on_skids=1.59,
 )
 
 # Her hull row stands INSIDE the band the frigate's scar rule keeps clear of,
@@ -699,12 +710,22 @@ class GalleonParams(ShipParams):
     Built as far as its gunports. Its rig, stern gallery, materials and bake
     are later passes, and `passes` says so rather than letting a half-run
     pipeline look like a finished ship.
+
+    LENGTHENED AND BULKED (the maintainer's ruling, 2026-10): she must
+    clearly exceed the frigate's 38 m on the board, so her HULL is drawn at
+    42 m with her beam and draft carried in proportion (34 / 11.0 / 4.3
+    before), rather than the asset scaled as a class. Everything that is a
+    man's size stays true size: her deck heights, castles, rails, ports and
+    their sills, guns, fittings and her head. Her deck crown is carried
+    with her beam (0.24 to 0.29), which keeps her sills' reading 1.0 m
+    inboard in their band. Figures quoted below and in her tests that name
+    the 34 m hull are history; the tests pin the 42 m ones.
     """
 
-    loa: float = 34.0          # stem at rail level to taffrail
-    lwl: float = 26.4          # forward waterline ending to after waterline ending
-    beam: float = 11.0         # maximum, at the wales, amidships
-    draft: float = 4.3         # keel underside to waterline
+    loa: float = 42.0          # stem at rail level to taffrail
+    lwl: float = 32.6          # forward waterline ending to after waterline ending
+    beam: float = 13.6         # maximum, at the wales, amidships
+    draft: float = 5.3         # keel underside to waterline
     deck_z: float = 3.10       # waterline to main (gun) deck EDGE, amidships
     bow_rise: float = 1.45     # deck edge at the stem, above the deck edge amidships
     stern_rise: float = 2.70   # deck edge at the transom, above the deck edge amidships
@@ -715,7 +736,7 @@ class GalleonParams(ShipParams):
     pts_per_half: int = 14
     bulwark_h: float = 1.90       # main deck edge to waist rail cap; see above
     bulwark_thick: float = 0.22
-    deck_camber: float = 0.24
+    deck_camber: float = 0.29     # 0.24 on the 34 m hull, carried with her beam
     plank_thick: float = 0.12
 
     gun_decks: tuple[st.GunDeck, ...] = GALLEON_GUN_DECKS
@@ -729,6 +750,11 @@ class GalleonParams(ShipParams):
     damage_form: st.DamageForm = field(default=GALLEON_DAMAGE)
     # Her wales between her two rows of ports (the maintainer's third ruling, C).
     livery_form: st.LiveryForm = field(default=st.GALLEON_LIVERY)
+    # HER STRIPE ON HER LOWER WALE, under her hull row: her main wale stands
+    # between the rows, across the sheer and half on her bulwark, where her
+    # chainplate feet and her hull lids' sweep come down.
+    stripe_form: st.StripeForm = field(
+        default=st.StripeForm(wale="lower_wale"))
     # A CROWNED LION RAMPANT, not a goddess. See `frigate.lion` for why.
     figurehead: str = "lion"
     # THE CROSS OF BURGUNDY, not the 1785 bicolour. See `shiptype.EnsignKind`:
@@ -747,8 +773,12 @@ class GalleonParams(ShipParams):
     # (`profiles.barrel_clearances`): BARREL UNDERSIDE to SILL 0.068-0.092
     # and OPEN LID to BARREL TOP 0.069-0.306, against the frigate's own
     # 0.227-0.281 and 0.025-0.055.
-    gun_trunnion_h: float = 0.94
-    gallery_windows: int = 7
+    # 0.93 on the 42 m hull, by the same rule (0.94 at 34 m).
+    gun_trunnion_h: float = 0.93
+    # NINE lights in her great cabin's band: across the 42 m hull's wider
+    # transom her 34 m seven stood 0.714 m wide over 1.170 tall, no longer
+    # tall and narrow; nine stand 0.531 wide, as the seven stood 0.541.
+    gallery_windows: int = 9
     collection: str = "Galleon"
     # IT SETS CANVAS AND IT IS RIGGED. `sails` and `rigging` were out of this
     # tuple because the lateen mizzen needed four running-rigging families
@@ -898,6 +928,13 @@ FLUTE_FURNITURE = st.FurniturePlan(
     boat_on_skids=1.95,
 )
 
+# HER SCARS, 0.70 of the frigate's: a crater 0.20-0.35 m in the radius on a
+# hull 0.79 of the frigate's length. Her deck edge stands 2.20 m over the
+# water, so the band runs 0.90 m over it to 0.40 m under the sheer, and the
+# largest crater's top stays 0.05 m under the sheer.
+FLUTE_DAMAGE = st.DamageForm(scar_scale=0.70, band_floor=0.90,
+                             band_head=0.40)
+
 
 @dataclass
 class FluteParams(ShipParams):
@@ -934,8 +971,13 @@ class FluteParams(ShipParams):
     stern_form: st.SternForm = field(default=FLUTE_STERN)
     rail_form: st.RailForm = field(default=FLUTE_RAILS)
     furniture_plan: st.FurniturePlan = field(default=FLUTE_FURNITURE)
+    damage_form: st.DamageForm = field(default=FLUTE_DAMAGE)
     figurehead: str = "lion"
-    ensign: st.EnsignKind = st.EnsignKind.RED_ENSIGN
+    # NO NATIONAL ENSIGN (the maintainer's ruling): a ship's flags are her
+    # OWNER's colours and nothing else, so she flies no false Dutch colours
+    # and not the Red Ensign she was first built with. Her flag keeps its
+    # one state, the device, with no parked ensign island and no TEXCOORD_1.
+    ensign: st.EnsignKind | None = None
     chase_ports: int = 0
     # CARRIAGE FLOOR to BARREL AXIS. 0.58 stands her barrels' underside
     # 0.199 m over the 0.35 sill and their tops 0.08 m under the open lid
@@ -1163,8 +1205,20 @@ class SloopParams(ShipParams):
     stern_form: st.SternForm = field(default=SLOOP_STERN)
     rail_form: st.RailForm = field(default=SLOOP_RAILS)
     furniture_plan: st.FurniturePlan = field(default=SLOOP_FURNITURE)
+    # HER SCARS, 0.45 of the frigate's: a crater 0.13-0.23 m in the radius,
+    # drawn with its centre 0.35 m over the water to 0.55 m under her sheer,
+    # so the largest one's top stays 0.33 m under a deck edge 1.00 m over
+    # the water, under her stripe (`stripe_form`), and its foot 0.12 m over
+    # the water.
     damage_form: st.DamageForm = field(
-        default=st.DamageForm(scar_clear="aperture", scar_margin=0.05))
+        default=st.DamageForm(scar_clear="aperture", scar_margin=0.05,
+                              scar_scale=0.45, band_floor=0.35,
+                              band_head=0.55))
+    # HER STRIPE: 0.32 to 0.07 m under her sheer, high on a topside 1.00 m
+    # over the water amidships, over her scars' band; aft of her anchor,
+    # catted at t 0.18 with 0.85 m of stock abaft it.
+    stripe_form: st.StripeForm = field(
+        default=st.StripeForm(band=(-0.32, -0.07), span=(0.25, 0.86)))
     figurehead: str = "minerva"
     ensign: st.EnsignKind = st.EnsignKind.RED_ENSIGN
     chase_ports: int = 0
@@ -1178,15 +1232,14 @@ class SloopParams(ShipParams):
     canvas_pack: float = 0.85
     collection: str = "Sloop"
     budget: Budget = SLOOP_BUDGET
-    # NO HEADWORKS AND NO DAMAGE, and both are the type, not a shortcut. A
-    # sloop has a plain stem with no beakhead and no head rails: her
-    # bowsprit runs out over the stem head, and the frigate's rails put
-    # under it stood in its way. And the damage pass's shot scars are cut
-    # 0.28-0.50 m in the radius in a band from 1.20 m over the water to
-    # 0.35 m under the sheer: on a deck edge 1.00 m over the water that band
-    # is empty, and the scars it drew stood in her bulwark.
+    # NO HEADWORKS, and that is the type, not a shortcut. A sloop has a
+    # plain stem with no beakhead and no head rails: her bowsprit runs out
+    # over the stem head, and the frigate's rails put under it stood in its
+    # way. She IS damaged, on scars sized to her (`damage_form` above): at
+    # the frigate's 0.28-0.50 m, drawn 1.20 m over the water, the scars
+    # stood in her bulwark.
     passes: tuple[str, ...] | None = ("hull", "bulwarks", "decks", "gunports",
                                       "stern", "rudder", "rails", "masts",
                                       "sails", "rigging", "cannons",
-                                      "furniture", "dressing", "materials",
-                                      "bake")
+                                      "furniture", "dressing", "damage",
+                                      "materials", "bake")

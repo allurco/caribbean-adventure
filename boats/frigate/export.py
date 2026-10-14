@@ -410,14 +410,15 @@ def verify(p: FrigateParams, path: str | None = None) -> dict:
         "axis_faults": axis_faults,
         "origin_faults": gltf.origin_faults(hull_gltf, exported_bounds,
                                             p.draft, p.loa),
-        "texture_faults": gltf.texture_faults(doc),
+        "texture_faults": gltf.texture_faults(
+            doc, plain=tuple(palette.tinted_material_names(p).values())),
         "mime_faults": gltf.mime_faults(doc),
         "image_bytes": gltf.image_bytes(doc),
         "image_sizes": gltf.image_sizes(doc),
         "encode_faults": _encode_faults(gltf.image_sizes(doc)),
         "unused_uv_sets": gltf.unused_uv_sets(doc),
         "uv_set_faults": gltf.uv_set_faults(
-            doc, colours.switchable_uv_sets(bake.COLOURS_OBJECT)),
+            doc, colours.switchable_uv_sets(bake.COLOURS_OBJECT, p)),
         "pivot_faults": gltf.pivot_faults(doc, _wanted_pivots(p)),
         "animatable": len(_wanted_pivots(p)),
         "alpha_modes": {m.get("name", f"#{i}"): m.get("alphaMode", "OPAQUE")

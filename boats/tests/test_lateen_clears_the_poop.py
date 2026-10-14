@@ -129,17 +129,17 @@ def test_the_ruled_spar_s_corner_figures():
     heel, slings, peak, _r = profiles.lateen_spar(G, MIZZEN)
     c = _corners()
     assert c.tack == pytest.approx(heel, abs=1e-12)
-    assert heel == pytest.approx((0.0, -7.6692, 10.3394), abs=1e-4)
-    assert slings == pytest.approx((0.0, -10.6818, 13.2487), abs=1e-4)
-    assert peak == pytest.approx((0.0, -17.7113, 20.0370), abs=1e-4)
-    assert c.clew == pytest.approx((0.0, -15.5020, 12.4242), abs=1e-4)
+    assert heel == pytest.approx((0.0, -9.3393, 12.2018), abs=1e-4)
+    assert slings == pytest.approx((0.0, -13.2208, 15.9501), abs=1e-4)
+    assert peak == pytest.approx((0.0, -22.2776, 24.6962), abs=1e-4)
+    assert c.clew == pytest.approx((0.0, -19.4311, 12.5064), abs=1e-4)
     # clew station, raw: the clew is inboard of the taffrail, no clamp fires
     t_clew = profiles.t_of_y(G, c.clew[1])
-    assert t_clew == pytest.approx(0.9559, abs=1e-4)
+    assert t_clew == pytest.approx(0.9626, abs=1e-4)
     assert c.clew[1] > profiles.station_y(G, 1.0)
     # yard HEEL to PEAK, and its rake and slings height
     assert profiles.lateen_length(G, MIZZEN) == pytest.approx(
-        13.9602, abs=1e-4)
+        17.9864, abs=1e-4)   # 13.9602 on the 34 m hull
     # FOOT CHORD less rail_top_z: 1.2000 at the clew (by construction)...
     worst, at_y = min(_foot_minus_rail())
     assert worst == pytest.approx(1.2000, abs=1e-4)
@@ -147,17 +147,17 @@ def test_the_ruled_spar_s_corner_figures():
     # ...and 1.2244 against the POOP cap 9.8791 at the break y -10.5400
     t_break = _poop_break_t()
     y_break = profiles.station_y(G, t_break)
-    assert y_break == pytest.approx(-10.5400, abs=1e-4)
+    assert y_break == pytest.approx(-13.0200, abs=1e-4)   # 42 m hull
     assert _foot_z(c.tack, c.clew, y_break) \
-        - profiles.rail_top_z(G, t_break) == pytest.approx(1.2244, abs=1e-4)
+        - profiles.rail_top_z(G, t_break) == pytest.approx(2.4338, abs=1e-4)
     # MIZZEN TRUCK 21.0800 over the PEAK
-    assert profiles.mast_truck_z(G, MIZZEN) == pytest.approx(21.0800, abs=1e-4)
+    assert profiles.mast_truck_z(G, MIZZEN) == pytest.approx(26.0400, abs=1e-4)
     assert profiles.mast_truck_z(G, MIZZEN) - peak[2] == pytest.approx(
-        1.0430, abs=1e-4)
+        1.3438, abs=1e-4)
     # HEEL over rail_top_z at the heel's own station
     assert heel[2] - profiles.rail_top_z(G, profiles.t_of_y(G, heel[1])) \
-        == pytest.approx(2.4986, abs=1e-4)
+        == pytest.approx(4.3734, abs=1e-4)
     # a real triangle: FOOT + LEECH - HEAD
     slack = (math.dist(c.tack, c.clew) + math.dist(c.clew, c.peak)
              - math.dist(c.tack, c.peak))
-    assert slack == pytest.approx(2.0722, abs=1e-4)
+    assert slack == pytest.approx(4.6278, abs=1e-4)

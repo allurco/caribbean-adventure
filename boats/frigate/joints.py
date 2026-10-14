@@ -380,6 +380,9 @@ JOINTS = dict([
        "the shrouds bear down on the channel that spreads them"),
     _j("Masts", "Jolly_Roger",
        "the colours are bent to the mizzen truck they are hoisted on"),
+    _j("Masts", "Pennant",
+       "the owner's pennant is bent to the truck it is hoisted on "
+       "(`owner.pennant_staff`): its luff stands on the mast's own axis"),
 
     # --- things that stand on, or are stowed against, the ship --------------
     _j("Cannon_", "Deck_Main",
@@ -529,6 +532,21 @@ DEVIATIONS = {
         "break must pass the poop's walls whatever wall the channel is on. "
         "Higher hounds or a channel on the poop are the maintainer's call, not this "
         "table's",
+    ),
+    # Measured on the 42 m galleon (the maintainer's ruling to lengthen her):
+    # two of her scars drawn between her hull ports stand on a side the
+    # rendered skin has drawn in under, and their 0.20 m craters reach the
+    # CEILING, her side's inner planking, behind them. Capped at what she
+    # draws; not seen from outboard.
+    pair("Ceiling_Lower", "Damage"): (
+        18,
+        "known defect, for the maintainer: on the 42 m galleon two shot scars "
+        "between her hull ports (y 6.40, z 2.62 and y 3.90, z 2.17) are "
+        "driven 0.20 m in where the rendered skin stands within 0.20 m of "
+        "the ceiling 0.22 m inboard of the cage, so each crater's bottom "
+        "pierces the ceiling: a shot through the side, seen only from her "
+        "lower deck. Shallower craters on her, or a scar rule that reads "
+        "the side's thickness, are the maintainer's call",
     ),
     # Ratified by the user as part of the "gunports stay in the bulwark"
     # deviation: the quarterdeck floor crosses the four aftmost ports a side.

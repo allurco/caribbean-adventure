@@ -375,14 +375,26 @@ def lifts(p: FrigateParams, mast: str, sign: float) -> list[Rope]:
     A lift is what holds a yard level when its sail is off it. Without them a
     yard hangs on its slings alone and the rig reads as spars resting on poles.
     """
-    heads = (hounds_z(p, mast), topmast_hounds_z(p, mast), topgallant_head_z(p, mast))
     out = []
-    for tier, (z, length, _r) in enumerate(profiles.yard_specs(p, mast)):
-        z_head = heads[tier]
+    for i, (z, length, _r) in enumerate(profiles.yard_specs(p, mast)):
+        plan = profiles.yard_plan_of(p, mast, _sail_tier(p, mast, i))
+        if plan is not None:
+            # a flying yard's lifts lead to where its mast says
+            z_head = plan.lift_frac * profiles.mast_truck_z(p, mast)
+        else:
+            z_head = (hounds_z(p, mast), topmast_hounds_z(p, mast),
+                      topgallant_head_z(p, mast))[i]
         out.append(((sign * (length / 2.0 - LIFT_ARM_IN), _mast_y(p, mast, z), z),
                     (sign * profiles.spar_radius_at(p, mast, z_head),
                      _mast_y(p, mast, z_head), z_head)))
     return out
+
+
+def _sail_tier(p: FrigateParams, mast: str, index: int) -> int:
+    """The TIER of the square sail bent to yard `index` of this mast. On a
+    square-rigged mast it is the index itself; the sloop's one yard carries
+    her tier-2 flying topsail (`profiles.yard_index`)."""
+    return profiles.square_sails_on(p, mast)[index].tier
 
 
 def _footrope_span(p: FrigateParams, mast: str, tier: int, sign: float):
@@ -433,19 +445,27 @@ def clewlines(p: FrigateParams, mast: str, sign: float) -> list[Rope]:
     therefore leads aft from the moment it leaves the clew.
     """
     out = []
-    for tier, (z, length, _r) in enumerate(profiles.yard_specs(p, mast)):
-        clew = wind.sail_point(p, mast, tier, sign * 1.0, 0.0)
+    for i, (z, length, _r) in enumerate(profiles.yard_specs(p, mast)):
+        clew = wind.sail_point(p, mast, _sail_tier(p, mast, i), sign * 1.0, 0.0)
         out.append((clew, (sign * CLEWLINE_IN * length / 2.0, _mast_y(p, mast, z), z)))
     return out
 
 
 def sheets(p: FrigateParams, mast: str, sign: float) -> list[Rope]:
-    """Clew down to the yard arm below it; for a course, aft to the ship's side."""
+    """Clew down to the yard arm below it; for a course, aft to the ship's
+    side; for a FLYING topsail (`shiptype.YardPlan`), in to the lower
+    masthead its foot is sheeted home to."""
     specs = profiles.yard_specs(p, mast)
     out = []
     for tier in range(len(specs)):
-        clew = wind.sail_point(p, mast, tier, sign * 1.0, 0.0)
-        if tier == 0:
+        sail_tier = _sail_tier(p, mast, tier)
+        clew = wind.sail_point(p, mast, sail_tier, sign * 1.0, 0.0)
+        plan = profiles.yard_plan_of(p, mast, sail_tier)
+        if plan is not None:
+            z = clew[2]
+            foot = (sign * profiles.spar_radius_at(p, mast, z),
+                    _mast_y(p, mast, z), z)
+        elif tier == 0:
             t = min(0.98, profiles.mast_t(p, mast) + SHEET_LEAD)
             cap = profiles.sheer(p, t) + p.bulwark_h
             foot = (sign * (profiles.bulwark_half_width(p, t, cap) + BRACE_FOOT_CLEAR),
@@ -466,7 +486,8 @@ def buntlines(p: FrigateParams, mast: str) -> list[Rope]:
     sail head, which is where a buntline is actually led.
     """
     out = []
-    for tier, (z, _length, _r) in enumerate(profiles.yard_specs(p, mast)):
+    for i, (z, _length, _r) in enumerate(profiles.yard_specs(p, mast)):
+        tier = _sail_tier(p, mast, i)
         head_z = wind.sail_panel(p, mast, tier)["head_z"]
         for k in range(BUNTLINES):
             u = -1.0 + 2.0 * (k + 1) / (BUNTLINES + 1)

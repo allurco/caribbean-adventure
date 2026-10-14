@@ -65,7 +65,7 @@ def test_the_platform_is_deck_mains_level_at_the_chasers_station():
         x, y, _z = gun["origin"]
         deck = profiles.deck_z_at(G, profiles.t_of_y(G, y), x, 0.0)
         assert top == pytest.approx(deck, abs=1e-9)
-    assert top == pytest.approx(5.331, abs=5e-4)
+    assert top == pytest.approx(5.490, abs=5e-4)
 
 
 def test_the_chasers_stand_ON_the_platform():
@@ -85,8 +85,8 @@ def test_her_chase_sill_and_head_are_re_measured_above_the_platform():
     sill, head = profiles.chase_sill_z(G), profiles.chase_head_z(G)
     assert sill - top == pytest.approx(0.75)
     assert head - top == pytest.approx(1.37)
-    assert sill == pytest.approx(6.081, abs=5e-4)
-    assert head == pytest.approx(6.701, abs=5e-4)
+    assert sill == pytest.approx(6.240, abs=5e-4)
+    assert head == pytest.approx(6.860, abs=5e-4)
 
 
 def test_deck_mains_end_against_the_platform_is_measured():
@@ -102,11 +102,11 @@ def test_deck_mains_end_against_the_platform_is_measured():
     t1 = G.tier("Deck_Main").t1
     edge = profiles.deck_half_beam(G, t1)
     x_gun = abs(_chasers(G)[0]["origin"][0])
-    assert profiles.deck_z_at(G, t1, 0.0) - top == pytest.approx(0.183,
+    assert profiles.deck_z_at(G, t1, 0.0) - top == pytest.approx(0.0733,
                                                                  abs=5e-4)
-    assert profiles.deck_z_at(G, t1, x_gun) - top == pytest.approx(0.136,
+    assert profiles.deck_z_at(G, t1, x_gun) - top == pytest.approx(0.0200,
                                                                    abs=5e-4)
-    assert profiles.deck_z_at(G, t1, edge) - top == pytest.approx(-0.057,
+    assert profiles.deck_z_at(G, t1, edge) - top == pytest.approx(-0.2167,
                                                                   abs=5e-4)
 
 
@@ -122,7 +122,7 @@ def test_it_runs_from_deck_mains_end_to_the_clearance_off_the_end_cap():
     c = G.stern_form.chase_platform.skin_clearance
     fore, aft = profiles.chase_platform_span(G)
     assert fore == profiles.station_y(G, G.tier("Deck_Main").t1)
-    assert fore == pytest.approx(-15.64)
+    assert fore == pytest.approx(-19.32)   # -15.64 on the 34 m hull
     gap = aft - profiles.station_y(G, 1.0)
     assert 0.0 < gap <= c + 1e-12
 
@@ -201,9 +201,14 @@ def test_the_lens_under_deck_mains_end_is_closed():
         closed = _interp(riser["columns"], x)
         lens = max(lens, u - (top if closed is None else closed))
     assert lens == 0.0
-    # and without the riser it is what the review measured
+    # ON THE 42 m HULL THERE IS NO LENS TO CLOSE: her sheer climbs more
+    # gently over the 1.68 m from Deck_Main's end to her transom, and with
+    # her 0.29 m camber DECK_MAIN'S UNDERSIDE stands 0.047 m UNDER the
+    # PLATFORM TOP even on the centreline, so no riser is laid (0.0628 m of
+    # lens on the 34 m hull, closed by a riser of seven columns).
     open_lens = max(u - top for _x, u in under)
-    assert open_lens == pytest.approx(0.0628, abs=5e-4)
+    assert open_lens == pytest.approx(-0.0467, abs=5e-4)
+    assert riser["columns"] == []
 
 
 def test_the_riser_stands_under_deck_mains_end_and_clear_of_the_trucks():
@@ -238,7 +243,9 @@ def test_the_riser_stands_under_deck_mains_end_and_clear_of_the_trucks():
                         continue
                     gap = low - z
                     least = gap if least is None else min(least, gap)
-    assert least is not None and least > 0.0
+    # No riser at all on the 42 m hull (see the lens above): nothing for a
+    # truck to meet.
+    assert (least is None and not cols) or (least is not None and least > 0.0)
 
 
 def test_every_chaser_footprint_lies_on_the_platform_by_its_margin():
@@ -266,10 +273,11 @@ def test_every_chaser_footprint_lies_on_the_platform_by_its_margin():
             profiles.chase_platform_half_width(G, profiles.t_of_y(G, y))
             - max(abs(x_lo), abs(x_hi)) for y in ys)
         assert least >= margin
-        assert least == pytest.approx(0.9365, abs=5e-4)
-        # and the carriage reaches past Deck_Main's end: without the
+        assert least == pytest.approx(1.3374, abs=5e-4)   # 0.9365 at 34 m
+        # and the carriage stands abaft Deck_Main's end (wholly so on the
+        # 42 m hull; it straddled it at 34 m): without the
         # platform its after half stood on nothing
-        assert y_aft < fore < y_fwd
+        assert y_aft < fore
 
 
 def test_the_hull_top_is_opened_over_the_platform_and_nowhere_else():
@@ -283,10 +291,10 @@ def test_the_hull_top_is_opened_over_the_platform_and_nowhere_else():
     reaching forward of Deck_Main's end (t 0.96)."""
     ts = profiles.station_ts(G)
     opened = profiles.hull_open_top_bands(G)
-    assert len(ts) - 1 == 56
-    assert opened == [54, 55]
-    assert ts[54] == pytest.approx(0.95652, abs=5e-6)
-    assert ts[54] < G.tier("Deck_Main").t1 < ts[55]
+    assert len(ts) - 1 == 58   # 56 on the 34 m hull
+    assert opened == [56, 57]
+    assert ts[56] == pytest.approx(0.95652, abs=5e-6)
+    assert ts[56] < G.tier("Deck_Main").t1 < ts[57]
     assert ts[opened[-1] + 1] == 1.0
     floor = profiles.chase_platform_z(G)
     # TRUNNION AXIS to CHEEK TOP 0.03, as `cannons` cuts the cheeks
@@ -321,7 +329,7 @@ def test_it_is_planked_like_a_deck_on_beams_and_carlings():
     top = profiles.chase_platform_z(G)
     fore, _aft = profiles.chase_platform_span(G)
     aft = profiles.station_y(G, 1.0) + G.bulwark_thick
-    assert aft == pytest.approx(-16.78)
+    assert aft == pytest.approx(-20.78)   # -16.78 at 34 m
     timbers = profiles.chase_platform_timbers(G)
     beams = [b for b in timbers if b["kind"] == "beam"]
     carlings = [b for b in timbers if b["kind"] == "carling"]
@@ -363,8 +371,9 @@ def test_it_counts_its_own_triangles():
     assert [len(pc) - 1 for pc in profiles.chase_platform_pieces(G)] \
         == [1, 2]
     assert len(profiles.chase_platform_timbers(G)) == 6
-    assert len(profiles.chase_platform_riser(G)["columns"]) == 7
-    assert profiles.chase_platform_triangles(G) == 148
+    # no riser on the 42 m hull (seven columns, 44 tris, at 34 m)
+    assert len(profiles.chase_platform_riser(G)["columns"]) == 0
+    assert profiles.chase_platform_triangles(G) == 104
     assert profiles.chase_platform_triangles(F) == 0
 
 

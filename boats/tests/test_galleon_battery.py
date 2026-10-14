@@ -55,7 +55,7 @@ def test_her_carriage_leaves_the_most_room_on_the_tighter_side():
                    if c["kind"] == "broadside")
     best = max((i / 1000.0 for i in range(700, 1200)), key=worst)
     assert G.gun_trunnion_h == round(best, 2)
-    assert worst(G.gun_trunnion_h) > 0.06
+    assert worst(G.gun_trunnion_h) > 0.055   # 0.0585 at 42 m, 0.068 at 34
 
 
 # --- check_cannons' keys: the frigate's read as they shipped ---------------
@@ -146,7 +146,10 @@ def test_her_deviations_are_capped_at_what_she_measures():
     caps = {k: cap for k, (cap, _why) in joints.DEVIATIONS.items()}
     galleon = {k for k in caps if k != joints.pair("Deck_Quarter",
                                                    "PortLid_")}
-    assert galleon == {joints.pair("Castle_Poop", "Rigging")}
+    # CHANGED ON PURPOSE (the 42 m hull): Ceiling_Lower x Damage 18, two
+    # scars between her hull ports through her side's inner planking.
+    assert galleon == {joints.pair("Castle_Poop", "Rigging"),
+                       joints.pair("Ceiling_Lower", "Damage")}
     assert joints.pair("Deck_Quarter", "Rigging") not in caps
     assert joints.pair("Chainplates", "PortLid_") not in caps
     assert joints.pair("Cannon_42", "Hull") not in caps
@@ -232,13 +235,13 @@ def test_her_chase_ports_stand_where_her_chasers_are():
     chasers = [g for g in profiles.gun_placements(G) if g["kind"] == "chase"]
     for gun in chasers:
         assert gun["origin"][2] == pytest.approx(floor, abs=1e-9)
-    assert floor == pytest.approx(5.331, abs=5e-4)
+    assert floor == pytest.approx(5.490, abs=5e-4)
     sill, head = profiles.chase_sill_z(G), profiles.chase_head_z(G)
     assert sill - floor == pytest.approx(0.75)
     lo, hi = profiles.gun_deck(G, profiles.chase_deck_index(G)).sill_band
     assert lo <= sill - floor <= hi
-    assert sill == pytest.approx(6.081, abs=5e-4)
-    assert head == pytest.approx(6.701, abs=5e-4)
+    assert sill == pytest.approx(6.240, abs=5e-4)
+    assert head == pytest.approx(6.860, abs=5e-4)
     sz = profiles.sheer(G, 1.0)
     assert profiles.transom_row_offsets(G) == pytest.approx(
         [0.0, sill - sz, head - sz, G.bulwark_h])

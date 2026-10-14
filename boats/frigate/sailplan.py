@@ -546,7 +546,8 @@ def spar_segments(p: ShipParams, mast: str | None,
     if sail.kind is st.SailKind.SQUARE:
         # The yard is the head, run out to its own full length rather than to
         # the canvas, which is cut HEAD_FRAC of it.
-        _z, length, _r = profiles.yard_specs(p, mast)[sail.tier]
+        _z, length, _r = profiles.yard_specs(p, mast)[
+            profiles.yard_index(p, mast, sail.tier)]
         mid = _lerp(c.throat, c.peak, 0.5)
         return [(st.SparKind.YARD,
                  (mid[0] - length / 2.0, mid[1], mid[2]),

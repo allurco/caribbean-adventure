@@ -127,7 +127,11 @@ def write_coordinates(p: FrigateParams) -> dict:
             continue
         mesh = obj.data
         mw = obj.matrix_world
-        look = palette.look_value(obj.name)
+        # An owner's tinted part has no family and so no look; its plain
+        # material reads none of these, and they are written for the check
+        # that every mesh carries them.
+        look = 0.0 if palette.is_tinted(obj.name) \
+            else palette.look_value(obj.name)
 
         sheer_h = _float_attribute(mesh, SHEER_H, "POINT")
         wl_z = _float_attribute(mesh, WATERLINE_Z, "POINT")
@@ -584,6 +588,30 @@ def build_grating(p: FrigateParams):
     return mat
 
 
+TINT_ROUGHNESS = 0.70
+
+
+def build_tinted(name: str):
+    """A plain material for one of the owner's tinted parts: a bare
+    Principled with a WHITE base colour (`palette.TINT_BASE`), no graph and
+    no atlas, double-sided because the pennant is one sheet of bunting. The
+    game multiplies the base colour by the owner's, so white reads as the
+    owner's colour and nothing on the ship shares the material."""
+    mat = bpy.data.materials.get(name)
+    if mat is not None:
+        bpy.data.materials.remove(mat)
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    mat.use_backface_culling = False
+    bsdf = _one_of_type(mat.node_tree, "BSDF_PRINCIPLED")
+    bsdf.inputs["Base Color"].default_value = (
+        *palette.srgb_to_linear(palette.TINT_BASE), 1.0)
+    bsdf.inputs["Roughness"].default_value = TINT_ROUGHNESS
+    bsdf.inputs["Metallic"].default_value = 0.0
+    mat.diffuse_color = (1.0, 1.0, 1.0, 1.0)
+    return mat
+
+
 BUILDERS = {
     palette.GRATING: build_grating,
     palette.HULL_TIMBER: build_hull_timber,
@@ -599,11 +627,16 @@ def build_materials(p: FrigateParams) -> dict:
     write_coordinates(p)
     write_rope_width_uv()
     mats = {family: BUILDERS[family](p) for family in palette.families(p)}
+    tinted = {part: build_tinted(name)
+              for part, name in palette.tinted_material_names(p).items()}
     assigned = {}
     for obj in bpy.data.collections[env.collection_name(p)].objects:
         if obj.type != "MESH":
             continue
-        mat = mats[palette.family_of(obj.name)]
+        if palette.is_tinted(obj.name):
+            mat = tinted[obj.name]
+        else:
+            mat = mats[palette.family_of(obj.name)]
         obj.data.materials.clear()
         obj.data.materials.append(mat)
         assigned[obj.name] = mat.name

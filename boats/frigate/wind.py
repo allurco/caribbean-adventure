@@ -129,20 +129,35 @@ def sail_panel(p: FrigateParams, mast: str, tier: int) -> dict:
     why every sail but a course flares downward.
     """
     yards = profiles.yard_specs(p, mast)
-    head_z, yard_len, _r = yards[tier]
+    # `tier` is the SAIL's tier; its yard is `yard_index` of it, which on a
+    # square-rigged mast is the tier itself.
+    i = profiles.yard_index(p, mast, tier)
+    head_z, yard_len, _r = yards[i]
     head_half = HEAD_FRAC * yard_len / 2.0
-    foot_half = head_half if tier == 0 else HEAD_FRAC * yards[tier - 1][1] / 2.0
-    depth = DEPTH_FRAC[tier] * 2.0 * head_half
-    if tier == 0:
+    y = profiles.mast_point(p, mast, head_z)[1] + sail_fwd(p, mast)
+    plan = profiles.yard_plan_of(p, mast, tier)
+    if plan is not None:
+        # A FLYING topsail: its foot sheeted home at the lower masthead the
+        # mast states, spread `foot_scale` wider than its head.
+        return {
+            "head_z": head_z,
+            "foot_z": plan.foot_frac * profiles.mast_truck_z(p, mast),
+            "head_half": head_half,
+            "foot_half": head_half * plan.foot_scale,
+            "y": y,
+        }
+    foot_half = head_half if i == 0 else HEAD_FRAC * yards[i - 1][1] / 2.0
+    depth = DEPTH_FRAC[i] * 2.0 * head_half
+    if i == 0:
         floor = course_rail_z(p, mast) + COURSE_RAIL_CLEAR
     else:
-        floor = yards[tier - 1][0] + FOOT_CLEAR
+        floor = yards[i - 1][0] + FOOT_CLEAR
     return {
         "head_z": head_z,
         "foot_z": max(head_z - depth, floor),
         "head_half": head_half,
         "foot_half": foot_half,
-        "y": profiles.mast_point(p, mast, head_z)[1] + sail_fwd(p, mast),
+        "y": y,
     }
 
 
@@ -255,9 +270,16 @@ def flag_mast(p: FrigateParams) -> str:
 
 
 def flag_staff(p: FrigateParams) -> tuple[float, float, float]:
-    """Head of the staff the colours are hoisted on: the aftmost truck."""
+    """Head of the staff the colours are hoisted on: the aftmost truck.
+
+    On a ship whose owner's PENNANT flies from that same truck (one mast),
+    the flag's head stands under the pennant by `owner.flag_drop`; on every
+    other ship that drop is nothing and the flag is where it always was."""
+    from . import owner
+
     mast = flag_mast(p)
-    return profiles.mast_point(p, mast, profiles.mast_truck_z(p, mast))
+    z = profiles.mast_truck_z(p, mast) - owner.flag_drop(p)
+    return profiles.mast_point(p, mast, z)
 
 
 def flag_grid(p: FrigateParams, nu: int, nv: int) -> list[list]:
@@ -335,7 +357,12 @@ def sail_patches(p: FrigateParams) -> list[dict]:
     # The sails the ship actually sets, in `sailplan.all_sails` order — for the
     # frigate that is fore/main/mizzen x three tiers, exactly the list this
     # used to build by hand, so the seeded draw lands on the same canvas.
-    sails = [(m, sl.tier) for m, sl in _sail_list(p)]
+    #
+    # NOT ON A HEADSAIL. Two headsails overlap seen from abeam, the jib's
+    # leech over the forestaysail's luff, held apart only by their bellies,
+    # so a patch standing `PATCH_LIFT` off one can stand in the other. Only
+    # the sloop sets any, so no other ship's draw moves.
+    sails = [(m, sl.tier) for m, sl in _sail_list(p) if m is not None]
     out = []
     for _ in range(PATCHES):
         mast, tier = rng.choice(sails)

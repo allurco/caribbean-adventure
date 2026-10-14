@@ -301,11 +301,12 @@ def test_a_tolerance_wide_enough_to_hide_a_defect_is_refused():
 # The two fixtures are Blender's own measurements on the galleon rebuilt at
 # 8c21587, as world-space quads over each face's measured extent on the
 # lateen's centre plane x = 0: the face the vangs touch (y -17.71..-16.98,
-# z 18.90..20.04) and the face the weather backstay crossed in the belly
+# z 18.90..20.04; carried onto the 42 m hull's peak, (0, -22.278, 24.696),
+# with the same extent) and the face the weather backstay crossed in the belly
 # before the lee pair was cast off (y -12.14..-10.93, z 11.83..13.29).
 
-VANG_FACE = [(0.0, -17.71, 18.90), (0.0, -16.98, 18.90),
-             (0.0, -16.98, 20.04), (0.0, -17.71, 20.04)]
+VANG_FACE = [(0.0, -23.008, 23.556), (0.0, -22.278, 23.556),
+             (0.0, -22.278, 24.696), (0.0, -23.008, 24.696)]
 BELLY_FACE = [(0.0, -12.14, 11.83), (0.0, -10.93, 11.83),
               (0.0, -10.93, 13.29), (0.0, -12.14, 13.29)]
 
@@ -343,10 +344,10 @@ def test_a_vang_touching_the_belly_abaft_the_slings_fails_naming_both_ends():
     vertex, corner, dist = strays[0]
     assert vertex == (0.0, -12.14, 13.29)
     assert corner == corners[0]
-    # 8.7499 m between the belly face's nearest vertex (0, -12.14, 13.29)
-    # and the lateen's peak (0, -17.7113, 20.0370)
-    assert dist == pytest.approx(8.7499, abs=5e-5)
+    # 15.2601 m between the belly face's nearest vertex (0, -12.14, 13.29)
+    # and the lateen's peak (0, -22.2776, 24.6962) on the 42 m hull
+    assert dist == pytest.approx(15.2601, abs=5e-5)
     text = joints.off_corner_text("vang", strays[0], _vang_width())
     assert "m between" in text and "peak" in text
     assert "(0.0000, -12.1400, 13.2900)" in text
-    assert "(0.0000, -17.7113, 20.0370)" in text
+    assert "(0.0000, -22.2776, 24.6962)" in text

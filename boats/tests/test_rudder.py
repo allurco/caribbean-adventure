@@ -276,9 +276,9 @@ def test_her_rudder_hangs_where_her_own_stern_puts_it():
 
     g = GalleonParams()
     assert rudder.sternpost_y(g) == profiles.station_y(g, 1.0)
-    assert rudder.sternpost_y(g) == pytest.approx(-17.00)
+    assert rudder.sternpost_y(g) == pytest.approx(-21.00)
     assert rudder.heel_z(g) == profiles.keel_z(g, 1.0)
-    assert rudder.heel_z(g) == pytest.approx(-2.40)
+    assert rudder.heel_z(g) == pytest.approx(-2.96)
     assert profiles.gallery_lowest(g) == pytest.approx(3.55)
     assert profiles.gallery_lowest(g) - rudder.head_z(g) \
         == pytest.approx(rudder.GALLERY_CLEAR)

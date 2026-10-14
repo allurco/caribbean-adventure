@@ -55,13 +55,13 @@ def test_the_mizzen_channel_sits_under_the_quarterdeck_castles_own_cap():
 
 
 def test_the_mizzen_drop_is_the_largest_cm_that_clears_the_hull_row():
-    """CASTLE CHANNEL EDGE to STRAP FOOT, 4.62 m, by A's rule: the largest
+    """CASTLE CHANNEL EDGE to STRAP FOOT, 4.55 m (4.62 at 34 m), by A's rule: the largest
     drop to the cm whose in-run foot stops `strap_clear` above the hull
     row's head line and whose straps clear every hull lid's sweep by as
     much. One more centimetre and the foot between hull ports 10 and 11
     stops short of that."""
     drop = profiles.chainplate_drop_of(G, "mizzen")
-    assert drop == profiles.largest_chainplate_drop(G, "mizzen") == 4.62
+    assert drop == profiles.largest_chainplate_drop(G, "mizzen") == 4.55
     assert profiles.drop_clears_hull_row(G, "mizzen")
     longer = profiles.with_chainplate_drop(G, "mizzen", drop + 0.01)
     assert not profiles.drop_clears_hull_row(longer, "mizzen")
@@ -70,8 +70,8 @@ def test_the_mizzen_drop_is_the_largest_cm_that_clears_the_hull_row():
     # bisection was right by luck. The bound is now found by doubling until
     # it fails; the answer is the end of the first passing run, and every
     # 10 cm below it passes.
-    far = profiles.with_chainplate_drop(G, "mizzen", 8.69)
-    assert profiles.drop_clears_hull_row(far, "mizzen")
+    # On the 42 m hull the mizzen never passes again (none to 15 m); the
+    # doubling search is kept, and its run checked below.
     for mast in profiles.mast_names(G):
         best = profiles.largest_chainplate_drop(G, mast)
         nxt = profiles.with_chainplate_drop(G, mast, best + 0.01)
@@ -106,8 +106,8 @@ def test_the_mizzen_straps_run_down_outside_the_castle_wall_to_the_hull():
             assert x - side > -r.strap_bed   # the foot is let in
             if u < 0.98:                     # and only the foot
                 assert x - side >= 0.0, (head, u)
-    assert max(feet) == pytest.approx(-0.4114, abs=5e-4)
-    assert min(feet) == pytest.approx(-0.4410, abs=5e-4)
+    assert max(feet) == pytest.approx(-0.3234, abs=5e-4)
+    assert min(feet) == pytest.approx(-0.3430, abs=5e-4)
 
 
 def test_no_strap_on_any_channel_is_buried_above_its_foot():
@@ -135,7 +135,7 @@ def test_no_strap_on_any_channel_is_buried_above_its_foot():
                 least = x - side if least is None else min(least, x - side)
     assert n == 15
     assert least >= 0.0
-    assert least == pytest.approx(0.0098, abs=5e-4)
+    assert least == pytest.approx(0.0080, abs=5e-4)
 
 
 def _wall_crossing(rope):
@@ -186,22 +186,28 @@ def test_the_aft_three_mizzen_shrouds_cross_the_poop_wall_KNOWN():
     over the quarterdeck. Question for the maintainer (task 9 report)."""
     poop = G.tier("Deck_Poop")
     q = G.tier("Deck_Quarter")
-    assert ropes.hounds_z(G, "mizzen") == pytest.approx(9.186, abs=1e-3)
-    inside = []
+    assert ropes.hounds_z(G, "mizzen") == pytest.approx(11.418, abs=1e-3)
+    inside, forward = [], []
     for rope in ropes.lower_shrouds(G, "mizzen", 1.0):
         t, z = _wall_crossing(rope)
         s = profiles.sheer(G, t)
         if t < poop.t0:
-            assert t == pytest.approx(0.802, abs=1e-3)
+            forward.append(t)
             continue
         inside.append((z - (s + q.rise + q.bulwark_h), s + poop.rise - z))
-    assert len(inside) == 3
+    # ON THE 42 m HULL two deadeyes a side lie forward of the poop break and
+    # cross in the open over the quarterdeck, and the other two cross the
+    # poop's side 1.08-1.09 over the QUARTERDECK CAP, 0.48-0.49 m ABOVE the
+    # POOP DECK EDGE: through the poop's own bulwark, still the known
+    # shortfall (three a side under its deck edge at 34 m).
+    assert forward == pytest.approx([0.7969, 0.8065], abs=1e-3)
+    assert len(inside) == 2
     over_cap = [a for a, _b in inside]
     under_deck = [b for _a, b in inside]
-    assert min(over_cap) == pytest.approx(0.294, abs=2e-3)
-    assert max(over_cap) == pytest.approx(0.326, abs=2e-3)
-    assert min(under_deck) == pytest.approx(0.274, abs=2e-3)
-    assert max(under_deck) == pytest.approx(0.306, abs=2e-3)
+    assert min(over_cap) == pytest.approx(1.0821, abs=2e-3)
+    assert max(over_cap) == pytest.approx(1.0926, abs=2e-3)
+    assert min(under_deck) == pytest.approx(-0.4926, abs=2e-3)
+    assert max(under_deck) == pytest.approx(-0.4821, abs=2e-3)
 
 
 # --- B: what the castle channel is fastened to, and what it no longer hits --
@@ -304,10 +310,10 @@ def test_every_foot_beside_the_hull_row_stops_above_its_port_head():
             for o in profiles.strap_foot_over_head(G, m) if o is not None]
     # fore 4 (its first foot is forward of hull port 1), main 6, mizzen 1
     # (its other three are abaft hull port 11)
-    assert len(over) == 11
+    assert len(over) == 14
     assert min(over) >= clear
-    assert min(over) == pytest.approx(0.0442, abs=5e-4)
-    assert max(over) == pytest.approx(0.0599, abs=5e-4)
+    assert min(over) == pytest.approx(0.0466, abs=5e-4)
+    assert max(over) == pytest.approx(0.1368, abs=5e-4)
 
 
 def test_every_strap_clears_every_hull_lids_sweep_by_strap_clear():
@@ -319,7 +325,7 @@ def test_every_strap_clears_every_hull_lids_sweep_by_strap_clear():
     gaps = [g for m in profiles.mast_names(G)
             for g in profiles.strap_lid_clearance(G, m)]
     assert min(gaps) >= G.rail_form.strap_clear
-    assert min(gaps) == pytest.approx(0.0457, abs=5e-4)
+    assert min(gaps) == pytest.approx(0.0473, abs=5e-4)
 
 
 def test_at_the_old_drop_the_sweep_finds_the_lid_crossing_its_strap():
@@ -335,18 +341,24 @@ def test_at_the_old_drop_the_sweep_finds_the_lid_crossing_its_strap():
     2.20. It is the OVERHANG that crosses: the same strap at 2.40 beside
     a lid cut to the port's own 0.86 m width (no overhang) stands clear
     by 0.040, exactly the `strap_clear` its layout keeps from the port's
-    edge."""
-    old = profiles.with_chainplate_drop(G, "main", 2.40)
+    edge.
+
+    ON THE 42 m HULL the ports stand 2.44 m apart, not 1.98, and the
+    crossing comes at the first centimetre past the ruled drop: at 2.25
+    the main channel's FIFTH strap (head y -1.347) is 0.0 from its hull
+    lid's swept overhang, against 0.0473 at 2.20, and beside a lid cut to
+    the port's own width it stands clear by `strap_clear` exactly."""
+    old = profiles.with_chainplate_drop(G, "main", 2.25)
     heads = [h[1] for h, _f in profiles.chainplate_segments(old, "main")]
-    assert heads[2] == pytest.approx(-0.942, abs=1e-3)
+    assert heads[4] == pytest.approx(-1.347, abs=1e-3)
     gaps = profiles.strap_lid_clearance(old, "main")
-    assert gaps[2] == 0.0
+    assert gaps[4] == 0.0
     assert min(profiles.strap_lid_clearance(G, "main")) == pytest.approx(
-        0.0457, abs=5e-4)
+        0.0473, abs=5e-4)
     lid_w = profiles.LID_W
     try:
         profiles.LID_W = G.gun_decks[0].width          # no overhang
-        bare = profiles.strap_lid_clearance(old, "main")[2]
+        bare = profiles.strap_lid_clearance(old, "main")[4]
     finally:
         profiles.LID_W = lid_w
     assert bare == pytest.approx(G.rail_form.strap_clear, abs=1e-6)
@@ -362,11 +374,15 @@ def test_two_main_straps_pass_the_open_waist_lids_inside_strap_clear_KNOWN():
     strap is near-vertical against a side that tumbles out below, so
     shortening it moves nothing here. No face pair (Blender), but short
     of the margin. Question for the maintainer (task 9 report)."""
+    # ON THE 42 m HULL ONE strap is left short, at 0.0382; the second
+    # stands 0.1065 clear now the ports are 2.44 m apart.
     waist = profiles.strap_lid_clearance(G, "main", ("bulwark",))
-    assert sorted(waist)[0] == pytest.approx(0.0110, abs=5e-4)
-    assert sorted(waist)[1] == pytest.approx(0.0122, abs=5e-4)
-    assert sorted(waist)[2] > G.rail_form.strap_clear
-    for drop in (2.40, 2.00):
+    assert sorted(waist)[0] == pytest.approx(0.0382, abs=5e-4)
+    assert sorted(waist)[0] < G.rail_form.strap_clear
+    assert sorted(waist)[1] > G.rail_form.strap_clear
+    # every drop the hull row allows (2.20 at most) leaves it short; a
+    # longer one would clear it here and fail the hull row (A's rule)
+    for drop in (2.10, 2.00):
         other = profiles.with_chainplate_drop(G, "main", drop)
         assert min(profiles.strap_lid_clearance(
             other, "main", ("bulwark",))) < G.rail_form.strap_clear
@@ -383,10 +399,10 @@ def test_the_forward_mizzen_shroud_passes_over_the_quarterdeck_cap():
     poop = G.tier("Deck_Poop")
     fwd = [r for r in ropes.lower_shrouds(G, "mizzen", 1.0)
            if _wall_crossing(r)[0] < poop.t0]
-    assert len(fwd) == 1
+    assert len(fwd) == 2
     t, z = _wall_crossing(fwd[0])
     cap = profiles.sheer(G, t) + q.rise + q.bulwark_h
-    assert z - cap == pytest.approx(0.335, abs=2e-3)
+    assert z - cap == pytest.approx(1.112, abs=2e-3)
 
 
 # --- C: the wales between the port rows --------------------------------------
@@ -474,14 +490,14 @@ def test_the_rigging_line_quotes_the_mizzen_shroud_rise_it_measures():
     drop they rose 3.61 (forward) to 2.98 m (aftmost)."""
     from frigate import budget
     rises = [s[1][2] - s[0][2] for s in ropes.lower_shrouds(G, "mizzen", 1.0)]
-    assert max(rises) == pytest.approx(1.056, abs=1e-3)
-    assert min(rises) == pytest.approx(0.476, abs=1e-3)
+    assert max(rises) == pytest.approx(3.356, abs=1e-3)
+    assert min(rises) == pytest.approx(2.896, abs=1e-3)
     old = dataclasses.replace(G, rail_form=dataclasses.replace(
         G.rail_form, castle_channels=(), chainplate_drop=2.40))
     before = [s[1][2] - s[0][2]
               for s in ropes.lower_shrouds(old, "mizzen", 1.0)]
-    assert max(before) == pytest.approx(3.606, abs=1e-3)
-    assert min(before) == pytest.approx(2.976, abs=1e-3)
+    assert max(before) == pytest.approx(5.856, abs=1e-3)
+    assert min(before) == pytest.approx(5.396, abs=1e-3)
     why = budget.line_of(G, "rigging").budget_why
     for figure in ("MIZZEN lower shrouds", "HOUNDS", "1.06", "0.48",
                    "3.61", "2.98"):

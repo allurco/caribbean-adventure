@@ -91,10 +91,10 @@ def test_the_clew_stands_a_named_fraction_of_the_yards_RUN_aft_of_the_tack():
     """
     c = sailplan.corners(G, MIZZEN, lateen_sail())
     run = c.tack[1] - c.peak[1]
-    assert run == pytest.approx(10.042, abs=0.001)
+    assert run == pytest.approx(12.938, abs=0.001)
     assert c.clew[1] == pytest.approx(
         c.tack[1] - sailplan.LATEEN_FOOT_FRAC * run, abs=1e-9)
-    assert c.clew[1] == pytest.approx(-15.502, abs=0.001)
+    assert c.clew[1] == pytest.approx(-19.431, abs=0.001)
     # Forward of the peak, which overhangs the taffrail, so the sheet comes
     # down INBOARD where it can be belayed.
     assert c.clew[1] > c.peak[1]
@@ -111,11 +111,11 @@ def test_the_clew_clears_the_rail_cap_at_ITS_OWN_station():
     """
     c = sailplan.corners(G, MIZZEN, lateen_sail())
     t_clew = profiles.t_of_y(G, c.clew[1])
-    assert t_clew == pytest.approx(0.9559, abs=0.0005)
+    assert t_clew == pytest.approx(0.9626, abs=0.0005)
     cap = profiles.rail_top_z(G, t_clew)
-    assert cap == pytest.approx(11.224, abs=0.001)
+    assert cap == pytest.approx(11.306, abs=0.001)
     assert c.clew[2] == pytest.approx(cap + sailplan.LATEEN_CLEW_CLEAR, abs=1e-9)
-    assert c.clew[2] == pytest.approx(12.424, abs=0.001)
+    assert c.clew[2] == pytest.approx(12.506, abs=0.001)
     # It is the POOP's cap that governs, which is DEFECT 2's fix in evidence.
     assert profiles._rail_tier_at(G, t_clew).name == "Deck_Poop"
     assert cap - profiles.sheer(G, t_clew) == pytest.approx(6.00, abs=1e-9)

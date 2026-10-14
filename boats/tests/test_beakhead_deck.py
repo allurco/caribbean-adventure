@@ -179,8 +179,8 @@ def test_it_passes_well_under_the_bowsprit_and_its_hoops():
         axis_z = heel[2] + f * (tip[2] - heel[2])
         r = r0 + (r1 - r0) * f + head.BOWSPRIT_HOOP_PROUD
         clear.append(axis_z - r - zt)
-    assert clear[-1] == pytest.approx(2.8570, abs=5e-5)
-    assert min(clear) == clear[0] == pytest.approx(2.5652, abs=5e-5)
+    assert clear[-1] == pytest.approx(2.8282, abs=5e-5)
+    assert min(clear) == clear[0] == pytest.approx(2.6761, abs=5e-5)
 
 
 # --- the flight: level platforms stepping down over the knee --------------
@@ -265,10 +265,10 @@ def test_the_flight_ends_at_the_last_station_clear_of_the_carving():
     tail_ys = [pt[1] for r in tail for pt in r]
     assert hits and all(min(tail_ys) - 0.03 <= y <= max(tail_ys) + 0.03
                         for _x, y, _z in hits)
-    assert last["y_fwd"] == pytest.approx(17.8553, abs=5e-5)
-    assert nxt == pytest.approx(18.1232, abs=5e-5)
+    assert last["y_fwd"] == pytest.approx(21.7833, abs=5e-5)
+    assert nxt == pytest.approx(22.0752, abs=5e-5)
     assert last["y_fwd"] - PLATS[0]["y_aft"] \
-        == pytest.approx(0.8253, abs=5e-5)
+        == pytest.approx(0.7533, abs=5e-5)
 
 
 @pytest.mark.parametrize("k", range(len(PLATS)))
@@ -289,7 +289,7 @@ def test_the_flight_steps_down_by_the_rails_own_fall():
     (Split to the rump they ran on to 3.8899 and 3.7553.)"""
     tops = [pl["top"] for pl in PLATS]
     assert all(a > b for a, b in zip(tops, tops[1:]))
-    assert tops == pytest.approx([4.6400, 4.4807, 4.1457], abs=5e-5)
+    assert tops == pytest.approx([4.6400, 4.3419, 4.0400], abs=5e-5)
     for a, b in zip(PLATS[1:], PLATS[2:]):
         fall = _built(G, a["y_fwd"])[1] - _built(G, b["y_fwd"])[1]
         assert a["top"] - b["top"] == pytest.approx(fall, abs=1e-9)
@@ -428,7 +428,7 @@ def test_the_clearance_under_each_platform_is_as_measured():
     the knee's offset is cut for (`head.knee_rail_offset`)."""
     pts = _head_below()
     got = [_below(pl, pts) for pl in PLATS]
-    want = [0.0200, 0.1986, 0.0200]
+    want = [0.0200, 0.0267, 0.0200]   # P1 0.1986 on the 34 m hull
     for g, w in zip(got, want):
         if w is None:
             assert g is None, g
@@ -494,7 +494,7 @@ def test_the_last_platforms_opening_is_wider_than_a_bar_pitch():
     xs = [pt[0] for pt in last if pt[1] == y_fwd]
     opening = max(xs) - min(xs)
     assert opening > palette.GRATING_PITCH
-    assert opening == pytest.approx(0.7764, abs=5e-5)
+    assert opening == pytest.approx(1.0423, abs=5e-5)
 
 
 def test_every_card_has_an_opening_at_least_one_bar_wide():

@@ -120,7 +120,8 @@ FRIGATE_LINES = (
     # sternpost, rudder, hung where the hull planking closes aft and almost
     # entirely below the waterline. The hull line also had the room, standing
     # at 6,870 of 8,000 before the rudder existed.
-    Line("hull", "Hull skin + bulwarks", 8000, ("Hull", "Bulwarks", "Rudder")),
+    Line("hull", "Hull skin + bulwarks", 8000,
+         ("Hull", "Bulwarks", "Rudder", "Hull_Stripe")),
     # Gratings are a decks line in spec section 5 ("Decks, gratings, hatch
     # coamings"), even though `furniture` emits them with the hatches they fill.
     Line("decks", "Decks, gratings, hatch coamings", 3000,
@@ -154,7 +155,8 @@ FRIGATE_LINES = (
     # makes it a lateen mast.
     Line("masts", "Masts, yards, tops, bowsprit", 4500,
          ("Masts", "Tops", "Bowsprit"), ("Yard_", "Lateen_")),
-    Line("sails", "Sails x9 + flag", 5500, ("Sails", "Jolly_Roger")),
+    Line("sails", "Sails x9 + flag", 5500,
+         ("Sails", "Jolly_Roger", "Pennant")),
     # THE ONE LOWERED FLOOR IN THE TABLE, and the only one the maintainer has
     # authorised. The spec's 4,000-triangle line was written before spec
     # section 5 itself chose the 2-triangle ALPHA-CUT RIBBON for rope. At two
@@ -269,7 +271,7 @@ FRIGATE_BUDGET = Budget(
 # from it, so `validate_line` will not let the departure go unargued.
 GALLEON_LINES = (
     Line("hull", "Hull skin + bulwarks + ceiling + rudder", 19000,
-         ("Hull", "Bulwarks", "Ceiling_Lower", "Rudder"),
+         ("Hull", "Bulwarks", "Ceiling_Lower", "Rudder", "Hull_Stripe"),
          spec_budget=8000,
          budget_why=(
              "RE-DERIVED for her lower gun deck (the maintainer's ruling 2026-10-05: "
@@ -284,7 +286,10 @@ GALLEON_LINES = (
              "The 15,000 it replaces is crossed at 114%. The maintainer's third "
              "ruling (A', Task 11) opened the hull's closing face over the "
              "chase platform, two quads, 16 subdivided triangles: Hull "
-             "14,160, so she draws 17,182, 90%"
+             "14,160, so she draws 17,182, 90%. LENGTHENED TO 42 m (the "
+             "maintainer's ruling, 2026-10): Hull 14,688 + Bulwarks 2,206 + "
+             "Ceiling_Lower 748 + Rudder 144 = 17,786, and the owner's "
+             "Hull_Stripe 470 on her lower wale: 18,256, 96%"
          )),
     Line("decks", "Decks, gratings, hatch coamings", 3100,
          ("Deck_Main", "Deck_Quarter", "Deck_Forecastle", "Deck_Poop",
@@ -306,7 +311,9 @@ GALLEON_LINES = (
              "below the sheer and closed Deck_Main's end with a riser: "
              "Chase_Platform 148 -- the slab over the sheer 12, the slab "
              "below it 20, six timbers at 12 and the riser 44 -- and her "
-             "decks draw 3,080, inside 3,100, 99%"
+             "decks draw 3,080, inside 3,100, 99%. On the 42 m hull no riser "
+             "is laid (no lens to close): Chase_Platform 104, and her decks "
+             "draw 3,036, 98%"
          )),
     Line("stern", "Stern castle, gallery windows, transom, castle walls", 8000,
          ("Transom", "Stern_Gallery", "Stern_Carving",
@@ -351,7 +358,7 @@ GALLEON_LINES = (
              "112 + Bowsprit 108 = 2,664, 67% of 4,000; the frigate's 4,500 "
              "would put her at 59% for a smaller rig"
          )),
-    Line("sails", "Sails x6 + flag", 4500, ("Sails", "Jolly_Roger"),
+    Line("sails", "Sails x6 + flag", 4500, ("Sails", "Jolly_Roger", "Pennant"),
          spec_budget=5500,
          budget_why=(
              "six sails, not nine: five square and the lateen at 432 "
@@ -481,8 +488,8 @@ GALLEON_BUDGET = Budget(
 # the frigate's ten, so every object she builds lands on one, and none of
 # them is the frigate's spec figure carried across as an estimate.
 FLUTE_LINES = (
-    Line("hull", "Hull skin + bulwarks + rudder", 9600,
-         ("Hull", "Bulwarks", "Rudder")),
+    Line("hull", "Hull skin + bulwarks + rudder + stripe", 9900,
+         ("Hull", "Bulwarks", "Rudder", "Hull_Stripe")),
     Line("decks", "Decks, gratings, hatch coamings", 2200,
          ("Deck_Main", "Deck_Quarter", "Deck_Forecastle", "Deck_Poop",
           "Gratings")),
@@ -493,7 +500,7 @@ FLUTE_LINES = (
          ("Rails", "Channels", "Chainplates", "Headrails", "Beakhead")),
     Line("masts", "Masts, yards, tops, bowsprit", 2600,
          ("Masts", "Tops", "Bowsprit"), ("Yard_", "Lateen_")),
-    Line("sails", "Sails x5 + flag", 2300, ("Sails", "Jolly_Roger")),
+    Line("sails", "Sails x5 + flag", 2300, ("Sails", "Jolly_Roger", "Pennant")),
     Line("rigging", "Standing + running rigging", 800, ("Rigging",)),
     Line("cannons", "Cannons x8, carriages, port lids", 2000,
          (), ("Cannon_", "PortLid_")),
@@ -507,21 +514,21 @@ FLUTE_LINES = (
 # 7 x 232 (Cannon_) + 7 x 12 (PortLid_) + 3 x 156 (Barrel_) + 1 x 1,180
 # (Anchor_); her one lantern repeats nothing.
 FLUTE_SHARED_REPEATS = 7 * 232 + 7 * 12 + 3 * 156 + 1180
-FLUTE_GLB_CEILING = texbudget.glb_ceiling(31300 - FLUTE_SHARED_REPEATS, 4)
+FLUTE_GLB_CEILING = texbudget.glb_ceiling(31600 - FLUTE_SHARED_REPEATS, 4)
 
 FLUTE_BUDGET = Budget(
     lines=FLUTE_LINES,
-    total=31300,
-    ceiling=34000,
+    total=31600,
+    ceiling=34300,
     ceiling_why=(
         "the frigate's 50,000 ceiling stands 8.7% over her 46,000 target; "
-        "the same proportion over the flute's 31,300 is 34,022, rounded "
-        "DOWN to 34,000 so her margin is no wider than the frigate's"
+        "the same proportion over the flute's 31,600 is 34,347, rounded "
+        "DOWN to 34,300 so her margin is no wider than the frigate's"
     ),
     fed_by=FED_BY,
     glb_ceiling=FLUTE_GLB_CEILING,
     glb_why=(
-        "derived the way the frigate's was: her 31,300 drawn target less "
+        "derived the way the frigate's was: her 31,600 drawn target less "
         "the triangles she draws again off a mesh the file stores once "
         "(7 x 232 cannons, 7 x 12 lids, 3 x 156 barrels, 1 x 1,180 "
         "anchor), 3,356, at the frigate's measured 82.37 bytes a "
@@ -533,49 +540,52 @@ FLUTE_BUDGET = Budget(
 
 
 # THE SLOOP'S. Every line is what she DRAWS, read off her built scene
-# (`tests/test_sloop_budget.py`'s table, 19,286 in 47 objects), rounded up to
-# the hundred, as the flute's are. Her gaff and boom spend the masts line, as
-# every spar does; her rails line carries no head rails, because she runs no
-# `headworks` pass (a sloop has a plain stem).
+# (`tests/test_sloop_budget.py`'s table, 20,280 in 51 objects), rounded up to
+# the hundred, as the flute's are. Her gaff, boom and topsail yard spend the
+# masts line, as every spar does; her rails line carries no head rails,
+# because she runs no `headworks` pass (a sloop has a plain stem). Re-read
+# when she took her square topsail, her owner's pennant and hull stripe and
+# her own scaled shot scars (19,286 in 47 objects before).
 SLOOP_LINES = (
-    Line("hull", "Hull skin + bulwarks + rudder", 5000,
-         ("Hull", "Bulwarks", "Rudder")),
+    Line("hull", "Hull skin + bulwarks + rudder + stripe", 5200,
+         ("Hull", "Bulwarks", "Rudder", "Hull_Stripe")),
     Line("decks", "Decks, gratings, hatch coamings", 1700,
          ("Deck_Main", "Deck_Quarter", "Deck_Forecastle", "Gratings")),
     Line("stern", "Stern, gallery windows, transom", 2100,
          ("Transom", "Stern_Gallery", "Stern_Carving")),
-    Line("rails", "Railings, channels, chainplates", 500,
+    Line("rails", "Railings, channels, chainplates", 400,
          ("Rails", "Channels", "Chainplates", "Headrails", "Beakhead")),
-    Line("masts", "Mast, gaff, boom, bowsprit", 600,
-         ("Masts", "Tops", "Bowsprit"), ("Gaff_", "Boom_")),
-    Line("sails", "Sails x4 + flag", 1900, ("Sails", "Jolly_Roger")),
-    Line("rigging", "Standing + running rigging", 200, ("Rigging",)),
+    Line("masts", "Mast, gaff, boom, topsail yard, bowsprit", 700,
+         ("Masts", "Tops", "Bowsprit"), ("Gaff_", "Boom_", "Yard_")),
+    Line("sails", "Sails x5 + flag + pennant", 2300,
+         ("Sails", "Jolly_Roger", "Pennant")),
+    Line("rigging", "Standing + running rigging", 300, ("Rigging",)),
     Line("cannons", "Cannons x8, carriages, port lids", 2000,
          (), ("Cannon_", "PortLid_")),
     Line("furniture", "Deck furniture", 4400,
          ("Deck_Furniture", "Wheel"), ("Barrel_", "Lantern_", "Anchor_")),
-    Line("dressing", "Figurehead + patches", 1500,
+    Line("dressing", "Figurehead + patches + damage", 1700,
          ("Figurehead", "Sail_Patches", "Damage")),
 )
 
 # 7 x 232 (Cannon_) + 7 x 12 (PortLid_) + 3 x 156 (Barrel_) + 1 x 1,180
 # (Anchor_): the copies of a shared mesh the `.glb` stores once.
 SLOOP_SHARED_REPEATS = 7 * 232 + 7 * 12 + 3 * 156 + 1180
-SLOOP_GLB_CEILING = texbudget.glb_ceiling(19900 - SLOOP_SHARED_REPEATS, 4)
+SLOOP_GLB_CEILING = texbudget.glb_ceiling(20800 - SLOOP_SHARED_REPEATS, 4)
 
 SLOOP_BUDGET = Budget(
     lines=SLOOP_LINES,
-    total=19900,
-    ceiling=21600,
+    total=20800,
+    ceiling=22600,
     ceiling_why=(
         "the frigate's 50,000 ceiling stands 8.7% over her 46,000 target; "
-        "the same proportion over the sloop's 19,900 is 21,630, rounded "
+        "the same proportion over the sloop's 20,800 is 22,609, rounded "
         "DOWN to the hundred so her margin is no wider than the frigate's"
     ),
     fed_by=FED_BY,
     glb_ceiling=SLOOP_GLB_CEILING,
     glb_why=(
-        "derived the way the frigate's was: her 19,900 drawn target less "
+        "derived the way the frigate's was: her 20,800 drawn target less "
         "the triangles she draws again off a mesh the file stores once "
         "(7 x 232 cannons, 7 x 12 lids, 3 x 156 barrels, 1 x 1,180 "
         "anchor), 3,356, at the frigate's measured 82.37 bytes a "
