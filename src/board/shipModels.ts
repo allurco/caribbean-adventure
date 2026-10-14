@@ -42,6 +42,7 @@ const SLOOP: ShipModel = {
   beamMetres: 5.6,
   depthMetres: 4.15,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  tintedParts: ["Sails"],
 };
 
 const FLUTE: ShipModel = {
@@ -50,6 +51,7 @@ const FLUTE: ShipModel = {
   beamMetres: 7.4,
   depthMetres: 7.2,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  tintedParts: ["Sails"],
 };
 
 const FRIGATE: ShipModel = {
@@ -68,6 +70,7 @@ const GALLEON: ShipModel = {
   beamMetres: 11,
   depthMetres: 10.1,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  tintedParts: ["Sails"],
 };
 
 /** Every class's model, or `null` for a class still drawn as a box. */
