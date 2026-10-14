@@ -27,8 +27,7 @@
 
 import { CAMERA_PITCH } from "../cameraBounds";
 import { HUD_TOP_BAR_HEIGHT } from "../hudLayout";
-import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
-import { portOwnBuildings } from "./portHover";
+import { buildingReachOf, buildingTopOf, portOwnBuildings, type TownBuilding } from "./portHover";
 import type { PortBuilding } from "./portSettlement";
 
 /** The label's font size in world units: its size at map zoom. */
@@ -144,7 +143,7 @@ export function portLabelAnchor(centre: { x: number; z: number }, buildings: rea
 export function portLabelBaseY(
   centre: { x: number; z: number },
   groundY: number,
-  buildings: readonly PortBuilding[],
+  buildings: readonly TownBuilding[],
   pitch: number
 ): number {
   return portLabelLiftOver(centre, groundY, portOwnBuildings(centre, buildings), pitch);
@@ -157,7 +156,7 @@ export function portLabelBaseY(
 export function portLabelLiftOver(
   anchor: { x: number; z: number },
   groundY: number,
-  ownBuildings: readonly PortBuilding[],
+  ownBuildings: readonly TownBuilding[],
   pitch: number
 ): number {
   // Held inside the pitches `portLabelViewPitch` reports, so tan stays finite
@@ -165,8 +164,9 @@ export function portLabelLiftOver(
   const floorScale = Math.min(1, rise / Math.tan(CAMERA_PITCH));
   let base = groundY + PORT_LABEL_MIN_HEIGHT * floorScale;
   for (const b of ownBuildings) {
-    const top = b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale;
-    const north = anchor.z - b.worldZ + AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
+    // A village house by its own model (#176): the town's houses stand taller than the kit's.
+    const top = buildingTopOf(b);
+    const north = anchor.z - b.worldZ + buildingReachOf(b);
     base = Math.max(base, top + Math.max(0, north) * rise + PORT_LABEL_LIFT_MARGIN);
   }
   return base;

@@ -4,7 +4,7 @@ import { getMapPreset } from "../../game/mapConfig";
 import { createWrap } from "../../game/hex";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { landSurface } from "./landMesh";
-import { streetDistance } from "./townPlateau";
+import { KERB_WIDTH, SHORE_KEEP_TOP, streetDistance } from "./townPlateau";
 import { streetEdgeStones, type TownSeed } from "./townDetailLayout";
 import { BUILDING_SCALE } from "./worldScale";
 
@@ -41,6 +41,8 @@ describe("street edge stones (#91)", () => {
             const x = street.from[0] + tx * t + -tz * side * (street.halfWidth - 0.001);
             const z = street.from[1] + tz * t + tx * side * (street.halfWidth - 0.001);
             if (others.some((o) => streetDistance(o, x, z) < o.halfWidth * 2)) continue;
+            // Where a street runs out onto the beach it is not carved and has no kerb (#176).
+            if (ground.sampleHeight(x, z) < SHORE_KEEP_TOP + 0.002) continue;
             open++;
             const along = (sx: number, sz: number) => (x - sx) * tx + (z - sz) * tz;
             if (mine.some((s) => Math.abs(along(s.x, s.z)) <= s.halfD + 1e-9)) covered++;
@@ -55,9 +57,12 @@ describe("street edge stones (#91)", () => {
     for (const p of field.townPlateaus) {
       for (const s of streetEdgeStones(p, ground, BUILDING_SCALE, [], TOWN)) {
         const g = ground.sampleHeight(s.x, s.z);
+        // The ground beside it, either side across the kerb, where a bank or the street's carve falls away.
+        const w = KERB_WIDTH * BUILDING_SCALE;
+        const beside = Math.max(g, ground.sampleHeight(s.x - s.fz * w, s.z + s.fx * w), ground.sampleHeight(s.x + s.fz * w, s.z - s.fx * w));
         expect(s.y0).toBeLessThan(g);
         expect(s.y1).toBeGreaterThan(g);
-        expect(s.y1 - g).toBeLessThan(0.01 * BUILDING_SCALE);
+        expect(s.y1 - beside).toBeLessThan(0.01 * BUILDING_SCALE);
       }
     }
   });

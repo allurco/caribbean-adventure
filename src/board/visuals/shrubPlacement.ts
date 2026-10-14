@@ -127,9 +127,9 @@ const disc = (d: DecorationData, radius: number): ShrubObstacle => ({
 const rockRadius = (d: DecorationData, sizeClass = rockSizeClass(d.biome)) =>
   ROCK_UNIT_RADIUS * ROCK_SIZE_CLASS_SCALE[sizeClass] * d.scale;
 
-/** The pier's deck as `Piers.tsx` draws it: from its land end (the placement's origin) out `PIER_LENGTH` along its rotation, at its scale. */
+/** The pier's deck as `Piers.tsx` draws it: from its land end (the placement's origin) out `PIER_LENGTH` along its rotation, at its scale and stretch. */
 const pierDeck = (d: DecorationData): ShrubObstacle => {
-  const length = PIER_LENGTH * d.scale;
+  const length = PIER_LENGTH * d.scale * (d.stretch ?? 1);
   return {
     ax: d.worldX,
     az: d.worldZ,

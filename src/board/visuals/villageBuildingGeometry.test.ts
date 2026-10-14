@@ -7,6 +7,8 @@ import {
   VILLAGE_PLAN,
   VILLAGE_TRIANGLE_BUDGET,
   VILLAGE_VARIANTS,
+  VILLAGE_STOREYS,
+  villageRoofPitch,
 } from "./villageBuildingGeometry";
 import { backfacingFirstHits } from "./facetVisibility";
 import type { AgedColors } from "./agedKit";
@@ -61,6 +63,22 @@ describe("village buildings (#87)", () => {
       }, 30000);
     });
   }
+
+  it("has a three-storey town house, the village's tallest, a storey over the two-storey houses (#176)", () => {
+    expect(VILLAGE_VARIANTS).toContain("townHouse");
+    expect(VILLAGE_STOREYS.townHouse).toBe(3);
+    expect(VILLAGE_STOREYS.stoneHouse).toBe(2);
+    expect(VILLAGE_STOREYS.merchant).toBe(2);
+    expect(VILLAGE_STOREYS.cottage).toBe(1);
+    for (const v of VILLAGE_VARIANTS) if (v !== "townHouse") expect(VILLAGE_HEIGHT.townHouse).toBeGreaterThan(VILLAGE_HEIGHT[v]);
+    // Narrower than the merchant's house, about a cottage's width: a tall house on a narrow plot.
+    expect(VILLAGE_PLAN.townHouse.halfW).toBeLessThan(VILLAGE_PLAN.merchant.halfW);
+  });
+
+  it("pitches the houses' roofs at 55° or steeper and the warehouse's at 45° (#176)", () => {
+    for (const v of ["cottage", "stoneHouse", "merchant", "townHouse"] as const) expect((villageRoofPitch(v) * 180) / Math.PI).toBeGreaterThanOrEqual(55);
+    expect((villageRoofPitch("warehouse") * 180) / Math.PI).toBeGreaterThanOrEqual(45);
+  });
 
   it("gives the kinds different sizes", () => {
     const areas = VILLAGE_VARIANTS.map((v) => VILLAGE_PLAN[v].halfW * VILLAGE_PLAN[v].halfD);

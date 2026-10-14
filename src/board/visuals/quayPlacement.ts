@@ -40,9 +40,9 @@ import { mapCellId } from "./islands";
 import { SEED_FEATURES } from "./seedFeatures";
 import { stream, subSeed } from "./subSeed";
 import { lerpRange } from "./variationStream";
-import { PROP_SCALE } from "./worldScale";
+import { TOWN_PIECE_SCALE } from "./worldScale";
 
-/** The quay's plan scale; its heights are at `PROP_SCALE`. */
+/** The quay's plan scale; its heights are at `TOWN_PIECE_SCALE`. */
 export interface QuaySize {
   /** Scale across the pier (the quay's width). */
   scaleX: number;
@@ -103,8 +103,8 @@ export function quayAt(field: GroundField, centre: { x: number; z: number }, rot
   // The sand along the sea face, out to the coping's edge.
   let seaSand = -Infinity;
   for (const x of [-hw, 0, hw]) for (const z of [QUAY_SEA_FACE, QUAY_SEA_FACE + QUAY_COPING_PROUD]) seaSand = Math.max(seaSand, sample(x, z));
-  // Heights are at `PROP_SCALE`, as the pier's are; the plan's scale is in `size`.
-  const k = PROP_SCALE;
+  // Heights are at `TOWN_PIECE_SCALE`, as the pier's are; the plan's scale is in `size`.
+  const k = TOWN_PIECE_SCALE;
   const top = Math.min((PIER_DECK_TOP + QUAY_MAX_STEP) * k, Math.max((PIER_DECK_TOP + QUAY_LIP) * k, seaSand + QUAY_PROUD_OF_SAND * k));
   let worldY = top - QUAY_TOP * k;
   // The corners, edge midpoints and centre of the body's plan, the way `placeOnGround` probes a footprint.
@@ -121,8 +121,8 @@ export function placeQuay(cell: MapCell, field: GroundField, worldSeed: number):
   const [hexX, , hexZ] = hexToWorld(cell.hex);
   const next = stream(subSeed(worldSeed, SEED_FEATURES.quay, mapCellId(cell)));
   const size: QuaySize = {
-    scaleX: lerpRange(QUAY_WIDTH_RANGE, next()) * PROP_SCALE,
-    scaleZ: lerpRange(QUAY_DEPTH_RANGE, next()) * PROP_SCALE,
+    scaleX: lerpRange(QUAY_WIDTH_RANGE, next()) * TOWN_PIECE_SCALE,
+    scaleZ: lerpRange(QUAY_DEPTH_RANGE, next()) * TOWN_PIECE_SCALE,
   };
   return quayAt(field, { x: hexX, z: hexZ }, pier.rotation, size);
 }
@@ -147,7 +147,7 @@ export function portQuays(cells: readonly MapCell[], field: GroundField, worldSe
 export function quayTopAt(quay: QuayPlacement, point: { x: number; z: number }): number | undefined {
   const local = toLocal(quay, point);
   if (Math.abs(local.x) > QUAY_WIDTH / 2 || local.z < QUAY_BACK || local.z > QUAY_SEA_FACE) return undefined;
-  return local.z < QUAY_STEP_Z ? quay.top - QUAY_COPING_THICKNESS * PROP_SCALE : quay.top;
+  return local.z < QUAY_STEP_Z ? quay.top - QUAY_COPING_THICKNESS * TOWN_PIECE_SCALE : quay.top;
 }
 
 /**

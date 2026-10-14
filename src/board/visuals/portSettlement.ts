@@ -48,18 +48,19 @@
  * Each port is placed once from its canonical cell; the world copies redraw
  * the same instances.
  *
- * At the 350 m hex (ADR 0003, `worldScale.ts`) every building is drawn at
- * `BUILDING_SCALE`, and so are the square, the rings, the gap between
- * buildings, the sink and the footing margin; the reserve round the pier's
- * land end follows the pier (`PROP_SCALE`). The whole layout centres on
+ * Every building is drawn at its family's factor (ADR 0006, #176): the
+ * watchtower and the church at `LANDMARK_SCALE`, the rest at
+ * `BUILDING_SCALE`, which the square, the rings, the gap between buildings,
+ * the sink and the footing margin follow too; the reserve round the pier's
+ * land end follows the pier (`TOWN_PIECE_SCALE`). The whole layout centres on
  * `settlementCentre`, by the quay, rather than on the hex centre.
  */
 import { hexToWorld } from "../../game/hex";
 import type { MapCell, PortNation } from "../../game/types";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
-import { BUILDING_FOOTING, BUILDING_KINDS, BUILDING_MAX_HEIGHT, type BuildingKind } from "./buildingGeometry";
-import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
+import { BUILDING_FOOTING, BUILDING_KINDS, type BuildingKind } from "./buildingGeometry";
+import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
 import { SEA_LEVEL } from "./terrainHeightField";
 import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
@@ -67,8 +68,8 @@ import { mapCellId } from "./islands";
 import { SEED_FEATURES } from "./seedFeatures";
 import { stream, subSeed } from "./subSeed";
 import { lerpRange } from "./variationStream";
-import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
-import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH, type TownPlateau } from "./townPlateau";
+import { BUILDING_SCALE, LANDMARK_SCALE, TOWN_PIECE_SCALE } from "./worldScale";
+import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH, SETTLEMENT_CENTRE_SHARE, type TownPlateau } from "./townPlateau";
 import { townCellsRule } from "./townBound";
 
 export interface PortBuilding {
@@ -110,8 +111,20 @@ export const pierRootReserve = (onQuay: boolean) => (onQuay ? PIER_MOUTH_RESERVE
 /** Rings tried from the centre outwards, this far apart; `placeOnGround` nudges within a ring's step. */
 const RADIAL_STEP = 0.04;
 export const PORT_BUILDING_SCALE_RANGE: readonly [number, number] = [0.92, 1.08];
-/** The tower's range keeps AGED_BUILDING_HEIGHT.watchtower × scale (the flag's hoist) under BUILDING_MAX_HEIGHT. */
-export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING_MAX_HEIGHT / AGED_BUILDING_HEIGHT.watchtower];
+/**
+ * The tower's range: a little narrower than the houses', so it keeps its
+ * height over the town's tallest roofs within the band `portSettlement.test.ts`
+ * pins (#176; it used to be held under `BUILDING_MAX_HEIGHT`, which its taller
+ * shaft now passes).
+ */
+export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, 1.02];
+/**
+ * How much taller than the town's tallest roof the watchtower stands, at the
+ * two ends of their scale ranges (#176): the smallest tower over the biggest
+ * town house at least the first, the biggest over the smallest at most the
+ * second. Pinned from the measures, to be confirmed on screen.
+ */
+export const TOWER_OVER_TOWN: readonly [number, number] = [1.1, 1.5];
 /**
  * The church's range is narrower than the houses': its cross at the top of
  * the range stays under the cap and clearly under the smallest tower's pole
@@ -119,6 +132,10 @@ export const WATCHTOWER_SCALE_RANGE: readonly [number, number] = [0.95, BUILDING
  * `portSettlement.test.ts`).
  */
 export const CHURCH_SCALE_RANGE: readonly [number, number] = [0.96, 1.04];
+/** The landmarks (#176): the watchtower and the church, drawn at `LANDMARK_SCALE`; the rest of the kit at `BUILDING_SCALE`. */
+export const isLandmark = (kind: BuildingKind): boolean => kind === "watchtower" || kind === "church";
+/** The family factor a kind is drawn at (ADR 0006): `LANDMARK_SCALE` for a landmark, else `BUILDING_SCALE`. */
+export const familyScaleOf = (kind: BuildingKind): number => (isLandmark(kind) ? LANDMARK_SCALE : BUILDING_SCALE);
 /** The scale range a kind is drawn at. */
 export const scaleRangeOf = (kind: BuildingKind): readonly [number, number] =>
   kind === "watchtower" ? WATCHTOWER_SCALE_RANGE : kind === "church" ? CHURCH_SCALE_RANGE : PORT_BUILDING_SCALE_RANGE;
@@ -379,7 +396,7 @@ export function standBuilding(
   const { min, max, quay } = footprintGround(ground, at.x, at.z, reach, plan);
   if (quay === "edge") return null;
   // The reserve is the pier's width, so it shrinks with the pier.
-  if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") * PROP_SCALE + reach) return null;
+  if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") * TOWN_PIECE_SCALE + reach) return null;
   if (max - min > buildingMaxSpread(footing)) return null;
   if (ground.onTownCells && !ground.onTownCells(at.x, at.z, reach, min)) return null;
   if (plan && (ground.crossesRiser || ground.onStreet)) {
@@ -442,12 +459,12 @@ function standOnBeach(
 
 /**
  * The centre the settlement's square and crescent are laid out round: the
- * hex centre pulled towards the pier's land end to `PROP_SCALE` of its
- * distance, so at the 350 m hex the tower, the church and the rest stand by
+ * hex centre pulled towards the pier's land end to `SETTLEMENT_CENTRE_SHARE`
+ * of its distance, so at the 350 m hex the tower, the church and the rest stand by
  * the quay rather than alone in the middle of the hex.
  */
 export function settlementCentre(hexCentre: { x: number; z: number }, pierRoot: { x: number; z: number }): { x: number; z: number } {
-  return { x: pierRoot.x + (hexCentre.x - pierRoot.x) * PROP_SCALE, z: pierRoot.z + (hexCentre.z - pierRoot.z) * PROP_SCALE };
+  return { x: pierRoot.x + (hexCentre.x - pierRoot.x) * SETTLEMENT_CENTRE_SHARE, z: pierRoot.z + (hexCentre.z - pierRoot.z) * SETTLEMENT_CENTRE_SHARE };
 }
 
 /** The town plateau a port cell's hex centre plans (`terrainHeightField.ts`), if any. */
@@ -501,7 +518,7 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, wor
 
     const placed: Footprint[] = [];
     for (const { kind, slot } of order) {
-      const scale = lerpRange(scaleRangeOf(kind), next()) * BUILDING_SCALE;
+      const scale = lerpRange(scaleRangeOf(kind), next()) * familyScaleOf(kind);
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;

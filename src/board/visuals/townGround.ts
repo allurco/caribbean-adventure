@@ -17,8 +17,14 @@
  */
 import { nearestCopyX, plateauLookup, plateauPlanDistance, SQUARE_PAVED, streetDistance, type TownPlateau } from "./townPlateau";
 
-/** Cuts per lattice edge of a refined triangle: 0.15 / 10, about 3 m at the 350 m hex. */
-export const TOWN_REFINE = 10;
+/**
+ * Cuts per lattice edge of a refined triangle: 0.15 / 4, about 2.4 m of
+ * water scale. ADR 0003's town took 10; the town is drawn ×2.5 bigger now
+ * (`BUILDING_ENLARGEMENT`, #176), so its streets, risers and kerbs span as
+ * many cuts at 4 as they did at 10, and the refined ground, six times the
+ * area, keeps about the triangle count it had.
+ */
+export const TOWN_REFINE = 4;
 export { SQUARE_PAVED };
 
 /**

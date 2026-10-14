@@ -26,6 +26,8 @@ import {
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import type { BuildingKind } from "./buildingGeometry";
 import type { PortBuilding } from "./portSettlement";
+import type { VillageBuilding } from "./villageLayout";
+import { VILLAGE_HEIGHT } from "./villageBuildingGeometry";
 import { HUD_TOP_BAR_HEIGHT } from "../hudLayout";
 
 const VIEWPORT = 900;
@@ -187,6 +189,16 @@ describe("portLabelBaseY at other camera pitches (#151)", () => {
   });
 });
 
+describe("the label over the village (#176)", () => {
+  it("clears a tall village house by its own model's height, not its kind's", () => {
+    const centre = { x: 10, z: 10 };
+    const house: VillageBuilding = { ...building("house", 10, 0.3, 10, 0.9), variant: "townHouse", roofTone: 0 };
+    const base = portLabelBaseY(centre, 0.1, [house], CAMERA_PITCH);
+    expect(base).toBeGreaterThan(0.3 + VILLAGE_HEIGHT.townHouse * 0.9);
+    expect(VILLAGE_HEIGHT.townHouse).toBeGreaterThan(AGED_BUILDING_HEIGHT.house);
+  });
+});
+
 describe("portLabelViewPitch", () => {
   it("is the game camera's pitch for a camera on its usual line of sight", () => {
     const d = 10;
@@ -213,7 +225,8 @@ describe("the label's lift for any camera and port position", () => {
   const anchor = { x: 10, z: 10 };
   const town = [
     building("church", 10.2, 0.3, 9.7, 1.1),
-    building("watchtower", 9.8, 0.25, 9.6, 1.4),
+    // As tall as a tall drawn tower (its taller shaft at LANDMARK_SCALE, #176).
+    building("watchtower", 9.8, 0.25, 9.6, 0.75),
     building("house", 10.3, 0.15, 10.3, 0.9),
   ];
   /** The lift over a port at (y 0.1, z 10) seen from a camera at `camera`. */

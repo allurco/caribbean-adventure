@@ -10,12 +10,20 @@
  *   door off centre, one window, a chimney at one gable.
  * - `stoneHouse`: two storeys of rough grey-brown stone with quoins and a
  *   string course at the floor, a door, three windows, a chimney.
- * - `merchant`: the larger house of the square, two storeys rendered in an
- *   ochre lime, a stone door surround, a timber balcony on brackets across
- *   the upper floor with tall shuttered openings onto it, two chimneys.
+ * - `merchant`: the larger house of the square and the waterfront, two
+ *   storeys rendered in an ochre lime, a stone door surround, a timber
+ *   balcony on brackets across the upper floor with tall shuttered openings
+ *   onto it, two chimneys.
+ * - `townHouse`: three storeys on a narrow plot (#176), washed in a pale
+ *   rose lime over a stone ground floor, a string course at each floor, a
+ *   door and a window below and two windows on each floor above, a chimney.
  * - `leanTo`: a plank annex under a mono-pitch tiled roof.
  * - `warehouse`: plank-walled, gable to the street, big double doors under
  *   a loft hatch, and a hoist beam from the gable's peak.
+ *
+ * The roofs are steep (#176): 55° and more on the houses, 45° on the
+ * warehouse, so at the board camera's pitch the tiles, and their colour,
+ * read over the walls.
  *
  * Same local contract as the aged pieces: ground contact at the origin, the
  * front on +z, the stone footing below ground. Each build reports the
@@ -26,12 +34,22 @@ import { BUILDING_FOOTING } from "./buildingGeometry";
 import { createFacetBuilder, shadeRgb, type FacetBuilder, type FacetGeometryData, type Vec3 } from "./facetBuilder";
 import { AGED_LEAN, boxFace, faceQuad, faceSlab, flakingTint, plankedDoor, shutteredWindow, streak, tintGrime, wornCuts, wornPrism, GRIME_BAND, type AgedColors, type WallFace } from "./agedKit";
 import { faceCuts, gable, plinth } from "./agedBuildingGeometry";
-import { addAgedRoof, AGED_ROOF_OVERHANG, roofEaveUnderside, roofGableApex, roofReachU, roofSlope, roofTop, type AgedRoofSpec } from "./agedRoof";
+import { addAgedRoof, AGED_ROOF_OVERHANG, roofEaveUnderside, roofGableApex, roofPitch, roofReachU, roofSlope, roofTop, type AgedRoofSpec } from "./agedRoof";
 import type { Rgb } from "./palmGeometry";
 import { seedOf } from "./variationStream";
 
-export type VillageVariant = "cottage" | "stoneHouse" | "merchant" | "leanTo" | "warehouse";
-export const VILLAGE_VARIANTS: readonly VillageVariant[] = ["cottage", "stoneHouse", "merchant", "leanTo", "warehouse"];
+export type VillageVariant = "cottage" | "stoneHouse" | "merchant" | "leanTo" | "warehouse" | "townHouse";
+export const VILLAGE_VARIANTS: readonly VillageVariant[] = ["cottage", "stoneHouse", "merchant", "leanTo", "warehouse", "townHouse"];
+
+/** How many storeys each kind stands (the lean-to and the warehouse are one tall room). */
+export const VILLAGE_STOREYS: Readonly<Record<VillageVariant, number>> = {
+  cottage: 1,
+  stoneHouse: 2,
+  merchant: 2,
+  leanTo: 1,
+  warehouse: 1,
+  townHouse: 3,
+};
 
 interface GabledSpec {
   w: number;
@@ -43,10 +61,11 @@ interface GabledSpec {
 
 /** The gabled kinds' bodies at scale 1. */
 const BODY: Readonly<Record<Exclude<VillageVariant, "leanTo">, GabledSpec>> = {
-  cottage: { w: 0.17, d: 0.13, eave: 0.125, ridge: 0.205, ridgeAlong: "x" },
-  stoneHouse: { w: 0.17, d: 0.15, eave: 0.235, ridge: 0.32, ridgeAlong: "x" },
-  merchant: { w: 0.26, d: 0.17, eave: 0.245, ridge: 0.34, ridgeAlong: "x" },
-  warehouse: { w: 0.3, d: 0.21, eave: 0.18, ridge: 0.3, ridgeAlong: "z" },
+  cottage: { w: 0.17, d: 0.13, eave: 0.125, ridge: 0.22, ridgeAlong: "x" },
+  stoneHouse: { w: 0.17, d: 0.15, eave: 0.235, ridge: 0.345, ridgeAlong: "x" },
+  merchant: { w: 0.26, d: 0.17, eave: 0.245, ridge: 0.37, ridgeAlong: "x" },
+  warehouse: { w: 0.3, d: 0.21, eave: 0.18, ridge: 0.33, ridgeAlong: "z" },
+  townHouse: { w: 0.15, d: 0.14, eave: 0.3, ridge: 0.405, ridgeAlong: "x" },
 };
 
 /** The lean-to: plan, its front and back wall heights under the mono-pitch roof. */
@@ -55,6 +74,8 @@ const LEAN_TO = { w: 0.12, d: 0.09, front: 0.08, back: 0.11, overhang: 0.02, thi
 /** The merchant's balcony: its floor's height and depth, rail height, how far it runs either side of the middle. */
 const BALCONY = { floor: 0.122, slab: 0.009, depth: 0.04, rail: 0.04, half: 0.105 };
 const STRING_COURSE = 0.118;
+/** The town house's floors: the string courses' heights, at scale 1. */
+const TOWN_HOUSE_FLOORS = [0.1, 0.195] as const;
 
 /** Wall half extents at scale 1 (x across the front, z front to back). */
 export const VILLAGE_PLAN: Readonly<Record<VillageVariant, { halfW: number; halfD: number }>> = {
@@ -63,6 +84,7 @@ export const VILLAGE_PLAN: Readonly<Record<VillageVariant, { halfW: number; half
   merchant: { halfW: BODY.merchant.w / 2, halfD: BODY.merchant.d / 2 },
   leanTo: { halfW: LEAN_TO.w / 2, halfD: LEAN_TO.d / 2 },
   warehouse: { halfW: BODY.warehouse.w / 2, halfD: BODY.warehouse.d / 2 },
+  townHouse: { halfW: BODY.townHouse.w / 2, halfD: BODY.townHouse.d / 2 },
 };
 
 /** How far past its walls each kind reaches in plan at scale 1 (eaves, balcony, hoist beam, lean): what keeps buildings apart. */
@@ -72,6 +94,7 @@ export const VILLAGE_EAVE: Readonly<Record<VillageVariant, number>> = {
   merchant: 0.05,
   leanTo: 0.03,
   warehouse: 0.06,
+  townHouse: 0.035,
 };
 
 /** Each kind leans this much, x and z per unit of height. */
@@ -81,6 +104,7 @@ const LEAN: Readonly<Record<VillageVariant, readonly [number, number]>> = {
   merchant: [AGED_LEAN * 0.3, AGED_LEAN * 0.2],
   leanTo: [-AGED_LEAN * 0.9, AGED_LEAN * 0.6],
   warehouse: [AGED_LEAN * 0.6, -AGED_LEAN * 0.4],
+  townHouse: [-AGED_LEAN * 0.3, -AGED_LEAN * 0.3],
 };
 
 /**
@@ -262,6 +286,31 @@ function addMerchant(b: FacetBuilder, colors: AgedColors, seed: number) {
   return roofRange;
 }
 
+function addTownHouse(b: FacetBuilder, colors: AgedColors, seed: number) {
+  const s = BODY.townHouse;
+  const { hw, hd, wallTop, roofRange } = gabledBody(b, s, colors, seed, { cols: 2, rows: 4 });
+  // A string course at each upper floor, on every face.
+  for (const y of TOWN_HOUSE_FLOORS) {
+    for (const face of ["front", "right", "back", "left"] as const) {
+      const width = face === "front" || face === "back" ? s.w : s.d;
+      faceSlab(b, boxFace(face, hw, hd), 0.02, width - 0.02, y, y + 0.007, 0.004, shadeRgb(colors.stone, 1.12));
+    }
+  }
+  const front = boxFace("front", hw, hd);
+  plankedDoor(b, front, { s: hw - 0.03, halfWidth: DOOR.halfWidth, height: DOOR.height, proud: DOOR.proud }, colors.timber, colors.iron);
+  shutteredWindow(b, front, { s: hw + 0.035, halfWidth: WINDOW_HALF, bottom: 0.045, top: 0.08 }, colors, seedOf([9], seed));
+  // Two windows on each floor above, the top floor's under the eave.
+  const tops = [TOWN_HOUSE_FLOORS[1] - 0.02, Math.min(TOWN_HOUSE_FLOORS[1] + 0.075, wallTop - 0.016)];
+  tops.forEach((top, floor) => {
+    for (const dx of [-0.035, 0.035]) {
+      shutteredWindow(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: top - 0.034, top }, colors, seedOf([10, floor, dx > 0 ? 1 : 0], seed));
+    }
+  });
+  chimney(b, hw - 0.028, -0.015, wallTop - 0.02, s.ridge + 0.03, shadeRgb(colors.wall, 0.95));
+  aoBake(b, s.eave, wallTop);
+  return roofRange;
+}
+
 function addWarehouse(b: FacetBuilder, colors: AgedColors, seed: number) {
   const s = BODY.warehouse;
   const { hw, hd, wallTop, apex, roofRange } = gabledBody(b, s, colors, seed, { cols: 7, rows: 1 });
@@ -349,7 +398,11 @@ export const VILLAGE_HEIGHT: Readonly<Record<VillageVariant, number>> = {
   merchant: Math.max(roofTop(roofSpec(BODY.merchant)), BODY.merchant.ridge + 0.039),
   leanTo: LEAN_TO.back + LEAN_TO.thickness + 0.02,
   warehouse: roofTop(roofSpec(BODY.warehouse)),
+  townHouse: Math.max(roofTop(roofSpec(BODY.townHouse)), BODY.townHouse.ridge + 0.039),
 };
+
+/** A gabled kind's roof pitch (radians). */
+export const villageRoofPitch = (variant: Exclude<VillageVariant, "leanTo">): number => roofPitch(roofSpec(BODY[variant]));
 
 /** Farthest the roof reaches across its slope from the middle at scale 1 (for tests and the plan). */
 export const villageRoofReach = (variant: Exclude<VillageVariant, "leanTo">): number => roofReachU(roofSpec(BODY[variant])) + AGED_ROOF_OVERHANG;
@@ -367,7 +420,9 @@ export function buildVillageBuilding(variant: VillageVariant, colors: AgedColors
           ? addMerchant(b, colors, s)
           : variant === "warehouse"
             ? addWarehouse(b, colors, s)
-            : addLeanTo(b, colors, s);
+            : variant === "townHouse"
+              ? addTownHouse(b, colors, s)
+              : addLeanTo(b, colors, s);
   const [lx, lz] = LEAN[variant];
   b.shear(0, b.vertexCount(), "x", "y", lx);
   b.shear(0, b.vertexCount(), "z", "y", lz);

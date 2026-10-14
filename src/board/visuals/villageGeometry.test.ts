@@ -42,6 +42,12 @@ describe("the village as one mesh (#87)", () => {
     }
   });
 
+  it("merges the three-storey town houses into the same soup, so the whole map's village stays one draw (#176)", () => {
+    expect(layout.village.buildings.some((b) => b.variant === "townHouse")).toBe(true);
+    // One geometry, one material (`PortVillage.tsx`): a draw per world copy, however many kinds the towns hold.
+    expect(villageGeometryOf(cells, wrap, 1).vertexCount).toBe(mesh.vertexCount);
+  });
+
   it("is built once per map", () => {
     expect(villageGeometryOf(cells, wrap, 1)).toBe(villageGeometryOf(cells, wrap, 1));
   });

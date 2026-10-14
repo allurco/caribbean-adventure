@@ -16,7 +16,7 @@
  *
  * Pieces, placed for `townPieces.ts` models (`townClutter`): a fountain on
  * the square; market stalls round it; a cart or two parked at its edge;
- * cargo stacked against the warehouses' sides and the odd barrel or crate
+ * cargo stacked against the warehouses' and the waterfront houses' sides and the odd barrel or crate
  * against a house; fishing boats pulled up on the beach with net racks
  * behind them; fenced gardens behind houses; a few palms. Nothing on a
  * street's running surface, on the quay or the pier, on another piece or
@@ -39,6 +39,7 @@ import {
   plateauPoint,
   RETAINING_WALL_DEPTH,
   riserCentre,
+  SHORE_KEEP_TOP,
   SQUARE_PAVED,
   streetDistance,
   type TownPlateau,
@@ -47,6 +48,7 @@ import { TOWN_PIECE_RADIUS, TOWN_PIECE_VARIANTS, type TownPieceKind } from "./to
 import { VILLAGE_EAVE, VILLAGE_PLAN } from "./villageBuildingGeometry";
 import { overlaps, pierRect, polylineDistance, quayRect, type PlanRect, type PortTownPlan } from "./villageLayout";
 import { townCellsRule } from "./townBound";
+import { VEGETATION_SCALE } from "./worldScale";
 
 /** At the building scale: the wall's batter per unit of height, the coping's rise over the upper terrace, the footing under the lower. */
 const WALL_BATTER = 0.12;
@@ -239,8 +241,12 @@ export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number,
         if (others.some((o) => streetDistance(o, x, z) < o.halfWidth + kerbW)) continue;
         const outside = ground.sampleHeight(x + nx * side * kerbW, z + nz * side * kerbW);
         const inside = ground.sampleHeight(x - nx * side * kerbW, z - nz * side * kerbW);
+        const under = ground.sampleHeight(x, z);
+        // Where a street runs out onto the beach (at ×2.5 one can, #176) it is not carved, and no kerb lines it.
+        if (Math.min(inside, outside, under) < SHORE_KEEP_TOP) continue;
         const proud = (main ? KERB_PROUD : LANE_KERB_PROUD) * k + heave;
-        const kerb: EdgeStone = { x, z, fx: tx, fz: tz, halfW: kerbW / 2, halfD: stone / 2, y0: Math.min(inside, outside) - kerbW, y1: outside + proud, shade, kerb: main };
+        // Proud of the ground beside it, and of the ground under it where a bank falls away outside.
+        const kerb: EdgeStone = { x, z, fx: tx, fz: tz, halfW: kerbW / 2, halfD: stone / 2, y0: Math.min(inside, outside, under) - kerbW, y1: Math.max(outside, under) + proud, shade, kerb: main };
         if (!inWalls(kerb)) stones.push(kerb);
       }
     }
@@ -297,27 +303,32 @@ const QUAY_CLEARANCE = 0.02;
 const PIECE_MAX_SPREAD = 0.01;
 const PIECE_MAX_SLOPE = 0.8;
 
-/** Clutter for every port's village, at building scale `k`; `worldSeed` (`G.mapSeed`) varies it per map. */
-export function townClutter(plans: readonly PortTownPlan[], ground: GroundField, k: number, worldSeed: number): PiecePlacement[] {
+/**
+ * Clutter for every port's village, at town-piece scale `k`, its palms at
+ * `palmScale` (the vegetation's, #176); `worldSeed` (`G.mapSeed`) varies it per map.
+ */
+export function townClutter(plans: readonly PortTownPlan[], ground: GroundField, k: number, worldSeed: number, palmScale: number = VEGETATION_SCALE): PiecePlacement[] {
   const out: PiecePlacement[] = [];
-  for (const plan of plans) out.push(...portClutter(plan, ground, k, worldSeed));
+  for (const plan of plans) out.push(...portClutter(plan, ground, k, palmScale, worldSeed));
   return out;
 }
 
 /** The radius a placed piece keeps clear: a palm's trunk, every other piece's footprint. */
 export const pieceClearRadius = (piece: PiecePlacement): number => (piece.kind === "palm" ? PALM_TRUNK : TOWN_PIECE_RADIUS[piece.kind]) * piece.scale;
 
-function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSeed: number): PiecePlacement[] {
+function portClutter(plan: PortTownPlan, ground: GroundField, k: number, palmScale: number, worldSeed: number): PiecePlacement[] {
   const next = stream(subSeed(worldSeed, SEED_FEATURES.townClutter, plan.portId));
   const pieces: PiecePlacement[] = [];
-  const radius = (kind: TownPieceKind) => TOWN_PIECE_RADIUS[kind] * k;
+  /** A palm is vegetation; every other piece is at the town pieces' scale. */
+  const scaleOf = (kind: TownPieceKind) => (kind === "palm" ? palmScale : k);
+  const radius = (kind: TownPieceKind) => TOWN_PIECE_RADIUS[kind] * scaleOf(kind);
   const harbour = [pierRect(plan.pier), ...plan.quays.map(quayRect)];
   // Pieces stand on the port's town cells, and off the port's own cell above the shore band (#170).
   const onTown = townCellsRule(plan.town);
   const onHarbour = (x: number, z: number, r: number) => harbour.some((h) => circleHitsRect(h, x, z, r + QUAY_CLEARANCE));
   /** Whether a piece of `kind` may stand at (x, z); `owner` is a building it may stand against (under its eaves). */
   const clear = (kind: TownPieceKind, x: number, z: number, owner?: PlanRect, trunkOnly = false): boolean => {
-    const r = trunkOnly ? PALM_TRUNK * k : radius(kind);
+    const r = trunkOnly ? PALM_TRUNK * scaleOf(kind) : radius(kind);
     if (onTown(x, z, r, groundUnder(x, z, r))) return false;
     if (plan.streets.some((s) => polylineDistance(x, z, s.line) < s.halfWidth + r)) return false;
     if (onHarbour(x, z, r)) return false;
@@ -336,15 +347,16 @@ function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSe
   };
   const put = (kind: TownPieceKind, x: number, z: number, yaw: number, sink = 0.5) => {
     const r = radius(kind) * sink;
-    pieces.push({ kind, variant: Math.floor(next() * TOWN_PIECE_VARIANTS[kind]), x, y: groundUnder(x, z, r), z, yaw, scale: k });
+    pieces.push({ kind, variant: Math.floor(next() * TOWN_PIECE_VARIANTS[kind]), x, y: groundUnder(x, z, r), z, yaw, scale: scaleOf(kind) });
   };
   const roll = ([lo, hi]: readonly [number, number]) => lo + Math.floor(next() * (hi - lo + 1));
   const p = plan.plateau;
   const sq = { x: p.x, z: p.z };
   const squareR = p.squareRadius;
 
-  // The fountain at the square's middle, or the nearest clear spot to it.
-  search: for (let rr = 0; rr <= squareR * 0.5; rr += squareR * 0.08) {
+  // The fountain at the square's middle, or the nearest clear spot to it: at ×2.5 the quay's back reaches the
+  // middle and the kit crowds round it (#176), so it looks out to most of the square.
+  search: for (let rr = 0; rr <= squareR * 0.9; rr += squareR * 0.08) {
     for (let a = 0; a < Math.PI * 2; a += rr === 0 ? 7 : 0.5) {
       const x = sq.x + Math.sin(a) * rr;
       const z = sq.z + Math.cos(a) * rr;
@@ -381,7 +393,7 @@ function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSe
     placedCarts++;
   }
 
-  // Cargo against the warehouses' side walls; a barrel or crate against some houses.
+  // Cargo against the side walls of the warehouses and the waterfront's merchants' houses (#176); a barrel or crate against some houses.
   plan.buildings.forEach((building, i) => {
     const owner = plan.footprints.find((f) => Math.abs(f.x - building.worldX) < 1e-9 && Math.abs(f.z - building.worldZ) < 1e-9);
     const wall = VILLAGE_PLAN[building.variant];
@@ -390,7 +402,7 @@ function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSe
     const fx = Math.sin(building.yaw);
     const fz = Math.cos(building.yaw);
     const spots: { kind: TownPieceKind; side: number; along: number }[] = [];
-    if (building.variant === "warehouse") {
+    if (building.variant === "warehouse" || building.waterfront) {
       for (const side of [-1, 1]) for (const along of [-0.5, 0.05, 0.55]) if (next() < 0.7) spots.push({ kind: (["crateStack", "barrel", "crate", "barrel"] as const)[Math.floor(next() * 4)], side, along });
     } else if (building.variant !== "leanTo" && next() < HOUSE_CLUTTER_CHANCE) {
       spots.push({ kind: next() < 0.6 ? "barrel" : "crate", side: next() < 0.5 ? -1 : 1, along: 0.6 });
@@ -437,6 +449,8 @@ function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSe
   const gardens = roll(GARDENS);
   let placedGardens = 0;
   const gardenHalf = { w: GARDEN_HALF[0] * k, d: GARDEN_HALF[1] * k };
+  // Its corners, or the clear radius the town keeps round it (`pieceClearRadius`), whichever reaches further.
+  const gardenReach = Math.max(Math.hypot(gardenHalf.w, gardenHalf.d), radius("garden"));
   for (const building of plan.buildings) {
     if (placedGardens >= gardens) break;
     if (building.variant !== "cottage" && building.variant !== "stoneHouse") continue;
@@ -460,8 +474,8 @@ function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSe
       if (plan.footprints.some((f) => overlaps(f, foot, 0.002))) continue;
       if (plan.streets.some((s) => polylineDistance(x, z, s.line) < s.halfWidth + gardenHalf.w)) continue;
       if (pieces.some((q) => Math.hypot(q.x - x, q.z - z) < pieceClearRadius(q) + gardenHalf.w)) continue;
-      if (onHarbour(x, z, Math.hypot(gardenHalf.w, gardenHalf.d))) continue;
-      if (onTown(x, z, Math.hypot(gardenHalf.w, gardenHalf.d), groundUnder(x, z, gardenHalf.w))) continue;
+      if (onHarbour(x, z, gardenReach)) continue;
+      if (onTown(x, z, gardenReach, groundUnder(x, z, gardenHalf.w))) continue;
       if (groundSpread(ground, x, z, gardenHalf.w) > 0.004) continue;
       if (ground.sampleHeight(x, z) < SEA_LEVEL + 0.006) continue;
       if (crossesRiser(plan.plateau, squareAround(x, z, Math.hypot(gardenHalf.w, gardenHalf.d)), RETAINING_WALL_DEPTH * k)) continue;

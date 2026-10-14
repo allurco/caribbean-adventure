@@ -7,6 +7,9 @@ import { createTerrainHeightField, SEA_LEVEL } from "./terrainHeightField";
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { landSurface, landSurfaceHeight } from "./landMesh";
 import { PORT_GROUND_PROBE_RADIUS as PORT_MARKER_RADIUS } from "./portHover";
+import { portLabelBaseY } from "./portLabel";
+import { CAMERA_PITCH } from "../cameraBounds";
+import { VILLAGE_HEIGHT, VILLAGE_VARIANTS } from "./villageBuildingGeometry";
 import { BUILDING_FOOTING, BUILDING_KINDS, BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { PIER_WIDTH } from "./pierGeometry";
@@ -39,11 +42,13 @@ import {
   PORT_BUILDING_TINT_SPREAD,
   PORT_BUILDING_YAW_JITTER,
   WATCHTOWER_SCALE_RANGE,
+  TOWER_OVER_TOWN,
   settlementCentre,
+  familyScaleOf,
   plateauOfPort,
   type PortBuilding,
 } from "./portSettlement";
-import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
+import { BUILDING_SCALE, LANDMARK_SCALE, TOWN_PIECE_SCALE } from "./worldScale";
 import { crossesRiser, RETAINING_WALL_DEPTH } from "./townPlateau";
 
 /** Inradius of a flat-top hex of size 1: the nearest any edge comes to the centre. */
@@ -79,9 +84,9 @@ function portOf(b: PortBuilding): MapCell {
 
 const pierRotation = (cell: MapCell) => (cell.decorations ?? []).find((d) => d.type === "pier")?.rotation ?? 0;
 
-/** The buildings, their square, rings and margins are at the buildings' scale; the pier's reserve at the props'. */
+/** The buildings, their square, rings and margins are at the buildings' scale; the pier's reserve at the town pieces' (the pier's). */
 const BS = BUILDING_SCALE;
-const k = PROP_SCALE;
+const k = TOWN_PIECE_SCALE;
 
 /** The centre a port's settlement is laid out round on `ground`: by the quay, not the hex centre. */
 function centreOf(port: MapCell, ground: GroundField): { x: number; z: number } {
@@ -244,11 +249,25 @@ describe("portBuildings", () => {
     expect(PORT_BUILDING_SCALE_RANGE[1]).toBeLessThanOrEqual(1.1);
     expect(PORT_BUILDING_TINT_SPREAD).toBeLessThanOrEqual(0.1);
     expect(PORT_BUILDING_YAW_JITTER).toBeLessThanOrEqual(0.2);
-    // The watchtower never breaks the height cap at its largest scale.
-    expect(AGED_BUILDING_HEIGHT.watchtower * WATCHTOWER_SCALE_RANGE[1]).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
     expect(scaleRangeOf("watchtower")).toBe(WATCHTOWER_SCALE_RANGE);
     expect(scaleRangeOf("church")).toBe(CHURCH_SCALE_RANGE);
     expect(scaleRangeOf("house")).toBe(PORT_BUILDING_SCALE_RANGE);
+  });
+
+  it("stands the tower over the town's tallest roof within its band (#176): the smallest tower over the biggest house, the biggest over the smallest", () => {
+    const tower = (scale: number) => AGED_BUILDING_HEIGHT.watchtower * scale * LANDMARK_SCALE;
+    // The town's tallest roof: a village house, or the kit's house, tavern or warehouse, all at BUILDING_SCALE.
+    const tallest = (scale: number) =>
+      Math.max(...VILLAGE_VARIANTS.map((v) => VILLAGE_HEIGHT[v]), ...(["house", "tavern", "warehouse"] as const).map((k) => AGED_BUILDING_HEIGHT[k])) * scale * BUILDING_SCALE;
+    const lo = tower(WATCHTOWER_SCALE_RANGE[0]) / tallest(PORT_BUILDING_SCALE_RANGE[1]);
+    const hi = tower(WATCHTOWER_SCALE_RANGE[1]) / tallest(PORT_BUILDING_SCALE_RANGE[0]);
+    expect(lo).toBeGreaterThanOrEqual(TOWER_OVER_TOWN[0]);
+    expect(hi).toBeLessThanOrEqual(TOWER_OVER_TOWN[1]);
+    // Over the town, but not a needle over it: the band opens at a tenth more and closes at half again.
+    expect(TOWER_OVER_TOWN[0]).toBeGreaterThanOrEqual(1.1);
+    expect(TOWER_OVER_TOWN[1]).toBeLessThanOrEqual(1.5);
+    // The church, a landmark too, stands among the roofs rather than over them.
+    expect(AGED_BUILDING_HEIGHT.church * CHURCH_SCALE_RANGE[1] * LANDMARK_SCALE).toBeLessThan(tallest(PORT_BUILDING_SCALE_RANGE[1]));
   });
 
   it("keeps the church's top, at its largest scale, under the cap and clearly under the smallest tower's, so the tower stays the one landmark", () => {
@@ -404,7 +423,8 @@ describe("portBuildings", () => {
   it("never drops the tower: on a beach too small for any footprint it stands at the hex centre on the highest ground there", () => {
     const centres = ports.map((p) => hexToWorld(p.hex));
     const islet: GroundField = {
-      sampleHeight: (x, z) => (centres.some(([cx, , cz]) => Math.hypot(x - cx, z - cz) < 0.1) ? 0.3 : -1),
+      // Narrower than the smallest tower's plan circle (at LANDMARK_SCALE, #176), so no ring takes it.
+      sampleHeight: (x, z) => (centres.some(([cx, , cz]) => Math.hypot(x - cx, z - cz) < 0.05) ? 0.3 : -1),
     };
     const onIslets = portBuildings(cells, islet, seed);
     expect(onIslets.filter((b) => b.kind === "watchtower")).toHaveLength(ports.length);
@@ -571,10 +591,18 @@ describe("portBuildings", () => {
       // The same ground, but nothing refused for the town's risers or streets.
       for (const b of portBuildings(someCells, drawn, someSeed)) without[b.kind] = (without[b.kind] ?? 0) + 1;
     }
+    // At ×2.5 (#176) these three are as big as the village's houses and their ring reaches past the square onto the
+    // first terrace, so the streets and risers turn away more of the widest, the warehouse (about 70 % stand; the
+    // three together about 87 %); the village's waterfront row and houses fill round them.
+    let kept = 0;
+    let all = 0;
     for (const kind of ["tavern", "warehouse", "house"] as const) {
       expect(without[kind]).toBeGreaterThan(30);
-      expect(withTown[kind] ?? 0).toBeGreaterThanOrEqual(0.85 * without[kind]);
+      expect(withTown[kind] ?? 0).toBeGreaterThanOrEqual(0.6 * without[kind]);
+      kept += withTown[kind] ?? 0;
+      all += without[kind];
     }
+    expect(kept).toBeGreaterThanOrEqual(0.8 * all);
     expect(withTown.church).toBe(without.church);
     expect(withTown.watchtower).toBe(without.watchtower);
   }, 60000);
@@ -609,12 +637,11 @@ describe("portBuildings", () => {
     expect(churches / portsSeen).toBeGreaterThanOrEqual(0.9);
   });
 
-  it("keeps every roof under the port label's baseline", () => {
+  it("keeps every roof under the port label's baseline, the taller tower included (#176)", () => {
     for (const b of buildings) {
       const [px, , pz] = hexToWorld(portOf(b).hex);
-      const labelBase = groundTopY(field, px, pz, PORT_MARKER_RADIUS) + 0.6;
+      const labelBase = portLabelBaseY({ x: px, z: pz }, groundTopY(field, px, pz, PORT_MARKER_RADIUS), buildings, CAMERA_PITCH);
       expect(b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale).toBeLessThan(labelBase);
-      expect(AGED_BUILDING_HEIGHT[b.kind] * b.scale).toBeLessThanOrEqual(BUILDING_MAX_HEIGHT);
     }
   });
 
@@ -633,8 +660,8 @@ describe("portBuildings", () => {
   it("varies scale and tint within their spreads", () => {
     for (const b of buildings) {
       const range = scaleRangeOf(b.kind);
-      expect(b.scale).toBeGreaterThanOrEqual(range[0] * BS - 1e-12);
-      expect(b.scale).toBeLessThanOrEqual(range[1] * BS + 1e-12);
+      expect(b.scale).toBeGreaterThanOrEqual(range[0] * familyScaleOf(b.kind) - 1e-12);
+      expect(b.scale).toBeLessThanOrEqual(range[1] * familyScaleOf(b.kind) + 1e-12);
       expect(Math.abs(b.tint - 1)).toBeLessThanOrEqual(PORT_BUILDING_TINT_SPREAD);
     }
     expect(new Set(buildings.map((b) => b.tint.toFixed(4))).size).toBeGreaterThan(buildings.length / 2);

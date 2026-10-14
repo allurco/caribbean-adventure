@@ -13,8 +13,8 @@
  * (115 / 350, from ADR 0003's 350 m hex) is the base the families start
  * from, and rocks and stones stay on it. Ships are `SHIP_SCALE`, buildings
  * `BUILDING_SCALE`, landmarks (the tower, the fort) `LANDMARK_SCALE`,
- * vegetation `VEGETATION_SCALE` and the town's pieces (piers, quays)
- * `TOWN_PIECE_SCALE`; each slice of #158 flips its own. The derived props
+ * vegetation `VEGETATION_SCALE` and the town's pieces (piers, quays, the
+ * clutter) `TOWN_PIECE_SCALE`; each slice of #158 flips its own. The derived props
  * are placed `PROP_DENSITY` times as densely so the land does not go bare.
  * The terrain, the hex grid and the camera keep their world units.
  *
@@ -48,16 +48,28 @@ export const PROP_SCALE = AUTHORED_HEX_METRES / HEX_METRES;
 export const SHIP_ENLARGEMENT = 2.3;
 /** Factor on the ships (hulls, ride height, sink depth, hover box): ×2.3 on twice true scale (ADR 0006). */
 export const SHIP_SCALE = SHIP_ENLARGEMENT * 2 * PROP_SCALE;
-/** How much bigger than true scale the buildings are drawn. */
-export const BUILDING_ENLARGEMENT = 1.125;
-/** Factor on every port building (and its flag), its footprint, margins and footing rule. */
-export const BUILDING_SCALE = PROP_SCALE * BUILDING_ENLARGEMENT;
-/** Factor for the landmarks (watchtower, fort): today's building factor, until the village slice of #158 sets its own (ADR 0006). */
-export const LANDMARK_SCALE = BUILDING_SCALE;
+/** How much bigger than true scale ADR 0003 drew the buildings: the base the buildings' and landmarks' enlargements build on. */
+export const BUILDING_TRUE_SCALE = 1.125;
+/**
+ * How much bigger than ADR 0003's buildings the village is drawn (ADR 0006,
+ * #176): a house is then about 0.08 of a hex across and about palm height,
+ * and a port holds about two dozen of them on its town cells.
+ */
+export const BUILDING_ENLARGEMENT = 2.5;
+/** Factor on every port building (and its flag), its footprint, margins and footing rule, and on the town plateau: ×2.5 on ADR 0003's (ADR 0006). */
+export const BUILDING_SCALE = PROP_SCALE * BUILDING_TRUE_SCALE * BUILDING_ENLARGEMENT;
+/**
+ * How much bigger than ADR 0003's buildings the landmarks are drawn (#158
+ * decision 15, #176): less than the houses, so the watchtower and the church
+ * mark the port without swallowing the town.
+ */
+export const LANDMARK_ENLARGEMENT = 1.6;
+/** Factor for the landmarks (the watchtower, the church; the fort when #88 lands): ×1.6 on ADR 0003's buildings (ADR 0006). */
+export const LANDMARK_SCALE = PROP_SCALE * BUILDING_TRUE_SCALE * LANDMARK_ENLARGEMENT;
 /** Factor for the vegetation (palms, shrubs, town palms): today's prop factor, until the island-look slice of #158 (ADR 0006). */
 export const VEGETATION_SCALE = PROP_SCALE;
-/** Factor for the town's pieces (piers, quays): today's prop factor, until the village slice of #158 (ADR 0006). */
-export const TOWN_PIECE_SCALE = PROP_SCALE;
+/** Factor for the town's pieces (piers, quays, the clutter): the buildings' (#176, ADR 0006). */
+export const TOWN_PIECE_SCALE = BUILDING_SCALE;
 /** The densest the derived props go, as a multiple of their authored count per cell. */
 export const PROP_DENSITY_CAP = 80;
 

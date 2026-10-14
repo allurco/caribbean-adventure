@@ -164,7 +164,8 @@ describe("groundTopY", () => {
 
 describe("placement on a generated map's height field", () => {
   const cells = generateMap(getMapPreset("small"), 7);
-  const field = createTerrainHeightField(cells, 7);
+  // The natural land: a town's terraces, risers and banks (#87, #176) are kept clear of trees and rocks anyway (`townKeepOut`).
+  const field = createTerrainHeightField(cells, 7, { towns: false });
 
   it("puts every placed decoration on land, never floating above the ground beneath it", () => {
     let placed = 0;

@@ -43,7 +43,8 @@ export function Piers({ piers }: { piers: readonly DecorationData[] }) {
     piers.forEach((pier, i) => {
       tempObject.position.set(pier.worldX, pier.worldY, pier.worldZ);
       tempObject.rotation.set(0, pier.rotation, 0);
-      tempObject.scale.setScalar(pier.scale);
+      // Stretched along its deck (local +z) to reach the water (#176).
+      tempObject.scale.set(pier.scale, pier.scale, pier.scale * (pier.stretch ?? 1));
       tempObject.updateMatrix();
       mesh.setMatrixAt(i, tempObject.matrix);
     });

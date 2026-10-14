@@ -145,7 +145,9 @@ houses a plateau left at `PROP_SCALE` held about four of them), so
 doubling the building scale doubles the square, the terraces, the risers'
 runs and the streets (pinned): a square
 by the pier root where the port kit's square stands (`settlementCentre`,
-which stays at `PROP_SCALE`, the pier's scale),
+a `SETTLEMENT_CENTRE_SHARE` of the way from the pier root to the hex
+centre, ADR 0003's prop scale, kept when the pier moved onto
+`TOWN_PIECE_SCALE` in #176),
 at the natural height kept between `SHORE_KEEP_TOP` and one riser above
 it, and kept on that one level inland to `SQUARE_END`, past the kit's
 buildings (the church, straight inland, reaches furthest), so none of the
@@ -169,10 +171,14 @@ port cell and up to `MAX_TOWN_SPILL` (3) neighbours, chosen per port from
 `subSeed(G.mapSeed, "townSpill", portId)` among the land neighbours of
 elevation 2 or less that are not a port and touch no other port (so no
 cell is in two towns), the ones inland of the pier preferred. The terraces
-end where their axis would leave the town cells, and a blend short of
-where the land along the axis or either side of the terraces falls back
-to a far shore (a narrow island's other beach); where turning the axis
-towards the spill by up to `MAX_AXIS_TURN` (60°) runs further, it turns.
+end where their axis would leave the town cells, and half a blend
+(`FAR_SHORE_BLEND`) short of where the land along the axis or a quarter of
+the half width either side of it (`FAR_SHORE_ACROSS`) falls back to a far
+shore (a narrow island's other beach: at ×2.5 the terraces are wider than
+a narrow island, whose own flanks would otherwise cut every plan to its
+least, #176); where turning the axis towards the spill by up to
+`MAX_AXIS_TURN` (120°, so a spill cell along the coast beside the port's
+can take the terraces) runs further, it turns.
 The town cells are kept on the plan (`plateau.town`) for the village, the
 kit and the clutter, which never stand outside them, and never in the
 shore band of a spilled cell (`townBound.ts`), so the spill keeps off the
@@ -182,7 +188,11 @@ weighted by the natural height from 0 at `SHORE_KEEP_BOTTOM` to 1 at
 `SHORE_KEEP_TOP`, so below the shore band the field, the coastline, the
 pier's shore contact and the quay's sea face are untouched, the land stays
 above the sea, and the seabed and the shore foam (both read from the
-field) are unchanged. `field.townPlateaus` lists them; `towns: false`
+field) are unchanged. Nor does it lift low ground by more than `BANK_LIFT`
+(3) times its natural height over `SHORE_KEEP_BOTTOM` (`bankLift`, #176):
+a terrace reaching a cove's beach inside its plan, or a narrow island's
+flank, meets it as a steep bank rather than a cliff (the ×2.5 plateau
+reaches such ground; pinned with the no-step test). `field.townPlateaus` lists them; `towns: false`
 builds the natural land, for tests. Samples find their plateaus through a
 grid (`plateauLookup`), so land away from a town pays one map look-up.
 `townPlateau.test.ts` pins: flat terraces and square to the bit but for
@@ -300,7 +310,9 @@ coarser than a street or a riser, so round each town the mesh is refined
 `TOWN_FLAG_MARGIN` (a step and a quarter) of a town's plan and it and its
 six lattice neighbours are above the sea; a land triangle with a flagged
 corner and all three corners above the sea is cut into `TOWN_REFINE`²
-(100) triangles at about 3 m, each vertex the coarse plane blended to the
+(16) triangles at about 2.4 m (ADR 0003's town took 10 cuts; at ×2.5 its
+streets and risers span as many cuts at 4, and the refined ground, six
+times the area, keeps about its triangle count, #176), each vertex the coarse plane blended to the
 field by the corners' flags (`refinedVertex`), so an edge with two
 unflagged ends stays on the coarse edge. An unrefined land neighbour
 across a cut edge is drawn as a coplanar fan from its centroid to the
@@ -313,11 +325,17 @@ a sub-face across) and a tone from smooth value noise (`pavingTone`), the
 same in every face that meets there, so the paving does not show its
 triangles as a checkerboard as flat per-face shading did. `landSurface` samples the same
 sub-triangles (each refined triangle's heights cached once), so buildings
-and clutter stand on the ground as drawn. Cost: on the large map the land
-triangles go from about 81k to 298k and the benchmark build from about
-200 to 310–350 ms locally; `townGround.test.ts` pins no new open edges,
-the mesh untouched away from towns, and the placement surface equal to
-the drawn faces at their corners and inside them.
+and clutter stand on the ground as drawn, and its `creasesWithin` lists
+the refined lattice's vertices and edges (the coarse lattice at a
+`TOWN_REFINE`th of the pitch), so a footprint's probes find the lowest and
+highest drawn ground under it. Cost: on the large map the land triangles
+go from about 81k to 298k and the benchmark build from about 200 to
+310–350 ms locally at ×1; at ×2.5 with 4 cuts, about 197k above water and
+the build about 650 ms on a loaded machine (main: 343k, 750 ms there).
+`townGround.test.ts` pins no new open edges away from the wrap seam (a
+town reaching the seam cuts its edge there into collinear pieces), the
+mesh untouched away from towns (in any world copy), and the placement
+surface equal to the drawn faces at their corners and inside them.
 
 **Tests (`landMesh.test.ts`).** Every vertex lies on the field; land is whole
 flat triangles and the seabed indexed with shared vertices, smooth normals
@@ -928,7 +946,7 @@ cannot keep the mouth clear, so on generated maps no building stands on
 the quay and none moved when the rule landed; the seam is in place for
 smaller quay pieces (a crane, a customs shed, stacked cargo).
 
-**The village (#87, ADR 0003).** A port is a village on its town plateau,
+**The village (#87, #176, ADR 0006).** A port is a village on its town plateau,
 gathered round the port kit above, which stays as it is (watchtower,
 church, tavern, house and warehouse on the square; quay and pier): one set
 of buildings, the village keeping a margin round the kit's. The kit keeps
@@ -937,15 +955,30 @@ its own standing rule but now also refuses a footprint across a riser
 anywhere along its walls (`onStreet`, `footprintOnStreet`); since the
 square holds the kit and the streets start past it, neither costs the kit
 a building. `villageLayout.ts` lays the village
-out per port: a row of warehouses either side of the pier root facing the
-water, a ring of houses round the square facing its middle (merchants'
-houses first), houses shoulder to shoulder along both sides of every
-street facing it (merchants' low on the main street, stone houses and
-cottages up it, cottages on the lanes, a lean-to against the odd house)
-and a few cottages at the plateau's edge; about 45 buildings a port with
-the warehouses and lean-tos. Five kinds of our own (`villageBuildingGeometry.ts`:
-cottage, stone house, merchant's house, lean-to, warehouse) in the aged
-kit's register, each roof one of seven terracotta tones. A building
+out per port: a waterfront row of two-storey merchants' houses with their
+balconies either side of the pier root facing the water (a warehouse where
+one will not fit), a ring of houses round the square facing its middle
+(merchants' houses first), houses shoulder to shoulder along both sides of
+every street facing it (merchants' low on the main street, three-storey
+town houses, stone houses and cottages up it, cottages on the lanes, a
+lean-to against the odd house) and a few cottages at the plateau's edge.
+At ×2.5 (`BUILDING_SCALE`, #176) a port aims for `VILLAGE_HOUSES` (24)
+standing buildings, the waterfront row and the edge cottages proportional
+to it; a town whose ground takes more is thinned back to it on its own
+sub-seed (`villageThinning`), the edge and the streets first, the square's
+ring and the waterfront last, each thinned house (and its lean-to) counted
+as `thinned` and freeing its footprint for the clutter. With the kit a
+port then stands 20 to 30 buildings (26 on average, 92–100 % of the ports
+in that band over 200 seeds of each size, never more than 29; a port on a
+narrow islet holds fewer), its houses 0.079 of a hex across on average,
+pinned in `villagePlacement.test.ts`. Six kinds of our own
+(`villageBuildingGeometry.ts`: cottage, stone house, merchant's house,
+three-storey town house, lean-to, warehouse) in the aged kit's register,
+under steep roofs (55° and more on the houses, 45° on the warehouse), each
+roof one of seven terracotta tones. The watchtower and the church are the
+landmarks, at `LANDMARK_SCALE` (×1.6); the tower's limewashed shaft over
+its stone base keeps it 1.1 to 1.5 times the town's tallest roof
+(`TOWER_OVER_TOWN`), the church among the roofs. A building
 stands on the lowest drawn ground under its walls unless that would bury
 the uphill side by more than `VILLAGE_MAX_BURY` (0.05 at scale 1), and is
 refused where it would show more than `VILLAGE_MAX_FOOTING_SHOWN` (0.03; on
@@ -954,14 +987,12 @@ street, over the kit, the quay or the pier deck, outside the port's town
 cells, or in a spilled cell's shore band (#170: the hex edge is no longer
 a bound; the town cells are, ADR 0006). Every candidate the layout drops
 is counted under its reason (`DROP_REASONS`: outside town, shore band,
-taken, street, riser, wet, uneven), and every candidate is either built or
+taken, street, riser, wet, uneven, thinned), and every candidate is either built or
 dropped (pinned). Every village length follows the building scale, which
 `planPortTowns` takes as an option: with the field's plateaus planned at
-the same scale, the village holds about 46 buildings a port at today's
-scale and about 17 at ×2.5 on five small maps (the prototype's plateau,
-left at `PROP_SCALE` and bound by the hex, fell to about 4), pinned in
-`villageLayout.test.ts`; the ~24-house target at ×2.5 is the next village
-slice's (#176). The kit's rings and the clutter are bound by the same town
+the same scale, the village does not collapse as the buildings grow from
+×1 to ×2.5 (the prototype's plateau, left at `PROP_SCALE` and bound by the
+hex, fell to about 4), pinned in `villageLayout.test.ts`. The kit's rings and the clutter are bound by the same town
 cells (`townBound.ts`). The walls' edges are probed eight times finer than
 the grid under them, so a building on the coarse lattice outside the
 refined town ground (where a town spills) is not buried past its rule.
