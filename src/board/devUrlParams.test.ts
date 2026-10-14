@@ -66,6 +66,12 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?view=sounds")).toEqual({});
   });
 
+  it("floats the sea surface buoys", () => {
+    expect(parseDevUrlParams("?buoys=1")).toEqual({ seaBuoys: true });
+    expect(parseDevUrlParams("?buoys=0")).toEqual({});
+    expect(parseDevUrlParams("?buoys=yes")).toEqual({});
+  });
+
   it("reads every parameter from one URL", () => {
     expect(parseDevUrlParams("?size=small&seed=1&cx=12&cz=13.9&dist=4.3")).toEqual({
       setupData: { mapSize: "small", mapSeed: 1 },

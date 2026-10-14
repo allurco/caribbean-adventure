@@ -27,6 +27,8 @@ import { SunLight } from "./visuals/SunLight";
 import { FillLight } from "./visuals/FillLight";
 import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import { useWaveCascades } from "./visuals/useWaveCascades";
+import { useWaveClock } from "./visuals/useWaveClock";
+import { SeaBuoys } from "./visuals/SeaBuoys";
 import { useTerrainFieldTexture } from "./visuals/useTerrainFieldTexture";
 import { WAVE_CASCADES, WHITECAP_CASCADES } from "./visuals/oceanWaves";
 import { DISPLACEMENT_CASCADES } from "./visuals/waveDisplacement";
@@ -139,6 +141,7 @@ function Scene({
   onShipHover,
   onShipClick,
   onPortHover,
+  seaBuoys,
 }: {
   G: CaribbeanState;
   currentPlayer: string;
@@ -162,6 +165,8 @@ function Scene({
   onShipHover: (id: string | null) => void;
   onShipClick: (id: string) => void;
   onPortHover: (cell: MapCell | null) => void;
+  /** Dev: buoys on the CPU sea surface (#141). */
+  seaBuoys: boolean;
 }) {
   const currentShipState = G.ships[currentPlayer];
   const controlsRef = useRef<MapControlsType>(null);
@@ -178,7 +183,9 @@ function Scene({
   // large cascades' displacement moves the water's mesh and the grid lines
   // on it (#38 step 8).
   const reducedMotion = usePrefersReducedMotion();
-  const waves = useWaveCascades(WAVE_CASCADES, WHITECAP_CASCADES, DISPLACEMENT_CASCADES, reducedMotion);
+  // One wave clock for the cascades and every CPU reader of the sea (#141).
+  const waveClock = useWaveClock(reducedMotion);
+  const waves = useWaveCascades(WAVE_CASCADES, WHITECAP_CASCADES, DISPLACEMENT_CASCADES, waveClock);
   const waveSlopes = waves.slopes;
   // The baked terrain field, read by the water (depth, coast, reefs) and by
   // the land's shoreline foam (#38 step 7).
@@ -387,6 +394,9 @@ function Scene({
         />
       )}
 
+      {/* Dev: buoys on the CPU sea surface, to check it rides the drawn swell (#141) */}
+      {seaBuoys && <SeaBuoys cells={G.cells} wrap={G.wrap} clock={waveClock} enabled={waves.enabled} />}
+
       {/* Everything on the map, once per copy of the wrapping world */}
       <WorldCopies period={period} stripMinX={strip?.minX ?? 0} from={copies.from} to={copies.to}>
       {(copy) => (
@@ -521,10 +531,12 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   cameraTarget?: [number, number, number];
   /** How far from its target the camera starts instead of the map's iso distance (dev, #74). */
   cameraDistance?: number;
+  /** Float buoys on the CPU sea surface round the camera focus (dev, #141). */
+  seaBuoys?: boolean;
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance } = props;
+  const { G, ctx, cameraTarget, cameraDistance, seaBuoys } = props;
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
   const [sinkingShips, setSinkingShips] = useState<SinkingShipData[]>([]);
@@ -815,6 +827,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
             }
           }}
           onPortHover={setHoveredPort}
+          seaBuoys={seaBuoys ?? false}
         />
       </Canvas>
 

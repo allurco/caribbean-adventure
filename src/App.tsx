@@ -32,6 +32,6 @@ export default function App() {
     return <SoundLab />;
   }
   return (
-    <GameClientLoader client={gameClient} cameraTarget={devParams.cameraTarget} cameraDistance={devParams.cameraDistance} />
+    <GameClientLoader client={gameClient} cameraTarget={devParams.cameraTarget} cameraDistance={devParams.cameraDistance} seaBuoys={devParams.seaBuoys} />
   );
 }

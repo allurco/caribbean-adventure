@@ -1217,7 +1217,11 @@ displace.
   (`WAVE_CREST_BOUND_UNITS`), which pads the rings' culling bounds. At the
   closest ship zoom (~0.003 units per pixel) typical crests move the surface
   2–4 pixels: the water laps a static hull as it would round a ship that is
-  not yet heaving (step 11).
+  not yet heaving. What rides the sea reads the swell's height from the CPU
+  sea surface (ADR 0004, `docs/adr/0004-one-sea-surface.md`):
+  `createSeaSurface(...).heightAt` in `seaSurface.ts` evaluates the swell
+  band from the same spectrum and wave clock on a half-size grid, damped by
+  `shallowDisplacementDamping` and `waveDetailFade` as the vertex stage is.
 - *Shallows.* The displacement is scaled by `shallowDisplacementDamping` of
   the seabed's depth from the terrain field: a smoothstep from nothing at the
   waterline (and on land) to full at twice the breaking depth
@@ -1338,6 +1342,7 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | File | Purpose |
 |------|---------|
 | `docs/adr/0001-one-terrain-height-field.md` | The decision: one height field, driven by cell elevation |
+| `docs/adr/0004-one-sea-surface.md` | The decision: one sea surface, the spectrum and wave clock drawn on the GPU and sampled on the CPU |
 | `src/board/visuals/terrainHeightField.ts` | The height field: coast distance, seabed, blended elevation, relief; `sampleHeight` |
 | `src/board/visuals/sharedTerrainField.ts` | The map's one field, built once per `cells` array and wrap |
 | `src/board/visuals/townPlateau.ts` | Town plateaus in the field: terraces, risers, carved streets (#87) |
@@ -1370,6 +1375,7 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | `src/board/visuals/Ocean.tsx` | Water: the displaced ring grid, refraction, water colour, waves, glint, foam |
 | `src/board/visuals/oceanGrid.ts` | The sea's mesh: stitched level-of-detail rings, snapping, coverage |
 | `src/board/visuals/waveDisplacement.ts` | Which cascades displace, the height gain, shallow damping, the vertex-stage GLSL |
+| `src/board/visuals/seaSurface.ts` | The CPU sea surface: the swell band's height at a world point (`heightAt`), for what rides the sea |
 | `src/board/visuals/waterOptics.ts` | Water optics: absorption, Fresnel, vector Snell, the refraction bound |
 | `src/board/visuals/waveSlopeGlsl.ts` | The cascade slope and whitecap look-ups shared by the water and the seabed |
 | `src/board/visuals/waveCascade.ts` | One FFT cascade: spectrum, slopes, stretch and displacement spectra |

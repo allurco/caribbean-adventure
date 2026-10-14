@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WAVE_LOOP_SECONDS, advanceWaveTime, waveTimeStep } from "./waveClock";
+import { WAVE_LOOP_SECONDS, advanceWaveTime, createWaveClock, waveTimeStep } from "./waveClock";
 
 describe("waveTimeStep", () => {
   it("is the seconds the clock advanced between two readings", () => {
@@ -32,5 +32,25 @@ describe("advanceWaveTime", () => {
   it("ignores non-finite and negative steps", () => {
     expect(advanceWaveTime(3, Number.NaN, false)).toBe(3);
     expect(advanceWaveTime(3, -1, false)).toBe(3);
+  });
+});
+
+describe("createWaveClock", () => {
+  it("starts at wave time 0", () => {
+    expect(createWaveClock().waveTimeAt()).toBe(0);
+  });
+
+  it("reads the time advanced by every frame so far", () => {
+    const clock = createWaveClock();
+    clock.advance(0.016, false);
+    clock.advance(0.02, false);
+    expect(clock.waveTimeAt()).toBeCloseTo(0.036, 9);
+  });
+
+  it("holds still under reduced motion", () => {
+    const clock = createWaveClock();
+    clock.advance(0.5, false);
+    clock.advance(0.016, true);
+    expect(clock.waveTimeAt()).toBeCloseTo(0.1, 9);
   });
 });
