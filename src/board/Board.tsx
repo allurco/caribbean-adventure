@@ -9,7 +9,8 @@ import { getMaxMoves } from "../game/Game";
 import type { Hex } from "../game/hex";
 import type { ShipState, ShipClass, NPCShip, MapCell } from "../game/types";
 import { hexToWorld, hexEquals, wrapWorldWidth } from "../game/hex";
-import { validMoveTargets, findAccessiblePort } from "../game/moves";
+import { findAccessiblePort, dockingHexes } from "../game/moves";
+import { turnReach, routeTo, reachCost } from "../game/reach";
 import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
 import { getValidScoutTargets } from "../game/scouting";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
@@ -63,6 +64,10 @@ import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
 import { Ship, SinkingShip } from "./Ship";
 import { seaRoute } from "./shipRoute";
+import { ReachOverlay } from "./ReachOverlay";
+import { reachLayers, routeDots } from "./routePreview";
+import { reachClick, reachConfirm } from "./routeSelection";
+import { useRouteSailing } from "./useRouteSailing";
 import type { Point } from "./shipMotion";
 import { trackShipHeadings } from "./shipHeading";
 import { ShipTooltip } from "./ShipTooltip";
@@ -127,7 +132,9 @@ function Scene({
   hoveredPort,
   scoutedPlayerIds,
   focusView,
+  sailing,
   onMoveShip,
+  onSailRoute,
   onHexClick,
   onSinkingComplete,
   onShipHover,
@@ -151,7 +158,11 @@ function Scene({
   scoutedPlayerIds: string[];
   /** Where to fly the camera: a new view starts a flight. */
   focusView: CameraView | null;
+  /** A planned route is being sailed: no reach, no moves (#213). */
+  sailing: boolean;
   onMoveShip: (q: number, r: number) => void;
+  /** Sail a planned route, one move per hex (#213). */
+  onSailRoute: (route: Hex[]) => void;
   onHexClick: (hex: Hex) => void;
   onSinkingComplete: (id: string) => void;
   onShipHover: (id: string | null) => void;
@@ -327,17 +338,25 @@ function Scene({
     ],
     [G.ships, currentPlayer, npcs]
   );
-  const targets = useMemo(() => {
-    if (!currentShipState) return [];
-    const shallowDraft = currentShipState.stats?.shallowDraft ?? true;
-    return validMoveTargets(
-      currentShipState.position,
-      G.cells,
-      G.wrap,
-      otherShipPositions,
-      shallowDraft
-    );
-  }, [currentShipState, G.cells, G.wrap, otherShipPositions]);
+  // The turn's reach (#213): every hex the ship can sail to with the moves
+  // left, routed round land and ships, a port's docking hex ending a route.
+  const stops = useMemo(() => dockingHexes(G.cells), [G.cells]);
+  const canMove = movesRemaining > 0 && !sailing && !attackMode && !spyglassMode;
+  const reach = useMemo(() => {
+    if (!currentShipState || !canMove) return null;
+    return turnReach(currentShipState.position, movesRemaining, G.cells, G.wrap, {
+      occupied: otherShipPositions,
+      shallowDraft: currentShipState.stats?.shallowDraft ?? true,
+      stops,
+    });
+  }, [currentShipState, canMove, movesRemaining, G.cells, G.wrap, otherShipPositions, stops]);
+  const targets = useMemo(() => reach?.hexes.map((s) => s.hex) ?? [], [reach]);
+
+  // The hex whose route is showing after a first click, kept with the hex the
+  // ship was on, so it lapses once the ship moves.
+  const [selection, setSelection] = useState<{ hex: Hex; from: string } | null>(null);
+  const shipKey = currentShipState ? `${currentPlayer}:${currentShipState.position.q},${currentShipState.position.r}` : "";
+  const selected = reach && selection && selection.from === shipKey && reachCost(reach, selection.hex) !== undefined ? selection.hex : null;
 
   // Built once per map (and turn) and drawn by every copy of the world: the
   // copies share these geometries, materials and hover state.
@@ -353,18 +372,62 @@ function Scene({
     cells: G.cells,
     wrap: G.wrap,
     worldSeed,
-    validTargets: attackMode || spyglassMode ? [] : movesRemaining > 0 ? targets : [],
+    validTargets: targets,
     attackTargets: attackMode ? attackTargetHexes : spyglassMode ? spyglassTargetHexes : [],
     onHexClick: (h) => {
       if (attackMode || spyglassMode) {
         onHexClick(h);
-      } else {
-        onMoveShip(h.q, h.r);
+        return;
       }
+      if (!reach) return;
+      const click = reachClick(reach, selected, h);
+      if (click.kind === "move") onMoveShip(click.hex.q, click.hex.r);
+      else if (click.kind === "sail") onSailRoute(click.route);
+      setSelection(click.kind === "select" ? { hex: click.hex, from: shipKey } : null);
     },
+    onMiss: () => setSelection(null),
     onPortHover,
-    interactive: attackMode || spyglassMode || movesRemaining > 0,
+    interactive: attackMode || spyglassMode || canMove,
   });
+
+  // The route to the selected hex, else the hovered one, as dots on the water
+  const hovered = reach && grid.hoveredHex && reachCost(reach, grid.hoveredHex) !== undefined ? grid.hoveredHex : null;
+  const previewTarget = selected ?? hovered;
+  const reachShades = useMemo(
+    () =>
+      reach
+        ? reachLayers(reach).map(({ cost, hexes }) => ({
+            cost,
+            points: hexes.map((h): Point => {
+              const [x, , z] = hexToWorld(h);
+              return [x, z];
+            }),
+          }))
+        : [],
+    [reach]
+  );
+  const routeDotPoints = useMemo(
+    () => (reach && previewTarget ? routeDots(reach.start, routeTo(reach, previewTarget), period) : []),
+    [reach, previewTarget, period]
+  );
+
+  // Enter sails the previewed route; Escape drops the selection
+  useEffect(() => {
+    if (!reach) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "Escape") setSelection(null);
+      if (e.key === "Enter") {
+        const route = reachConfirm(reach, selected, hovered);
+        if (route.length === 0) return;
+        e.preventDefault();
+        setSelection(null);
+        onSailRoute(route);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [reach, selected, hovered, onSailRoute]);
 
   return (
     <SeaSurfaceContext.Provider value={sea}>
@@ -424,6 +487,9 @@ function Scene({
       <TerrainDecorations layout={decorations} waveSlopes={waveSlopes} />
 
       <HexGrid grid={grid} copy={copy} />
+
+      {/* The turn's reach and the previewed route (#213) */}
+      <ReachOverlay layers={reachShades} dots={routeDotPoints} target={previewTarget} />
 
       {Object.entries(G.ships).map(([id, ship]) => (
         <Ship
@@ -585,6 +651,11 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // every change of G plays the sounds its moves map to.
   useAudioUnlock();
   useGameSounds(G);
+
+  // A planned route (#213) is sailed one moveShip per hex.
+  const { moveShip } = props.moves;
+  const moveOneHex = useCallback((q: number, r: number) => moveShip(q, r), [moveShip]);
+  const { sailing, sail } = useRouteSailing(G, ctx, moveOneHex);
 
   // Track previous player to detect turn changes
   const prevPlayerRef = useRef<string | null>(null);
@@ -852,7 +923,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           hoveredPort={hoveredPort}
           scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
           focusView={cameraFocusView}
+          sailing={sailing}
           onMoveShip={(q, r) => props.moves.moveShip(q, r)}
+          onSailRoute={sail}
           onHexClick={spyglassMode ? handleHexClickForSpyglass : handleHexClickForAttack}
           onSinkingComplete={handleSinkingComplete}
           onShipHover={setHoveredShipId}

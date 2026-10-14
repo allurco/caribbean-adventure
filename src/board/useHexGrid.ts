@@ -57,6 +57,8 @@ export interface HexGridProps {
   validTargets: Hex[];
   attackTargets?: Hex[];
   onHexClick: (hex: Hex) => void;
+  /** A click on water that is not a target. */
+  onMiss?: () => void;
   onPortHover?: (cell: MapCell | null) => void;
   interactive: boolean;
   /** The displaced sea the grid lines float on (#38 step 8). */
@@ -75,10 +77,14 @@ export interface HexGridState {
   attackWaterIndices: ReadonlySet<number>;
   attackTargetPositions: [number, number, number][];
   hoveredPos: [number, number, number] | null;
+  /** The target hex under the pointer, in any copy. */
+  hoveredHex: Hex | null;
   isHoveredAttackTarget: boolean;
   lines: WaterGridLines;
   setHover: Dispatch<SetStateAction<SharedHover>>;
   onHexClick: (hex: Hex) => void;
+  /** A click on water that is not a target. */
+  onMiss?: () => void;
   onPortHover?: (cell: MapCell | null) => void;
   /** The port under the pointer, in any copy (its label stays readable close in, #75). */
   hoveredPort: MapCell | null;
@@ -92,6 +98,7 @@ export function useHexGrid({
   validTargets,
   attackTargets = [],
   onHexClick,
+  onMiss,
   onPortHover,
   interactive,
   surface,
@@ -190,10 +197,12 @@ export function useHexGrid({
     attackWaterIndices,
     attackTargetPositions,
     hoveredPos,
+    hoveredHex: hoveredCell?.hex ?? null,
     isHoveredAttackTarget,
     lines,
     setHover,
     onHexClick,
+    onMiss,
     onPortHover: onPortHover && handlePortHover,
     hoveredPort,
     interactive,

@@ -35,3 +35,7 @@ export const validMoveTargets = (
     // Islands are never passable (ships dock at water hex adjacent to port)
     return false;
   });
+
+/** Every port's docking hex: arriving at one ends a planned route (#213). */
+export const dockingHexes = (cells: MapCell[]): Hex[] =>
+  cells.flatMap((c) => (c.hasPort && c.dockingHex ? [c.dockingHex] : []));

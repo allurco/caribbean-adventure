@@ -205,6 +205,7 @@ export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
     lines,
     setHover,
     onHexClick,
+    onMiss,
     onPortHover,
     hoveredPort,
     interactive,
@@ -255,9 +256,11 @@ export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
       if (id !== undefined && allWaterInteractive.has(id)) {
         e.stopPropagation();
         onHexClick(waterCells[id].hex);
+      } else {
+        onMiss?.();
       }
     },
-    [interactive, allWaterInteractive, onHexClick, waterCells]
+    [interactive, allWaterInteractive, onHexClick, onMiss, waterCells]
   );
 
   return (
