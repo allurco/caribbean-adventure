@@ -727,27 +727,27 @@ describe("trade move", () => {
   });
 
   describe("move accounting", () => {
-    it("trade counts toward MOVES_PER_TURN", () => {
+    it("trading does not use a move (#227)", () => {
       const client = setupAtPort();
       client.moves.trade("Wood", 1, "BUY");
       client.moves.trade("Wood", 1, "BUY");
       client.moves.trade("Wood", 1, "BUY");
-      // 3 trades should auto-end the turn
-      const { ctx } = client.getState()!;
-      expect(ctx.currentPlayer).toBe("1");
+      const { G, ctx } = client.getState()!;
+      expect(ctx.currentPlayer).toBe("0");
+      expect(G.movesUsed ?? 0).toBe(0);
     });
 
     it("can mix moveShip and trade in same turn", () => {
       const client = setupAtPort();
-      // Buy 1 wood (move 1)
+      // Buy 1 wood and sell it back: free
       client.moves.trade("Wood", 1, "BUY");
-      // Sell it back (move 2)
       client.moves.trade("Wood", 1, "SELL");
-      // Move ship to adjacent water hex (move 3) - ship is at (1,0), move to (0,1)
+      // Sail away from the port: one of the three moves
       client.moves.moveShip(0, 1);
       const { G, ctx } = client.getState()!;
       expect(G.ships["0"].position).toEqual(hex(0, 1));
-      expect(ctx.currentPlayer).toBe("1"); // turn auto-ended
+      expect(ctx.currentPlayer).toBe("0");
+      expect(G.movesUsed).toBe(1);
     });
   });
 

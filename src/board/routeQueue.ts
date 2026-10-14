@@ -10,7 +10,7 @@
  */
 import type { Hex, MapWrap } from "../game/hex";
 import { wrappedEquals } from "../game/hex";
-import { getMaxMoves } from "../game/Game";
+import { movesLeft, movesUsed } from "../game/turnMoves";
 import type { CaribbeanState } from "../game/types";
 import { findAccessiblePort, validMoveTargets } from "../game/moves";
 
@@ -22,8 +22,8 @@ export interface RouteQueue {
   readonly player: string;
   /** Steps not yet sent, in order. */
   readonly remaining: readonly Hex[];
-  /** The step sent and not yet seen applied, with the move count when it was sent. */
-  readonly awaiting: { readonly hex: Hex; readonly numMoves: number } | null;
+  /** The step sent and not yet seen applied, with the moves used when it was sent. */
+  readonly awaiting: { readonly hex: Hex; readonly movesUsed: number } | null;
 }
 
 /** What the board shows after an update, as the queue needs it. */
@@ -34,8 +34,8 @@ export interface RouteObservation {
   readonly gameOver: boolean;
   /** Where the sailing player's ship is. */
   readonly position: Hex;
-  /** Moves made this turn (`ctx.numMoves`). */
-  readonly numMoves: number;
+  /** Moves used this turn (`G.movesUsed`; port actions are free, #227). */
+  readonly movesUsed: number;
   readonly movesLeft: number;
   /** The hexes the ship can move to from where it is (`validMoveTargets`). */
   readonly openSteps: readonly Hex[];
@@ -64,7 +64,7 @@ export function advanceRoute(queue: RouteQueue, obs: RouteObservation, wrap: Map
   if (awaiting) {
     if (!wrappedEquals(obs.position, awaiting.hex, wrap)) {
       // Not there yet; but if a move was used all the same, the ship went elsewhere
-      return obs.numMoves === awaiting.numMoves ? { kind: "wait", queue } : { kind: "done", reason: "interrupted" };
+      return obs.movesUsed === awaiting.movesUsed ? { kind: "wait", queue } : { kind: "done", reason: "interrupted" };
     }
     if (queue.remaining.length > 0 && obs.atDockingHex) return { kind: "done", reason: "interrupted" };
   }
@@ -75,7 +75,7 @@ export function advanceRoute(queue: RouteQueue, obs: RouteObservation, wrap: Map
   return {
     kind: "send",
     hex: next,
-    queue: { player: queue.player, remaining: rest, awaiting: { hex: next, numMoves: obs.numMoves } },
+    queue: { player: queue.player, remaining: rest, awaiting: { hex: next, movesUsed: obs.movesUsed } },
   };
 }
 
@@ -83,7 +83,6 @@ export function advanceRoute(queue: RouteQueue, obs: RouteObservation, wrap: Map
 export interface TurnContext {
   readonly currentPlayer: string;
   readonly phase: string;
-  readonly numMoves?: number;
   readonly gameover?: unknown;
 }
 
@@ -101,15 +100,14 @@ export function routeObservation(G: CaribbeanState, ctx: TurnContext, player: st
       .map(([, s]) => s.position),
     ...Object.values(G.npcs).map((n) => n.position),
   ];
-  const numMoves = ctx.numMoves ?? 0;
   return {
     player: ctx.currentPlayer,
     phase: ctx.phase,
     inCombat: G.combat !== undefined && G.combat !== null,
     gameOver: ctx.gameover !== undefined && ctx.gameover !== null,
     position: ship.position,
-    numMoves,
-    movesLeft: getMaxMoves(ship) - numMoves,
+    movesUsed: movesUsed(G),
+    movesLeft: movesLeft(G, player),
     openSteps: validMoveTargets(ship.position, G.cells, G.wrap, occupied, ship.stats?.shallowDraft ?? true),
     atDockingHex: findAccessiblePort(ship.position, G.cells, G.wrap) !== undefined,
   };

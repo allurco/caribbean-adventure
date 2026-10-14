@@ -10,7 +10,6 @@ import type {
   CaribbeanState,
   GoodType,
   ShipClass,
-  ShipStats,
   DamageCategory,
   CombatAction,
 } from "./types";
@@ -32,6 +31,7 @@ import {
   getEffectiveCannons,
 } from "./combat";
 import { SHIP_SPECS } from "./constants";
+import { movesLeft, spendMove, turnRunsOut } from "./turnMoves";
 import {
   createShipState,
   canBuy,
@@ -64,7 +64,7 @@ import {
 
 export type { CaribbeanState, CaribbeanSetupData } from "./types";
 
-export const MOVES_PER_TURN = 3;
+export { MOVES_PER_TURN, getMaxMoves } from "./turnMoves";
 
 /**
  * The game with `setupData` pinned, for a client that creates matches
@@ -125,22 +125,23 @@ function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: (
     npcIdCounter: 0,
     pirates: {},
     bountyClaims: [],
+    movesUsed: 0,
   };
 }
 
-export function getMaxMoves(ship: {
-  stats?: ShipStats;
-  shipClass?: ShipClass;
-  damage?: { masts: number };
-}): number {
-  let base = MOVES_PER_TURN;
-  if (ship.stats) base = ship.stats.maneuverability;
-  else if (ship.shipClass) base = SHIP_SPECS[ship.shipClass].maneuverability;
-
-  // Mast damage reduces movement (1 damage = -1 move)
-  const mastDamage = ship.damage?.masts ?? 0;
-  return Math.max(1, base - mastDamage);
-}
+/**
+ * The turn's move budget (#227): only the moves that spend one (sailing,
+ * scouting, jury-rigging) count, in `G.movesUsed`, reset as the turn begins.
+ * The turn ends by itself once they are spent, unless the ship is docked at a
+ * port, where its captain may still trade and refit, then ends the turn.
+ * No boardgame.io `maxMoves`: it counts every move, port actions too.
+ */
+const movesBudgetTurn = {
+  onBegin: ({ G }: { G: CaribbeanState }) => {
+    G.movesUsed = 0;
+  },
+  endIf: ({ G, ctx }: { G: CaribbeanState; ctx: { currentPlayer: string } }) => turnRunsOut(G, ctx.currentPlayer),
+};
 
 export const Caribbean: Game<CaribbeanState> = {
   name: "caribbean",
@@ -167,6 +168,7 @@ export const Caribbean: Game<CaribbeanState> = {
   moves: {
     moveShip: ({ G, ctx }, q: number, r: number) => {
       const ship = G.ships[ctx.currentPlayer];
+      if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
       const target = canonicalHex(hex(q, r), G.wrap);
       if (wrappedDistance(ship.position, target, G.wrap) !== 1) return INVALID_MOVE;
       const cell = G.cells.find((c) => hexEquals(c.hex, target));
@@ -184,6 +186,7 @@ export const Caribbean: Game<CaribbeanState> = {
       );
       if (occupied) return INVALID_MOVE;
       ship.position = target;
+      spendMove(G);
     },
 
     trade: (
@@ -240,9 +243,7 @@ export const Caribbean: Game<CaribbeanState> = {
     },
   },
 
-  turn: {
-    maxMoves: MOVES_PER_TURN,
-  },
+  turn: movesBudgetTurn,
 
   phases: {
     draft: {
@@ -321,13 +322,7 @@ export const Caribbean: Game<CaribbeanState> = {
     },
     main: {
       turn: {
-        maxMoves: Math.max(
-          ...SHIP_CLASSES.map((c) => SHIP_SPECS[c].maneuverability),
-        ),
-        endIf: ({ G, ctx }) => {
-          const ship = G.ships[ctx.currentPlayer];
-          return (ctx.numMoves ?? 0) >= getMaxMoves(ship);
-        },
+        ...movesBudgetTurn,
         onEnd: ({ G, random }) => {
           // Don't move NPCs if combat is starting
           if (G.combat) return;
@@ -344,6 +339,7 @@ export const Caribbean: Game<CaribbeanState> = {
       moves: {
         moveShip: ({ G, ctx }, q: number, r: number) => {
           const ship = G.ships[ctx.currentPlayer];
+          if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
           const target = canonicalHex(hex(q, r), G.wrap);
           if (wrappedDistance(ship.position, target, G.wrap) !== 1) return INVALID_MOVE;
           const cell = G.cells.find((c) => hexEquals(c.hex, target));
@@ -361,6 +357,7 @@ export const Caribbean: Game<CaribbeanState> = {
           );
           if (occupied) return INVALID_MOVE;
           ship.position = target;
+          spendMove(G);
 
           // Check for mission completion at new position
           if (ship.activeMission) {
@@ -445,6 +442,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
         spyglass: ({ G, ctx }, targetId: string, isNPC: boolean) => {
           const ship = G.ships[ctx.currentPlayer];
+          if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
 
           if (isNPC) {
             const npc = G.npcs[targetId];
@@ -461,6 +459,7 @@ export const Caribbean: Game<CaribbeanState> = {
               ship.scoutedShips.push(targetId);
             }
           }
+          spendMove(G);
         },
 
         listenForRumors: ({ G, ctx, random }) => {
@@ -490,8 +489,10 @@ export const Caribbean: Game<CaribbeanState> = {
 
         juryRig: ({ G, ctx }) => {
           const ship = G.ships[ctx.currentPlayer];
+          if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
           if (!canJuryRig(ship)) return INVALID_MOVE;
           applyJuryRig(ship);
+          spendMove(G);
         },
 
         attackShip: ({ G, ctx, events }, targetId: string) => {

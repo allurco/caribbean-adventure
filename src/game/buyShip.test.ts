@@ -274,14 +274,15 @@ describe("buyShip move", () => {
     expect(G.ships["0"].gold).toBe(10);
   });
 
-  it("counts toward moves per turn", () => {
+  it("does not use a move (#227)", () => {
     const client = setupAtShipyard({ gold: 200 });
-    // Buy a ship (uses 1 move), then do 2 more trades to fill the 3-move turn
+    // Buying a ship and trading are port actions: free
     client.moves.buyShip("Frigate");
     client.moves.trade("Wood", 1, "BUY");
     client.moves.trade("Wood", 1, "BUY");
-    const { ctx } = client.getState()!;
-    expect(ctx.currentPlayer).toBe("1"); // turn auto-ended after 3 moves
+    const { G, ctx } = client.getState()!;
+    expect(ctx.currentPlayer).toBe("0");
+    expect(G.movesUsed ?? 0).toBe(0);
   });
 
   it("rejects invalid ship class string", () => {
