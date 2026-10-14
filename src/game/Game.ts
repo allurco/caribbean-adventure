@@ -299,11 +299,25 @@ export const Caribbean: Game<CaribbeanState> = {
           const occupiedHexes = Object.entries(G.ships)
             .filter(([id, s]) => id !== playerId && s.captain !== undefined)
             .map(([, s]) => s.position);
-          const port = findHomePort(chosen.nation, G.cells, occupiedHexes);
+          // A port in the captain's nation's region (#239)
+          const port = findHomePort(chosen.nation, G.cells, occupiedHexes, G.regions);
           if (port && port.dockingHex) {
             // Validate that dockingHex is actually a water hex
             const dockingCell = G.cells.find((c) => hexEquals(c.hex, port.dockingHex!));
-            if (dockingCell && dockingCell.terrain === "water") {
+            const dockTaken = occupiedHexes.some((o) => hexEquals(o, port.dockingHex!));
+            if (dockingCell && dockingCell.terrain === "water" && dockTaken) {
+              // Another captain of the nation is docked there: start beside the
+              // port, with its dock still home (#239)
+              const besidePort = wrappedNeighbors(port.hex, G.wrap).find((n) => {
+                const cell = G.cells.find((c) => hexEquals(c.hex, n));
+                return cell && cell.terrain === "water" && !occupiedHexes.some((o) => hexEquals(o, n));
+              });
+              if (besidePort) {
+                ship.position = besidePort;
+                ship.homePortHex = port.hex;
+                ship.homeDockingHex = port.dockingHex;
+              }
+            } else if (dockingCell && dockingCell.terrain === "water") {
               // Ship spawns at the docking water hex, not the port island
               ship.position = port.dockingHex;
               // homePortHex is the actual port (for display/scoring)

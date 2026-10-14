@@ -1,6 +1,6 @@
 import type { Hex } from "./hex";
 import { hexEquals } from "./hex";
-import type { Captain, MapCell, Nation } from "./types";
+import type { Captain, MapCell, Nation, Region } from "./types";
 
 export const CAPTAINS: Captain[] = [
   // England (3)
@@ -107,18 +107,24 @@ export function dealHands(
   return { hands, remaining };
 }
 
+/**
+ * The home port for a captain of `nation`: a port in the nation's region
+ * (#239; by the port's own flag on a map without regions) whose docking hex
+ * is free. If every one of those is taken, one of them all the same (the
+ * ship starts beside it, the draft finds where); only if the nation has no
+ * port at all, any port with a free docking hex.
+ */
 export function findHomePort(
   nation: Nation,
   cells: MapCell[],
   occupiedHexes: Hex[],
+  regions: readonly Region[] = [],
 ): MapCell | undefined {
   const isOccupied = (h: Hex | undefined) =>
     h ? occupiedHexes.some((o) => hexEquals(o, h)) : true;
-  // Prefer a port of the matching nation (check docking hex for occupation)
-  const match = cells.find(
-    (c) => c.hasPort && c.nation === nation && c.dockingHex && !isOccupied(c.dockingHex),
-  );
-  if (match) return match;
-  // Fall back to any unoccupied port with a docking hex
-  return cells.find((c) => c.hasPort && c.dockingHex && !isOccupied(c.dockingHex));
+  const inNationWaters = (c: MapCell) =>
+    c.region !== undefined && regions[c.region] ? regions[c.region].nation === nation : c.nation === nation;
+  const ports = cells.filter((c) => c.hasPort && c.dockingHex);
+  const home = ports.filter(inNationWaters);
+  return home.find((c) => !isOccupied(c.dockingHex)) ?? home[0] ?? ports.find((c) => !isOccupied(c.dockingHex));
 }

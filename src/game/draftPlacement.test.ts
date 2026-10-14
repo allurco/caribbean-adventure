@@ -12,7 +12,7 @@ import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { createCaptainDeck, dealHands } from "./captains";
 import { createShipState } from "./economy";
-import { createWrap, hex, hexEquals } from "./hex";
+import { createWrap, hex, hexEquals, wrappedDistance } from "./hex";
 import { getMapPreset, type MapSizeId } from "./mapConfig";
 import { generateMapFor } from "./mapRequest";
 import { STARTER_SHIP_CLASSES } from "./types";
@@ -33,8 +33,16 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-/** The ships after six players draft on map `seed` of `mapSize`, each taking the first captain of their hand. */
+const drafts = new Map<string, ReturnType<typeof draftShips>>();
+/** `draftShips`, once per map: two suites read the same drafts. */
 function draftedShips(mapSize: MapSizeId, mapSeed: number) {
+  const key = `${mapSize}:${mapSeed}`;
+  if (!drafts.has(key)) drafts.set(key, draftShips(mapSize, mapSeed));
+  return drafts.get(key)!;
+}
+
+/** The ships after six players draft on map `seed` of `mapSize`, each taking the first captain of their hand. */
+function draftShips(mapSize: MapSizeId, mapSeed: number) {
   const { cells, regions } = generateMapFor({ mapSize, mapSeed });
   const { hands, remaining } = dealHands(createCaptainDeck(mulberry32(mapSeed)), PLAYERS);
   const ships: CaribbeanState["ships"] = {};
@@ -78,6 +86,19 @@ describe(`the draft's ship placement over ${SEEDS} seeds per map size (#166)`, (
             expect(hexEquals(p, positions[j]), `seed ${seed}: ships ${j} and ${i} share (${p.q}, ${p.r})`).toBe(false);
           }
         });
+      }
+    }, 300_000);
+
+    it(`starts every captain at a home port in their nation's region on ${mapSize} maps (#239)`, () => {
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const { G, cells, regions } = draftedShips(mapSize, seed);
+        for (const [id, ship] of Object.entries(G.ships)) {
+          const home = cells.find((c) => ship.homePortHex && hexEquals(c.hex, ship.homePortHex));
+          expect(home?.hasPort, `seed ${seed}: ship ${id} has a home port`).toBe(true);
+          expect(regions[home!.region!].nation, `seed ${seed}: ship ${id}`).toBe(ship.captain!.nation);
+          // And it starts beside it.
+          expect(wrappedDistance(ship.position, home!.hex, G.wrap), `seed ${seed}: ship ${id}`).toBe(1);
+        }
       }
     }, 300_000);
   }

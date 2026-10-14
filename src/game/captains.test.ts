@@ -10,7 +10,7 @@ import {
 import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { NATIONS } from "./types";
-import type { MapCell, Captain } from "./types";
+import type { MapCell, Captain, Region } from "./types";
 import { hex, hexEquals } from "./hex";
 import { createShipState } from "./economy";
 import type { MapSizeId } from "./mapConfig";
@@ -165,14 +165,41 @@ describe("findHomePort", () => {
     expect(result!.hasPort).toBe(true);
   });
 
-  it("returns undefined if all ports' docking hexes are occupied", () => {
-    // Occupy all docking hexes
-    const result = findHomePort("England", cells, [
-      hex(0, 0),   // England docking hex
-      hex(1, 1),   // France docking hex
-      hex(2, 1),   // England 2 docking hex
-    ]);
+  it("shares a port of the nation when every one is taken, rather than send the captain abroad (#239)", () => {
+    const taken = [hex(0, 0), hex(2, 1)]; // Both English docking hexes
+    expect(findHomePort("England", cells, taken)?.nation).toBe("England");
+  });
+
+  it("returns undefined if all ports' docking hexes are occupied and none is the nation's", () => {
+    const result = findHomePort("Spain", cells, [hex(0, 0), hex(1, 1), hex(2, 1)]);
     expect(result).toBeUndefined();
+  });
+
+  describe("with regions (#239)", () => {
+    // England's waters are region 0, France's region 1; the English port at
+    // (3, 0) lies in French waters, as a lost flag (#240) could leave it.
+    const regions: Region[] = [
+      { id: 0, nation: "England", name: "the Windward Reach", neighbours: [1] },
+      { id: 1, nation: "France", name: "the Bay of Lilies", neighbours: [0] },
+    ];
+    const inRegions = [
+      { ...portEngland, region: 1 },
+      { ...portFrance, region: 0 },
+      { ...portEngland2, region: 1 },
+      dockingHexEngland,
+      dockingHexFrance,
+      dockingHexEngland2,
+    ];
+
+    it("picks a port in the nation's region, whatever flag it flies", () => {
+      expect(hexEquals(findHomePort("England", inRegions, [], regions)!.hex, portFrance.hex)).toBe(true);
+      expect(findHomePort("France", inRegions, [], regions)?.region).toBe(1);
+    });
+
+    it("prefers a free one, then shares", () => {
+      expect(hexEquals(findHomePort("France", inRegions, [hex(0, 0)], regions)!.hex, portEngland2.hex)).toBe(true);
+      expect(findHomePort("England", inRegions, [hex(1, 1)], regions)?.region).toBe(0);
+    });
   });
 });
 
