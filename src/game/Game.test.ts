@@ -242,6 +242,31 @@ describe("Caribbean.setup", () => {
     expect(start(1).cells).not.toEqual(start(2).cells);
   });
 
+  describe("captain draft from boardgame.io's seed (#160)", () => {
+    const request = { mapSize: "small", mapSeed: 1 } as const;
+    const draftOf = (game: Game<CaribbeanState>, seed: string) => {
+      const client = Client<CaribbeanState>({ game: { ...game, seed }, numPlayers: 2 });
+      client.start();
+      const { draftHands, captainDeck } = client.getState()!.G;
+      return { draftHands, captainDeck };
+    };
+    const inSetup = withSetupData(Caribbean, request);
+    const ahead = withGeneratedMap(Caribbean, { ...request, cells: generateMapFor(request) });
+
+    it("deals the same hands and deck again for the same seed, in setup and on a map generated ahead", () => {
+      for (const seed of ["draft-a", "draft-b"]) {
+        expect(draftOf(inSetup, seed)).toEqual(draftOf(inSetup, seed));
+        expect(draftOf(ahead, seed)).toEqual(draftOf(ahead, seed));
+        expect(draftOf(ahead, seed)).toEqual(draftOf(inSetup, seed));
+      }
+    });
+
+    it("deals differently for different seeds", () => {
+      const hands = ["s1", "s2", "s3", "s4", "s5"].map((seed) => JSON.stringify(draftOf(ahead, seed).draftHands));
+      expect(new Set(hands).size).toBeGreaterThan(1);
+    });
+  });
+
   it("starts a match on a map generated ahead of setup, the same as setup would generate (#124)", () => {
     const start = (game: Game<CaribbeanState>) => {
       const client = Client<CaribbeanState>({ game, numPlayers: 2 });
