@@ -207,13 +207,15 @@ _PREFIX = {
 
 # --- the owner's colours: plain, white, and each a material of its own --------
 #
-# The pennant and the hull stripe (`frigate.owner`) belong to NO baked family.
+# The pennant, the hull stripe and the sail band (`frigate.owner`) belong to
+# NO baked family.
 # The game tints a part by multiplying its material's base colour after it has
 # merged the file by material, so each wears a plain white material nothing
 # else shares, with no atlas: white times the owner's colour is that colour.
 
 TINT_BASE = (255, 255, 255)
-_TINTED_SUFFIX = {"Pennant": "Pennant", "Hull_Stripe": "HullStripe"}
+_TINTED_SUFFIX = {"Pennant": "Pennant", "Hull_Stripe": "HullStripe",
+                  "Sail_Band": "SailBand"}
 
 
 def is_tinted(name: str) -> bool:

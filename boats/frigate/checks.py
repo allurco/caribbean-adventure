@@ -2227,6 +2227,17 @@ def _owner_results(p) -> dict:
             pen is not None and off < 1e-4 \
             and len(pen.data.polygons) == (owner.PENNANT_NU - 1) \
             * (owner.PENNANT_NV - 1)
+        band = env.find(owner.SAIL_BAND)
+        verts, faces = owner.band_mesh(p)
+        got = [tuple(band.matrix_world @ v.co) for v in band.data.vertices] \
+            if band else []
+        off = max((min(math.dist(w, g) for g in got) for w in verts),
+                  default=math.inf) if got else math.inf
+        out[f"the owner's sail band crosses the {owner.band_sail(p)[0]} "
+            f"course in its {len(faces)} planned quads, every node on its "
+            f"own grid (worst {off:.2e} m)"] = \
+            band is not None and off < 1e-4 \
+            and len(band.data.polygons) == len(faces)
     stripe = env.find(owner.STRIPE)
     if stripe is None:
         out["the owner's hull stripe exists"] = False
@@ -2732,21 +2743,25 @@ def check_intersections(p) -> dict:
     trees = {n: _bvh(n) for n in names}
 
     canvas_key = joints.pair("Rigging", "Sails")
-    found, canvas_hits = {}, []
+    # The owner's sail band stands `owner.band_lift` off the course on both
+    # faces, so a rope that may pass through the canvas passes through the
+    # band with it: it is judged rope by rope too, on the same ruling.
+    band_key = joints.pair("Rigging", "Sail_Band")
+    found, canvas_hits, band_hits = {}, [], []
     for a, b in itertools.combinations(names, 2):
         hits = trees[a].overlap(trees[b])
         if not hits:
             continue
         key = joints.pair(a, b)
         found[key] = found.get(key, 0) + len(hits)
-        if key == canvas_key:
+        if key in (canvas_key, band_key):
             # (rope face, sail face), whichever way round BVH reported them
-            canvas_hits += [h if a == "Rigging" else (h[1], h[0])
-                            for h in hits]
+            ordered = [h if a == "Rigging" else (h[1], h[0]) for h in hits]
+            (canvas_hits if key == canvas_key else band_hits).extend(ordered)
 
     results, defects, deviations = {}, [], 0
     for key in sorted(found):
-        if key == canvas_key:
+        if key in (canvas_key, band_key):
             continue
         v = joints.verdict(key[0], key[1], found[key])
         if not v.ok:
@@ -2778,6 +2793,18 @@ def check_intersections(p) -> dict:
             "nothing but a stay passes through canvas (rigging x Sails: "
             + (", ".join(kinds) if kinds else "no rope touches canvas") + ")"
         ] = not through
+        # A corner contact is never at the band, which runs across the
+        # middle of its sail: only a crossing rope may touch it.
+        crossing = [k for k in joints.CANVAS_CONTACT_KINDS
+                    if k not in joints.CANVAS_CORNER_KINDS]
+        band_kinds = sorted({kinds_by_face[r] for r, _s in band_hits
+                             if r < len(kinds_by_face)})
+        if env.find("Sail_Band") is not None:
+            results[
+                "nothing but a stay passes through the sail band (rigging x "
+                "Sail_Band: " + (", ".join(band_kinds) if band_kinds
+                                 else "no rope touches it") + ")"
+            ] = all(k in crossing for k in band_kinds)
         # A CORNER contact is excused only AT its corner.
         for kind in sorted(set(kinds) & set(joints.CANVAS_CORNER_KINDS)):
             touched = sorted({s for r, s in canvas_hits

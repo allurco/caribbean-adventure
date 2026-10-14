@@ -57,7 +57,7 @@ GALLEON_OBJECTS = (
     # chasers.
     "Chase_Platform",
     # The owner's colours (issue #134).
-    "Pennant", "Hull_Stripe",
+    "Pennant", "Hull_Stripe", "Sail_Band",
 )
 
 # TRIANGLES, per object, read off `build.rebuild(GalleonParams())` in
@@ -121,6 +121,8 @@ GALLEON_SCENE = {
     # The owner's colours (issue #134): her masthead pennant and her hull
     # stripe on her lower wale, each a plain white material of its own.
     "Pennant": 24, "Hull_Stripe": 470,
+    # ...and the band across her main course, two sheets of 18 x 2 quads.
+    "Sail_Band": 144,
 }
 
 # Every pass label `build._passes` knows, read off its source because the
@@ -139,7 +141,7 @@ def test_the_pass_labels_were_read():
 # --- her table ---------------------------------------------------------------
 
 
-def test_the_scene_is_53970_triangles_in_143_objects():
+def test_the_scene_is_54114_triangles_in_144_objects():
     """Measured in Blender. 35,438 in 34 objects before Task 8a (35,352 in
     33 with the lower gun deck built; the split beakhead flight put 432 + 18
     where the planked stub drew 364, and added `Beakhead_Grating`); the
@@ -150,11 +152,12 @@ def test_the_scene_is_53970_triangles_in_143_objects():
     Task 10's knee and unsplit flight: Headrails +48, Beakhead_Deck -288,
     Beakhead_Grating -12, 52,432. Task 11's chase platform +92 and the
     hull's top opened over it -16: 52,508. Final review 3's platform to
-    the skin and end cap with its riser +56: 52,564. See
+    the skin and end cap with its riser +56: 52,564. The owner's sail band
+    (#134) +144 in one: 54,114 in 144. See
     `GALLEON_SCENE`."""
-    assert len(GALLEON_OBJECTS) == len(set(GALLEON_OBJECTS)) == 143
+    assert len(GALLEON_OBJECTS) == len(set(GALLEON_OBJECTS)) == 144
     assert set(GALLEON_SCENE) == set(GALLEON_OBJECTS)
-    assert sum(GALLEON_SCENE.values()) == 53970
+    assert sum(GALLEON_SCENE.values()) == 54114
     assert GALLEON_SCENE["Chase_Platform"] \
         == profiles.chase_platform_triangles(G)
     # each opened closing quad is 4 quads, 8 triangles, under the subsurf
@@ -245,7 +248,7 @@ def test_the_beakhead_deck_spends_the_rails_line():
 
 @pytest.mark.parametrize("key, spend", [
     ("hull", 18256), ("decks", 3036), ("stern", 7428), ("rails", 1234),
-    ("masts", 2664), ("sails", 2682), ("rigging", 1010), ("cannons", 10736),
+    ("masts", 2664), ("sails", 2826), ("rigging", 1010), ("cannons", 10736),
     ("furniture", 5550), ("dressing", 1374),
 ])
 def test_her_spend_per_line_is_the_ledgers(key, spend):

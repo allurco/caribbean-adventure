@@ -57,15 +57,17 @@ def atlas_size(kind: str) -> int:
     """The board copy's edge, in texels, for one kind of baked atlas."""
     return NORMAL_ATLAS if kind == "normal" else ATLAS
 
-# The parts the game reads by name: the hull, the canvas, the flag, and the
-# two parts it tints in the owner's colour, each wearing a white material of
-# its own (`frigate.owner`): the masthead pennant and the hull stripe.
-NAMED_PARTS = ("Hull", "Sails", "Jolly_Roger", "Pennant", "Hull_Stripe")
+# The parts the game reads by name: the hull, the canvas, the flag (which it
+# draws the captain's nation on), and the three parts it tints in the owner's
+# colour, each wearing a white material of its own (`frigate.owner`): the
+# masthead pennant, the hull stripe and the band across the main course.
+NAMED_PARTS = ("Hull", "Sails", "Jolly_Roger", "Pennant", "Hull_Stripe",
+               "Sail_Band")
 
 # Never thinned. See the module docstring. A stripe thinned would cut its
 # chords back into the hull it stands 3 cm off.
 WHOLE = ("Sails", "Jolly_Roger", "Rigging", "Sail_Patches", "Pennant",
-         "Hull_Stripe")
+         "Hull_Stripe", "Sail_Band")
 
 # A FAMILY with fewer triangles than this is kept as it is.
 THIN_FLOOR = 400

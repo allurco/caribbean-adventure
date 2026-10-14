@@ -10,8 +10,8 @@ from frigate.params import FluteParams, FrigateParams
 
 L = FluteParams()
 
-# Measured in Blender (frigate.build.rebuild(FluteParams()), 59 objects: the
-# owner's Pennant and Hull_Stripe joined her 57).
+# Measured in Blender (frigate.build.rebuild(FluteParams()), 60 objects: the
+# owner's Pennant and Hull_Stripe joined her 57, then her Sail_Band).
 FLUTE_SCENE = {
     "Hull": 8176, "Bulwarks": 1270, "Castle_Quarter": 284, "Castle_Poop": 144,
     "Deck_Main": 644, "Deck_Forecastle": 212, "Deck_Quarter": 356,
@@ -27,13 +27,13 @@ FLUTE_SCENE = {
     **{f"Barrel_{i:02d}": 156 for i in range(4)},
     "Lantern_00": 196, "Anchor_00": 1180, "Anchor_01": 1180,
     "Figurehead": 928, "Jolly_Roger": 80, "Sail_Patches": 252, "Damage": 234,
-    "Pennant": 24, "Hull_Stripe": 240,
+    "Pennant": 24, "Hull_Stripe": 240, "Sail_Band": 144,
 }
 
 
-def test_the_scene_is_30950_triangles_in_59_objects():
-    assert len(FLUTE_SCENE) == 59
-    assert sum(FLUTE_SCENE.values()) == 30950
+def test_the_scene_is_31094_triangles_in_60_objects():
+    assert len(FLUTE_SCENE) == 60
+    assert sum(FLUTE_SCENE.values()) == 31094
 
 
 def test_she_carries_her_own_budget():
@@ -50,8 +50,8 @@ def test_every_line_is_what_she_draws_rounded_up_to_the_hundred():
 
 
 def test_her_ceiling_keeps_the_frigates_proportion_over_target():
-    assert L.budget.total == 31600
-    assert L.budget.ceiling == 34300
+    assert L.budget.total == 31700
+    assert L.budget.ceiling == 34400
     assert L.budget.ceiling / L.budget.total <= 50000 / 46000
 
 
@@ -59,4 +59,4 @@ def test_her_glb_ceiling_is_derived_the_frigates_way():
     repeats = 7 * 232 + 7 * 12 + 3 * 156 + 1180
     assert budget.FLUTE_SHARED_REPEATS == repeats
     assert L.budget.glb_ceiling == texbudget.glb_ceiling(
-        31600 - repeats, 4)
+        31700 - repeats, 4)

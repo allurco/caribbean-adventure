@@ -9,9 +9,10 @@ from frigate.params import FrigateParams, SloopParams
 
 S = SloopParams()
 
-# Measured in Blender (frigate.build.rebuild(SloopParams()), 51 objects:
+# Measured in Blender (frigate.build.rebuild(SloopParams()), 52 objects:
 # her square topsail's Yard_00, her Damage, the owner's Pennant and
-# Hull_Stripe joined her 47; her rails lost the bays her damage shoots away).
+# Hull_Stripe joined her 47, then her Sail_Band; her rails lost the bays her
+# damage shoots away).
 SLOOP_SCENE = {
     "Hull": 3936, "Bulwarks": 822, "Deck_Main": 572, "Deck_Forecastle": 140,
     "Deck_Quarter": 212, "Transom": 40, "Stern_Gallery": 1098,
@@ -25,13 +26,13 @@ SLOOP_SCENE = {
     **{f"Barrel_{i:02d}": 156 for i in range(4)},
     "Anchor_00": 1180, "Anchor_01": 1180, "Figurehead": 1200,
     "Jolly_Roger": 80, "Sail_Patches": 252, "Damage": 234,
-    "Pennant": 24, "Hull_Stripe": 200,
+    "Pennant": 24, "Hull_Stripe": 200, "Sail_Band": 144,
 }
 
 
-def test_the_scene_is_20280_triangles_in_51_objects():
-    assert len(SLOOP_SCENE) == 51
-    assert sum(SLOOP_SCENE.values()) == 20280
+def test_the_scene_is_20424_triangles_in_52_objects():
+    assert len(SLOOP_SCENE) == 52
+    assert sum(SLOOP_SCENE.values()) == 20424
 
 
 def test_she_carries_her_own_budget():
@@ -48,8 +49,8 @@ def test_every_line_is_what_she_draws_rounded_up_to_the_hundred():
 
 
 def test_she_is_the_smallest_budget_in_the_fleet():
-    assert S.budget.total == 20800
-    assert S.budget.ceiling == 22600
+    assert S.budget.total == 20900
+    assert S.budget.ceiling == 22700
     assert S.budget.ceiling / S.budget.total <= 50000 / 46000
     assert S.budget.total < budget.FLUTE_BUDGET.total
 
@@ -57,4 +58,4 @@ def test_she_is_the_smallest_budget_in_the_fleet():
 def test_her_glb_ceiling_is_derived_the_frigates_way():
     assert budget.SLOOP_SHARED_REPEATS == 7 * 232 + 7 * 12 + 3 * 156 + 1180
     assert S.budget.glb_ceiling == texbudget.glb_ceiling(
-        20800 - budget.SLOOP_SHARED_REPEATS, 4)
+        20900 - budget.SLOOP_SHARED_REPEATS, 4)
