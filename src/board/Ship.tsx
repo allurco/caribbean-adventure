@@ -1,12 +1,11 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { Vector3, Mesh, MathUtils, Group, type Object3D } from "three";
+import { Mesh, MathUtils, Group, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
-import { seamAwareStart } from "./wrapView";
 import { type ShipFoamSource, shipFoamSources } from "./shipFoamSources";
 import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox, shipWaterline } from "./shipHull";
-import { moveHeading } from "./shipHeading";
+import { type Point, type ShipMotion, restingMotion, setCourse, stepMotion } from "./shipMotion";
 import { useShipWavePose } from "./useShipWavePose";
 import { SHIP_POSE_PRIORITY } from "./visuals/frameOrder";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
@@ -36,7 +35,6 @@ const mergedShipModel = (scene: Object3D, model: ShipModel): Group => {
   return merged;
 };
 
-const DURATION = 0.4; // seconds
 const SINK_DURATION = 2.0; // seconds for sinking animation
 /** Seconds over which a ship's reported speed (for its hull foam) eases back to 0 after a move, so the wake fades rather than snaps off. */
 const FOAM_SPEED_DECAY = 0.8;
@@ -54,6 +52,7 @@ export function Ship({
   onPointerLeave,
   onClick,
   wrapWidth = Infinity,
+  seaRoute,
   foamId,
   foamPlayer = false,
 }: {
@@ -65,6 +64,12 @@ export function Ship({
   shipClass?: ShipClass;
   /** World width of the map's east–west wrap (Infinity if it does not wrap). */
   wrapWidth?: number;
+  /**
+   * The waypoints (world xz) of a move from `from` to `to`, ending on `to`
+   * (shipRoute.ts): a ship that moves several hexes at once sails through
+   * them rather than straight over whatever lies between. Just `[to]` if not given.
+   */
+  seaRoute?: (from: Point, to: Point) => Point[];
   /**
    * Registers the ship's animated position for the water's hull foam under
    * this id (shipFoamSources.ts, #38 step 7). Given only in the canonical
@@ -78,13 +83,11 @@ export function Ship({
   onClick?: () => void;
 }) {
   const ref = useRef<Group>(null!);
-  const from = useMemo(() => new Vector3(), []);
-  const to = useMemo(() => new Vector3(), []);
   const prevTarget = useRef<[number, number, number] | null>(null);
-  const progressRef = useRef(1);
   const initialized = useRef(false);
-  const targetYRotation = useRef(0);
-  const foamPrevPosition = useRef<Vector3 | null>(null);
+  /** How it sails (shipMotion.ts, #212): where it is on its course, its heading, way, heel and pitch. */
+  const motion = useRef<ShipMotion>(restingMotion(position[0], position[2], 0));
+  const reducedMotion = usePrefersReducedMotion();
   const foamSpeed = useRef(0);
   /** Written in place each frame (the registry copies it), so registering allocates nothing. */
   const foamSource = useRef<ShipFoamSource>({ x: 0, z: 0, headingX: 0, headingZ: 1, hullLength: 0, beam: 0, roundness: 0, speed: 0, player: false });
@@ -92,8 +95,9 @@ export function Ship({
   const waterline = shipWaterline(shipClass);
   const hover = shipHoverBox(shipClass);
   const model = shipModel(shipClass);
-  // The wave pose rides on an inner group, under the group that sails and turns.
-  const innerRef = useShipWavePose(hull);
+  // The wave pose rides on an inner group, under the group that sails and turns; the heel and pitch of its sailing add to it.
+  const lean = useCallback(() => motion.current, []);
+  const innerRef = useShipWavePose(hull, lean);
   // The heading the ship's group has turned to this frame: its sails and flags set to it (#204).
   const heading = useCallback(() => ref.current?.rotation.y ?? 0, []);
 
@@ -109,7 +113,7 @@ export function Ship({
       if (!initialized.current) {
         group.position.set(position[0], position[1] + SHIP_WATERLINE_Y, position[2]);
         prevTarget.current = position;
-        to.set(position[0], position[1] + SHIP_WATERLINE_Y, position[2]);
+        motion.current = restingMotion(position[0], position[2], 0);
         initialized.current = true;
       }
     },
@@ -121,44 +125,25 @@ export function Ship({
     if (!ref.current) return;
 
     const prev = prevTarget.current;
-    if (
-      !prev ||
-      prev[0] !== position[0] ||
-      prev[1] !== position[1] ||
-      prev[2] !== position[2]
-    ) {
-      from.copy(ref.current.position);
-      to.set(position[0], position[1] + SHIP_WATERLINE_Y, position[2]);
-      // Across the seam, sail straight over it rather than back across the map.
-      from.setX(seamAwareStart(from.x, to.x, wrapWidth));
+    if (!prev || prev[0] !== position[0] || prev[1] !== position[1] || prev[2] !== position[2]) {
       prevTarget.current = position;
-      const heading = moveHeading([from.x, from.z], [to.x, to.z], Infinity);
-      if (heading !== null) {
-        progressRef.current = 0;
-        targetYRotation.current = heading;
-      }
+      // A new hex: set a course to it from wherever the ship is on its way,
+      // through the hexes between if it moved more than one, the short way
+      // over the seam on a wrapping map (shipMotion.ts).
+      const here: Point = [motion.current.x, motion.current.z];
+      const to: Point = [position[0], position[2]];
+      motion.current = setCourse(motion.current, seaRoute ? seaRoute(here, to) : [to], wrapWidth);
     }
 
-    // Smoothly rotate toward target heading
-    ref.current.rotation.y = MathUtils.lerp(
-      ref.current.rotation.y,
-      targetYRotation.current,
-      1 - Math.pow(0.001, delta),
-    );
-
-    if (progressRef.current < 1) {
-      progressRef.current = Math.min(progressRef.current + delta / DURATION, 1);
-      const t = smoothstep(progressRef.current);
-      ref.current.position.lerpVectors(from, to, t);
-    }
+    const m = (motion.current = stepMotion(motion.current, delta, reducedMotion));
+    ref.current.position.set(m.x, position[1] + SHIP_WATERLINE_Y, m.z);
+    ref.current.rotation.y = m.heading;
 
     if (foamId) {
       const p = ref.current.position;
-      const prev = foamPrevPosition.current ?? (foamPrevPosition.current = p.clone());
-      const raw = delta > 0 ? prev.distanceTo(p) / delta : 0;
-      prev.copy(p);
-      foamSpeed.current = Math.max(raw, foamSpeed.current * Math.exp(-delta / FOAM_SPEED_DECAY));
-      const rot = ref.current.rotation.y;
+      // Its way along the course, which does not spike when the ship is moved a wrap width over the seam.
+      foamSpeed.current = Math.max(m.speed, foamSpeed.current * Math.exp(-delta / FOAM_SPEED_DECAY));
+      const rot = m.heading;
       const source = foamSource.current;
       source.x = p.x;
       source.z = p.z;

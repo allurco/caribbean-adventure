@@ -62,6 +62,8 @@ import { flightStep } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
 import { Ship, SinkingShip } from "./Ship";
+import { seaRoute } from "./shipRoute";
+import type { Point } from "./shipMotion";
 import { trackShipHeadings } from "./shipHeading";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
@@ -200,6 +202,8 @@ function Scene({
   // only and the map's north and south edges are horizontal on screen.
   const strip = useMemo(() => seamStrip(G.wrap), [G.wrap]);
   const period = wrapWorldWidth(G.wrap);
+  // A ship that moves several hexes at once (an NPC's turn) sails round the land through them (#212).
+  const shipRoute = useCallback((from: Point, to: Point) => seaRoute(from, to, G.cells, G.wrap), [G.cells, G.wrap]);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const footprint = useMemo(() => groundFootprint(CAMERA_DIRECTION,CAMERA_FOV, aspect), [aspect]);
   const band = useMemo(() => mapBand(getMapPreset(G.mapSize).rows), [G.mapSize]);
@@ -429,6 +433,7 @@ function Scene({
           flag={playerShipLook(G, id).flag}
           shipClass={ship.shipClass}
           wrapWidth={period}
+          seaRoute={shipRoute}
           foamId={copy === 0 ? id : undefined}
           foamPlayer
           onPointerEnter={() => onShipHover(id)}
@@ -446,6 +451,7 @@ function Scene({
           flag={npcShipLook(npc).flag}
           shipClass={npc.shipClass}
           wrapWidth={period}
+          seaRoute={shipRoute}
           foamId={copy === 0 ? npc.id : undefined}
           onPointerEnter={() => onShipHover(npc.id)}
           onPointerLeave={() => onShipHover(null)}

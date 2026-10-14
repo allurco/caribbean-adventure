@@ -33,7 +33,7 @@ import type { ShipFoamRegistry, ShipFoamSource } from "../shipFoamSources";
 export const WAKE_POINT_BUDGET = 48;
 /** Seconds a point lives: its foam has faded to nothing by then (wakeFoam.ts). */
 export const WAKE_LIFETIME_SECONDS = 4.5;
-/** World units sailed between points; the ships sail straight between hex centres, so few are needed. */
+/** World units sailed between points: on the ships' tightest turns (shipMotion.ts) a chord this long strays about a hundredth of a unit from the curve, so few are needed. */
 export const WAKE_POINT_SPACING = 0.3;
 /** Longest trail kept behind a ship, world units of path: about four hexes. */
 export const WAKE_MAX_LENGTH = 7;
