@@ -12,6 +12,9 @@ import {
   isPlayerPirate,
   turnPirate,
   pirateCauseFor,
+  pirateBountyFor,
+  canClaimPirateBounty,
+  applyPirateBounty,
   type BountyAction,
 } from "./reputation";
 import { emptyBounties, createShipState } from "./economy";
@@ -238,9 +241,14 @@ describe("getWantedNations", () => {
   });
 });
 
-describe("pirate status helpers (#201)", () => {
-  // The rules are proven through the game client in pirates.test.ts.
-  const shipOf = (): ShipState => createShipState({ q: 0, r: 0, s: 0 }, "Sloop");
+describe("pirate status and the per-flag claim helpers (#201)", () => {
+  // The rules are proven through the game client in pirates.test.ts; these
+  // pin the helpers' edge cases.
+  const shipOf = (nation?: Nation): ShipState => {
+    const ship = createShipState({ q: 0, r: 0, s: 0 }, "Sloop");
+    if (nation) ship.captain = { id: nation, name: nation, nation, ability: "" };
+    return ship;
+  };
   const stateWith = (ships: Record<string, ShipState>, extra: Partial<CaribbeanState> = {}): CaribbeanState => ({
     cells: [],
     ships,
@@ -271,5 +279,33 @@ describe("pirate status helpers (#201)", () => {
     expect(G.pirates).toEqual({ "0": { turn: 3, cause: "board" } });
   });
 
+  it("clears only the captor's nation's bounty; the others stay", () => {
+    const pirate = shipOf("France");
+    pirate.bounties = { England: 25, France: 7, Spain: 0, Netherlands: 10 };
+    const G = stateWith({ "0": shipOf("England"), "1": pirate }, { pirates: { "1": { turn: 1, cause: "sink" } } });
+    const goldBefore = G.ships["0"].gold;
 
+    expect(applyPirateBounty(G, "0", "1", 4)).toBe(25);
+    expect(G.ships["0"].gold).toBe(goldBefore + 25);
+    expect(G.ships["1"].bounties).toEqual({ England: 0, France: 7, Spain: 0, Netherlands: 10 });
+    expect(isPlayerPirate(G, "1")).toBe(true);
+    // Already collected: England has nothing left to pay.
+    expect(applyPirateBounty(G, "0", "1", 5)).toBe(0);
+    expect(G.bountyClaims).toEqual([{ captorId: "0", pirateId: "1", nation: "England", gold: 25, turn: 4 }]);
+  });
+
+  it("has nothing to claim without a captain, without a bounty, or against oneself", () => {
+    const pirate = shipOf("France");
+    pirate.bounties.England = 25;
+    const pirates = { "1": { turn: 1, cause: "sink" as const } };
+
+    expect(canClaimPirateBounty(stateWith({ "0": shipOf(), "1": pirate }, { pirates }), "0", "1")).toBe(false);
+    expect(pirateBountyFor(stateWith({ "0": shipOf("Spain"), "1": pirate }, { pirates }), "0", "1")).toBeNull();
+    expect(canClaimPirateBounty(stateWith({ "1": pirate }, { pirates }), "1", "1")).toBe(false);
+    expect(canClaimPirateBounty(stateWith({ "1": pirate }, { pirates }), "9", "1")).toBe(false);
+    expect(pirateBountyFor(stateWith({ "0": shipOf("England"), "1": pirate }, { pirates }), "0", "1")).toEqual({
+      nation: "England",
+      gold: 25,
+    });
+  });
 });

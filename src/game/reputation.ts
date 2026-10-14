@@ -147,6 +147,53 @@ export function applyMerchantAction(
 }
 
 /**
+ * The bounty a captor may collect for sinking (or, once it exists, capturing)
+ * a pirate, "per flag": only the bounty the captor's own nation (their
+ * captain's) has on the pirate. Null when there is nothing to claim: the
+ * target is not a pirate, the captor is a pirate (no flag to claim under) or
+ * has no captain, or their nation has no bounty on the pirate.
+ */
+export function pirateBountyFor(
+  G: CaribbeanState,
+  captorId: string,
+  pirateId: string
+): { nation: Nation; gold: number } | null {
+  const captor = G.ships[captorId];
+  const pirate = G.ships[pirateId];
+  if (!captor || !pirate || captorId === pirateId) return null;
+  if (!isPlayerPirate(G, pirateId) || isPlayerPirate(G, captorId)) return null;
+  const nation = captor.captain?.nation;
+  if (!nation) return null;
+  const gold = pirate.bounties[nation];
+  return gold > 0 ? { nation, gold } : null;
+}
+
+export function canClaimPirateBounty(G: CaribbeanState, captorId: string, pirateId: string): boolean {
+  return pirateBountyFor(G, captorId, pirateId) !== null;
+}
+
+/**
+ * Pay the captor their nation's bounty on the pirate in gold, clear that one
+ * nation's bounty (the others stay), and log the claim. The pirate stays a
+ * pirate. Must run before a sunk pirate's ship record is removed.
+ * @returns The gold paid, 0 when there was nothing to claim
+ */
+export function applyPirateBounty(
+  G: CaribbeanState,
+  captorId: string,
+  pirateId: string,
+  turn: number
+): number {
+  const claim = pirateBountyFor(G, captorId, pirateId);
+  if (!claim) return 0;
+  G.ships[captorId].gold += claim.gold;
+  G.ships[pirateId].bounties[claim.nation] = 0;
+  G.bountyClaims ??= [];
+  G.bountyClaims.push({ captorId, pirateId, nation: claim.nation, gold: claim.gold, turn });
+  return claim.gold;
+}
+
+/**
  * Check if a player is banned from a port based on their bounties.
  * Pirates are never banned from Pirate ports.
  * Players are banned from a nation's port if they have bounty with that nation.

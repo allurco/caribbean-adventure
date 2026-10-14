@@ -1,4 +1,4 @@
-import type { CaribbeanState, CombatState, GoodType, PirateCause, ShipClass, ShipState } from "../game/types";
+import type { CaribbeanState, CombatState, GoodType, Nation, PirateCause, ShipClass, ShipState } from "../game/types";
 import { GOOD_TYPES } from "../game/types";
 import { hexEquals } from "../game/hex";
 import { findAccessiblePort } from "../game/moves";
@@ -21,6 +21,7 @@ export type SoundEvent =
   | { type: "shipDerelict"; shipId: string }
   | { type: "shipSunk"; shipId: string; isNpc: boolean }
   | { type: "turnedPirate"; playerId: string; cause: PirateCause }
+  | { type: "pirateBountyClaimed"; captorId: string; pirateId: string; nation: Nation; gold: number }
   | { type: "combatStarted"; attackerId: string; defenderId: string }
   | { type: "seamanshipRolled" }
   | { type: "cannonsFired"; attackerHits: number; defenderHits: number }
@@ -117,11 +118,15 @@ function shipEvents(
   return events;
 }
 
-/** Players newly turned pirate (#201). */
+/** Players newly turned pirate, then pirate bounties newly collected (#201). */
 function pirateEvents(prev: CaribbeanState, next: CaribbeanState): SoundEvent[] {
   const events: SoundEvent[] = [];
   for (const [playerId, record] of Object.entries(next.pirates ?? {})) {
     if (!prev.pirates?.[playerId]) events.push({ type: "turnedPirate", playerId, cause: record.cause });
+  }
+  for (const claim of (next.bountyClaims ?? []).slice(prev.bountyClaims?.length ?? 0)) {
+    const { captorId, pirateId, nation, gold } = claim;
+    events.push({ type: "pirateBountyClaimed", captorId, pirateId, nation, gold });
   }
   return events;
 }

@@ -47,7 +47,7 @@ import {
 } from "./economy";
 import { createCaptainDeck, dealHands, findHomePort } from "./captains";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
-import { applyMerchantAction, shouldSpawnFlotilla } from "./reputation";
+import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
 import { findAccessiblePort } from "./moves";
@@ -124,6 +124,7 @@ function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: (
     floatingLoot: [],
     npcIdCounter: 0,
     pirates: {},
+    bountyClaims: [],
   };
 }
 
@@ -857,6 +858,9 @@ export const Caribbean: Game<CaribbeanState> = {
             if (isSunk(defenderShip)) {
               // Award combat glory to attacker for sinking player ship
               awardCombatGlory(attacker, defenderShip);
+              // Sinking a pirate pays the attacker their own nation's bounty
+              // on them (#201), before the sunk ship's record goes.
+              applyPirateBounty(G, G.combat.attackerId, G.combat.defenderId, ctx.turn);
 
               const loot = createLootFromShip(defenderShip);
               G.floatingLoot.push(loot);
@@ -873,6 +877,9 @@ export const Caribbean: Game<CaribbeanState> = {
             if (!isNPC) {
               const defenderShip = defender as typeof attacker;
               awardCombatGlory(defenderShip, attacker);
+              // The defender collects their nation's bounty on a pirate
+              // attacker (#201); a flotilla that sinks one pays nobody.
+              applyPirateBounty(G, G.combat.defenderId, G.combat.attackerId, ctx.turn);
             }
 
             const loot = createLootFromShip(attacker);

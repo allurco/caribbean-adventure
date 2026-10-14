@@ -41,7 +41,7 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 - `economy.ts` — Buy/sell goods, upgrades, repair, buying ships, jury-rig.
 - `captains.ts` — Captain deck, drafting, home ports.
 - `npcManager.ts` / `npcAI` — NPC merchants/flotillas: spawning and movement.
-- `reputation.ts` — Bounties, flotilla escalation and pirate status (`isPlayerPirate`, kept per player in `G.pirates`).
+- `reputation.ts` — Bounties, flotilla escalation, pirate status (`isPlayerPirate`, kept per player in `G.pirates`) and the per-flag bounty on pirates.
 - `missions.ts` — Mission generation and completion checks (delivery/escort/assassination).
 - `scoring.ts` — Gold stashing, combat glory, win condition.
 - `scouting.ts` — Scout targeting.

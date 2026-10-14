@@ -3,7 +3,7 @@ import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { hex, hexGrid } from "./hex";
 import type { MapCell } from "./mapGenerator";
-import type { Captain, CaribbeanState, Nation, NPCRole, NPCShip, ShipState } from "./types";
+import type { Captain, CaribbeanState, Nation, NPCRole, NPCShip, PirateRecord, ShipState } from "./types";
 import { Caribbean } from "./Game";
 import { createShipState } from "./economy";
 import { isBannedAtPort, isPlayerPirate } from "./reputation";
@@ -25,16 +25,18 @@ interface Rig {
   nation?: Nation;
   guns?: boolean;
   hull?: number;
+  bounties?: Partial<Record<Nation, number>>;
 }
 
 /** A player ship. With guns it wins every seamanship roll and fires twenty. */
-function ship(q: number, r: number, { nation, guns = true, hull = 40 }: Rig = {}): ShipState {
+function ship(q: number, r: number, { nation, guns = true, hull = 40, bounties = {} }: Rig = {}): ShipState {
   const s = createShipState(hex(q, r), "Galleon");
   s.stats!.maneuverability = guns ? 20 : 0;
   s.stats!.cannons = guns ? 20 : 0;
   s.stats!.crew = { current: 20, max: 20 };
   s.stats!.hull = { current: hull, max: hull };
   if (nation) s.captain = captain(nation);
+  Object.assign(s.bounties, bounties);
   return s;
 }
 
@@ -68,6 +70,8 @@ function npc(id: string, role: NPCRole, nation: Nation, q: number, r: number): N
   };
 }
 
+const PIRATE: PirateRecord = { turn: 0, cause: "sink" };
+
 function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanState> = {}) {
   const game: Game<CaribbeanState> = {
     ...Caribbean,
@@ -87,6 +91,7 @@ function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanSta
       npcIdCounter: 0,
       wrap: null,
       pirates: {},
+      bountyClaims: [],
       ...extra,
     }),
   };
@@ -98,6 +103,9 @@ function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanSta
 type TestClient = ReturnType<typeof startGame>;
 
 const stateOf = (client: TestClient): CaribbeanState => client.getState()!.G;
+
+const goldOf = (client: TestClient): Record<string, number> =>
+  Object.fromEntries(Object.entries(stateOf(client).ships).map(([id, s]) => [id, s.gold]));
 
 /** Hand the turn round until it is `playerId`'s. */
 function actAs(client: TestClient, playerId: string): void {
@@ -165,10 +173,10 @@ describe("turning pirate (#201)", () => {
     expect(isPlayerPirate(stateOf(client), "1")).toBe(false);
   });
 
-  it("stays a pirate after their ship is sunk", () => {
+  it("stays a pirate after their bounty is collected and their ship is sunk", () => {
     const client = startGame(
       {
-        "0": ship(0, 0, { nation: "France", hull: 1 }),
+        "0": ship(0, 0, { nation: "France", hull: 1, bounties: { England: 25 } }),
         "1": ship(-1, 0, { nation: "England" }),
       },
       { npcs: { merchant: npc("merchant", "MERCHANT", "Spain", 1, 0) } }
@@ -180,22 +188,8 @@ describe("turning pirate (#201)", () => {
     sinkPlayer(client, "1", "0");
 
     expect(stateOf(client).ships["0"]).toBeUndefined();
+    expect(stateOf(client).bountyClaims).toHaveLength(1);
     expect(isPlayerPirate(stateOf(client), "0")).toBe(true);
-  });
-
-  it("keeps G JSON-serialisable through turning pirate", () => {
-    const client = startGame(
-      { "0": ship(0, 0, { nation: "France" }), "1": ship(4, 0, { nation: "England" }) },
-      { npcs: { merchant: npc("merchant", "MERCHANT", "Spain", 1, 0) } }
-    );
-    client.moves.attackNPC("merchant");
-    fireOnce(client);
-
-    const G = stateOf(client);
-    // Compared as text: hex(0, 0) carries a -0 that JSON writes as 0.
-    const json = JSON.stringify(G);
-    expect(JSON.stringify(JSON.parse(json))).toBe(json);
-    expect(JSON.parse(json).pirates).toEqual(G.pirates);
   });
 
   it("leaves port bans as they were: per nation, by bounty", () => {
@@ -214,3 +208,112 @@ describe("turning pirate (#201)", () => {
   });
 });
 
+describe("the bounty on a pirate, per flag (#201)", () => {
+  const pirateBounties = { England: 25, France: 7, Netherlands: 10 };
+
+  it("pays an England captor only England's bounty, in gold, and logs the claim", () => {
+    const client = startGame(
+      {
+        "0": ship(0, 0, { nation: "England" }),
+        "1": ship(1, 0, { nation: "France", guns: false, hull: 1, bounties: pirateBounties }),
+        "2": ship(4, 0, { nation: "Spain" }),
+      },
+      { pirates: { "1": PIRATE } }
+    );
+    const before = goldOf(client);
+    sinkPlayer(client, "0", "1");
+
+    expect(stateOf(client).ships["1"]).toBeUndefined();
+    expect(goldOf(client)).toEqual({ "0": before["0"] + 25, "2": before["2"] });
+    expect(stateOf(client).bountyClaims).toEqual([
+      { captorId: "0", pirateId: "1", nation: "England", gold: 25, turn: expect.any(Number) },
+    ]);
+    expect(isPlayerPirate(stateOf(client), "1")).toBe(true);
+  });
+
+  it("pays a defender who sinks the pirate that attacked them", () => {
+    const client = startGame(
+      {
+        "0": ship(0, 0, { nation: "France", guns: false, hull: 1, bounties: pirateBounties }),
+        "1": ship(1, 0, { nation: "Netherlands" }),
+      },
+      { pirates: { "0": PIRATE } }
+    );
+    const before = goldOf(client);
+    sinkPlayer(client, "0", "1");
+
+    expect(stateOf(client).ships["0"]).toBeUndefined();
+    expect(goldOf(client)).toEqual({ "1": before["1"] + 10 });
+    expect(stateOf(client).bountyClaims).toEqual([
+      { captorId: "1", pirateId: "0", nation: "Netherlands", gold: 10, turn: expect.any(Number) },
+    ]);
+  });
+
+  it("pays a pirate captor nothing: they fly no nation's flag", () => {
+    const client = startGame(
+      {
+        "0": ship(0, 0, { nation: "England" }),
+        "1": ship(1, 0, { nation: "France", guns: false, hull: 1, bounties: pirateBounties }),
+      },
+      { pirates: { "0": PIRATE, "1": PIRATE } }
+    );
+    const before = goldOf(client);
+    sinkPlayer(client, "0", "1");
+
+    expect(stateOf(client).ships["1"]).toBeUndefined();
+    expect(goldOf(client)).toEqual({ "0": before["0"] });
+    expect(stateOf(client).bountyClaims).toEqual([]);
+  });
+
+  it("pays nothing for a non-pirate, even one with a bounty from attacking a merchant", () => {
+    const client = startGame({
+      "0": ship(0, 0, { nation: "England" }),
+      "1": ship(1, 0, { nation: "France", guns: false, hull: 1, bounties: pirateBounties }),
+    });
+    const before = goldOf(client);
+    sinkPlayer(client, "0", "1");
+
+    expect(stateOf(client).ships["1"]).toBeUndefined();
+    expect(goldOf(client)).toEqual({ "0": before["0"] });
+    expect(stateOf(client).bountyClaims).toEqual([]);
+  });
+
+  it("pays no one when a flotilla sinks a pirate", () => {
+    const client = startGame(
+      {
+        "0": ship(0, 0, { nation: "France", hull: 1, bounties: pirateBounties }),
+        "1": ship(4, 0, { nation: "England" }),
+      },
+      { pirates: { "0": PIRATE }, npcs: { flotilla: npc("flotilla", "FLOTILLA", "England", 1, 0) } }
+    );
+    const before = goldOf(client);
+    client.moves.attackNPC("flotilla");
+    fireOnce(client);
+
+    expect(stateOf(client).ships["0"]).toBeUndefined();
+    expect(goldOf(client)).toEqual({ "1": before["1"] });
+    expect(stateOf(client).bountyClaims).toEqual([]);
+    expect(isPlayerPirate(stateOf(client), "0")).toBe(true);
+  });
+
+  it("keeps G JSON-serialisable through turning pirate and a claim", () => {
+    const client = startGame(
+      {
+        "0": ship(0, 0, { nation: "France", hull: 1, bounties: { England: 25 } }),
+        "1": ship(-1, 0, { nation: "England" }),
+      },
+      { npcs: { merchant: npc("merchant", "MERCHANT", "Spain", 1, 0) } }
+    );
+    client.moves.attackNPC("merchant");
+    fireOnce(client);
+    sinkPlayer(client, "1", "0");
+
+    const G = stateOf(client);
+    expect(G.bountyClaims).toHaveLength(1);
+    // Compared as text: hex(0, 0) carries a -0 that JSON writes as 0.
+    const json = JSON.stringify(G);
+    expect(JSON.stringify(JSON.parse(json))).toBe(json);
+    expect(JSON.parse(json).pirates).toEqual(G.pirates);
+    expect(JSON.parse(json).bountyClaims).toEqual(G.bountyClaims);
+  });
+});

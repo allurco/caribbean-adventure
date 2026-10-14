@@ -11,6 +11,9 @@ describe("soundForEvent", () => {
     expect(soundForEvent({ type: "shipBought", shipId: "0", shipClass: "Frigate" })).toBe("coins");
     expect(soundForEvent({ type: "goldStashed", shipId: "0", amount: 5 })).toBe("coins");
     expect(soundForEvent({ type: "cannonsFired", attackerHits: 0, defenderHits: 0 })).toBe("cannon-fire");
+    expect(
+      soundForEvent({ type: "pirateBountyClaimed", captorId: "0", pirateId: "1", nation: "England", gold: 25 })
+    ).toBe("coins");
   });
 
   it("leaves the rest silent for now", () => {
