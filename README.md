@@ -77,7 +77,7 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 
 **Seed control.** On the dev server the board shows the map's size and seed at the bottom of the screen. `[` and `]` reload on seed − 1 and seed + 1, `\` on a random seed, each keeping the size and every other parameter (the camera's `cx`, `cz`, `dist`, `stats`, …); **copy URL** copies a URL that reproduces the map on screen. Production builds leave the control out.
 
-The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=3.4` opens the same small map every time, at ship zoom over its middle port, and `/?size=small&seed=1&cx=15.5&cz=24.45&dist=1` at town zoom over Crescent Harbor's tower. The size and seed choose the map the local client generates before its match starts (in a Web Worker, see `src/mapWorker/`); the camera values go to the board. Captains and NPCs stay random.
+The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=22.5&cz=13&dist=3.4` opens the same small map every time, at ship zoom over its middle port (Isla Quieta), and `/?size=small&seed=1&cx=16.5&cz=23.4&dist=1` at town zoom over Île de Sable. The size and seed choose the map the local client generates before its match starts (in a Web Worker, see `src/mapWorker/`); the camera values go to the board. Captains and NPCs stay random.
 
 ## Project structure
 
