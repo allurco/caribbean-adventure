@@ -14,6 +14,25 @@
   --color-ink-blue: #1f4a6e;
   --color-ink-green: #2f5a23;
 
+  /* The online shell's look (#104 "Harbour launcher", #125), first used by the
+     sign-in and profile pages (#105): Fell for titles, Garamond for reading;
+     tar and timber for frames, parchment and ink for the sheet, brass for the
+     main action, wax red kept for "Take your turn" (and errors). The fonts are
+     loaded only by the online pages (src/online/useShellFonts.ts), so the
+     hotseat game never fetches them. shellTheme.node.test.ts holds every
+     shell ink to WCAG AA on the shell parchment. */
+  --font-fell: "IM Fell English", Georgia, serif;
+  --font-fell-sc: "IM Fell English SC", Georgia, serif;
+  --font-garamond: "EB Garamond", Georgia, serif;
+  --color-shell-tar: #1c120a;
+  --color-shell-timber: #3b2616;
+  --color-shell-parchment: #e5d4a9;
+  --color-shell-ink: #2b1d10;
+  --color-shell-ink-soft: #5c4630;
+  --color-shell-ink-wax: #8a2617;
+  --color-shell-brass: #b98b3e;
+  --color-shell-gold: #e6c77e;
+
   /* The "turn ends" beat between turns (#216): in, hold, out over its length. */
   --animate-turn-ended: turn-ended 1.1s ease-in-out forwards;
   @keyframes turn-ended {

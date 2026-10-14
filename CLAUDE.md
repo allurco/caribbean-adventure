@@ -15,6 +15,7 @@ npm run lint             # ESLint (flat config, v9)
 npm run preview          # Preview production build
 npm test                 # Run all tests once (vitest run)
 npm run test:watch       # Vitest in watch mode
+npm run test:db          # Row-level security tests against local Supabase (needs `npx supabase start`, Docker)
 npx tsc --noEmit         # Type-check only (no emit)
 
 npx vitest run src/game/combat.test.ts        # Run a single test file
@@ -61,7 +62,13 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 
 **`boats/`** — The ship generator, in Python, outside the web app: it drives Blender to build the Frigate, Galleon, Flute and Sloop procedurally (package `boats/frigate/`, one `*Params` per ship) and exports each as a lighter board-variant `.glb` (`export.export_board`, run inside Blender) held to the budget in `board.py`. Its tests are pure and run without Blender: `cd boats && uv run --with pytest pytest tests/ -q`. Only the `.blend` sources under `boats/build/` are tracked; the exported `.glb`s, the baked textures and renders are git-ignored.
 
-**`src/App.tsx`** — Routes to the labs, the prop viewer (`?view=props`), or the game. Dev URL parameters (size, seed, camera) are parsed in `src/board/devUrlParams.ts`. For the game, `loadGameClient.ts` generates the map first, in a Web Worker (`src/mapWorker/`, falling back to the main thread when there is no worker or it fails), because boardgame.io's `setup()` is synchronous; it then creates `Client({ game: withGeneratedMap(Caribbean, map), board })`. `GameClientLoader.tsx` shows `MapLoadingScreen` until the client is ready. Currently local single-client (no explicit transport); production will use the boardgame.io server with socket transport for 6 players, where `setup()` still generates the map itself.
+**`src/online/`** — The online client's account pages (#105): email magic-link sign-in, sign-out, display-name edit (`?view=account`) and the public profile (`?view=profile&id=<uuid>`). Pure, tested modules (`supabaseConfig.ts`, `accountRoute.ts`, `displayName.ts`, `accountService.ts` over the narrow `AccountClient` port in `accountClient.ts`, which tests fake) with thin components on top. `supabaseClient.ts` loads supabase-js lazily, only when `VITE_SUPABASE_*` or the Marketplace's `NEXT_PUBLIC_SUPABASE_*` variables are set; without them the app is the hotseat game, unchanged. Styled with the online shell's tokens (`--font-fell*`, `--font-garamond`, `--color-shell-*` in `src/index.css`) and the class strings in `shellStyles.ts`.
+
+**`api/` and `server/`** — The backend's one Vercel Function: `api/index.ts` serves every `/api/*` path (`vercel.json` rewrites them there) through `server/handleApiRequest.ts`, a web-standard `Request → Response` router tested without a server. Add routes there, not files under `api/` (each file there becomes its own function). Imports from `api/` into `server/` use a `.js` extension, as Node's ES modules need. Type-checked by `tsconfig.api.json`.
+
+**`supabase/`** — `config.toml` for the local stack (Supabase CLI, a dev dependency), SQL migrations in `supabase/migrations/` (the schema; `profiles` with row-level security first) and the database tests in `supabase/tests/`, skipped unless `SUPABASE_DB_TESTS=1`. Deployment, env vars and local set-up: **`docs/deploy.md`**.
+
+**`src/App.tsx`** — Routes to the labs, the prop viewer (`?view=props`), or the game. Dev URL parameters (size, seed, camera) are parsed in `src/board/devUrlParams.ts`. For the game, `loadGameClient.ts` generates the map first, in a Web Worker (`src/mapWorker/`, falling back to the main thread when there is no worker or it fails), because boardgame.io's `setup()` is synchronous; it then creates `Client({ game: withGeneratedMap(Caribbean, map), board })`. `GameClientLoader.tsx` shows `MapLoadingScreen` until the client is ready. Currently local single-client (no explicit transport). Online play (PRD #104) runs on Vercel Functions and Supabase instead of a boardgame.io server: moves go through `/api`, which runs the same `src/game/` reducer server-side.
 
 ### Game Flow (phases)
 
@@ -87,7 +94,7 @@ The same map seed gives exactly the same world on every client; different seeds 
 
 ### Multiplayer
 
-boardgame.io handles all multiplayer. All game state changes go through boardgame.io moves — never mutate state outside of moves.
+boardgame.io's rules engine handles all multiplayer; online, its reducer runs in the `/api` function against Supabase (PRD #104), not in a boardgame.io server. All game state changes go through boardgame.io moves — never mutate state outside of moves.
 
 ### Styling
 

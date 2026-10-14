@@ -12,6 +12,11 @@ const ownClaudeDir = fileURLToPath(new URL("./.claude", import.meta.url));
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // The online backend's public settings (#105, src/online/supabaseConfig.ts):
+  // VITE_ for ones set by hand, NEXT_PUBLIC_SUPABASE_ for the URL and
+  // publishable key the Vercel Marketplace's Supabase integration injects.
+  // Never widen this to a prefix that could reach a secret.
+  envPrefix: ["VITE_", "NEXT_PUBLIC_SUPABASE_"],
   server: {
     watch: {
       ignored: [`${ownClaudeDir}/**`],
