@@ -239,12 +239,18 @@ describe("oceanGridCellAt", () => {
 
   it("agrees with every vertex's cell in the built rings", () => {
     const meshes = buildOceanGrid(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL);
+    // Collected and asserted once: one expect (and message) per vertex was most of
+    // the test's time, close to the 5 s default on a slow CI runner.
+    const disagree: number[][] = [];
     for (const mesh of meshes) {
       for (let v = 0; v < mesh.vertexCount; v++) {
         const [x, z] = vertex(mesh, v);
-        expect(oceanGridCellAt(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL, x, z), `vertex at ${x}, ${z}`).toBeCloseTo(mesh.cells[v], 6);
+        const cell = oceanGridCellAt(OCEAN_GRID_RINGS, OCEAN_GRID_BASE_CELL, x, z);
+        // toBeCloseTo(…, 6)'s bound.
+        if (!(Math.abs(cell - mesh.cells[v]) < 5e-7)) disagree.push([x, z, cell, mesh.cells[v]]);
       }
     }
+    expect(disagree, `${disagree.length} vertices [x, z, cell, built], first: ${JSON.stringify(disagree.slice(0, 5))}`).toEqual([]);
   });
 
   it("is mirrored in GLSL, one threshold per ring from the same constants", () => {

@@ -472,7 +472,8 @@ describe("portBuildings", () => {
     // the church's cross never comes within 0.05 of it (0.077 at the closest, a church standing high on a slope).
     expect(slack).toBeGreaterThan(0);
     expect(churchSlack).toBeGreaterThan(0.05);
-  });
+    // Generates nine maps of every size: ~3.5 s on a CI runner, near the 5 s default.
+  }, 30_000);
 
   it("never drops the tower: on a beach too small for any footprint it stands at the hex centre on the highest ground there", () => {
     const centres = ports.map((p) => hexToWorld(p.hex));

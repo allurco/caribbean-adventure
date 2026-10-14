@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import type { Elevation, MapCell } from "../../game/types";
 import { createWrap, hex, hexGrid, hexRect, hexToOffset, hexToWorld, neighbors, offsetToHex, wrapWorldWidth } from "../../game/hex";
 import { generateMap } from "../../game/mapGenerator";
@@ -44,7 +44,30 @@ function isLand(cell: MapCell | undefined): boolean {
 
 const SEED = 1234;
 
+type Field = ReturnType<typeof createTerrainHeightField>;
+
+/** The first few of `points` for a failure message, and how many there were. */
+function describePoints(points: number[][]): string {
+  return `${points.length} points, first: ${JSON.stringify(points.slice(0, 5))}`;
+}
+
 describe("terrainHeightField", () => {
+  // Generated small maps shared by the tests that sample them densely: generating
+  // a map and building its fields once for the file, not in every test, keeps those
+  // tests well inside vitest's 5 s default on a slow CI runner (one timed out there
+  // at 5.5 s while building a map and two fields of its own). The tests only read them.
+  let map3: { cells: MapCell[]; field: Field };
+  let map5: { field: Field; smooth: Field };
+  beforeAll(() => {
+    const cells3 = generateMap(getMapPreset("small"), 3);
+    map3 = { cells: cells3, field: createTerrainHeightField(cells3, 3) };
+    const cells5 = generateMap(getMapPreset("small"), 5);
+    map5 = {
+      field: createTerrainHeightField(cells5, 5),
+      smooth: createTerrainHeightField(cells5, 5, { reliefScale: 0 }),
+    };
+  }, 30_000);
+
   describe("determinism", () => {
     it("returns identical heights for the same cells and seed", () => {
       const cells = buildMap(5, volcanoIsland());
@@ -242,8 +265,7 @@ describe("terrainHeightField", () => {
     });
 
     it("is negative at every water cell centre and in open ocean", () => {
-      const cells = generateMap(getMapPreset("small"),3);
-      const field = createTerrainHeightField(cells, 3);
+      const { cells, field } = map3;
       for (const cell of cells) {
         if (isLand(cell)) continue;
         expect(field.sampleHeight(...centre(cell.hex.q, cell.hex.r))).toBeLessThan(0);
@@ -262,16 +284,19 @@ describe("terrainHeightField", () => {
     });
 
     it("flags open water away from land as not near land", () => {
-      const cells = generateMap(getMapPreset("small"),3);
-      const field = createTerrainHeightField(cells, 3);
+      const { field } = map3;
       let far = 0;
+      // Collected and asserted once: one expect per sample is most of the test's time.
+      const nearCoast: number[][] = [];
       for (let x = -20; x <= 20; x += 0.13) {
         for (let z = -20; z <= 20; z += 0.13) {
           if (field.isNearLand(x, z)) continue;
-          expect(field.sampleCoastDistance(x, z)).toBeLessThanOrEqual(-(1 - COAST_NOISE_AMPLITUDE));
+          const d = field.sampleCoastDistance(x, z);
+          if (!(d <= -(1 - COAST_NOISE_AMPLITUDE))) nearCoast.push([x, z, d]);
           far++;
         }
       }
+      expect(nearCoast, describePoints(nearCoast)).toEqual([]);
       expect(far).toBeGreaterThan(1000);
     });
 
@@ -375,16 +400,19 @@ describe("terrainHeightField", () => {
     });
 
     it("flags every point shallower than 100 m as near the seabed", () => {
-      const cells = generateMap(getMapPreset("small"),3);
-      const field = createTerrainHeightField(cells, 3);
+      const { field } = map3;
       let far = 0;
+      // Collected and asserted once: one expect per sample is most of the test's time.
+      const shallow: number[][] = [];
       for (let x = -25; x <= 25; x += 0.11) {
         for (let z = -25; z <= 25; z += 0.11) {
           if (field.isNearSeabed(x, z)) continue;
-          expect(depthMetres(field, x, z)).toBeGreaterThan(100);
+          const depth = depthMetres(field, x, z);
+          if (!(depth > 100)) shallow.push([x, z, depth]);
           far++;
         }
       }
+      expect(shallow, describePoints(shallow)).toEqual([]);
       expect(far).toBeGreaterThan(1000);
     });
 
@@ -440,24 +468,26 @@ describe("terrainHeightField", () => {
     });
 
     it("vanishes at the coast, with zero slope", () => {
-      const cells = generateMap(getMapPreset("small"),5);
-      const seed = 5;
-      const field = createTerrainHeightField(cells, seed);
-      const smooth = createTerrainHeightField(cells, seed, { reliefScale: 0 });
+      const { field, smooth } = map5;
       let nearShore = 0;
+      // Collected and asserted once: one expect per sample is most of the test's time.
+      const reliefOffshore: number[][] = [];
+      const reliefAtShore: number[][] = [];
       for (let x = -20; x <= 20; x += 0.09) {
         for (let z = -20; z <= 20; z += 0.09) {
           const d = field.sampleCoastDistance(x, z);
           const residual = Math.abs(field.sampleHeight(x, z) - smooth.sampleHeight(x, z));
           if (d <= 0) {
-            expect(residual).toBe(0);
+            if (residual !== 0) reliefOffshore.push([x, z, residual]);
           } else if (d < 0.05) {
             // Fades like d², so it is negligible this close to the shore.
-            expect(residual).toBeLessThan(0.005);
+            if (!(residual < 0.005)) reliefAtShore.push([x, z, residual]);
             nearShore++;
           }
         }
       }
+      expect(reliefOffshore, describePoints(reliefOffshore)).toEqual([]);
+      expect(reliefAtShore, describePoints(reliefAtShore)).toEqual([]);
       expect(nearShore).toBeGreaterThan(100);
     });
 
