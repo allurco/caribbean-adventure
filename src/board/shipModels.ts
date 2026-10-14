@@ -15,6 +15,8 @@ export interface ShipModelParts {
   readonly hull: string;
   readonly sails: string;
   readonly flag: string;
+  /** The masthead pennant: cloth that streams in the wind like the flag (#204). */
+  readonly pennant: string;
 }
 
 /** A class's generated model and its real dimensions, as the generator states them. */
@@ -43,6 +45,11 @@ export interface ShipModel {
    * flies the captain's nation (`shipFlags.ts`).
    */
   readonly tintedParts: readonly string[];
+  /**
+   * The parts that lie on the sails and move with them in the wind (#204):
+   * the patches and the owner's band, by node name.
+   */
+  readonly sailDecals: readonly string[];
 }
 
 /**
@@ -52,6 +59,9 @@ export interface ShipModel {
  */
 const OWNER_PARTS: readonly string[] = ["Pennant", "Hull_Stripe", "Sail_Band"];
 
+/** The parts every class's generator lays on its sails: the patches and the owner's band. */
+const SAIL_DECALS: readonly string[] = ["Sail_Patches", "Sail_Band"];
+
 const SLOOP: ShipModel = {
   file: "sloop.glb",
   lengthMetres: 18,
@@ -59,8 +69,9 @@ const SLOOP: ShipModel = {
   depthMetres: 4.15,
   mastheadMetres: 18.9,
   draftMetres: 2.6,
-  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger", pennant: "Pennant" },
   tintedParts: OWNER_PARTS,
+  sailDecals: SAIL_DECALS,
 };
 
 const FLUTE: ShipModel = {
@@ -70,8 +81,9 @@ const FLUTE: ShipModel = {
   depthMetres: 7.2,
   mastheadMetres: 25.8,
   draftMetres: 3.0,
-  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger", pennant: "Pennant" },
   tintedParts: OWNER_PARTS,
+  sailDecals: SAIL_DECALS,
 };
 
 const FRIGATE: ShipModel = {
@@ -81,8 +93,9 @@ const FRIGATE: ShipModel = {
   depthMetres: 8.4,
   mastheadMetres: 36,
   draftMetres: 4.5,
-  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger", pennant: "Pennant" },
   tintedParts: OWNER_PARTS,
+  sailDecals: SAIL_DECALS,
 };
 
 const GALLEON: ShipModel = {
@@ -92,8 +105,9 @@ const GALLEON: ShipModel = {
   depthMetres: 11.1,
   mastheadMetres: 39.1,
   draftMetres: 5.3,
-  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger", pennant: "Pennant" },
   tintedParts: OWNER_PARTS,
+  sailDecals: SAIL_DECALS,
 };
 
 /** Every class's model, or `null` for a class still drawn as a box. */

@@ -8,11 +8,16 @@ import { type ShipFoamSource, shipFoamSources } from "./shipFoamSources";
 import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox, shipWaterline } from "./shipHull";
 import { moveHeading } from "./shipHeading";
 import { useShipWavePose } from "./useShipWavePose";
+import { SHIP_POSE_PRIORITY } from "./visuals/frameOrder";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
 import { mergeShipModel } from "./shipModelMerge";
 import { dressShipModel } from "./shipDressing";
 import { shipFlagMaterial } from "./shipFlagMaterials";
 import type { ShipFlag } from "./shipFlags";
+import { createShipWindUniforms, shipWindPose, writeShipWindPose } from "./shipWind";
+import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
+import { SCENE_WIND } from "./visuals/sceneWind";
+import { useSeaSurface } from "./visuals/seaSurfaceContext";
 
 const modelUrl = (model: ShipModel) => shipModelUrl(model, import.meta.env.BASE_URL);
 
@@ -23,7 +28,11 @@ for (const model of Object.values(SHIP_MODELS)) if (model) useGLTF.preload(model
 const mergedModels = new WeakMap<Object3D, Group>();
 const mergedShipModel = (scene: Object3D, model: ShipModel): Group => {
   let merged = mergedModels.get(scene);
-  if (!merged) mergedModels.set(scene, (merged = mergeShipModel(scene, model.tintedParts, model.parts.flag)));
+  if (!merged) {
+    // The sails, the patches and band on them, and the flag and pennant move in the wind (#204).
+    const wind = { sails: model.parts.sails, sailDecals: model.sailDecals, cloth: [model.parts.flag, model.parts.pennant] };
+    mergedModels.set(scene, (merged = mergeShipModel(scene, model.tintedParts, model.parts.flag, wind)));
+  }
   return merged;
 };
 
@@ -85,6 +94,8 @@ export function Ship({
   const model = shipModel(shipClass);
   // The wave pose rides on an inner group, under the group that sails and turns.
   const innerRef = useShipWavePose(hull);
+  // The heading the ship's group has turned to this frame: its sails and flags set to it (#204).
+  const heading = useCallback(() => ref.current?.rotation.y ?? 0, []);
 
   useEffect(() => {
     if (!foamId) return;
@@ -198,7 +209,7 @@ export function Ship({
         </mesh>
         {model ? (
           <Suspense fallback={box}>
-            <ShipModelMesh model={model} colour={color} flag={flag} />
+            <ShipModelMesh model={model} colour={color} flag={flag} heading={heading} />
           </Suspense>
         ) : (
           box
@@ -213,9 +224,25 @@ export function Ship({
  * waterline amidships, bow along −Z), placed in the ship's wave-pose group:
  * scaled to ship scale, turned onto the heading, its waterline on the
  * group's, which is on the sea (shipModelPlacement, #150). Dressed in its
- * owner's colour and flying its flag (#134). Suspends while the file loads.
+ * owner's colour and flying its flag (#134), its sails and flags set to the
+ * scene's wind for its `heading` at the wave clock's time (#204): still
+ * under reduced motion, limp and slack while it sinks. Suspends while the
+ * file loads.
  */
-function ShipModelMesh({ model, colour, flag }: { model: ShipModel; colour: string; flag: ShipFlag | null }) {
+function ShipModelMesh({
+  model,
+  colour,
+  flag,
+  heading,
+  sinking = false,
+}: {
+  model: ShipModel;
+  colour: string;
+  flag: ShipFlag | null;
+  /** The ship's heading this frame (its group's rotation about +Y). */
+  heading: () => number;
+  sinking?: boolean;
+}) {
   const { scene } = useGLTF(modelUrl(model), false, false);
   // One copy per ship of the class's merged model: the nodes are its own, the geometry and materials shared.
   const copy = useMemo(() => {
@@ -225,8 +252,16 @@ function ShipModelMesh({ model, colour, flag }: { model: ShipModel; colour: stri
     });
     return clone;
   }, [scene, model]);
-  // Its own material copies for the tinted parts, disposed when the ship or its colours change.
-  useLayoutEffect(() => dressShipModel(copy, { colour, flagMaterial: shipFlagMaterial(flag) }), [copy, colour, flag]);
+  // Its own wind: the uniforms its canvas, flag and pennant move in.
+  const [wind] = useState(createShipWindUniforms);
+  const sea = useSeaSurface();
+  const reducedMotion = usePrefersReducedMotion();
+  // Its own material copies for the tinted parts and the cloth, disposed when the ship or its colours change.
+  useLayoutEffect(() => dressShipModel(copy, { colour, flagMaterial: shipFlagMaterial(flag), wind }), [copy, colour, flag, wind]);
+  useFrame(() => {
+    const seconds = sea?.clock.waveTimeAt() ?? 0;
+    writeShipWindPose(wind, shipWindPose({ heading: heading(), wind: SCENE_WIND, seconds, reducedMotion, sinking }));
+  }, SHIP_POSE_PRIORITY);
   const { y, rotationY, scale } = shipModelPlacement();
   return (
     <group position-y={y} rotation-y={rotationY} scale={scale}>
@@ -238,20 +273,25 @@ function ShipModelMesh({ model, colour, flag }: { model: ShipModel; colour: stri
 export function SinkingShip({
   position,
   color,
+  flag = null,
   shipClass,
   heading = 0,
   onComplete,
 }: {
   position: [number, number, number];
   color: string;
+  /** The flag it flew, which goes down limp with it (#204). */
+  flag?: ShipFlag | null;
   shipClass?: ShipClass;
   /** The heading the ship last sailed on (shipHeading.ts), which it goes down facing. */
   heading?: number;
   onComplete: () => void;
 }) {
-  const ref = useRef<Mesh>(null!);
+  const ref = useRef<Group>(null!);
   const hull = shipHullBox(shipClass);
+  const model = shipModel(shipClass);
   const innerRef = useShipWavePose(hull);
+  const sunkHeading = useCallback(() => heading, [heading]);
   const progressRef = useRef(0);
   const startY = position[1] + SHIP_WATERLINE_Y;
   const [opacity, setOpacity] = useState(1);
@@ -263,8 +303,8 @@ export function SinkingShip({
     progressRef.current = Math.min(progressRef.current + delta / SINK_DURATION, 1);
     const t = smoothstep(progressRef.current);
 
-    // Sink down from the ride height, below the swell it rides
-    ref.current.position.y = SHIP_RIDE_HEIGHT - MathUtils.lerp(0, SHIP_SINK_DEPTH, t);
+    // Sink down below the swell it rides
+    ref.current.position.y = -MathUtils.lerp(0, SHIP_SINK_DEPTH, t);
 
     // Tilt to one side (roll)
     ref.current.rotation.z = MathUtils.lerp(0, Math.PI / 4, t);
@@ -282,19 +322,28 @@ export function SinkingShip({
     }
   });
 
+  // The box fades as it goes; a model goes down whole, its flag limp and its sails slack (#204).
+  const box = (
+    <mesh position-y={SHIP_RIDE_HEIGHT} castShadow>
+      <boxGeometry args={[...hull]} />
+      <meshStandardMaterial color={color} transparent opacity={opacity} />
+    </mesh>
+  );
+
   // Like Ship: the outer group stands where it sank, facing its last heading;
-  // the inner group rides the swell; the hull sinks, rolls and pitches in it.
+  // the inner group rides the swell; the ship sinks, rolls and pitches in it.
   return (
     <group position={[position[0], startY, position[2]]} rotation-y={heading}>
       <group ref={innerRef}>
-        <mesh ref={ref} position-y={SHIP_RIDE_HEIGHT} castShadow>
-          <boxGeometry args={[...hull]} />
-          <meshStandardMaterial
-            color={color}
-            transparent
-            opacity={opacity}
-          />
-        </mesh>
+        <group ref={ref}>
+          {model ? (
+            <Suspense fallback={box}>
+              <ShipModelMesh model={model} colour={color} flag={flag} heading={sunkHeading} sinking />
+            </Suspense>
+          ) : (
+            box
+          )}
+        </group>
       </group>
     </group>
   );

@@ -144,6 +144,62 @@ describe("mergeShipModel", () => {
     expect(merged.geometry.attributes.uv1.count).toBe(merged.geometry.attributes.position.count);
   });
 
+  describe("in the wind (#204)", () => {
+    const WIND_PARTS = { sails: "Sails", sailDecals: ["Sail_Band"], cloth: ["Jolly_Roger", "Pennant"] };
+    const windyShip = () => {
+      const { scene, timber, canvas } = toyShip();
+      const white = new MeshStandardMaterial({ name: "White" });
+      scene.add(part("Sail_Band", white, [0, 4, 0.02], 1), part("Pennant", white, [0, 7, 0], 0.3));
+      return { scene, timber, canvas, white };
+    };
+    const ATTRIBUTES = ["windSail", "windFlagHoist", "windFlagLocal"];
+
+    it("gives the canvas, the flag and the pennant's meshes the wind's attributes, marked, and the timber none", () => {
+      const { scene, timber } = windyShip();
+      const meshes = meshesOf(mergeShipModel(scene, ["Pennant", "Sail_Band"], "Jolly_Roger", WIND_PARTS));
+      for (const mesh of meshes) {
+        const windy = mesh.material !== timber && (mesh.material as MeshStandardMaterial).name !== "Iron";
+        expect(mesh.userData.wind, mesh.name).toBe(windy);
+        for (const name of ATTRIBUTES) expect(mesh.geometry.hasAttribute(name), `${mesh.name} ${name}`).toBe(windy);
+      }
+    });
+
+    it("bounds each wind mesh wide enough for its cloth to blow the other way", () => {
+      const { scene } = windyShip();
+      const meshes = meshesOf(mergeShipModel(scene, ["Pennant", "Sail_Band"], "Jolly_Roger", WIND_PARTS));
+      for (const mesh of meshes.filter((m) => m.userData.wind)) {
+        const tight = mesh.geometry.clone();
+        tight.computeBoundingSphere();
+        const local = mesh.geometry.attributes.windFlagLocal;
+        const longest = Math.max(...Array.from({ length: local.count }, (_, k) => local.getW(k)));
+        expect(mesh.geometry.boundingSphere!.radius).toBeGreaterThanOrEqual(tight.boundingSphere!.radius + 2 * longest);
+        expect(mesh.geometry.boundingSphere!.radius).toBeGreaterThan(tight.boundingSphere!.radius);
+      }
+    });
+
+    it("draws no more meshes for it", () => {
+      const plain = meshesOf(mergeShipModel(windyShip().scene, ["Pennant", "Sail_Band"], "Jolly_Roger"));
+      const windy = meshesOf(mergeShipModel(windyShip().scene, ["Pennant", "Sail_Band"], "Jolly_Roger", WIND_PARTS));
+      expect(windy).toHaveLength(plain.length);
+    });
+
+    it("marks the flag's and the pennant's vertices as cloth, with a length, and nothing else", () => {
+      const { scene, white } = windyShip();
+      const meshes = meshesOf(mergeShipModel(scene, ["Pennant", "Sail_Band"], "Jolly_Roger", WIND_PARTS));
+      const lengths = (mesh: Mesh) => {
+        const local = mesh.geometry.attributes.windFlagLocal;
+        return Array.from({ length: local.count }, (_, k) => local.getW(k));
+      };
+      const flag = meshes.find((mesh) => mesh.userData.flag)!;
+      expect(lengths(flag).every((l) => l > 0)).toBe(true);
+      const tinted = meshes.find((mesh) => mesh.material === white)!;
+      // The pennant's 24 box vertices are cloth; the band's are not.
+      expect(lengths(tinted).filter((l) => l > 0)).toHaveLength(24);
+      const sails = meshes.find((mesh) => !mesh.userData.flag && !mesh.userData.tinted && mesh.userData.wind)!;
+      expect(lengths(sails).every((l) => l === 0)).toBe(true);
+    });
+  });
+
   it("keeps a mirrored part's faces turned outward", () => {
     const scene = new Group();
     const box = part("Cannon_00", new MeshStandardMaterial(), [0, 0, 0]);

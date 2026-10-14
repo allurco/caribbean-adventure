@@ -31,7 +31,8 @@
  * (foamShading.ts).
  */
 import { jonswapSignificantHeight } from "./jonswap";
-import { TRADE_WIND_SEA, WIND_ANGLE } from "./oceanWaves";
+import { TRADE_WIND_SEA } from "./oceanWaves";
+import { SCENE_WIND } from "./sceneWind";
 
 /** McCowan's breaker index: the wave height over the depth at breaking. */
 export const BREAKER_INDEX = 0.78;
@@ -76,8 +77,8 @@ export const REEF_FOAM_DEPTH_FADE: readonly [number, number] = [3, 4.5];
  */
 export const REEF_WINDWARD_BIAS = 0.6;
 
-/** Unit vector the trade wind blows toward, world xz (oceanWaves.ts). */
-export const WIND_TOWARD: readonly [number, number] = [Math.cos(WIND_ANGLE), Math.sin(WIND_ANGLE)];
+/** Unit vector the scene's wind blows toward, world xz (sceneWind.ts, #204). */
+export const WIND_TOWARD: readonly [number, number] = SCENE_WIND.toward;
 
 const smoothstep = (e0: number, e1: number, x: number) => {
   const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { BoxGeometry, Color, Group, Mesh, MeshStandardMaterial, type Object3D } from "three";
+import { BoxGeometry, Color, Group, Mesh, MeshStandardMaterial, type Material, type Object3D } from "three";
+import { createShipWindUniforms } from "./shipWind";
 import { mergeShipModel } from "./shipModelMerge";
 import { dressShipModel } from "./shipDressing";
 
@@ -67,6 +68,71 @@ describe("dressShipModel", () => {
     // the loaded white materials stay white for the next ship
     expect(pennant.color.getHexString()).toBe("ffffff");
     expect(band.color.getHexString()).toBe("ffffff");
+  });
+
+  describe("in the wind (#204)", () => {
+    const windyShip = () => {
+      const canvas = new MeshStandardMaterial({ name: "Canvas" });
+      const timber = new MeshStandardMaterial({ name: "Timber" });
+      const pennant = new MeshStandardMaterial({ name: "Pennant", color: "#ffffff" });
+      const scene = new Group();
+      scene.add(part("Hull", timber, 0), part("Sails", canvas, 4), part("Jolly_Roger", canvas, 8), part("Pennant", pennant, 9));
+      const wind = { sails: "Sails", sailDecals: [], cloth: ["Jolly_Roger", "Pennant"] };
+      return { merged: mergeShipModel(scene, ["Pennant"], "Jolly_Roger", wind), canvas, timber };
+    };
+    /** The uniforms a material's patched shader binds, compiled as three.js would. */
+    const boundUniforms = (material: Material) => {
+      const shader = { vertexShader: "#include <common>\n#include <begin_vertex>", fragmentShader: "", uniforms: {} as Record<string, unknown> };
+      material.onBeforeCompile(shader as never, null as never);
+      return shader.uniforms;
+    };
+
+    it("moves the canvas, the flag and the pennant in the ship's own wind, through its own copies, and leaves the timber be", () => {
+      const { merged, canvas, timber } = windyShip();
+      const ship = merged.clone(true);
+      const wind = createShipWindUniforms();
+      const flag = new MeshStandardMaterial({ name: "England" });
+      dressShipModel(ship, { colour: "#3b82f6", flagMaterial: flag, wind });
+      for (const mesh of meshesOf(ship)) {
+        const material = mesh.material as Material;
+        if (mesh.userData.wind) {
+          expect([canvas, flag]).not.toContain(material);
+          expect(boundUniforms(material).uWindDown).toBe(wind.uWindDown);
+          expect(boundUniforms(mesh.customDepthMaterial!).uSailFullness).toBe(wind.uSailFullness);
+        } else {
+          expect(material).toBe(timber);
+          expect(mesh.customDepthMaterial).toBeUndefined();
+        }
+      }
+      // The flag's copy still flies the flag.
+      expect((flagOf(ship).material as MeshStandardMaterial).name).toBe("England");
+    });
+
+    it("gives each ship its own wind: two ships' cloth never share a material", () => {
+      const { merged } = windyShip();
+      const [a, b] = [merged.clone(true), merged.clone(true)];
+      const flag = new MeshStandardMaterial();
+      dressShipModel(a, { colour: "#3b82f6", flagMaterial: flag, wind: createShipWindUniforms() });
+      dressShipModel(b, { colour: "#3b82f6", flagMaterial: flag, wind: createShipWindUniforms() });
+      const windy = (ship: Object3D) => meshesOf(ship).filter((mesh) => mesh.userData.wind);
+      windy(a).forEach((mesh, k) => {
+        expect(mesh.material).not.toBe(windy(b)[k].material);
+        expect(mesh.geometry).toBe(windy(b)[k].geometry);
+      });
+    });
+
+    it("puts the loaded canvas back and disposes its copies when the ship goes", () => {
+      const { merged, canvas } = windyShip();
+      const ship = merged.clone(true);
+      const undress = dressShipModel(ship, { colour: "#3b82f6", flagMaterial: new MeshStandardMaterial(), wind: createShipWindUniforms() });
+      const sails = meshesOf(ship).find((mesh) => mesh.userData.wind && !mesh.userData.flag && !mesh.userData.tinted)!;
+      let disposed = false;
+      (sails.material as Material).addEventListener("dispose", () => (disposed = true));
+      undress();
+      expect(disposed).toBe(true);
+      expect(sails.material).toBe(canvas);
+      expect(sails.customDepthMaterial).toBeUndefined();
+    });
   });
 
   it("disposes only the copies it made when the ship goes", () => {

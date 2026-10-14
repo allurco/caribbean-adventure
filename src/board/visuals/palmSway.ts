@@ -7,6 +7,7 @@
  * and float32 precision never degrades the longer the page stays open.
  */
 import { PALM_CROWN_CENTER, PALM_TRUNK_TOP_SWAY } from "./palmGeometry";
+import { SCENE_WIND } from "./sceneWind";
 
 const TAU = Math.PI * 2;
 
@@ -21,8 +22,8 @@ export const MAX_SWAY_STEP = 0.1;
 export const PALM_SWAY_BEND = 0.035; // Downwind bend of the whole palm
 export const PALM_SWAY_SIDE = 0.012; // Crosswind wobble
 export const PALM_SWAY_FLUTTER = 0.018; // Up/down flutter of the fronds
-/** World-space wind direction (XZ, normalised in the shader). */
-export const PALM_WIND_DIR: readonly [number, number] = [0.8, 0.6];
+/** World-space direction the palms bend toward (XZ): the scene's one wind (#204). */
+export const PALM_WIND_DIR: readonly [number, number] = SCENE_WIND.toward;
 
 export function advanceSwayAngle(angle: number, delta: number, reducedMotion: boolean): number {
   const speed = reducedMotion ? PALM_SWAY_REDUCED_SPEED : PALM_SWAY_SPEED;

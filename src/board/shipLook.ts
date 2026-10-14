@@ -3,7 +3,7 @@
  * the pennant, the hull stripe and the main-course band, and the flag it
  * flies. Read from the game state through its selectors. Pure.
  */
-import type { CaribbeanState, NPCShip } from "../game/types";
+import type { CaribbeanState, NPCShip, ShipState } from "../game/types";
 import { isPlayerPirate } from "../game/reputation";
 import { shipFlagFor, type ShipFlag } from "./shipFlags";
 import { shipOwnerColour } from "./shipOwnerColour";
@@ -13,11 +13,19 @@ export interface ShipLook {
   readonly flag: ShipFlag | null;
 }
 
-/** A player's ship: their colour, and their captain's nation or, once they have turned pirate, the Jolly Roger. */
-export function playerShipLook(G: CaribbeanState, playerId: string): ShipLook {
+/**
+ * A player's ship: their colour, and their captain's nation or, once they
+ * have turned pirate, the Jolly Roger. `ship` is the player's ship in `G`,
+ * or the last state of one that has gone (a sinking ship, #204).
+ */
+export function playerShipLook(
+  G: CaribbeanState,
+  playerId: string,
+  ship: Pick<ShipState, "captain"> | undefined = G.ships[playerId]
+): ShipLook {
   return {
     colour: shipOwnerColour({ kind: "player", playerId }),
-    flag: shipFlagFor({ nation: G.ships[playerId]?.captain?.nation, pirate: isPlayerPirate(G, playerId) }),
+    flag: shipFlagFor({ nation: ship?.captain?.nation, pirate: isPlayerPirate(G, playerId) }),
   };
 }
 
