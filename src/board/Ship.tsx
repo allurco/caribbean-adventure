@@ -6,6 +6,8 @@ import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
 import { shipFoamSources } from "./shipFoamSources";
 import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, shipHullBox } from "./shipHull";
+import { moveHeading } from "./shipHeading";
+import { useShipWavePose } from "./useShipWavePose";
 import { type ShipModel, SHIP_MODELS, SHIP_MODEL_ROTATION_Y, shipModel, shipModelScale, shipModelUrl } from "./shipModels";
 
 const modelUrl = (model: ShipModel) => shipModelUrl(model, import.meta.env.BASE_URL);
@@ -59,8 +61,11 @@ export function Ship({
   const targetYRotation = useRef(0);
   const foamPrevPosition = useRef<Vector3 | null>(null);
   const foamSpeed = useRef(0);
-  const hullLength = shipHullBox(shipClass)[2];
+  const hull = shipHullBox(shipClass);
+  const hullLength = hull[2];
   const model = shipModel(shipClass);
+  // The wave pose rides on an inner group, under the group that sails and turns.
+  const innerRef = useShipWavePose(hull);
 
   useEffect(() => {
     if (!foamId) return;
@@ -97,12 +102,10 @@ export function Ship({
       // Across the seam, sail straight over it rather than back across the map.
       from.setX(seamAwareStart(from.x, to.x, wrapWidth));
       prevTarget.current = position;
-      if (from.distanceTo(to) > 0.001) {
+      const heading = moveHeading([from.x, from.z], [to.x, to.z], Infinity);
+      if (heading !== null) {
         progressRef.current = 0;
-        // Compute heading from movement direction (XZ plane)
-        const dx = to.x - from.x;
-        const dz = to.z - from.z;
-        targetYRotation.current = Math.atan2(dx, dz);
+        targetYRotation.current = heading;
       }
     }
 
@@ -140,13 +143,14 @@ export function Ship({
 
   const box = (
     <mesh castShadow receiveShadow>
-      <boxGeometry args={[...shipHullBox(shipClass)]} />
+      <boxGeometry args={[...hull]} />
       <meshStandardMaterial color={color} />
     </mesh>
   );
 
-  // The group sails and turns; the box or the model inside it is what is drawn
-  // and hit, so hover and click work over the whole model.
+  // The group sails and turns, its inner group rides the swell; the box or the
+  // model inside it is what is drawn and hit, so hover and click work over the
+  // whole model and follow the tilted hull.
   return (
     <group
       ref={groupRef}
@@ -163,13 +167,15 @@ export function Ship({
         onClick?.();
       }}
     >
-      {model ? (
-        <Suspense fallback={box}>
-          <ShipModelMesh model={model} />
-        </Suspense>
-      ) : (
-        box
-      )}
+      <group ref={innerRef}>
+        {model ? (
+          <Suspense fallback={box}>
+            <ShipModelMesh model={model} />
+          </Suspense>
+        ) : (
+          box
+        )}
+      </group>
     </group>
   );
 }
@@ -201,14 +207,19 @@ export function SinkingShip({
   position,
   color,
   shipClass,
+  heading = 0,
   onComplete,
 }: {
   position: [number, number, number];
   color: string;
   shipClass?: ShipClass;
+  /** The heading the ship last sailed on (shipHeading.ts), which it goes down facing. */
+  heading?: number;
   onComplete: () => void;
 }) {
   const ref = useRef<Mesh>(null!);
+  const hull = shipHullBox(shipClass);
+  const innerRef = useShipWavePose(hull);
   const progressRef = useRef(0);
   const startY = position[1] + SHIP_RIDE_HEIGHT;
   const [opacity, setOpacity] = useState(1);
@@ -220,8 +231,8 @@ export function SinkingShip({
     progressRef.current = Math.min(progressRef.current + delta / SINK_DURATION, 1);
     const t = smoothstep(progressRef.current);
 
-    // Sink down
-    ref.current.position.y = MathUtils.lerp(startY, startY - SHIP_SINK_DEPTH, t);
+    // Sink down, below the swell it rides
+    ref.current.position.y = MathUtils.lerp(0, -SHIP_SINK_DEPTH, t);
 
     // Tilt to one side (roll)
     ref.current.rotation.z = MathUtils.lerp(0, Math.PI / 4, t);
@@ -239,18 +250,20 @@ export function SinkingShip({
     }
   });
 
+  // Like Ship: the outer group stands where it sank, facing its last heading;
+  // the inner group rides the swell; the hull sinks, rolls and pitches in it.
   return (
-    <mesh
-      ref={ref}
-      position={[position[0], startY, position[2]]}
-      castShadow
-    >
-      <boxGeometry args={[...shipHullBox(shipClass)]} />
-      <meshStandardMaterial
-        color={color}
-        transparent
-        opacity={opacity}
-      />
-    </mesh>
+    <group position={[position[0], startY, position[2]]} rotation-y={heading}>
+      <group ref={innerRef}>
+        <mesh ref={ref} castShadow>
+          <boxGeometry args={[...hull]} />
+          <meshStandardMaterial
+            color={color}
+            transparent
+            opacity={opacity}
+          />
+        </mesh>
+      </group>
+    </group>
   );
 }

@@ -12,3 +12,11 @@ export const WAVE_CLOCK_PRIORITY = -10;
 
 /** The wave cascades (useWaveCascades): before the seabed prepass (0.5) and the composer (1), after the controls. */
 export const CASCADE_PRIORITY = 0.25;
+
+/**
+ * The ships' wave pose (Ship.tsx, #142): after the wave clock, after the
+ * world copies are moved and the ships sail (default priority 0), so a ship
+ * samples the sea where it is drawn this frame. Positive like the cascades:
+ * the composer (1) renders the frame.
+ */
+export const SHIP_POSE_PRIORITY = 0.1;
