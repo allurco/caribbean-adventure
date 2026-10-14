@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset, type MapSizeId } from "../../game/mapConfig";
 import { createWrap, hexToWorld } from "../../game/hex";
-import { terrainSeedFromCells } from "./terrainHeightField";
+
 import { sharedTerrainField } from "./sharedTerrainField";
 import { landSurface } from "./landMesh";
 import { groundTopY } from "./groundPlacement";
@@ -33,8 +33,8 @@ describe("portHoverVolume", () => {
       const preset = getMapPreset(size);
       const wrap = createWrap(preset.columns);
       const cells = generateMap(preset, seed, wrap);
-      const field = sharedTerrainField(cells, wrap);
-      const buildings = portBuildings(cells, landSurface(field), terrainSeedFromCells(cells));
+      const field = sharedTerrainField(cells, wrap, seed);
+      const buildings = portBuildings(cells, landSurface(field), seed);
       for (const cell of cells) {
         if (!cell.hasPort) continue;
         ports++;

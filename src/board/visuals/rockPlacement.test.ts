@@ -29,12 +29,12 @@ const ORIGIN = { x: 0, z: 0 };
 const k = PROP_SCALE;
 
 /** A rock at the generator's decoration `scale`, drawn at PROP_SCALE as the layout passes it. */
-const request = (scale: number, biome: Biome, rotation = 0): RockRequest => ({ scale: scale * PROP_SCALE, rotation, biome });
+const request = (scale: number, biome: Biome, rotation = 0, seed = 7): RockRequest => ({ scale: scale * PROP_SCALE, rotation, biome, seed });
 
 /** The rock's variation once it stands at `spot`, exactly as `Rocks.tsx` derives it from the layout. */
 function drawnAt(spot: { x: number; y: number; z: number }, rock: RockRequest): RockVariation {
   return rockVariation(
-    { worldX: spot.x, worldY: spot.y, worldZ: spot.z, rotation: rock.rotation, scale: rock.scale, biome: rock.biome },
+    { worldX: spot.x, worldY: spot.y, worldZ: spot.z, rotation: rock.rotation, scale: rock.scale, biome: rock.biome, seed: rock.seed },
     rock.sizeClass ?? rockSizeClass(rock.biome)
   );
 }
@@ -51,7 +51,7 @@ describe("placeRock", () => {
     const field = peak(1.4, 1.5);
     for (const scale of [0.8, 1.2, 1.6]) {
       for (let i = 0; i < 12; i++) {
-        const rock = request(scale, "ROCK", i * 0.52);
+        const rock = request(scale, "ROCK", i * 0.52, i);
         const spot = placeRock(field, { x: 0.1, z: -0.05 }, ORIGIN, rock);
         expect(spot).not.toBeNull();
         const v = drawnAt(spot!, rock);
@@ -77,11 +77,11 @@ describe("placeRock", () => {
   });
 
   it("probes the ground the rock is actually drawn over: its own variant, stretch and radii", () => {
-    // The variation hashes position, rotation and scale (not Y), so the radius probed
-    // at the final spot is the radius Rocks.tsx draws there.
+    // The variation draws from the rock's own seed (not its position), so the radius
+    // probed at the final spot is the radius Rocks.tsx draws there.
     const field = tilted(0.6, 0.2);
     for (let i = 0; i < 30; i++) {
-      const rock = request(0.8 + (i % 9) * 0.1, "ROCK", i * 0.7);
+      const rock = request(0.8 + (i % 9) * 0.1, "ROCK", i * 0.7, i);
       const spot = placeRock(field, { x: 0.2, z: 0.1 }, ORIGIN, rock);
       expect(spot).not.toBeNull();
       const v = drawnAt(spot!, rock);
@@ -95,7 +95,7 @@ describe("placeRock", () => {
     let slabs = 0;
     for (let i = 0; i < 40; i++) {
       // The generator puts a ROCK-cell rock up to 0.25 off centre, towards the coast here.
-      const rock = request(1.6, "ROCK", (i * 2.39996) % (Math.PI * 2));
+      const rock = request(1.6, "ROCK", (i * 2.39996) % (Math.PI * 2), i);
       const spot = placeRock(field, { x: 0.25, z: -0.2 + (i % 5) * 0.1 }, ORIGIN, rock);
       expect(spot).not.toBeNull();
       const v = drawnAt(spot!, rock);
@@ -116,16 +116,16 @@ describe("placeRock", () => {
     // The smallest large rock at scale 1.6 reaches 0.22 × 1.6 × 2.2 × 0.75 × 0.85 ≈ 0.49 units (× PROP_SCALE).
     const field = coast(0.45 * k);
     for (let i = 0; i < 40; i++) {
-      expect(placeRock(field, { x: 0.25 * k, z: 0 }, ORIGIN, request(1.6, "ROCK", i * 0.37))).toBeNull();
+      expect(placeRock(field, { x: 0.25 * k, z: 0 }, ORIGIN, request(1.6, "ROCK", i * 0.37, i))).toBeNull();
     }
   });
 
-  it("fits a smaller rock where the requested one would overhang: each nudge candidate re-hashes the variation", () => {
+  it("nudges a rock that would overhang at its spot inland until its drawn rim fits: its look stays its own", () => {
     const field = coast(0.75 * k);
     const requested = { x: 0.25 * k, z: 0 };
     let rescued = 0;
     for (let i = 0; i < 40; i++) {
-      const rock = request(1.6, "ROCK", i * 0.37);
+      const rock = request(1.6, "ROCK", i * 0.37, i);
       const asRequested = rockDrawnRadius(drawnAt({ ...requested, y: 0 }, rock));
       const spot = placeRock(field, requested, ORIGIN, rock);
       if (!spot) continue;

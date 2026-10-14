@@ -11,8 +11,8 @@
  * above it (past that the back is left buried rather than towering over
  * the pier). Its body reaches as deep as the pier posts, and should the
  * ground still fall away under a corner the whole quay is lowered onto it,
- * so it never floats. Width and depth vary a little per port from a hash
- * of the cell and the whole terrain seed, as the buildings do, and each
+ * so it never floats. Width and depth vary a little per port, drawn from
+ * of the port's own sub-seed of the world seed, as the buildings do, and each
  * port is placed once from its canonical cell; the world copies redraw the
  * same instances, so the seam shows nothing.
  *
@@ -36,7 +36,10 @@ import {
   QUAY_TOP,
   QUAY_WIDTH,
 } from "./quayGeometry";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { mapCellId } from "./islands";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
+import { lerpRange } from "./variationStream";
 import { PROP_SCALE } from "./worldScale";
 
 /** The quay's plan scale; its heights are at `PROP_SCALE`. */
@@ -68,7 +71,6 @@ export const QUAY_WIDTH_RANGE: readonly [number, number] = [0.85, 1.1];
 /** Per-port depth, as a scale on the quay's length along the pier. */
 export const QUAY_DEPTH_RANGE: readonly [number, number] = [0.9, 1.1];
 
-const QUAY_SALT = 0x6a1f3c95;
 
 const pierOf = (cell: MapCell) => (cell.hasPort ? (cell.decorations ?? []).find((d) => d.type === "pier") : undefined);
 
@@ -112,13 +114,12 @@ export function quayAt(field: GroundField, centre: { x: number; z: number }, rot
   return { worldX: origin.x, worldY, worldZ: origin.z, yaw: rotation, top: worldY + QUAY_TOP * k, ...size };
 }
 
-/** The quay of a port cell, or null if the cell has no port or no pier; `seed` is the map's terrain seed. */
-export function placeQuay(cell: MapCell, field: GroundField, seed: number): QuayPlacement | null {
+/** The quay of a port cell, or null if the cell has no port or no pier; `worldSeed` is `G.mapSeed`. */
+export function placeQuay(cell: MapCell, field: GroundField, worldSeed: number): QuayPlacement | null {
   const pier = pierOf(cell);
   if (!pier) return null;
   const [hexX, , hexZ] = hexToWorld(cell.hex);
-  // The seed goes in through the salt, as the buildings' does (seedOf quantises its values by 4096).
-  const next = stream(seedOf([cell.hex.q, cell.hex.r], QUAY_SALT ^ seed));
+  const next = stream(subSeed(worldSeed, SEED_FEATURES.quay, mapCellId(cell)));
   const size: QuaySize = {
     scaleX: lerpRange(QUAY_WIDTH_RANGE, next()) * PROP_SCALE,
     scaleZ: lerpRange(QUAY_DEPTH_RANGE, next()) * PROP_SCALE,
@@ -127,10 +128,10 @@ export function placeQuay(cell: MapCell, field: GroundField, seed: number): Quay
 }
 
 /** The quays of every port on the map. */
-export function portQuays(cells: readonly MapCell[], field: GroundField, seed: number): QuayPlacement[] {
+export function portQuays(cells: readonly MapCell[], field: GroundField, worldSeed: number): QuayPlacement[] {
   const quays: QuayPlacement[] = [];
   for (const cell of cells) {
-    const quay = placeQuay(cell, field, seed);
+    const quay = placeQuay(cell, field, worldSeed);
     if (quay) quays.push(quay);
   }
   return quays;
@@ -151,9 +152,9 @@ export function quayTopAt(quay: QuayPlacement, point: { x: number; z: number }):
 
 /**
  * `quayTopAt` for a port cell's quay, placing it first: undefined where the
- * cell has none. Same `field` and `seed` as `portQuays`.
+ * cell has none. Same `field` and `worldSeed` as `portQuays`.
  */
-export function quayTopY(cell: MapCell, field: GroundField, seed: number, point: { x: number; z: number }): number | undefined {
-  const quay = placeQuay(cell, field, seed);
+export function quayTopY(cell: MapCell, field: GroundField, worldSeed: number, point: { x: number; z: number }): number | undefined {
+  const quay = placeQuay(cell, field, worldSeed);
   return quay ? quayTopAt(quay, point) : undefined;
 }

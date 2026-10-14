@@ -10,7 +10,7 @@ import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset, type MapSizeId } from "../../game/mapConfig";
 import { createWrap, hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
-import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField } from "./terrainHeightField";
 import { landSurface } from "./landMesh";
 import { pierOrigin } from "./pierPlacement";
 import { portBuildings, planFootprint, type PlanFootprint } from "./portSettlement";
@@ -83,7 +83,7 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
   const wrap = createWrap(preset.columns);
   for (let seed = firstSeed; seed <= lastSeed; seed++) {
     const cells = generateMap(preset, seed, wrap);
-    const terrainSeed = terrainSeedFromCells(cells);
+    const terrainSeed = seed;
     const field = createTerrainHeightField(cells, terrainSeed, { wrap });
     const drawn = landSurface(field);
     const piers = piersOf(cells, drawn);
@@ -109,7 +109,7 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
         if (footprintOnStreet(port.plateau, corners, KERB_WIDTH * BUILDING_SCALE)) fail(seed, `kit ${b.kind} on a street or its kerbs`);
         tally.kit++;
       }
-      for (const stone of streetEdgeStones(port.plateau, drawn, BUILDING_SCALE, port.walls)) {
+      for (const stone of streetEdgeStones(port.plateau, drawn, BUILDING_SCALE, port.walls, { worldSeed: seed, portId: port.portId })) {
         tally.stones++;
         if (walls.some((w) => overlaps(w, stone, 0))) fail(seed, `a ${stone.kerb ? "kerb" : "edge stone"} inside a building's walls`);
       }

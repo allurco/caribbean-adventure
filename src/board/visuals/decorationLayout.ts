@@ -7,7 +7,6 @@ import type { Biome, MapCell, Decoration } from "../../game/types";
 import { hexToWorld, type MapWrap } from "../../game/hex";
 import { perMapCache } from "./perMapCache";
 import { sharedTerrainField } from "./sharedTerrainField";
-import { terrainSeedFromCells } from "./terrainHeightField";
 import { placeOnGround, type GroundPlacementOptions, type GroundSpot } from "./groundPlacement";
 import { ROCK_UNIT_RADIUS } from "./rockGeometry";
 import { placeRock } from "./rockPlacement";
@@ -18,7 +17,10 @@ import { portQuays, type QuayPlacement } from "./quayPlacement";
 import { landSurface } from "./landMesh";
 import { placeShrubs } from "./shrubPlacement";
 import { shoreBoulders, type ShoreBoulder } from "./shoreBoulders";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { mapCellId } from "./islands";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
+import { lerpRange } from "./variationStream";
 import { BUILDING_SCALE, PROP_DENSITY, PROP_SCALE } from "./worldScale";
 import { planPortTowns, type PortTownPlan, type VillageBuilding } from "./villageLayout";
 import { townClutter, townKeepOut, type PiecePlacement } from "./townDetailLayout";
@@ -34,13 +36,12 @@ const TREE_PLACEMENT: GroundPlacementOptions = { footprintRadius: 0.06, sink: 0.
  * The generator's trees and rocks are drawn at `PROP_SCALE`, so each on a
  * non-port cell gets `PROP_DENSITY - 1` companions spread over its cell (out
  * to this radius from the centre), and the land is as covered as it was with
- * props that much bigger. The companions are hashed from the cell, the
- * decoration's index and the terrain seed.
+ * props that much bigger. The companions draw from the sub-seed of the cell
+ * and the decoration's index (`SEED_FEATURES.companions`).
  */
 export const COMPANION_SPREAD = 0.75;
 /** A companion's scale, as a share of its decoration's. */
 export const COMPANION_SCALE_RANGE: readonly [number, number] = [0.8, 1.2];
-const COMPANION_SALT = 0x51c3a7e9;
 
 interface PropSpot {
   x: number;
@@ -50,11 +51,11 @@ interface PropSpot {
 }
 
 /** The decoration's own spot and scale, then its companions' (none on a port cell). */
-function withCompanions(cell: MapCell, index: number, seed: number, own: PropSpot): PropSpot[] {
+function withCompanions(cell: MapCell, index: number, worldSeed: number, own: PropSpot): PropSpot[] {
   const out = [own];
   if (PROP_DENSITY <= 1 || cell.hasPort) return out;
   const [hexX, , hexZ] = hexToWorld(cell.hex);
-  const next = stream(seedOf([cell.hex.q, cell.hex.r, index], COMPANION_SALT ^ seed));
+  const next = stream(subSeed(worldSeed, SEED_FEATURES.companions, mapCellId(cell), index));
   for (let j = 1; j < PROP_DENSITY; j++) {
     const angle = next() * Math.PI * 2;
     const distance = Math.sqrt(next()) * COMPANION_SPREAD;
@@ -77,6 +78,11 @@ export interface DecorationData {
   scale: number;
   /** Biome of the decoration's cell (rocks size themselves by it). */
   biome?: Biome;
+  /**
+   * The prop's own sub-seed of the world seed, its look's stream (`palmVariation`,
+   * `rockVariation`): keyed by its cell and indices (ADR 0007). 0 on a pier, whose look is fixed.
+   */
+  seed: number;
 }
 
 /** Where every decoration stands, worked out once per map and shared by every world copy. */
@@ -111,12 +117,12 @@ export interface VillageLayout {
 const TREE_TOWN_RADIUS = 0.15;
 const ROCK_TOWN_RADIUS = ROCK_UNIT_RADIUS * 1.5;
 
-/** Where each decoration stands on a map (and wrap). */
-export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): DecorationPlacements {
+/** Where each decoration stands on a map (and wrap), seeded from `worldSeed` (`G.mapSeed`, ADR 0007). */
+export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap, worldSeed: number): DecorationPlacements {
   const trees: DecorationData[] = [];
   const rocks: DecorationData[] = [];
   const piers: DecorationData[] = [];
-  const field = sharedTerrainField(cells, wrap);
+  const field = sharedTerrainField(cells, wrap, worldSeed);
   // The port kit stands on the ground as the land mesh draws it (the lattice
   // surface, up to a few hundredths off the smooth field between lattice
   // points), so a wall is never cut into by the drawn sand, and the pier, its
@@ -124,9 +130,9 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
   // on the same surface (#59).
   const drawn = landSurface(field);
 
-  const seed = terrainSeedFromCells(cells);
   for (const cell of cells) {
     if (!cell.decorations || cell.decorations.length === 0) continue;
+    const id = mapCellId(cell);
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     const anchor = { x: hexX, z: hexZ };
@@ -137,7 +143,7 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
 
       // Trees and rocks stand on the height field: nudged off water and
       // cliffs towards the cell centre, or dropped if nowhere fits.
-      const standing = (ground: GroundSpot | null, p: PropSpot): DecorationData | null =>
+      const standing = (ground: GroundSpot | null, p: PropSpot, seed: number): DecorationData | null =>
         ground && {
           type: deco.type,
           worldX: ground.x,
@@ -146,26 +152,29 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
           rotation: p.rotation,
           scale: p.scale,
           biome: cell.biome,
+          seed,
         };
 
       switch (deco.type) {
         case "tree": {
-          for (const p of withCompanions(cell, index, seed, own)) {
+          withCompanions(cell, index, worldSeed, own).forEach((p, j) => {
             // A trunk rests on the lowest ground under its base so it never floats.
             const tree = standing(
               placeOnGround(field, p, anchor, { ...TREE_PLACEMENT, footprintRadius: TREE_PLACEMENT.footprintRadius * p.scale }),
-              p
+              p,
+              subSeed(worldSeed, SEED_FEATURES.palmLook, id, index, j)
             );
             if (tree) trees.push(tree);
-          }
+          });
           break;
         }
         case "rock": {
-          for (const p of withCompanions(cell, index, seed, own)) {
+          withCompanions(cell, index, worldSeed, own).forEach((p, j) => {
             // Rocks stand on the centre height, probed out to their drawn radius (#53).
-            const rock = standing(placeRock(field, p, anchor, { scale: p.scale, rotation: p.rotation, biome: cell.biome }), p);
+            const seed = subSeed(worldSeed, SEED_FEATURES.rockLook, id, index, j);
+            const rock = standing(placeRock(field, p, anchor, { scale: p.scale, rotation: p.rotation, biome: cell.biome, seed }), p, seed);
             if (rock) rocks.push(rock);
-          }
+          });
           break;
         }
         // The fort becomes a watchtower among the port buildings (`portBuildings`, below).
@@ -179,6 +188,7 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
             worldZ: origin.z,
             rotation: deco.rotation,
             scale,
+            seed: 0,
           });
           break;
         }
@@ -187,11 +197,11 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
   }
 
   const plateaus = field.townPlateaus;
-  const buildings = portBuildings(cells, drawn, seed, plateaus);
-  const quays = portQuays(cells, drawn, seed);
+  const buildings = portBuildings(cells, drawn, worldSeed, plateaus);
+  const quays = portQuays(cells, drawn, worldSeed);
   // The village gathers round the port kit on its town plateau (#87), and its clutter round both.
-  const town = planPortTowns(cells, drawn, { buildings, quays, piers, plateaus }, seed);
-  const clutter = townClutter(town.ports, drawn, BUILDING_SCALE, seed);
+  const town = planPortTowns(cells, drawn, { buildings, quays, piers, plateaus }, worldSeed);
+  const clutter = townClutter(town.ports, drawn, BUILDING_SCALE, worldSeed);
   const village: VillageLayout = { buildings: town.buildings, clutter, ports: town.ports };
   // Trees, rocks, stones, shrubs and boulders stay out of the town's plan, its buildings and its clutter.
   const inTown = townKeepOut(town.ports, clutter, field.periodX);
@@ -199,15 +209,15 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap): Deco
     items.filter((d) => !inTown(d.worldX, d.worldZ, radius * d.scale));
   const keptTrees = outside(trees, TREE_TOWN_RADIUS);
   const keptRocks = outside(rocks, ROCK_TOWN_RADIUS);
-  const stones = outside(smallStones(cells, field, seed), ROCK_TOWN_RADIUS);
+  const stones = outside(smallStones(cells, field, worldSeed), ROCK_TOWN_RADIUS);
   // The port kit is placed first so the shrubs keep off it.
-  const shrubs = placeShrubs(cells, field, seed, { trees: keptTrees, rocks: keptRocks, stones, piers, quays, buildings }).filter(
+  const shrubs = placeShrubs(cells, field, worldSeed, { trees: keptTrees, rocks: keptRocks, stones, piers, quays, buildings }).filter(
     (s) => !inTown(s.worldX, s.worldZ, SHRUB_FOOTPRINT_RADIUS[s.kind] * s.scale)
   );
-  const boulders = shoreBoulders(cells, field, wrap, seed).filter((b) => !inTown(b.worldX, b.worldZ, b.reach));
+  const boulders = shoreBoulders(cells, field, wrap, worldSeed).filter((b) => !inTown(b.worldX, b.worldZ, b.reach));
 
   return { trees: keptTrees, rocks: keptRocks, stones, shoreBoulders: boulders, piers, shrubs, quays, buildings, village };
 }
 
-/** `decorationLayout`, once per map and wrap (`perMapCache`). */
+/** `decorationLayout`, once per map, wrap and world seed (`perMapCache`). */
 export const decorationLayoutOf = perMapCache(decorationLayout);

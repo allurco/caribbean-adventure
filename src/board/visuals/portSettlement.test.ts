@@ -3,7 +3,7 @@ import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createWrap, hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
-import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField, SEA_LEVEL } from "./terrainHeightField";
 import { groundTopY, MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { landSurface, landSurfaceHeight } from "./landMesh";
 import { PORT_GROUND_PROBE_RADIUS as PORT_MARKER_RADIUS } from "./portHover";
@@ -51,7 +51,7 @@ const HEX_INRADIUS = Math.sqrt(3) / 2;
 const maxReach = Math.max(...BUILDING_KINDS.map((kind) => AGED_BUILDING_HALF_DIAGONAL[kind] * scaleRangeOf(kind)[1]));
 
 const cells = generateMap(getMapPreset("small"), 11);
-const seed = terrainSeedFromCells(cells);
+const seed = 11;
 const field = createTerrainHeightField(cells, seed);
 /** The ground as it is drawn (the land mesh's lattice surface), which the layout hands the settlement. */
 const surface = landSurface(field);
@@ -371,7 +371,7 @@ describe("portBuildings", () => {
     for (const size of ["small", "medium", "large"] as const) {
       for (const mapSeed of [3, 11, 42]) {
         const someCells = generateMap(getMapPreset(size), mapSeed);
-        const someSeed = terrainSeedFromCells(someCells);
+        const someSeed = mapSeed;
         const someField = createTerrainHeightField(someCells, someSeed);
         const placed = portBuildings(someCells, someField, someSeed);
         const somePorts = someCells.filter((c) => c.hasPort);
@@ -564,7 +564,7 @@ describe("portBuildings", () => {
     const wrap = createWrap(preset.columns);
     for (let mapSeed = 1; mapSeed <= 30; mapSeed++) {
       const someCells = generateMap(preset, mapSeed, wrap);
-      const someSeed = terrainSeedFromCells(someCells);
+      const someSeed = mapSeed;
       const someField = createTerrainHeightField(someCells, someSeed, { wrap });
       const drawn = landSurface(someField);
       for (const b of portBuildings(someCells, drawn, someSeed, someField.townPlateaus)) withTown[b.kind] = (withTown[b.kind] ?? 0) + 1;
@@ -585,7 +585,7 @@ describe("portBuildings", () => {
     for (const size of ["small", "medium", "large"] as const) {
       for (const mapSeed of [3, 11]) {
         const someCells = generateMap(getMapPreset(size), mapSeed);
-        const someSeed = terrainSeedFromCells(someCells);
+        const someSeed = mapSeed;
         const someField = createTerrainHeightField(someCells, someSeed);
         const plateaus = someField.townPlateaus;
         const placed = portBuildings(someCells, landSurface(someField), someSeed, plateaus);

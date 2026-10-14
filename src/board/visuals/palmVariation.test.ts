@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { palmVariation, type PalmPlacement } from "./palmVariation";
+import { subSeed } from "./subSeed";
 
 function placement(i: number): PalmPlacement {
   return {
@@ -8,6 +9,7 @@ function placement(i: number): PalmPlacement {
     worldZ: Math.sin(i * 0.7) * 5 - i * 0.05,
     rotation: (i * 2.39996) % (Math.PI * 2),
     scale: 0.8 + (i % 7) * 0.08,
+    seed: subSeed(1, "palmLook", i),
   };
 }
 
@@ -36,9 +38,14 @@ describe("palmVariation", () => {
     variations.forEach((v, i) => expect(v.yaw).toBe(palms[i].rotation));
   });
 
-  it("varies between neighbouring palms", () => {
+  it("draws its look from its own seed, not from where it stands", () => {
+    const moved = { ...palms[10], worldX: palms[10].worldX + 0.05, worldZ: palms[10].worldZ - 0.3 };
+    expect(palmVariation(moved)).toEqual(palmVariation(palms[10]));
+  });
+
+  it("varies between neighbouring palms (their own seeds)", () => {
     const a = palmVariation(palms[10]);
-    const b = palmVariation({ ...palms[10], worldX: palms[10].worldX + 0.05 });
+    const b = palmVariation({ ...palms[10], seed: palms[11].seed });
     expect(a.phase).not.toBeCloseTo(b.phase, 2);
     expect(a.heightScale).not.toBeCloseTo(b.heightScale, 3);
     expect(a.crownTwist).not.toBeCloseTo(b.crownTwist, 2);

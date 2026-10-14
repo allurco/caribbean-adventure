@@ -1,11 +1,11 @@
 /**
  * Per-palm variation (issue #14). Pure, no Three.js.
  *
- * Each palm's look is derived deterministically from its decoration data, so a
- * grove looks the same on every render and every client, but no two palms in
- * it are copies.
+ * Each palm's look is derived deterministically from its own sub-seed of the
+ * world seed (ADR 0007), so a grove looks the same on every render and every
+ * client, but no two palms in it are copies.
  */
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { lerpRange, stream } from "./variationStream";
 
 /** Where a palm stands, after ground placement. */
 export interface PalmPlacement {
@@ -15,6 +15,11 @@ export interface PalmPlacement {
   /** Decoration rotation (radians). */
   rotation: number;
   scale: number;
+  /**
+   * The prop's own sub-seed of the world seed (`subSeed(G.mapSeed, feature, cellId, index…)`,
+   * ADR 0007), set where it was placed: its look draws from it alone.
+   */
+  seed: number;
 }
 
 export interface PalmVariation {
@@ -36,7 +41,7 @@ export const PALM_LEAN_RANGE: readonly [number, number] = [-0.05, 0.3];
 const TAU = Math.PI * 2;
 
 export function palmVariation(p: PalmPlacement): PalmVariation {
-  const next = stream(seedOf([p.worldX, p.worldZ, p.rotation, p.scale]));
+  const next = stream(p.seed);
   return {
     heightScale: lerpRange(PALM_HEIGHT_RANGE, next()),
     lean: lerpRange(PALM_LEAN_RANGE, next()),

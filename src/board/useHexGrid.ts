@@ -30,10 +30,10 @@ export interface PortSite {
   ownBuildings: readonly PortBuilding[];
 }
 
-const portSitesOf = perMapCache((cells, wrap): PortSite[] => {
-  const field = sharedTerrainField(cells, wrap);
+const portSitesOf = perMapCache((cells, wrap, worldSeed): PortSite[] => {
+  const field = sharedTerrainField(cells, wrap, worldSeed);
   // The buildings as placed (the same layout the board draws), so the hover volume follows them.
-  const { buildings } = decorationLayoutOf(cells, wrap);
+  const { buildings } = decorationLayoutOf(cells, wrap, worldSeed);
   return cells
     .filter((c) => c.hasPort)
     .map((cell) => {
@@ -52,6 +52,8 @@ const portSitesOf = perMapCache((cells, wrap): PortSite[] => {
 export interface HexGridProps {
   cells: MapCell[];
   wrap: MapWrap;
+  /** The world seed (`G.mapSeed`) the terrain and decorations are seeded from. */
+  worldSeed: number;
   validTargets: Hex[];
   attackTargets?: Hex[];
   onHexClick: (hex: Hex) => void;
@@ -86,6 +88,7 @@ export interface HexGridState {
 export function useHexGrid({
   cells,
   wrap,
+  worldSeed,
   validTargets,
   attackTargets = [],
   onHexClick,
@@ -107,7 +110,7 @@ export function useHexGrid({
   );
 
   // Water cells, the only hexes this grid hit-tests, and their grid lines (built once per map)
-  const lineData = gridLineData(cells, wrap);
+  const lineData = gridLineData(cells, wrap, worldSeed);
   const { waterCells } = lineData;
   const waterIndexMap = useMemo(() => {
     const waterMap = new Map<number, number>(); // original index -> water index
@@ -119,7 +122,7 @@ export function useHexGrid({
   }, [cells]);
 
   // Port cells with the ground Y of the terrain height field under each marker
-  const portSites = portSitesOf(cells, wrap);
+  const portSites = portSitesOf(cells, wrap, worldSeed);
 
   // Build target indices for the water mesh
   const { targetWaterIndices, attackWaterIndices } = useMemo(() => {

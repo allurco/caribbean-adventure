@@ -11,9 +11,9 @@ describe("the village as one mesh (#87)", () => {
   const preset = getMapPreset("small");
   const wrap = createWrap(preset.columns);
   const cells = generateMap(preset, 1, wrap);
-  const layout = decorationLayoutOf(cells, wrap);
-  const ground = landSurface(sharedTerrainField(cells, wrap));
-  const mesh = villageGeometry(layout, ground);
+  const layout = decorationLayoutOf(cells, wrap, 1);
+  const ground = landSurface(sharedTerrainField(cells, wrap, 1));
+  const mesh = villageGeometry(layout, ground, 1);
 
   it("bakes every house, piece of clutter, wall and kerb into one triangle soup with a normal and colour per vertex", () => {
     expect(mesh.vertexCount % 3).toBe(0);
@@ -43,6 +43,6 @@ describe("the village as one mesh (#87)", () => {
   });
 
   it("is built once per map", () => {
-    expect(villageGeometryOf(cells, wrap)).toBe(villageGeometryOf(cells, wrap));
+    expect(villageGeometryOf(cells, wrap, 1)).toBe(villageGeometryOf(cells, wrap, 1));
   });
 });

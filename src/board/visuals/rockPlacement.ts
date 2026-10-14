@@ -10,9 +10,9 @@
  *   ring (`ROCK_UNDERSIDE_SQUASH`) plus a bury depth, which covers the
  *   downhill side instead.
  * - The probed footprint is what is actually drawn. A rock's variation
- *   (variant, stretch, extent cap) is a hash of its X, Z, rotation and scale
- *   and never of its Y, so it can be derived for each nudge candidate here,
- *   and `Rocks.tsx` derives the same one again from the placed rock. The
+ *   (variant, stretch, extent cap) draws from its own seed and never from
+ *   its position, so it is derived once here, the same for every nudge
+ *   candidate, and `Rocks.tsx` derives the same one again from the placed rock. The
  *   ground is then checked out to the rock's own drawn radius, so a rim can
  *   neither hang over the water nor over a lower neighbour the probe missed.
  */
@@ -39,6 +39,8 @@ export interface RockRequest {
    * footprint is the drawn one and not the biome's medium class on grass.
    */
   sizeClass?: RockSizeClass;
+  /** The rock's own sub-seed, its look's stream (`RockPlacement.seed`). */
+  seed: number;
 }
 
 /**
@@ -53,11 +55,11 @@ export function placeRock(
   rock: RockRequest
 ): GroundSpot | null {
   const sizeClass = rock.sizeClass ?? rockSizeClass(rock.biome);
+  const variation = rockVariation(
+    { worldX: spot.x, worldY: 0, worldZ: spot.z, rotation: rock.rotation, scale: rock.scale, biome: rock.biome, seed: rock.seed },
+    sizeClass
+  );
   for (const candidate of nudgedTowards(spot, anchor)) {
-    const variation = rockVariation(
-      { worldX: candidate.x, worldY: 0, worldZ: candidate.z, rotation: rock.rotation, scale: rock.scale, biome: rock.biome },
-      sizeClass
-    );
     const stood = standOnGround(field, candidate.x, candidate.z, {
       footprintRadius: rockDrawnRadius(variation),
       sink: rock.sink ?? ROCK_SINK,

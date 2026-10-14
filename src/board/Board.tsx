@@ -67,6 +67,7 @@ import {
 } from "./cameraBounds";
 import { focusHeight } from "./groundFollow";
 import { sharedTerrainField } from "./visuals/sharedTerrainField";
+import { worldSeedOf } from "./visuals/subSeed";
 import {
   clampFocusToBand,
   groundFootprint,
@@ -199,7 +200,9 @@ function Scene({
   const waveSlopes = waves.slopes;
   // The baked terrain field, read by the water (depth, coast, reefs) and by
   // the land's shoreline foam (#38 step 7).
-  const terrainField = useTerrainFieldTexture(G.cells, G.wrap);
+  // The world seed every seeded visual draws from (ADR 0007).
+  const worldSeed = worldSeedOf(G);
+  const terrainField = useTerrainFieldTexture(G.cells, G.wrap, worldSeed);
 
   const cameraBounds = useMemo(
     () => cameraBoundsFromHexes(G.cells.map((c) => c.hex), CAMERA_BOUNDS_PADDING),
@@ -235,13 +238,13 @@ function Scene({
   );
 
   // The ground the focus follows at town zoom (#90): the one terrain field.
-  const ground = useMemo(() => sharedTerrainField(G.cells, G.wrap).sampleHeight, [G.cells, G.wrap]);
+  const ground = useMemo(() => sharedTerrainField(G.cells, G.wrap, worldSeed).sampleHeight, [G.cells, G.wrap, worldSeed]);
 
   // The one CPU sea surface (#141), read at the wave clock by everything that
   // rides the swell: the ships (#142) and the dev buoys.
   const seaSurface = useMemo(
-    () => createSeaSurface({ seabedHeightAt: fieldSeabed(sharedTerrainField(G.cells, G.wrap)), enabled: waves.enabled }),
-    [G.cells, G.wrap, waves.enabled]
+    () => createSeaSurface({ seabedHeightAt: fieldSeabed(sharedTerrainField(G.cells, G.wrap, worldSeed)), enabled: waves.enabled }),
+    [G.cells, G.wrap, worldSeed, waves.enabled]
   );
   const sea = useMemo(() => ({ clock: waveClock, surface: seaSurface }), [waveClock, seaSurface]);
 
@@ -352,8 +355,8 @@ function Scene({
 
   // Built once per map (and turn) and drawn by every copy of the world: the
   // copies share these geometries, materials and hover state.
-  const landTerrain = useLandTerrain(G.cells, G.wrap, { sun: SUN_DIRECTION, waveSlopes, terrainField });
-  const decorations = useDecorationLayout(G.cells, G.wrap);
+  const landTerrain = useLandTerrain(G.cells, G.wrap, worldSeed, { sun: SUN_DIRECTION, waveSlopes, terrainField });
+  const decorations = useDecorationLayout(G.cells, G.wrap, worldSeed);
   // The displaced sea the grid lines float on (#38 step 8).
   const waveSurface = useMemo(
     () => ({ displacements: waves.displacements, terrainField }),
@@ -363,6 +366,7 @@ function Scene({
     surface: waveSurface,
     cells: G.cells,
     wrap: G.wrap,
+    worldSeed,
     validTargets: attackMode || spyglassMode ? [] : movesRemaining > 0 ? targets : [],
     attackTargets: attackMode ? attackTargetHexes : spyglassMode ? spyglassTargetHexes : [],
     onHexClick: (h) => {

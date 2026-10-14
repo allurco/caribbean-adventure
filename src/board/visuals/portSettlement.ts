@@ -43,8 +43,8 @@
  * step a wall down the quay's side), and the reserve round the pier's land
  * end shrinks on the quay from the deck's width to the pier's mouth, so the
  * deck is buildable but the pier's land end stays walkable.
- * Kind order, scale, tint and yaw jitter come from a hash of the
- * cell and the whole terrain seed, so every client draws the same port.
+ * Kind order, scale, tint and yaw jitter are drawn from the
+ * port's own sub-seed of the world seed, so every client draws the same port.
  * Each port is placed once from its canonical cell; the world copies redraw
  * the same instances.
  *
@@ -63,7 +63,10 @@ import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN }
 import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
 import { SEA_LEVEL } from "./terrainHeightField";
 import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { mapCellId } from "./islands";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
+import { lerpRange } from "./variationStream";
 import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
 import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH, type TownPlateau } from "./townPlateau";
 
@@ -140,7 +143,6 @@ const CANDIDATE_STEP = Math.PI / 24;
 const CANDIDATE_HALF_COUNT = 11;
 /** Probes round a footprint's rim; half as many at half reach and a quarter at a quarter, plus the centre. */
 const FOOTPRINT_PROBES = 24;
-const PORT_BUILDING_SALT = 0x3b9d2c57;
 
 const angleDiff = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
@@ -313,7 +315,7 @@ export interface SettlementGround extends GroundField {
  * deck. Where the sand drifts over the quay's back (the quay is lowered
  * onto low ground, never raised over high) the sand is the visible
  * surface and wins. The quay is placed once here, however many points a
- * port's buildings then probe. Same `field` and `seed` as `portQuays`.
+ * port's buildings then probe. Same `field` and `worldSeed` as `portQuays`.
  * With the port's town `plateau` (#87), footprints across its terrace
  * risers or on its streets and their kerbs are refused (`standBuilding`),
  * as the village's are; the plateau keeps its square one level out past the
@@ -321,8 +323,8 @@ export interface SettlementGround extends GroundField {
  * the main street runs out of the square's paving, so the kit stands round
  * its mouth rather than across it (#91).
  */
-export function settlementGround(cell: MapCell, field: GroundField, seed: number, plateau?: TownPlateau): SettlementGround {
-  const quay = placeQuay(cell, field, seed);
+export function settlementGround(cell: MapCell, field: GroundField, worldSeed: number, plateau?: TownPlateau): SettlementGround {
+  const quay = placeQuay(cell, field, worldSeed);
   // The ground's creases are the terrain's: the deck is flat, and where the sand drifts over the quay they are the sand's.
   const creasesWithin = field.creasesWithin?.bind(field);
   const crossesRiserHere = plateau && ((corners: readonly (readonly [number, number])[]) => crossesRiser(plateau, corners, RETAINING_WALL_DEPTH * BUILDING_SCALE));
@@ -443,8 +445,8 @@ export function plateauOfPort(cell: MapCell, plateaus: readonly TownPlateau[]): 
 /** How far a plateau's square may stand from its port's hex centre (it sits by the pier root, under a hex inradius away). */
 const PLATEAU_PORT_REACH = 1;
 
-/** The buildings for every port, on the ground; `seed` is the map's terrain seed; `plateaus` the field's towns (#87), whose risers they keep off. */
-export function portBuildings(cells: readonly MapCell[], field: GroundField, seed: number, plateaus: readonly TownPlateau[] = []): PortBuilding[] {
+/** The buildings for every port, on the ground; `worldSeed` is `G.mapSeed`; `plateaus` the field's towns (#87), whose risers they keep off. */
+export function portBuildings(cells: readonly MapCell[], field: GroundField, worldSeed: number, plateaus: readonly TownPlateau[] = []): PortBuilding[] {
   const buildings: PortBuilding[] = [];
   for (const cell of cells) {
     if (!cell.hasPort) continue;
@@ -456,12 +458,10 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, see
 
     const [hexX, , hexZ] = hexToWorld(cell.hex);
     const hexCentre = { x: hexX, z: hexZ };
-    const ground = settlementGround(cell, field, seed, plateauOfPort(cell, plateaus));
+    const ground = settlementGround(cell, field, worldSeed, plateauOfPort(cell, plateaus));
     const pierRoot = pierOrigin(field, hexCentre, toWater);
     const centre = settlementCentre(hexCentre, pierRoot);
-    // The seed goes in through the salt: seedOf quantises its values by 4096 (a
-    // 12-bit shift into int32), which would drop a 32-bit seed's top 12 bits.
-    const next = stream(seedOf([cell.hex.q, cell.hex.r], PORT_BUILDING_SALT ^ seed));
+    const next = stream(subSeed(worldSeed, SEED_FEATURES.portBuildings, mapCellId(cell)));
 
     // The watchtower takes the end of the crescent on the fort decoration's
     // side (either end if there is no fort) and is placed first, so it gets

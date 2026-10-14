@@ -5,7 +5,6 @@ import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import {
   createTerrainHeightField,
-  terrainSeedFromCells,
   ELEVATION_HEIGHTS,
   COAST_NOISE_AMPLITUDE,
 } from "./terrainHeightField";
@@ -74,10 +73,19 @@ describe("terrainHeightField", () => {
       expect(differs).toBe(true);
     });
 
-    it("derives a stable seed from the cells", () => {
-      const cells = generateMap(getMapPreset("small"),99);
-      expect(terrainSeedFromCells(cells)).toBe(terrainSeedFromCells(generateMap(getMapPreset("small"),99)));
-      expect(terrainSeedFromCells(cells)).not.toBe(terrainSeedFromCells(generateMap(getMapPreset("small"),100)));
+    it("is seeded by the world seed it is given (G.mapSeed), not by the cells, and keeps it", () => {
+      const cells = generateMap(getMapPreset("small"), 99);
+      const field = createTerrainHeightField(cells, 99);
+      expect(field.worldSeed).toBe(99);
+      // The same cells on another world seed get another coastline.
+      const other = createTerrainHeightField(cells, 100);
+      let differs = false;
+      for (const cell of cells) {
+        if (cell.terrain !== "island") continue;
+        const [x, , z] = hexToWorld(cell.hex);
+        if (field.sampleCoastDistance(x + 0.45, z) !== other.sampleCoastDistance(x + 0.45, z)) differs = true;
+      }
+      expect(differs).toBe(true);
     });
   });
 
@@ -125,7 +133,7 @@ describe("terrainHeightField", () => {
 
     it("is continuous across every land-land edge of a generated map", () => {
       const cells = generateMap(getMapPreset("small"),7);
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      const field = createTerrainHeightField(cells, 7);
       const byKey = new Map(cells.map((c) => [key(c.hex.q, c.hex.r), c]));
       let pairs = 0;
       for (const cell of cells) {
@@ -167,7 +175,7 @@ describe("terrainHeightField", () => {
     it("orders every cell centre by elevation on generated maps", () => {
       for (const seed of [1, 42, 2024]) {
         const cells = generateMap(getMapPreset("medium"), seed);
-        const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+        const field = createTerrainHeightField(cells, seed);
         const heights: Record<number, number[]> = { 1: [], 2: [], 3: [] };
         for (const cell of cells) {
           if (!isLand(cell)) continue;
@@ -234,7 +242,7 @@ describe("terrainHeightField", () => {
 
     it("is negative at every water cell centre and in open ocean", () => {
       const cells = generateMap(getMapPreset("small"),3);
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      const field = createTerrainHeightField(cells, 3);
       for (const cell of cells) {
         if (isLand(cell)) continue;
         expect(field.sampleHeight(...centre(cell.hex.q, cell.hex.r))).toBeLessThan(0);
@@ -254,7 +262,7 @@ describe("terrainHeightField", () => {
 
     it("flags open water away from land as not near land", () => {
       const cells = generateMap(getMapPreset("small"),3);
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      const field = createTerrainHeightField(cells, 3);
       let far = 0;
       for (let x = -20; x <= 20; x += 0.13) {
         for (let z = -20; z <= 20; z += 0.13) {
@@ -367,7 +375,7 @@ describe("terrainHeightField", () => {
 
     it("flags every point shallower than 100 m as near the seabed", () => {
       const cells = generateMap(getMapPreset("small"),3);
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      const field = createTerrainHeightField(cells, 3);
       let far = 0;
       for (let x = -25; x <= 25; x += 0.11) {
         for (let z = -25; z <= 25; z += 0.11) {
@@ -432,7 +440,7 @@ describe("terrainHeightField", () => {
 
     it("vanishes at the coast, with zero slope", () => {
       const cells = generateMap(getMapPreset("small"),5);
-      const seed = terrainSeedFromCells(cells);
+      const seed = 5;
       const field = createTerrainHeightField(cells, seed);
       const smooth = createTerrainHeightField(cells, seed, { reliefScale: 0 });
       let nearShore = 0;
@@ -495,7 +503,7 @@ describe("terrainHeightField", () => {
 
     it("reaches past the visible seabed all round the large map", () => {
       const cells = generateMap(getMapPreset("large"), 31337);
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      const field = createTerrainHeightField(cells, 31337);
       for (const h of edgeHeights(field, 0.2)) expect(h).toBeLessThan(-VISIBLE_SEABED_DEPTH);
     });
   });
@@ -521,7 +529,11 @@ describe("terrainHeightField", () => {
       const tiny = 1e-6;
       for (let z = 0; z < 30; z += 1.3) {
         const step = Math.abs(field.sampleCoastDistance(0, z) - field.sampleCoastDistance(width - tiny, z));
-        expect(step).toBeLessThan(1e-4);
+        // A seam would step by about the noise's amplitude (COAST_NOISE_AMPLITUDE). The bound
+        // leaves room for simplex-noise's own sub-millimetre steps where its kernels are cut
+        // off: at z = 0 the seam line lies on a lattice plane, and over 300 seeds they stay
+        // under 1e-3 world units (6 cm).
+        expect(step).toBeLessThan(COAST_NOISE_AMPLITUDE / 100);
       }
     });
 
@@ -576,7 +588,7 @@ describe("terrainHeightField", () => {
       const cells = generateMap({ columns, rows }, 31337);
 
       const start = performance.now();
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      const field = createTerrainHeightField(cells, 31337);
       const built = performance.now();
       // Sample at the land mesh's resolution.
       const { minX, maxX, minZ, maxZ } = field.bounds;

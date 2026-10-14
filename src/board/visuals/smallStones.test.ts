@@ -3,7 +3,7 @@ import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
-import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField } from "./terrainHeightField";
 import { MIN_GROUND_HEIGHT, type GroundField } from "./groundPlacement";
 import { rockDrawnRadius, rockVariation } from "./rockVariation";
 import {
@@ -16,8 +16,8 @@ import {
 import { PROP_DENSITY, PROP_SCALE } from "./worldScale";
 
 const cells = generateMap(getMapPreset("small"), 11);
-const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
-const seed = terrainSeedFromCells(cells);
+const field = createTerrainHeightField(cells, 11);
+const seed = 11;
 const stones = smallStones(cells, field, seed);
 
 const flat = (height: number): GroundField => ({ sampleHeight: () => height });
@@ -43,8 +43,8 @@ describe("smallStones", () => {
   });
 
   it("hashes the whole 32-bit seed: a seed differing only in a high bit gives a different layout", () => {
-    // seedOf quantises its values by 4096 (a 12-bit shift into int32), which would
-    // drop the seed's top 12 bits if the seed were passed as a value.
+    // subSeed hashes the world seed whole; the old seedOf quantised its values by 4096,
+    // which dropped a seed's top 12 bits.
     for (const bit of [20, 25, 30, 31]) {
       const other = smallStones(cells, field, seed ^ (1 << bit));
       expect(other.length).toBeGreaterThan(0);

@@ -5,19 +5,19 @@ import type { MapCell } from "../../game/types";
 import { villageGeometryOf } from "./villageGeometry";
 
 /**
- * The port villages' one geometry (#87), built once per map (and wrap) and
+ * The port villages' one geometry (#87), built once per map (and wrap and world seed) and
  * shared by every world copy; disposed when the map changes.
  */
-export function usePortVillage(cells: readonly MapCell[], wrap: MapWrap): BufferGeometry {
+export function usePortVillage(cells: readonly MapCell[], wrap: MapWrap, worldSeed: number): BufferGeometry {
   const geometry = useMemo(() => {
-    const data = villageGeometryOf(cells, wrap);
+    const data = villageGeometryOf(cells, wrap, worldSeed);
     const g = new BufferGeometry();
     g.setAttribute("position", new BufferAttribute(data.positions, 3));
     g.setAttribute("normal", new BufferAttribute(data.normals, 3));
     g.setAttribute("color", new BufferAttribute(data.colors, 3));
     g.computeBoundingSphere();
     return g;
-  }, [cells, wrap]);
+  }, [cells, wrap, worldSeed]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   return geometry;
 }

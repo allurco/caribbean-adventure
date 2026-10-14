@@ -3,7 +3,7 @@ import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { hexToWorld } from "../../game/hex";
 import type { GroundField } from "./groundPlacement";
-import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField, SEA_LEVEL } from "./terrainHeightField";
 import { PIER_DECK_TOP, PIER_LENGTH } from "./pierGeometry";
 import {
   pierOrigin,
@@ -57,7 +57,7 @@ describe("pierOrigin", () => {
   it("on a generated map, every pier starts on the beach and ends over the water", () => {
     for (const seed of [11, 23, 47]) {
       const cells = generateMap(getMapPreset("small"), seed);
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+      const field = createTerrainHeightField(cells, seed);
       const piers = cells.flatMap((c) =>
         (c.decorations ?? []).filter((d) => d.type === "pier").map((d) => ({ cell: c, rotation: d.rotation }))
       );

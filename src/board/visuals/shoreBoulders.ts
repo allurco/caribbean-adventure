@@ -4,7 +4,7 @@
  * Rocks along the waterline and just below it, so the surf (#38 step 7) and
  * the shallows have something to break against. Nothing is stored in G: the
  * boulders are derived from the map's coastal cell edges, the shared terrain
- * field's coast-distance channel and a hash of the terrain seed, so every
+ * field's coast-distance channel and each edge's sub-seed of the world seed, so every
  * client draws the same ones. Each boulder is placed once from its canonical
  * cell; the world copies redraw the same instances (#36).
  *
@@ -15,7 +15,7 @@
  * follow the noisy coastline rather than the hex edge. The edge a pier faces
  * is left clear. Only the coasts of `SHORE_BOULDER_BIOMES` land cells (rock
  * and grass) get boulders: a sandy beach meets the sea clean, emergent and
- * submerged alike. Each edge hashes on its own, so skipping the sand coasts
+ * submerged alike. Each edge draws from its own sub-seed, so skipping the sand coasts
  * leaves the boulders on the others exactly where they were.
  *
  * Two placement rules keep the sea lanes open. A ship sits at a water hex's
@@ -39,7 +39,10 @@ import type { Biome, MapCell } from "../../game/types";
 import { ROCK_VARIANT_REACH } from "./rockGeometry";
 import { rockVariation, type RockSizeClass, type RockVariation } from "./rockVariation";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
-import { lerpRange, seedOf, stream } from "./variationStream";
+import { cellId } from "./islands";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
+import { lerpRange } from "./variationStream";
 import { metresToUnits, PROP_DENSITY, PROP_SCALE } from "./worldScale";
 
 /** What the boulders need of the terrain field. */
@@ -96,7 +99,6 @@ export const WET_BAND = 0.2;
 /** How much darker a wet boulder is at the waterline (fraction of its tint). */
 export const WET_DARKENING = 0.35;
 
-const SALT = 0x3b9d2e47;
 const TAU = Math.PI * 2;
 const SQRT3 = Math.sqrt(3);
 /** An edge faces the pier when its outward normal is within 30° of the pier's direction. */
@@ -121,8 +123,8 @@ function dockingDirection(cell: MapCell, wrap: MapWrap): [number, number] | null
   return len > 0 ? [(dx - cx) / len, (dz - cz) / len] : null;
 }
 
-/** The boulders for every coastal edge, on the ground or the seabed; `seed` is the map's terrain seed. */
-export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap: MapWrap, seed: number): ShoreBoulder[] {
+/** The boulders for every coastal edge, on the ground or the seabed; `worldSeed` is `G.mapSeed`. */
+export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap: MapWrap, worldSeed: number): ShoreBoulder[] {
   const land = new Set<number>();
   for (const cell of cells) if (cell.terrain === "island") land.add(key(cell.hex));
   const isLand = (h: Hex): boolean => land.has(key(canonicalHex(h, wrap)));
@@ -140,6 +142,7 @@ export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap
 
     const [cx, , cz] = hexToWorld(cell.hex);
     const docking = dockingDirection(cell, wrap);
+    const id = cellId(cell.hex, wrap);
 
     // Each water edge's outward unit normal and midpoint, for the offshore cap.
     const edges = ring.map((n, i) => {
@@ -175,9 +178,7 @@ export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap
     edges.forEach((edge, edgeIndex) => {
       if (!edge.water) return;
       if (docking && edge.ux * docking[0] + edge.uz * docking[1] > COS_DOCKING_EDGE) return;
-      // The seed goes in through the salt: seedOf quantises its values by 4096,
-      // which would drop a 32-bit seed's top bits (see smallStones.ts).
-      const next = stream(seedOf([cell.hex.q, cell.hex.r, edgeIndex], SALT ^ seed));
+      const next = stream(subSeed(worldSeed, SEED_FEATURES.shoreBoulders, id, edgeIndex));
 
       for (let i = 0; i < BOULDER_SAMPLES_PER_EDGE; i++) {
         // Every candidate draws the same numbers, kept or not, so the stream stays aligned.
@@ -200,7 +201,10 @@ export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap
         // dropped (the sinking below is explicit) and it darkens where wet.
         const wet = Math.max(0, Math.min(1, 1 - coastDistance / WET_BAND));
         let variation: RockVariation = {
-          ...rockVariation({ worldX: x, worldY: 0, worldZ: z, rotation, scale, biome: cell.biome }, BOULDER_SIZE_CLASS),
+          ...rockVariation(
+            { worldX: x, worldY: 0, worldZ: z, rotation, scale, biome: cell.biome, seed: subSeed(worldSeed, SEED_FEATURES.boulderLook, id, edgeIndex, i) },
+            BOULDER_SIZE_CLASS
+          ),
           bury: 0,
         };
         variation = { ...variation, tint: variation.tint * (1 - wet * WET_DARKENING) };

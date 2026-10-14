@@ -27,7 +27,9 @@ import { createFacetBuilder, shadeRgb, type FacetBuilder, type FacetGeometryData
 import type { GroundField } from "./groundPlacement";
 import type { Rgb } from "./palmGeometry";
 import { SEA_LEVEL } from "./terrainHeightField";
-import { seedOf, stream } from "./variationStream";
+import type { PortId } from "./islands";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
 import {
   climbWeight,
   crossesRiser,
@@ -111,8 +113,14 @@ function orientedBox(b: FacetBuilder, x: number, z: number, ax: number, az: numb
   b.outwardQuad(at(-halfL, -halfW, y1), at(halfL, -halfW, y1), at(halfL, halfW, y1), at(-halfL, halfW, y1), centre, topColor);
 }
 
+/** Whose town a seeded detail belongs to: the world seed (`G.mapSeed`) and the port's stable id (ADR 0007). */
+export interface TownSeed {
+  worldSeed: number;
+  portId: PortId;
+}
+
 /** The retaining walls of one plateau's risers, at building scale `k`. */
-function retainingWalls(b: FacetBuilder, p: TownPlateau, ground: GroundField, k: number, colors: TownWorksColors) {
+function retainingWalls(b: FacetBuilder, p: TownPlateau, ground: GroundField, k: number, colors: TownWorksColors, town: TownSeed) {
   const depth = RETAINING_WALL_DEPTH * k;
   const segment = WALL_SEGMENT * k;
   const reach = p.halfWidth + p.blend * WALL_REACH;
@@ -124,7 +132,9 @@ function retainingWalls(b: FacetBuilder, p: TownPlateau, ground: GroundField, k:
     const c = riserCentre(p, r);
     const sFoot = c - p.riserFace / 2 - depth;
     const sBack = c + p.riserFace / 2 + 0.0005;
+    let segmentIndex = -1;
     for (let a0 = -reach; a0 < reach - 1e-9; a0 += segment) {
+      segmentIndex++;
       const a1 = Math.min(reach, a0 + segment);
       const am = (a0 + a1) / 2;
       // Broken where a street climbs the riser (the ramp).
@@ -149,7 +159,7 @@ function retainingWalls(b: FacetBuilder, p: TownPlateau, ground: GroundField, k:
       b.outwardQuad(at(sBack, a0, bottom), at(sBack, a1, bottom), at(sBack, a1, top), at(sBack, a0, top), centre, colors.wallStone);
       b.outwardQuad(at(faceS(top), a0, top), at(faceS(top), a1, top), at(sBack, a1, top), at(sBack, a0, top), centre, colors.coping);
       // The facing: irregular stones in courses, a hair proud of the face, from the ground up.
-      const next = stream(seedOf([Math.round(a0 * 1e4), r], 0x5703));
+      const next = stream(subSeed(town.worldSeed, SEED_FEATURES.retainingWalls, town.portId, r, segmentIndex));
       let y = Math.max(bottom, lower - WALL_STONE * k * 0.5);
       let course = 0;
       while (y < top - WALL_JOINT * k) {
@@ -195,11 +205,11 @@ export interface EdgeStone extends PlanRect {
  * and left out wherever one would stand in a building's `walls` (the kit's
  * or the village's), so no kerb runs through a wall.
  */
-export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number, walls: readonly PlanRect[]): EdgeStone[] {
+export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number, walls: readonly PlanRect[], town: TownSeed): EdgeStone[] {
   const stones: EdgeStone[] = [];
   const inWalls = (stone: PlanRect) => walls.some((w) => overlaps(w, stone, 0));
   const kerbW = KERB_WIDTH * k;
-  for (const street of p.streets) {
+  p.streets.forEach((street, streetIndex) => {
     const [x0, z0] = street.from;
     const [x1, z1] = street.to;
     const len = Math.hypot(x1 - x0, z1 - z0) || 1;
@@ -209,7 +219,7 @@ export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number,
     const nz = tx;
     const main = street.kind === "main";
     const others = p.streets.filter((s) => s !== street);
-    const next = stream(seedOf([Math.round(x0 * 1e3), Math.round(z0 * 1e3)], 0x4e2b));
+    const next = stream(subSeed(town.worldSeed, SEED_FEATURES.kerbs, town.portId, streetIndex));
     for (const side of [-1, 1]) {
       // The main street's kerb starts where the square's paving ends.
       const start = main ? Math.max(0, p.squareRadius * SQUARE_PAVED - Math.hypot(x0 - p.x, z0 - p.z)) : 0;
@@ -233,24 +243,25 @@ export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number,
         if (!inWalls(kerb)) stones.push(kerb);
       }
     }
-  }
+  });
   return stones;
 }
 
 /** The kerbs and edge stones, drawn. */
-function streetEdges(b: FacetBuilder, p: TownPlateau, ground: GroundField, k: number, walls: readonly PlanRect[], colors: TownWorksColors) {
-  for (const s of streetEdgeStones(p, ground, k, walls)) {
+function streetEdges(b: FacetBuilder, p: TownPlateau, ground: GroundField, k: number, walls: readonly PlanRect[], colors: TownWorksColors, town: TownSeed) {
+  for (const s of streetEdgeStones(p, ground, k, walls, town)) {
     const tone = shadeRgb(colors.kerb, s.shade);
     orientedBox(b, s.x, s.z, s.fx, s.fz, s.halfD, s.halfW, s.y0, s.y1, tone, s.kerb ? shadeRgb(tone, 1.12) : tone);
   }
 }
 
-/** The retaining walls, kerbs and edge stones of every port's plateau, in world space, at building scale `k`. */
-export function townWorks(plans: readonly PortTownPlan[], ground: GroundField, k: number, colors: TownWorksColors): FacetGeometryData {
+/** The retaining walls, kerbs and edge stones of every port's plateau, in world space, at building scale `k`; `worldSeed` is `G.mapSeed`. */
+export function townWorks(plans: readonly PortTownPlan[], ground: GroundField, k: number, colors: TownWorksColors, worldSeed: number): FacetGeometryData {
   const b = createFacetBuilder();
   for (const plan of plans) {
-    retainingWalls(b, plan.plateau, ground, k, colors);
-    streetEdges(b, plan.plateau, ground, k, plan.walls, colors);
+    const town: TownSeed = { worldSeed, portId: plan.portId };
+    retainingWalls(b, plan.plateau, ground, k, colors, town);
+    streetEdges(b, plan.plateau, ground, k, plan.walls, colors, town);
   }
   return b.build();
 }
@@ -287,18 +298,18 @@ const QUAY_CLEARANCE = 0.02;
 const PIECE_MAX_SPREAD = 0.01;
 const PIECE_MAX_SLOPE = 0.8;
 
-/** Clutter for every port's village, at building scale `k`; `seed` varies it per map. */
-export function townClutter(plans: readonly PortTownPlan[], ground: GroundField, k: number, seed: number): PiecePlacement[] {
+/** Clutter for every port's village, at building scale `k`; `worldSeed` (`G.mapSeed`) varies it per map. */
+export function townClutter(plans: readonly PortTownPlan[], ground: GroundField, k: number, worldSeed: number): PiecePlacement[] {
   const out: PiecePlacement[] = [];
-  for (const plan of plans) out.push(...portClutter(plan, ground, k, seed));
+  for (const plan of plans) out.push(...portClutter(plan, ground, k, worldSeed));
   return out;
 }
 
 /** The radius a placed piece keeps clear: a palm's trunk, every other piece's footprint. */
 export const pieceClearRadius = (piece: PiecePlacement): number => (piece.kind === "palm" ? PALM_TRUNK : TOWN_PIECE_RADIUS[piece.kind]) * piece.scale;
 
-function portClutter(plan: PortTownPlan, ground: GroundField, k: number, seed: number): PiecePlacement[] {
-  const next = stream(seedOf([Math.round(plan.cx * 100), Math.round(plan.cz * 100)], 0x6c7e ^ seed));
+function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSeed: number): PiecePlacement[] {
+  const next = stream(subSeed(worldSeed, SEED_FEATURES.townClutter, plan.portId));
   const pieces: PiecePlacement[] = [];
   const radius = (kind: TownPieceKind) => TOWN_PIECE_RADIUS[kind] * k;
   const harbour = [pierRect(plan.pier), ...plan.quays.map(quayRect)];

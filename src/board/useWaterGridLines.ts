@@ -53,14 +53,14 @@ export interface GridLineData {
  * The grid lines of a map, built once per map and wrap (edges on the seam
  * are drawn once, #36), faded across the shallows by the shared terrain field.
  */
-export const gridLineData = perMapCache((cells, wrap): GridLineData => {
+export const gridLineData = perMapCache((cells, wrap, worldSeed): GridLineData => {
   const waterCells = cells.filter((c) => c.terrain === "water" || c.terrain === "reef");
   const edges = buildHexGridEdges(
     waterCells.map((c) => c.hex),
     wrap
   );
   const positions = buildEdgeLinePositions(edges, OUTLINE_Y, EDGE_SUBDIVISIONS);
-  const shore = buildEdgeShoreFade(positions, sharedTerrainField(cells, wrap).sampleCoastDistance);
+  const shore = buildEdgeShoreFade(positions, sharedTerrainField(cells, wrap, worldSeed).sampleCoastDistance);
   return { waterCells, edges, positions, shore };
 });
 

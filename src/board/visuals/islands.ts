@@ -34,6 +34,14 @@ export function cellId(h: Hex, wrap: MapWrap): CellId {
   return `${c.q + 0},${c.r + 0}`;
 }
 
+/**
+ * The `cellId` of a cell of `G.cells`, which `G` keeps canonical
+ * (`CaribbeanState.wrap`): its `"q,r"` key as given, so a per-map layout that
+ * walks `G.cells` keys its sub-seeds without needing the wrap. A port's
+ * cell gives its `portId`.
+ */
+export const mapCellId = (cell: Pick<MapCell, "hex">): CellId => cellId(cell.hex, null);
+
 /** Orders canonical hexes by `q`, then `r`. */
 const byLowest = (a: Hex, b: Hex): number => a.q - b.q || a.r - b.r;
 

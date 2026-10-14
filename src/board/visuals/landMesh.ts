@@ -14,6 +14,8 @@
  */
 import type { GroundField } from "./groundPlacement";
 import { createPlaneNoise, type PlaneNoise } from "./periodicNoise";
+import { SEED_FEATURES } from "./seedFeatures";
+import { stream, subSeed } from "./subSeed";
 import { SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { metresToUnits } from "./worldScale";
 import { VISIBLE_SEABED_DEPTH } from "./waterOptics";
@@ -142,9 +144,8 @@ const JUNGLE_TO_HIGHLAND: readonly [number, number] = [1.0, 1.2];
 /** How far the boundary noise shifts each band, in world height. */
 const SAND_TO_JUNGLE_NOISE = 0.08;
 const JUNGLE_TO_HIGHLAND_NOISE = 0.15;
-/** Boundary noise frequency in cycles per world unit, and its fixed seed. */
+/** Boundary noise frequency in cycles per world unit (its seed is the world's, `SEED_FEATURES.landBandNoise`). */
 const BAND_NOISE_FREQUENCY = 1.1;
-const BAND_NOISE_SEED = 0x9e3779b9;
 /**
  * Steepness (1 − normal.y) over which a face turns to rock: ~50° to ~62°.
  * Beach shores rise at up to ~50°, so gentle coasts keep their sand while
@@ -291,20 +292,6 @@ export function landFaceColor(
   const shade = 1 - Math.min(OCCLUSION_MAX, Math.max(0, cavity) * occlusion);
   return [rgb[0] * shade, rgb[1] * shade, rgb[2] * shade];
 }
-
-/** Seeded PRNG (mulberry32) for the fixed boundary noise. */
-function mulberry32(seed: number): () => number {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = Math.imul(s ^ (s >>> 15), 1 | s);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-/** The fixed band and coral noise of a map that does not wrap (one that does gets a periodic one). */
-const plainBandNoise = createPlaneNoise(mulberry32(BAND_NOISE_SEED), null);
 
 /** Two-octave boundary noise in [-1, 1]. */
 function boundaryNoise(noise: PlaneNoise, x: number, z: number): number {
@@ -577,7 +564,8 @@ export function buildLandMesh(
   const lattice = landLattice(field, options.spacing);
   const { minX, minZ, spacing, rowHeight, cols, rows, period } = lattice;
   const column = (i: number): number => latticeColumn(lattice, i);
-  const bandNoise = period === null ? plainBandNoise : createPlaneNoise(mulberry32(BAND_NOISE_SEED), period);
+  // The bands' and corals' boundary pattern, on the world seed's own sub-seed (ADR 0007), so each map has its own.
+  const bandNoise = createPlaneNoise(stream(subSeed(field.worldSeed, SEED_FEATURES.landBandNoise)), period);
 
   // Lattice vertex (i, j) sits at (minX + i·spacing [+ spacing/2 on odd rows], minZ + j·rowHeight).
   // Precomputed: these are read for every output vertex.

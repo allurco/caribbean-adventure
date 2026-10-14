@@ -14,6 +14,7 @@ import {
   rockVariation,
   type RockPlacement,
 } from "./rockVariation";
+import { subSeed } from "./subSeed";
 import { ROCK_UNIT_RADIUS, ROCK_VARIANT_COUNT, rockVariantRadii } from "./rockGeometry";
 import { PALETTE_HEX } from "./palette";
 import { PROP_SCALE } from "./worldScale";
@@ -43,6 +44,7 @@ function placement(i: number, biome: Biome | undefined = BIOMES[i % 3]): RockPla
     // The generator's decoration scales as the layout passes them, at PROP_SCALE.
     scale: (0.8 + (i % 7) * 0.08) * PROP_SCALE,
     biome,
+    seed: subSeed(1, "rockLook", i),
   };
 }
 
@@ -234,9 +236,14 @@ describe("rockVariation", () => {
     expect(ROCK_BURY_RANGE[0]).toBeGreaterThanOrEqual(0);
   });
 
-  it("varies between neighbouring rocks", () => {
+  it("draws its look from its own seed, not from where it stands", () => {
+    const moved = { ...rocks[10], worldX: rocks[10].worldX + 0.05, worldZ: rocks[10].worldZ - 0.3 };
+    expect(rockVariation(moved)).toEqual(rockVariation(rocks[10]));
+  });
+
+  it("varies between neighbouring rocks (their own seeds)", () => {
     const a = rockVariation(rocks[10]);
-    const b = rockVariation({ ...rocks[10], worldX: rocks[10].worldX + 0.05 });
+    const b = rockVariation({ ...rocks[10], seed: rocks[11].seed });
     expect(a.tint).not.toBeCloseTo(b.tint, 3);
     expect(a.scale[0]).not.toBeCloseTo(b.scale[0], 3);
   });

@@ -3,7 +3,7 @@ import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { canonicalHex, createWrap, hexToWorld, neighbors, type Hex, type MapWrap } from "../../game/hex";
 import type { Biome, MapCell } from "../../game/types";
-import { createTerrainHeightField, SEA_LEVEL, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField, SEA_LEVEL } from "./terrainHeightField";
 import { ROCK_VARIANT_REACH } from "./rockGeometry";
 import { metresToUnits, PROP_DENSITY, PROP_SCALE } from "./worldScale";
 import {
@@ -25,7 +25,7 @@ import {
 const preset = getMapPreset("small");
 const wrap = createWrap(preset.columns);
 const cells = generateMap(preset, 11, wrap);
-const seed = terrainSeedFromCells(cells);
+const seed = 11;
 const field = createTerrainHeightField(cells, seed, { wrap });
 const boulders = shoreBoulders(cells, field, wrap, seed);
 

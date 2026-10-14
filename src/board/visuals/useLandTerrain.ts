@@ -59,9 +59,9 @@ export interface LandTerrainResources {
   seabedMaterial: MeshStandardMaterial;
 }
 
-/** The land mesh arrays, built once per map and wrap (`perMapCache`). */
-const landMeshOf = perMapCache((cells, wrap) =>
-  buildLandMesh(sharedTerrainField(cells, wrap), { colors: LAND_COLORS, sampleReef: createReefMask(cells, wrap) })
+/** The land mesh arrays, built once per map, wrap and world seed (`perMapCache`). */
+const landMeshOf = perMapCache((cells, wrap, worldSeed) =>
+  buildLandMesh(sharedTerrainField(cells, wrap, worldSeed), { colors: LAND_COLORS, sampleReef: createReefMask(cells, wrap) })
 );
 
 /** What the seabed's sunlight is focused through (#38 step 6) and what the shore's foam is drawn from (step 7). */
@@ -100,11 +100,11 @@ function causticMaterial(
  * through `lighting`'s waves (caustics, seabedCaustics.ts); the land's also
  * draws the shore wash up its beaches (shoreFoamLand.ts).
  */
-export function useLandTerrain(cells: MapCell[], wrap: MapWrap, lighting: SeabedLighting): LandTerrainResources {
+export function useLandTerrain(cells: MapCell[], wrap: MapWrap, worldSeed: number, lighting: SeabedLighting): LandTerrainResources {
   const { land, seabed } = useMemo(() => {
-    const mesh = landMeshOf(cells, wrap);
+    const mesh = landMeshOf(cells, wrap, worldSeed);
     return { land: geometryFrom(mesh.land), seabed: geometryFrom(mesh.seabed, mesh.seabed.index) };
-  }, [cells, wrap]);
+  }, [cells, wrap, worldSeed]);
 
   useEffect(
     () => () => {

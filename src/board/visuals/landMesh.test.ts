@@ -4,7 +4,7 @@ import { createWrap, hexGrid, hexRect, hexToOffset, hexToWorld, wrapWorldWidth }
 import { createReefMask } from "./reefMask";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
-import { createTerrainHeightField, terrainSeedFromCells } from "./terrainHeightField";
+import { createTerrainHeightField } from "./terrainHeightField";
 import {
   buildLandMesh,
   landFaceColor,
@@ -256,7 +256,7 @@ describe("buildLandMesh", () => {
 
   it("puts rock on steep faces even at mid height", () => {
     const cells = generateMap(getMapPreset("small"),7);
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const field = createTerrainHeightField(cells, 7);
     const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     let checked = 0;
     for (let t = 0; t < triangleCount; t++) {
@@ -289,7 +289,7 @@ describe("buildLandMesh", () => {
 
   it("breaks the beach/jungle boundary with noise instead of a height contour", () => {
     const cells = generateMap(getMapPreset("small"),7);
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const field = createTerrainHeightField(cells, 7);
     const { positions, colors, triangleCount } = buildSoup(field, { colors: CHANNEL_COLORS });
     // Flat faces at (almost) the same height: a contour would give them the
     // same sand/jungle mix; noise spreads it.
@@ -445,7 +445,7 @@ describe("buildLandMesh", () => {
 
   describe("on a generated map with reefs and drop-offs (#38)", () => {
     const cells = generateMap(getMapPreset("small"),7);
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const field = createTerrainHeightField(cells, 7);
     const { positions, triangleCount } = buildSoup(field);
 
     it("has no cracks: no triangle corner lies at the ¼, ½ or ¾ point of another triangle's edge", () => {
@@ -505,7 +505,7 @@ describe("buildLandMesh", () => {
   // Builds the whole lattice without skipping open water: ~2 s locally, ~3x that on CI runners.
   it("skipping open water yields exactly the full-lattice mesh", () => {
     const cells = generateMap(getMapPreset("small"),7);
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const field = createTerrainHeightField(cells, 7);
     const fast = buildSoup(field);
     const full = buildSoup(field, { skipOpenWater: false });
     expect(fast.triangleCount).toBeGreaterThan(0);
@@ -526,7 +526,7 @@ describe("buildLandMesh", () => {
       if (edge && row === 10) return { hex: h, terrain: "reef", hasPort: false, elevation: 0 };
       return { hex: h, terrain: "water", hasPort: false, elevation: 0 };
     });
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+    const field = createTerrainHeightField(cells, 1, { wrap });
     const mesh = buildLandMesh(field, { sampleReef: createReefMask(cells, wrap) });
 
     /** Points grouped by (x mod wrap width, z): copies of one point one wrap apart. */
@@ -587,7 +587,7 @@ describe("buildLandMesh", () => {
     let mesh: ReturnType<typeof buildLandMesh> | undefined;
     for (let run = 0; run < 3; run++) {
       const start = performance.now();
-      const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+      const field = createTerrainHeightField(cells, 31337, { wrap });
       mesh = buildLandMesh(field);
       best = Math.min(best, performance.now() - start);
     }
@@ -617,7 +617,7 @@ describe("landSurfaceHeight", () => {
   beforeAll(() => {
     wrap = createWrap(getMapPreset("small").columns);
     cells = generateMap(getMapPreset("small"), 11);
-    wrappedField = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+    wrappedField = createTerrainHeightField(cells, 11, { wrap });
     landPositions = buildLandMesh(wrappedField).land.positions;
   });
 
@@ -660,7 +660,7 @@ describe("landSurfaceHeight", () => {
   });
 
   it("landSurface is the same surface as a GroundField, and samples each lattice vertex once however often it is asked", () => {
-    const base = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const base = createTerrainHeightField(cells, 11);
     let samples = 0;
     const counted = { ...base, sampleHeight: (x: number, z: number) => (samples++, base.sampleHeight(x, z)) };
     const surface = landSurface(counted);
@@ -679,7 +679,7 @@ describe("landSurfaceHeight", () => {
   });
 
   it("creasesWithin lists the lattice vertices inside a disc and the lattice edges' crossings of its rim: where the drawn surface bends", () => {
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
+    const field = createTerrainHeightField(cells, 11);
     const surface = landSurface(field);
     const rowHeight = LAND_MESH_SPACING * (Math.sqrt(3) / 2);
     const { minX, minZ } = field.bounds;
