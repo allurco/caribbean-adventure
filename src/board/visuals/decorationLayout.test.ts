@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset, type MapSizeId } from "../../game/mapConfig";
-import { createWrap, hexToWorld } from "../../game/hex";
+import { createWrap, hexToWorld, worldToHex, type MapWrap } from "../../game/hex";
 import type { MapCell } from "../../game/types";
 import { decorationLayout } from "./decorationLayout";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { landSurface } from "./landMesh";
 import { pierOrigin } from "./pierPlacement";
+import { cellId } from "./islands";
+import { islandLooks, lookOfCell, treeFactor } from "./islandLook";
+import { PROP_DENSITY } from "./worldScale";
 
 /** A few generated maps: every small seed the screenshots use, and a medium one. */
 const SAMPLES: readonly [MapSizeId, number][] = [
@@ -26,13 +29,19 @@ const near = (a: { x: number; z: number }, b: { worldX: number; worldZ: number }
 describe("decorationLayout", () => {
   // The sample maps, their layouts and their terrain fields, built once outside
   // any test's time limit: generating eight real maps is the expensive part.
-  let sampled: { cells: MapCell[]; layout: ReturnType<typeof decorationLayout>; field: ReturnType<typeof sharedTerrainField> }[];
+  let sampled: {
+    cells: MapCell[];
+    seed: number;
+    wrap: MapWrap;
+    layout: ReturnType<typeof decorationLayout>;
+    field: ReturnType<typeof sharedTerrainField>;
+  }[];
   beforeAll(() => {
     sampled = SAMPLES.map(([size, seed]) => {
       const preset = getMapPreset(size);
       const wrap = createWrap(preset.columns);
       const cells = generateMap(preset, seed, wrap);
-      return { cells, layout: decorationLayout(cells, wrap, seed), field: sharedTerrainField(cells, wrap, seed) };
+      return { cells, seed, wrap, layout: decorationLayout(cells, wrap, seed), field: sharedTerrainField(cells, wrap, seed) };
     });
   });
 
@@ -70,6 +79,32 @@ describe("decorationLayout", () => {
       expect(pier.type).toBe("pier");
       expect(pier.worldY).toBe(0);
       expect(pierCells.some((c) => pierRotation(c) === pier.rotation)).toBe(true);
+    }
+  });
+
+  it("grows each island's palms by its look (#177): no more than its companions allow, and nearly all of them on a jungle", () => {
+    for (const { cells, seed, wrap, layout } of sampled) {
+      const looks = islandLooks(cells, wrap, seed);
+      const treesOn = new Map<string, number>();
+      for (const t of layout.trees) {
+        const id = cellId(worldToHex(t.worldX, t.worldZ), wrap);
+        treesOn.set(id, (treesOn.get(id) ?? 0) + 1);
+      }
+      for (const look of looks.islands) {
+        let most = 0;
+        let drawn = 0;
+        let port = false;
+        for (const cell of cells) {
+          if (lookOfCell(looks, cell) !== look) continue;
+          port ||= cell.hasPort;
+          const decorations = (cell.decorations ?? []).filter((d) => d.type === "tree").length;
+          most += decorations * (1 + (cell.hasPort ? 0 : Math.round((PROP_DENSITY - 1) * treeFactor(look))));
+          drawn += treesOn.get(cellId(cell.hex, wrap)) ?? 0;
+        }
+        expect(drawn, look.id).toBeLessThanOrEqual(most);
+        // A town clears the trees round it, so the floor holds on islands without a port.
+        if (look.archetype === "jungle" && !port) expect(drawn, look.id).toBeGreaterThanOrEqual(most * 0.6);
+      }
     }
   });
 });

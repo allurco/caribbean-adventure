@@ -288,7 +288,15 @@ to jungle over 0.42–0.55 and jungle to highland over 1.0–1.2, each boundary
 shifted by a noise on the world seed's `landBandNoise` sub-seed (so each map
 has its own pattern) so no contour shows; rock blended in by
 steepness (~50–62°) at any height; and a cheap occlusion term that darkens a
-face sitting below the mean of a ring of lattice points round it. Under
+face sitting below the mean of a ring of lattice points round it. Each
+island's look (`islandLook.ts`, #177, ADR 0007) paints its own land through
+`buildLandMesh`'s `lookAt` (`landLookAt`: the face's hex's island, or on a
+water hex the coast noise reaches into, the nearest land centre's): a
+multiplier on the rock and on the highland's rock (warm brown on volcanic
+peaks and mesas to grey on rocky isles) and a scale on the sand-to-jungle
+band's heights (an atoll's beach climbs higher, a mesa's stops lower). It
+changes colours only: the field, the lattice and every vertex position are
+the same whatever the island's kind (pinned in `seededWorld.test.ts`). Under
 water: wet sand to clean seabed sand within half a metre, the deep seabed
 colour down the drop-off (10–30 m), and coral in noisy patches where the
 reef mask is set. Albedos come from `palette.ts` through `useLandTerrain.ts`.

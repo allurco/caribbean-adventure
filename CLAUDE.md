@@ -83,7 +83,7 @@ Photorealism is confined to the water and the light; islands, props, ports and s
 
 ### Seeded World
 
-The same map seed gives exactly the same world on every client; different seeds look different (**ADR 0007**, `docs/adr/0007-seeded-world-variety.md`). Every seeded visual draws from `stream(subSeed(G.mapSeed, "feature", ...ids))` (`src/board/visuals/subSeed.ts`; the feature names live in `seedFeatures.ts`), keyed by the stable ids of `src/board/visuals/islands.ts` (`cellId`, `portId`, `islandId`); nothing visual is stored in `G`. ESLint rejects `Math.random` in game and render code; game randomness goes through boardgame.io's `random`.
+The same map seed gives exactly the same world on every client; different seeds look different (**ADR 0007**, `docs/adr/0007-seeded-world-variety.md`). Every seeded visual draws from `stream(subSeed(G.mapSeed, "feature", ...ids))` (`src/board/visuals/subSeed.ts`; the feature names live in `seedFeatures.ts`), keyed by the stable ids of `src/board/visuals/islands.ts` (`cellId`, `portId`, `islandId`); nothing visual is stored in `G`. Each island draws an archetype (`islandArchetypes.ts`) and a look within its bands (`islandLook.ts`), which colour, plant and dress it but never change the field. ESLint rejects `Math.random` in game and render code; game randomness goes through boardgame.io's `random`.
 
 ### Multiplayer
 

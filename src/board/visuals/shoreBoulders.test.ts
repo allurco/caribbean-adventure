@@ -296,3 +296,25 @@ describe("shoreBoulders", () => {
     expect(shoreBoulders(cells.filter((c) => c.terrain !== "island"), sea, wrap, seed)).toEqual([]);
   });
 });
+
+describe("shoreBoulders scaled by each island's look (#177)", () => {
+  const target = cells.find((c) => bouldered(c) && boulders.some((b) => key(b.hex) === key(c.hex)))!;
+  const only = (factor: number) => (c: MapCell) => (key(c.hex) === key(target.hex) ? factor : 1);
+  const onTarget = (list: readonly ShoreBoulder[]) => list.filter((b) => key(b.hex) === key(target.hex));
+
+  it("is today's layout at a factor of 1", () => {
+    expect(shoreBoulders(cells, field, wrap, seed, () => 1)).toEqual(boulders);
+  });
+
+  it("drops a cell's boulders at 0 and adds to them above 1, leaving every other cell's as they were", () => {
+    const none = shoreBoulders(cells, field, wrap, seed, only(0));
+    expect(onTarget(none)).toEqual([]);
+    const more = shoreBoulders(cells, field, wrap, seed, only(2));
+    expect(onTarget(more).length).toBeGreaterThan(onTarget(boulders).length);
+    // A higher factor keeps the boulders a lower one kept: the stream stays aligned.
+    for (const b of onTarget(boulders)) expect(onTarget(more)).toContainEqual(b);
+    const others = (list: readonly ShoreBoulder[]) => list.filter((b) => key(b.hex) !== key(target.hex));
+    expect(others(none)).toEqual(others(boulders));
+    expect(others(more)).toEqual(others(boulders));
+  });
+});

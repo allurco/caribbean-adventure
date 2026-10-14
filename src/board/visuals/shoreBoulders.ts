@@ -123,8 +123,19 @@ function dockingDirection(cell: MapCell, wrap: MapWrap): [number, number] | null
   return len > 0 ? [(dx - cx) / len, (dz - cz) / len] : null;
 }
 
-/** The boulders for every coastal edge, on the ground or the seabed; `worldSeed` is `G.mapSeed`. */
-export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap: MapWrap, worldSeed: number): ShoreBoulder[] {
+/**
+ * The boulders for every coastal edge, on the ground or the seabed; `worldSeed`
+ * is `G.mapSeed`. `countFactor` scales a cell's share of candidates tried (its
+ * island's look, `boulderFactor`, #177); every candidate still draws its
+ * numbers, so the stream stays aligned and a higher factor only adds boulders.
+ */
+export function shoreBoulders(
+  cells: readonly MapCell[],
+  field: ShoreField,
+  wrap: MapWrap,
+  worldSeed: number,
+  countFactor: (cell: MapCell) => number = () => 1
+): ShoreBoulder[] {
   const land = new Set<number>();
   for (const cell of cells) if (cell.terrain === "island") land.add(key(cell.hex));
   const isLand = (h: Hex): boolean => land.has(key(canonicalHex(h, wrap)));
@@ -143,6 +154,7 @@ export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap
     const [cx, , cz] = hexToWorld(cell.hex);
     const docking = dockingDirection(cell, wrap);
     const id = cellId(cell.hex, wrap);
+    const keepShare = BOULDER_KEEP_SHARE * countFactor(cell);
 
     // Each water edge's outward unit normal and midpoint, for the offshore cap.
     const edges = ring.map((n, i) => {
@@ -182,7 +194,7 @@ export function shoreBoulders(cells: readonly MapCell[], field: ShoreField, wrap
 
       for (let i = 0; i < BOULDER_SAMPLES_PER_EDGE; i++) {
         // Every candidate draws the same numbers, kept or not, so the stream stays aligned.
-        const keep = next() < BOULDER_KEEP_SHARE;
+        const keep = next() < keepShare;
         const along = lerpRange([BOULDER_EDGE_MARGIN - 0.5, 0.5 - BOULDER_EDGE_MARGIN], next());
         const offset = lerpRange(BOULDER_OFFSET_RANGE, next());
         const scale = lerpRange(BOULDER_SCALE_RANGE, next());

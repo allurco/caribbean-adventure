@@ -17,6 +17,8 @@ import { generateMapOffThread, type RunMapWorker } from "../../mapWorker/generat
 import { answerMapWorkerRequest } from "../../mapWorker/mapWorkerProtocol";
 import { getMapPreset } from "../../game/mapConfig";
 import { decorationLayout } from "./decorationLayout";
+import { islandLooks, landLookAt } from "./islandLook";
+import { mapCellId } from "./islands";
 import { buildLandMesh, landSurface } from "./landMesh";
 import { SEED_FEATURES, type SeedFeature } from "./seedFeatures";
 import { sharedTerrainField } from "./sharedTerrainField";
@@ -66,6 +68,7 @@ function world(cells: readonly MapCell[], worldSeed: number) {
   const works = townWorks(layout.village.ports, ground, BUILDING_SCALE, townWorksColors(), worldSeed);
   return {
     ...layout,
+    islandLooks: islandLooks(fresh, WRAP, worldSeed).islands,
     village: undefined,
     villageBuildings: layout.village.buildings,
     clutter: layout.village.clutter,
@@ -76,6 +79,7 @@ function world(cells: readonly MapCell[], worldSeed: number) {
 type World = ReturnType<typeof world>;
 type Output = Exclude<keyof World, "village">;
 const OUTPUTS: readonly Output[] = [
+  "islandLooks",
   "trees",
   "rocks",
   "stones",
@@ -128,6 +132,15 @@ const REACH: Readonly<Partial<Record<SeedFeature, readonly Output[]>>> = {
   [SEED_FEATURES.townClutter]: ["clutter", ...KEEP_OUT],
   [SEED_FEATURES.retainingWalls]: ["works"],
   [SEED_FEATURES.kerbs]: ["works"],
+  // An island's kind and look scale its palms, shrubs and shore boulders, and the shrubs keep off the palms (#177).
+  [SEED_FEATURES.archetype]: ["islandLooks", "trees", "shrubs", "shoreBoulders"],
+  [SEED_FEATURES.islandLook]: ["islandLooks", "trees", "shrubs", "shoreBoulders"],
+};
+
+/** The land mesh as the board builds it, each island's look included (`useLandTerrain.ts`). */
+const landMesh = (cells: readonly MapCell[], seed: number) => {
+  const fresh = structuredClone(cells) as MapCell[];
+  return buildLandMesh(sharedTerrainField(fresh, WRAP, seed), { lookAt: landLookAt(islandLooks(fresh, WRAP, seed), WRAP) }).land;
 };
 
 describe("the board's seeded world (ADR 0007, #165)", () => {
@@ -156,12 +169,27 @@ describe("the board's seeded world (ADR 0007, #165)", () => {
     });
 
     it("the same land mesh, colours included", () => {
-      const mesh = (seed: number) => buildLandMesh(sharedTerrainField(structuredClone(cells), WRAP, seed)).land;
-      const a = mesh(REQUEST.mapSeed);
-      const b = mesh(REQUEST.mapSeed);
+      const a = landMesh(cells, REQUEST.mapSeed);
+      const b = landMesh(cells, REQUEST.mapSeed);
       expect(Array.from(b.positions)).toEqual(Array.from(a.positions));
       expect(Array.from(b.colors)).toEqual(Array.from(a.colors));
     }, LAND_MESH_TIMEOUT);
+  });
+
+  it("puts no ruin anywhere, and nothing built on a rocky isle (#177, decision 9)", () => {
+    const names = [
+      ...base.buildings.map((b) => b.kind),
+      ...base.villageBuildings.map((b) => b.variant),
+      ...base.clutter.map((c) => c.kind),
+      ...cells.flatMap((c) => (c.decorations ?? []).map((d) => d.type)),
+    ];
+    expect(names.filter((n) => /ruin/i.test(String(n)))).toEqual([]);
+    const rocky = new Set(base.islandLooks.filter((l) => l.archetype === "rocky").map((l) => l.id));
+    const looks = islandLooks(cells, WRAP, REQUEST.mapSeed);
+    for (const cell of cells) {
+      const look = looks.byCell.get(mapCellId(cell));
+      if (look && rocky.has(look.id)) expect(cell.hasPort).toBe(false);
+    }
   });
 
   describe("S2: another world seed on the same cells draws another world", () => {
@@ -172,6 +200,9 @@ describe("the board's seeded world (ADR 0007, #165)", () => {
       // Measurably: the villages' house lists and the shrub counts differ, not just their last digits.
       const signature = (w: World) => w.villageBuildings.map((b) => b.variant).join(",");
       expect(signature(other)).not.toBe(signature(base));
+      // And the islands' kinds, not only their parameters (#177).
+      const kinds = (w: World) => w.islandLooks.map((l) => l.archetype).join(",");
+      expect(kinds(other)).not.toBe(kinds(base));
     });
 
     it("draws another coastline and relief", () => {
@@ -254,6 +285,25 @@ describe("the board's seeded world (ADR 0007, #165)", () => {
         expect(b.sampleHeight(x, z)).toBe(a.sampleHeight(x, z));
       }
     });
+
+    it("an island's kind and look recolour the land and never move the terrain field or the land (#177)", () => {
+      const shift = <T>(feature: SeedFeature, build: () => T): T => {
+        shifted.feature = feature;
+        try {
+          return build();
+        } finally {
+          shifted.feature = null;
+        }
+      };
+      const samples = fieldSamples(structuredClone(cells), REQUEST.mapSeed);
+      const mesh = landMesh(cells, REQUEST.mapSeed);
+      for (const feature of [SEED_FEATURES.archetype, SEED_FEATURES.islandLook]) {
+        expect(shift(feature, () => fieldSamples(structuredClone(cells), REQUEST.mapSeed)), feature).toEqual(samples);
+        const moved = shift(feature, () => landMesh(cells, REQUEST.mapSeed));
+        expect(Array.from(moved.positions), feature).toEqual(Array.from(mesh.positions));
+        expect(Array.from(moved.colors), feature).not.toEqual(Array.from(mesh.colors));
+      }
+    }, LAND_MESH_TIMEOUT * 2);
 
     it("the land mesh's band noise recolours the land and moves nothing", () => {
       const mesh = (feature: SeedFeature | null) => {
