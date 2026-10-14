@@ -34,6 +34,8 @@ import {
   recededLiftShare,
   shoreFoamRecedeShare,
   cameraDistanceUniform,
+  WATERLINE_BLEND_METRES,
+  waterlineBlend,
 } from "./waterOptics";
 
 type Rgb = readonly [number, number, number];
@@ -568,5 +570,34 @@ describe("waterOptics (#38 step 3)", () => {
       expect(WATER_OPTICS_GLSL).toContain("float schlickFresnel(float cosTheta)");
       expect(WATER_OPTICS_GLSL).toContain("float shallowSaturationBoost(float depthMetres, float redTransmittance)");
     });
+  });
+});
+
+describe("waterlineBlend (the sea meets the shore without an edge, #147)", () => {
+  it("is the bare seabed at the waterline and the full water a few decimetres down", () => {
+    expect(waterlineBlend(0)).toBe(0);
+    expect(waterlineBlend(-1)).toBe(0);
+    expect(waterlineBlend(WATERLINE_BLEND_METRES)).toBe(1);
+    expect(waterlineBlend(5)).toBe(1);
+  });
+
+  it("is continuous and rises steadily, so there is no contour at any depth", () => {
+    let previous = 0;
+    for (let d = 0; d <= WATERLINE_BLEND_METRES * 1.5; d += WATERLINE_BLEND_METRES / 200) {
+      const w = waterlineBlend(d);
+      expect(w).toBeGreaterThanOrEqual(previous - 1e-12);
+      expect(w - previous).toBeLessThan(0.02);
+      previous = w;
+    }
+  });
+
+  it("stays inside the wash, so open and shelf water are untouched", () => {
+    expect(WATERLINE_BLEND_METRES).toBeGreaterThan(0);
+    expect(WATERLINE_BLEND_METRES).toBeLessThanOrEqual(0.5);
+  });
+
+  it("is mirrored in the GLSL", () => {
+    expect(WATER_OPTICS_GLSL).toContain(`const float WATERLINE_BLEND_METRES = ${WATERLINE_BLEND_METRES.toFixed(3)};`);
+    expect(WATER_OPTICS_GLSL).toContain("float waterlineBlend(float depthMetres)");
   });
 });

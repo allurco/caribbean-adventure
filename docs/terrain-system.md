@@ -1057,8 +1057,13 @@ without fog or background. `Ocean.tsx` then, per pixel:
    down and the refracted view path up, and adds deep-water radiance
    `R∞ · downwelling irradiance` as the seabed fades (`waterOptics.ts` holds
    the coefficients and their sources);
-4. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02), adds the GGX sun
-   glint, then the foam (below).
+4. mixes in the sky PMREM by Schlick Fresnel (F0 = 0.02) and adds the GGX
+   sun glint;
+5. fades all of that back to the plain seabed over the first 0.3 m of depth
+   (`waterlineBlend`, `WATERLINE_BLEND_METRES`, #147): at the waterline the
+   sea is a film on the sand, with no body tint, sky reflection or glint, so
+   it meets the beach without an edge wherever the land mesh crosses sea
+   level; then the foam (below).
 
 **Waves (#38 steps 4–5).** The surface normal comes from three FFT cascades
 (`useWaveCascades.ts`) of one JONSWAP sea (`oceanWaves.ts`: 7 m/s over
@@ -1279,12 +1284,20 @@ bright as dry sand). `PALETTE_SURF` is gone.
 rises above the waterline, so on its own the wash was cut off at the beach.
 The land material (`useLandTerrain.ts`) therefore carries a second patch
 after the caustics one (`shoreFoamLand.ts`): the same wash, by the baked
-coast distance (`beachWashBand`, up to ~6 m of sand at the flood, and none
-where the field still reads water: there it cannot say how far the real
-waterline is, and the field and the mesh disagree in places), on the
+coast distance (`beachWashBand`, up to ~6 m of sand at the flood), on the
 shared surf-clock uniform, with the same lace, only above sea level, put in
 as the fragment's diffuse albedo so three's own lighting shades it like the
-sand. No extra pass and no change to the water's depth test. The field
+sand. Two rules keep it at the waterline (`landWashBand`, #147, #149):
+- it is capped by the height over the sea, not only the distance in plan:
+  full up to a third of the run-up height and gone by it, 0.6 m at the ebb
+  and the trade-wind sea's significant height (~1.6 m) at the flood
+  (`washRunUpGate`). On a beach the band's reach stays far below that, so
+  beaches are unchanged; on a cliff, where a few metres in plan are many
+  metres up the rock, it is a thin band at the foot;
+- where the land mesh stands above the sea while the field still reads
+  water (they disagree by a fraction of a lattice step near the coast), the
+  band is full: that land is at the drawn waterline, and leaving it bare
+  drew a dry strip between the water's edge and the foam. No extra pass and no change to the water's depth test. The field
 texture is built once per map (`useTerrainFieldTexture.ts`) and handed to
 both.
 
