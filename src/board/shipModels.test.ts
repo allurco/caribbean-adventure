@@ -20,8 +20,12 @@ describe("ship model catalogue", () => {
     expect(frigate?.lengthMetres).toBe(38);
   });
 
-  it("has a model for the Galleon, 34 m overall without the bowsprit", () => {
-    expect(shipModel("Galleon")?.lengthMetres).toBe(34);
+  it("has a model for the Galleon, 42 m overall without the bowsprit", () => {
+    expect(shipModel("Galleon")?.lengthMetres).toBe(42);
+  });
+
+  it("draws the Galleon clearly longer than the Frigate (#163)", () => {
+    expect(shipModel("Galleon")!.lengthMetres).toBeGreaterThan(shipModel("Frigate")!.lengthMetres + 3);
   });
 
   it("has a model for the Sloop, 18 m overall without the bowsprit", () => {
@@ -64,6 +68,12 @@ describe("ship model catalogue", () => {
     const frigate = shipModel("Frigate")!;
     expect(frigate.tintedParts).toContain("Sails");
     expect(frigate.tintedParts).not.toContain("Jolly_Roger");
+  });
+
+  it("tints every class's sails, pennant and hull stripe, the owner-colour parts (#134, #163)", () => {
+    for (const shipClass of SHIP_CLASSES) {
+      expect(shipModel(shipClass)!.tintedParts).toEqual(["Sails", "Pennant", "Hull_Stripe"]);
+    }
   });
 
   it("serves the model under the app's base path", () => {
