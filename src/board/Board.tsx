@@ -80,8 +80,8 @@ import { HudSoundControl } from "./HudSoundControl";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { RenderStatsOverlay } from "./RenderStatsOverlay";
 import { DevSeedControl } from "./DevSeedControl";
-import { PLAYER_COLOURS, shipOwnerColour } from "./shipOwnerColour";
-import { shipFlagFor } from "./shipFlags";
+import { PLAYER_COLOURS } from "./shipOwnerColour";
+import { npcShipLook, playerShipLook } from "./shipLook";
 import { GallerySnapshot } from "../lab/GallerySnapshot";
 import { STARTER_SHIP_CLASSES } from "../game/types";
 import { createRenderStatsFeed } from "./renderStats";
@@ -411,10 +411,8 @@ function Scene({
         <Ship
           key={id}
           position={hexToWorld(ship.position)}
-          color={shipOwnerColour({ kind: "player", playerId: id })}
-          // STUB (#201): pirate is false until the piracy rule lands (PR #202);
-          // then it reads isPlayerPirate(G, id) from src/game/reputation.ts.
-          flag={shipFlagFor({ nation: ship.captain?.nation, pirate: false })}
+          color={playerShipLook(G, id).colour}
+          flag={playerShipLook(G, id).flag}
           shipClass={ship.shipClass}
           wrapWidth={period}
           foamId={copy === 0 ? id : undefined}
@@ -430,8 +428,8 @@ function Scene({
         <Ship
           key={npc.id}
           position={hexToWorld(npc.position)}
-          color={shipOwnerColour({ kind: "npc", role: npc.role })}
-          flag={shipFlagFor({ nation: npc.nation, pirate: false })}
+          color={npcShipLook(npc).colour}
+          flag={npcShipLook(npc).flag}
           shipClass={npc.shipClass}
           wrapWidth={period}
           foamId={copy === 0 ? npc.id : undefined}
