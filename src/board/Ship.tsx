@@ -5,7 +5,7 @@ import { Mesh, MathUtils, Group, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
 import { type ShipFoamSource, shipFoamSources } from "./shipFoamSources";
 import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox, shipWaterline } from "./shipHull";
-import { type OpenWater, type Point, type ShipMotion, restingMotion, setCourse, stepMotion } from "./shipMotion";
+import { type OpenWater, type Point, type ShipMotion, courseIncludes, restingMotion, setCourse, stepMotion } from "./shipMotion";
 import { useShipWavePose } from "./useShipWavePose";
 import { SHIP_POSE_PRIORITY } from "./visuals/frameOrder";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
@@ -38,6 +38,12 @@ const mergedShipModel = (scene: Object3D, model: ShipModel): Group => {
 const SINK_DURATION = 2.0; // seconds for sinking animation
 /** Seconds over which a ship's reported speed (for its hull foam) eases back to 0 after a move, so the wake fades rather than snaps off. */
 const FOAM_SPEED_DECAY = 0.8;
+
+/** Whether the ship at rest is on its hex (`position`), up to whole wrap widths. */
+function atPosition(m: ShipMotion, position: readonly [number, number, number], wrapWidth: number): boolean {
+  const dx = Number.isFinite(wrapWidth) ? Math.abs(((m.x - position[0]) % wrapWidth + 1.5 * wrapWidth) % wrapWidth - wrapWidth / 2) : Math.abs(m.x - position[0]);
+  return dx < 1e-3 && Math.abs(m.z - position[2]) < 1e-3;
+}
 
 function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
@@ -143,7 +149,13 @@ export function Ship({
       // over the seam on a wrapping map (shipMotion.ts).
       const here: Point = [motion.current.x, motion.current.z];
       const to: Point = [position[0], position[2]];
-      motion.current = setCourse(motion.current, seaRoute ? seaRoute(here, to) : [to], wrapWidth, openWater);
+      // A hex already on its course (a planned route given whole, #213) needs no new one
+      if (!courseIncludes(motion.current, to, wrapWidth)) {
+        motion.current = setCourse(motion.current, seaRoute ? seaRoute(here, to) : [to], wrapWidth, openWater);
+      }
+    } else if (!motion.current.voyage && !atPosition(motion.current, position, wrapWidth)) {
+      // At rest somewhere else (a route cut short after it was given whole): sail to where it is
+      motion.current = setCourse(motion.current, [[position[0], position[2]]], wrapWidth, openWater);
     }
 
     const m = (motion.current = stepMotion(motion.current, delta, reducedMotion));

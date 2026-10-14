@@ -7,6 +7,7 @@ import {
   VOYAGE_MAX_SECONDS,
   angleDelta,
   buildShipPath,
+  courseIncludes,
   directionHeading,
   gatheringPitch,
   pathHeading,
@@ -350,5 +351,25 @@ describe("a route sent hex by hex while coming about (#213)", () => {
     const southOnly: OpenWater = (_x, z) => z <= 0.05;
     const frames = reverseRoute(southOnly);
     expect(totalTurn(frames)).toBeLessThan(1.4 * Math.PI);
+  });
+});
+
+describe("courseIncludes", () => {
+  it("knows the waypoints still ahead, and not those passed or never on it", () => {
+    const route: Point[] = [[HEX_STEP, 0], [2 * HEX_STEP, 0], [3 * HEX_STEP, 0]];
+    let m = setCourse(restingMotion(0, 0, EAST), route);
+    expect(route.every((p) => courseIncludes(m, p))).toBe(true);
+    expect(courseIncludes(m, [0, HEX_STEP])).toBe(false);
+    // Sail most of the way: the first hex is behind it now
+    for (let t = 0; t < 0.9; t += FRAME) m = stepMotion(m, FRAME, false);
+    expect(courseIncludes(m, route[0])).toBe(false);
+    expect(courseIncludes(m, route[2])).toBe(true);
+    expect(courseIncludes(restingMotion(0, 0, 0), route[0])).toBe(false);
+  });
+
+  it("matches a copy of the waypoint a wrap width away", () => {
+    const m = setCourse(restingMotion(0, 0, EAST), [[HEX_STEP, 0]], 30);
+    expect(courseIncludes(m, [HEX_STEP + 30, 0], 30)).toBe(true);
+    expect(courseIncludes(m, [HEX_STEP + 30, 0])).toBe(false);
   });
 });

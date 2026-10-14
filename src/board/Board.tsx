@@ -66,7 +66,7 @@ import { Ship, SinkingShip } from "./Ship";
 import { openWaterFrom, seaRoute } from "./shipRoute";
 import { spawnHeading } from "./shipSpawnHeading";
 import { ReachOverlay } from "./ReachOverlay";
-import { routeDots } from "./routePreview";
+import { plannedCourse, routeDots } from "./routePreview";
 import { reachClick, reachConfirm, selectionKey } from "./routeSelection";
 import { clipToWater, reachEdges, ribbonPositions, waterHexTriangles } from "./reachOutline";
 import { useRouteSailing } from "./useRouteSailing";
@@ -148,6 +148,7 @@ function Scene({
   scoutedPlayerIds,
   focusView,
   sailing,
+  plannedRoute,
   shipUnderway,
   selection,
   onSelect,
@@ -179,6 +180,8 @@ function Scene({
   focusView: CameraView | null;
   /** A planned route is being sailed: no reach, no moves (#213). */
   sailing: boolean;
+  /** The route being sailed, if any. */
+  plannedRoute: Hex[] | null;
   /** The current player's ship is still on its way: the reach waits until it settles. */
   shipUnderway: boolean;
   /** The hex whose route shows after a first click, with the `selectionKey` it was made for. */
@@ -240,7 +243,11 @@ function Scene({
   const strip = useMemo(() => seamStrip(G.wrap), [G.wrap]);
   const period = wrapWorldWidth(G.wrap);
   // A ship that moves several hexes at once (an NPC's turn) sails round the land through them (#212).
-  const shipRoute = useCallback((from: Point, to: Point) => seaRoute(from, to, G.cells, G.wrap), [G.cells, G.wrap]);
+  // A planned route (#213) is given to the ship whole as its first move lands
+  const shipRoute = useCallback(
+    (from: Point, to: Point) => plannedCourse(plannedRoute, to) ?? seaRoute(from, to, G.cells, G.wrap),
+    [G.cells, G.wrap, plannedRoute]
+  );
   // The heading each ship lies at before it first sails: toward open sea, seeded per ship (#212).
   const shipSpawnHeading = useMemo(() => {
     const water = new Set(G.cells.filter((c) => c.terrain === "water").map((c) => `${c.hex.q},${c.hex.r}`));
@@ -699,7 +706,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // A planned route (#213) is sailed one moveShip per hex.
   const { moveShip } = props.moves;
   const moveOneHex = useCallback((q: number, r: number) => moveShip(q, r), [moveShip]);
-  const { sailing, sail } = useRouteSailing(G, ctx, moveOneHex);
+  const { sailing, plan: plannedRoute, sail } = useRouteSailing(G, ctx, moveOneHex);
   // Which players' ships are still on their way (the reach waits for the current one to settle)
   const [underway, setUnderway] = useState<Record<string, boolean>>({});
   const onShipUnderway = useCallback(
@@ -975,6 +982,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
           focusView={cameraFocusView}
           sailing={sailing}
+          plannedRoute={plannedRoute}
           shipUnderway={Boolean(underway[currentPlayer])}
           selection={routeSelection}
           onSelect={setRouteSelection}
