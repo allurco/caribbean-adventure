@@ -3,6 +3,16 @@
 @theme {
   --font-heading: "Cinzel", serif;
   --font-body: "Inter", sans-serif;
+
+  /* Parchment skin of the HUD's captain and ship cards (#164). Every ink must
+     read at WCAG AA on every paper: parchmentTheme.node.test.ts checks them. */
+  --color-parchment: #f2e3bf;
+  --color-parchment-dark: #dfc792;
+  --color-ink: #2e1f0f;
+  --color-ink-faded: #5a3f24;
+  --color-ink-red: #8a1c12;
+  --color-ink-blue: #1f4a6e;
+  --color-ink-green: #2f5a23;
 }
 
 html,
