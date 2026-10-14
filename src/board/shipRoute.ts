@@ -4,12 +4,15 @@
  * only where it ended. The route is the hex path between the two hexes over
  * open water (npcManager's `findPath`, ignoring the other ships), so the
  * ship sails round the land rather than over it. Pure; `Ship.tsx` passes the
- * hex centres to `setCourse` (shipMotion.ts).
+ * hex centres to `setCourse` (shipMotion.ts). Also where the open water is,
+ * from the terrain height field, for `setCourse` to come about clear of the
+ * shore.
  */
 import { hexToWorld, worldToHex, wrappedDistance, type MapWrap } from "../game/hex";
 import { findPath } from "../game/npcManager";
 import type { MapCell } from "../game/types";
-import type { Point } from "./shipMotion";
+import type { OpenWater, Point } from "./shipMotion";
+import { SEA_LEVEL } from "./visuals/terrainHeightField";
 
 /** Moves longer than this many hexes are not routed (a ship placed anew): they sail straight. */
 export const MAX_ROUTED_HEXES = 12;
@@ -34,4 +37,21 @@ export function seaRoute(from: Point, to: Point, cells: readonly MapCell[], wrap
     return [x, z];
   });
   return [...between, to];
+}
+
+/** World units round a point that must be under water for a hull to sail there: about a hull's half beam and a little more. */
+export const HULL_CLEARANCE = 0.2;
+
+/**
+ * Open water from the terrain height field's `sampleHeight` (world space,
+ * negative under water): the seabed below sea level at the point and at
+ * `clearance` ahead, astern and abeam of it in the four axis directions.
+ */
+export function openWaterFrom(sampleHeight: (x: number, z: number) => number, clearance: number = HULL_CLEARANCE): OpenWater {
+  return (x, z) =>
+    sampleHeight(x, z) < SEA_LEVEL &&
+    sampleHeight(x + clearance, z) < SEA_LEVEL &&
+    sampleHeight(x - clearance, z) < SEA_LEVEL &&
+    sampleHeight(x, z + clearance) < SEA_LEVEL &&
+    sampleHeight(x, z - clearance) < SEA_LEVEL;
 }

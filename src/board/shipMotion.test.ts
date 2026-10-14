@@ -19,6 +19,7 @@ import {
   voyageDuration,
   voyageDurationFrom,
   voyageProgress,
+  type OpenWater,
   type Point,
   type ShipMotion,
 } from "./shipMotion";
@@ -271,5 +272,52 @@ describe("a ship sailing", () => {
     const m = restingMotion(1, 2, 0.3);
     expect(setCourse(m, [])).toBe(m);
     expect(stepMotion(m, FRAME, false)).toEqual({ ...m, yawRate: 0 });
+  });
+});
+
+describe("coming about near land", () => {
+  const pointsOf = (frames: ShipMotion[]): Point[] => frames.map((f): Point => [f.x, f.z]);
+  /** Every point the ship sails through, from rest at the origin facing east, sent a hex dead astern. */
+  const reversal = (openWater?: OpenWater): Point[] => pointsOf(sail(setCourse(restingMotion(0, 0, EAST), [[-HEX_STEP, 0]], Infinity, openWater)));
+
+  it("turns to starboard in open sea", () => {
+    // Starboard of a ship heading east (+x) is −z.
+    const zs = reversal(() => true).map((p) => p[1]);
+    expect(Math.min(...zs)).toBeLessThan(-0.3);
+    expect(Math.max(...zs)).toBeLessThan(0.05);
+  });
+
+  it("turns away from a shore on its starboard side", () => {
+    // A coast along z = −0.3: land to starboard, sea to port.
+    const sea: OpenWater = (_x, z) => z > -0.3;
+    const points = reversal(sea);
+    for (const [x, z] of points) expect(sea(x, z)).toBe(true);
+    expect(Math.max(...points.map((p) => p[1]))).toBeGreaterThan(0.3); // it swung out to port
+    const end = points[points.length - 1];
+    expect(end[0]).toBeCloseTo(-HEX_STEP, 6);
+  });
+
+  it("tightens the arc in a channel with land on both sides", () => {
+    // Open water only within 0.4 of the line it sails along.
+    const channel: OpenWater = (_x, z) => Math.abs(z) < 0.4;
+    const points = reversal(channel);
+    for (const [x, z] of points) expect(channel(x, z)).toBe(true);
+    const open = reversal(() => true);
+    const width = (ps: Point[]) => Math.max(...ps.map((p) => Math.abs(p[1])));
+    expect(width(points)).toBeLessThan(width(open));
+  });
+
+  it("still sails, arc and all, when no arc clears the land", () => {
+    const points = reversal(() => false);
+    const end = points[points.length - 1];
+    expect(end[0]).toBeCloseTo(-HEX_STEP, 6);
+    expect(end[1]).toBeCloseTo(0, 6);
+    expect(Math.max(...points.map((p) => p[0]))).toBeGreaterThan(0); // it still sails on before turning
+  });
+
+  it("does not ask about the water when it need not come about", () => {
+    let asked = 0;
+    sail(setCourse(restingMotion(0, 0, EAST), [[HEX_STEP, 0]], Infinity, () => (asked++, true)));
+    expect(asked).toBe(0);
   });
 });

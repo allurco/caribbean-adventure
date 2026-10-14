@@ -62,7 +62,8 @@ import { flightStep } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
 import { Ship, SinkingShip } from "./Ship";
-import { seaRoute } from "./shipRoute";
+import { openWaterFrom, seaRoute } from "./shipRoute";
+import { spawnHeading } from "./shipSpawnHeading";
 import type { Point } from "./shipMotion";
 import { trackShipHeadings } from "./shipHeading";
 import { ShipTooltip } from "./ShipTooltip";
@@ -204,6 +205,11 @@ function Scene({
   const period = wrapWorldWidth(G.wrap);
   // A ship that moves several hexes at once (an NPC's turn) sails round the land through them (#212).
   const shipRoute = useCallback((from: Point, to: Point) => seaRoute(from, to, G.cells, G.wrap), [G.cells, G.wrap]);
+  // The heading each ship lies at before it first sails: toward open sea, seeded per ship (#212).
+  const shipSpawnHeading = useMemo(() => {
+    const water = new Set(G.cells.filter((c) => c.terrain === "water").map((c) => `${c.hex.q},${c.hex.r}`));
+    return (id: string, position: Hex) => spawnHeading(worldSeed, id, position, (h) => water.has(`${h.q},${h.r}`), G.wrap);
+  }, [G.cells, G.wrap, worldSeed]);
   const aspect = useThree((s) => s.size.width / Math.max(1, s.size.height));
   const footprint = useMemo(() => groundFootprint(CAMERA_DIRECTION,CAMERA_FOV, aspect), [aspect]);
   const band = useMemo(() => mapBand(getMapPreset(G.mapSize).rows), [G.mapSize]);
@@ -225,6 +231,8 @@ function Scene({
 
   // The ground the focus follows at town zoom (#90): the one terrain field.
   const ground = useMemo(() => sharedTerrainField(G.cells, G.wrap, worldSeed).sampleHeight, [G.cells, G.wrap, worldSeed]);
+  // Where a ship may come about without swinging over the shore (#212).
+  const shipOpenWater = useMemo(() => openWaterFrom(ground), [ground]);
 
   // The one CPU sea surface (#141), read at the wave clock by everything that
   // rides the swell: the ships (#142) and the dev buoys.
@@ -434,6 +442,8 @@ function Scene({
           shipClass={ship.shipClass}
           wrapWidth={period}
           seaRoute={shipRoute}
+          openWater={shipOpenWater}
+          initialHeading={shipSpawnHeading(id, ship.position)}
           foamId={copy === 0 ? id : undefined}
           foamPlayer
           onPointerEnter={() => onShipHover(id)}
@@ -452,6 +462,8 @@ function Scene({
           shipClass={npc.shipClass}
           wrapWidth={period}
           seaRoute={shipRoute}
+          openWater={shipOpenWater}
+          initialHeading={shipSpawnHeading(npc.id, npc.position)}
           foamId={copy === 0 ? npc.id : undefined}
           onPointerEnter={() => onShipHover(npc.id)}
           onPointerLeave={() => onShipHover(null)}

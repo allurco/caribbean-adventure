@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { hex, hexToWorld, type Hex } from "../game/hex";
 import type { MapCell } from "../game/types";
-import { seaRoute } from "./shipRoute";
+import { HULL_CLEARANCE, openWaterFrom, seaRoute } from "./shipRoute";
 import type { Point } from "./shipMotion";
 
 const cell = (q: number, r: number, terrain: MapCell["terrain"] = "water"): MapCell => ({
@@ -34,5 +34,20 @@ describe("seaRoute", () => {
   it("falls back to a straight move when there is no route", () => {
     const landlocked = [cell(0, 0), cell(1, 0, "island"), cell(2, 0)];
     expect(seaRoute(xz(hex(0, 0)), xz(hex(2, 0)), landlocked, null)).toEqual([xz(hex(2, 0))]);
+  });
+});
+
+describe("openWaterFrom", () => {
+  // A shore along x = 1: seabed to the west, land to the east.
+  const height = (x: number) => (x < 1 ? -0.1 : 0.2);
+  const water = openWaterFrom((x) => height(x));
+
+  it("is open water well off the shore", () => {
+    expect(water(0, 0)).toBe(true);
+  });
+
+  it("is not open water on land, nor within a hull's clearance of the shore", () => {
+    expect(water(2, 0)).toBe(false);
+    expect(water(1 - HULL_CLEARANCE / 2, 0)).toBe(false);
   });
 });

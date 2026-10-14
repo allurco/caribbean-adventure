@@ -10,7 +10,9 @@
  *   rest); at each interior waypoint its tangent bisects the legs in and
  *   out, so the curve is tangent-continuous; it arrives along its last leg.
  *   A first waypoint well behind the bow gets a turning point ahead and to
- *   the side, so the ship comes about in an arc instead of pivoting.
+ *   the side, so the ship comes about in an arc instead of pivoting. Given
+ *   where the open water is (`OpenWater`), it turns to the side whose arc
+ *   stays over water, and tightens the arc when both sides are near land.
  * - **Distance along the path** follows a cubic in time over the whole move:
  *   from the speed the ship already has (0 at rest) to rest at the end, so
  *   it gathers way, glides and settles; a new course mid-move keeps its way.
@@ -30,6 +32,9 @@
  */
 
 export type Point = readonly [number, number];
+
+/** Whether a hull can sail at world (x, z): open water clear of the shore. */
+export type OpenWater = (x: number, z: number) => boolean;
 
 interface Segment {
   p0: Point;
@@ -97,6 +102,10 @@ export const COME_ABOUT_ANGLE = (110 * Math.PI) / 180;
 /** Where that turning point sits from the start, world units: ahead along the bow, and to the side. */
 export const COME_ABOUT_AHEAD = 0.45;
 export const COME_ABOUT_SIDE = 0.6;
+/** The sizes a come-about arc tries, largest first, as shares of COME_ABOUT_AHEAD and COME_ABOUT_SIDE. */
+export const COME_ABOUT_SCALES: readonly number[] = [1, 0.75, 0.5, 0.3];
+/** World units between the points of a come-about arc checked against the open water. */
+const COME_ABOUT_CHECK_STEP = 0.08;
 /** Waypoints closer than this ahead of the ship are counted as passed when a new course is set. */
 export const WAYPOINT_PASSED = 0.25;
 
@@ -152,22 +161,20 @@ function hermiteDerivative(s: Segment, t: number): Point {
  * `waypoints`: the waypoints themselves, after a turning point when the
  * first is well behind the bow. Also says which knots are turning points.
  */
-function pathKnots(start: Point, startHeading: number, waypoints: readonly Point[]): { knots: Point[]; turning: boolean } {
+function pathKnots(
+  start: Point,
+  startHeading: number,
+  waypoints: readonly Point[],
+  openWater?: OpenWater
+): { knots: Point[]; turning: boolean } {
   const knots: Point[] = [start];
   let turning = false;
   const first = waypoints[0];
   if (first) {
-    const bow = headingDirection(startHeading);
     const leg = sub(first, start);
     const off = Math.abs(angleDelta(directionHeading(leg), startHeading));
     if (len(leg) > EPSILON && off > COME_ABOUT_ANGLE) {
-      // Turn toward the side the waypoint lies on (starboard on a dead reversal).
-      const right = starboard(bow);
-      const side = leg[0] * right[0] + leg[1] * right[1] < -EPSILON ? -1 : 1;
-      knots.push([
-        start[0] + bow[0] * COME_ABOUT_AHEAD + right[0] * side * COME_ABOUT_SIDE,
-        start[1] + bow[1] * COME_ABOUT_AHEAD + right[1] * side * COME_ABOUT_SIDE,
-      ]);
+      knots.push(comeAboutPoint(start, startHeading, first, openWater));
       turning = true;
     }
   }
@@ -175,6 +182,53 @@ function pathKnots(start: Point, startHeading: number, waypoints: readonly Point
     if (len(sub(w, knots[knots.length - 1])) > EPSILON) knots.push(w);
   }
   return { knots, turning };
+}
+
+/** The turning point `scale` of the full come-about size ahead of `start` and to `side` (+1 starboard, −1 port). */
+function turningPoint(start: Point, startHeading: number, side: number, scale: number): Point {
+  const bow = headingDirection(startHeading);
+  const right = starboard(bow);
+  return [
+    start[0] + (bow[0] * COME_ABOUT_AHEAD + right[0] * side * COME_ABOUT_SIDE) * scale,
+    start[1] + (bow[1] * COME_ABOUT_AHEAD + right[1] * side * COME_ABOUT_SIDE) * scale,
+  ];
+}
+
+/** Share of the points along the come-about arc start → `turn` → `target` that are open water. */
+function waterShare(start: Point, startHeading: number, turn: Point, target: Point, openWater: OpenWater): number {
+  const arc = buildPathFromKnots([start, turn, target], startHeading, true);
+  const steps = Math.max(2, Math.ceil(arc.length / COME_ABOUT_CHECK_STEP));
+  let wet = 0;
+  for (let k = 0; k <= steps; k++) {
+    const [x, z] = pathPoint(arc, (k / steps) * arc.length);
+    if (openWater(x, z)) wet++;
+  }
+  return wet / (steps + 1);
+}
+
+/**
+ * Where a ship facing `startHeading` at `start` turns to come about toward
+ * `target`, well behind its bow: ahead and to the side the target lies on
+ * (starboard on a dead reversal). Given the open water, the largest arc on
+ * either side (that side first) that stays over water; if none does, the
+ * arc with the most water under it, the tighter on a tie.
+ */
+function comeAboutPoint(start: Point, startHeading: number, target: Point, openWater?: OpenWater): Point {
+  const right = starboard(headingDirection(startHeading));
+  const leg = sub(target, start);
+  const preferred = leg[0] * right[0] + leg[1] * right[1] < -EPSILON ? -1 : 1;
+  if (!openWater) return turningPoint(start, startHeading, preferred, 1);
+  let best = { point: turningPoint(start, startHeading, preferred, 1), share: -1 };
+  for (const scale of COME_ABOUT_SCALES) {
+    for (const side of [preferred, -preferred]) {
+      const point = turningPoint(start, startHeading, side, scale);
+      const share = waterShare(start, startHeading, point, target, openWater);
+      if (share >= 1) return point;
+      // Later candidates are tighter, so a tie goes to them.
+      if (share >= best.share) best = { point, share };
+    }
+  }
+  return best.point;
 }
 
 /**
@@ -212,8 +266,8 @@ function tabulate(segments: readonly Segment[]): ShipPath {
  * The smooth path from `start`, leaving along `startHeading`, through each of
  * `waypoints` in turn. A path with no waypoints (or only the start) has length 0.
  */
-export function buildShipPath(start: Point, startHeading: number, waypoints: readonly Point[]): ShipPath {
-  const { knots, turning } = pathKnots(start, startHeading, waypoints);
+export function buildShipPath(start: Point, startHeading: number, waypoints: readonly Point[], openWater?: OpenWater): ShipPath {
+  const { knots, turning } = pathKnots(start, startHeading, waypoints, openWater);
   return buildPathFromKnots(knots, startHeading, turning);
 }
 
@@ -349,8 +403,15 @@ const nearest = (v: number, reference: number, period: number): number =>
  * Each waypoint is taken the short way round a map `wrapWidth` wide from the
  * one before; the whole motion is then moved by whole wrap widths so the
  * last waypoint lands exactly where it was given. Keeps the ship's way.
+ * `openWater`, if given, steers a come-about clear of the shore; it is
+ * asked about points in the frame the last waypoint was given in.
  */
-export function setCourse(motion: ShipMotion, waypoints: readonly Point[], wrapWidth: number = Infinity): ShipMotion {
+export function setCourse(
+  motion: ShipMotion,
+  waypoints: readonly Point[],
+  wrapWidth: number = Infinity,
+  openWater?: OpenWater
+): ShipMotion {
   if (waypoints.length === 0) return motion;
   const pending: Point[] = [];
   const voyage = motion.voyage;
@@ -374,7 +435,7 @@ export function setCourse(motion: ShipMotion, waypoints: readonly Point[], wrapW
   const shifted = route.map((p): Point => [p[0] + shift, p[1]]);
   // Leave along the course it is making, or at rest along its bow.
   const startHeading = voyage && motion.speed > EPSILON ? motion.course : motion.heading;
-  const { knots, turning } = pathKnots(start, startHeading, shifted);
+  const { knots, turning } = pathKnots(start, startHeading, shifted, openWater);
   if (knots.length < 2) return { ...motion, x: start[0], voyage: null };
   const path = buildPathFromKnots(knots, startHeading, turning);
   // Distances of the asked-for waypoints: every knot after the start, less the turning point.
