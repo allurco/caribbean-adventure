@@ -156,7 +156,7 @@ FRIGATE_LINES = (
     Line("masts", "Masts, yards, tops, bowsprit", 4500,
          ("Masts", "Tops", "Bowsprit"), ("Yard_", "Lateen_")),
     Line("sails", "Sails x9 + flag", 5500,
-         ("Sails", "Jolly_Roger", "Pennant")),
+         ("Sails", "Jolly_Roger", "Pennant", "Sail_Band")),
     # THE ONE LOWERED FLOOR IN THE TABLE, and the only one the maintainer has
     # authorised. The spec's 4,000-triangle line was written before spec
     # section 5 itself chose the 2-triangle ALPHA-CUT RIBBON for rope. At two
@@ -358,7 +358,7 @@ GALLEON_LINES = (
              "112 + Bowsprit 108 = 2,664, 67% of 4,000; the frigate's 4,500 "
              "would put her at 59% for a smaller rig"
          )),
-    Line("sails", "Sails x6 + flag", 4500, ("Sails", "Jolly_Roger", "Pennant"),
+    Line("sails", "Sails x6 + flag", 4500, ("Sails", "Jolly_Roger", "Pennant", "Sail_Band"),
          spec_budget=5500,
          budget_why=(
              "six sails, not nine: five square and the lateen at 432 "
@@ -500,7 +500,8 @@ FLUTE_LINES = (
          ("Rails", "Channels", "Chainplates", "Headrails", "Beakhead")),
     Line("masts", "Masts, yards, tops, bowsprit", 2600,
          ("Masts", "Tops", "Bowsprit"), ("Yard_", "Lateen_")),
-    Line("sails", "Sails x5 + flag", 2300, ("Sails", "Jolly_Roger", "Pennant")),
+    Line("sails", "Sails x5 + flag + pennant + band", 2400,
+         ("Sails", "Jolly_Roger", "Pennant", "Sail_Band")),
     Line("rigging", "Standing + running rigging", 800, ("Rigging",)),
     Line("cannons", "Cannons x8, carriages, port lids", 2000,
          (), ("Cannon_", "PortLid_")),
@@ -514,21 +515,21 @@ FLUTE_LINES = (
 # 7 x 232 (Cannon_) + 7 x 12 (PortLid_) + 3 x 156 (Barrel_) + 1 x 1,180
 # (Anchor_); her one lantern repeats nothing.
 FLUTE_SHARED_REPEATS = 7 * 232 + 7 * 12 + 3 * 156 + 1180
-FLUTE_GLB_CEILING = texbudget.glb_ceiling(31600 - FLUTE_SHARED_REPEATS, 4)
+FLUTE_GLB_CEILING = texbudget.glb_ceiling(31700 - FLUTE_SHARED_REPEATS, 4)
 
 FLUTE_BUDGET = Budget(
     lines=FLUTE_LINES,
-    total=31600,
-    ceiling=34300,
+    total=31700,
+    ceiling=34400,
     ceiling_why=(
         "the frigate's 50,000 ceiling stands 8.7% over her 46,000 target; "
-        "the same proportion over the flute's 31,600 is 34,347, rounded "
-        "DOWN to 34,300 so her margin is no wider than the frigate's"
+        "the same proportion over the flute's 31,700 is 34,456, rounded "
+        "DOWN to 34,400 so her margin is no wider than the frigate's"
     ),
     fed_by=FED_BY,
     glb_ceiling=FLUTE_GLB_CEILING,
     glb_why=(
-        "derived the way the frigate's was: her 31,600 drawn target less "
+        "derived the way the frigate's was: her 31,700 drawn target less "
         "the triangles she draws again off a mesh the file stores once "
         "(7 x 232 cannons, 7 x 12 lids, 3 x 156 barrels, 1 x 1,180 "
         "anchor), 3,356, at the frigate's measured 82.37 bytes a "
@@ -540,7 +541,7 @@ FLUTE_BUDGET = Budget(
 
 
 # THE SLOOP'S. Every line is what she DRAWS, read off her built scene
-# (`tests/test_sloop_budget.py`'s table, 20,280 in 51 objects), rounded up to
+# (`tests/test_sloop_budget.py`'s table, 20,424 in 52 objects), rounded up to
 # the hundred, as the flute's are. Her gaff, boom and topsail yard spend the
 # masts line, as every spar does; her rails line carries no head rails,
 # because she runs no `headworks` pass (a sloop has a plain stem). Re-read
@@ -557,8 +558,8 @@ SLOOP_LINES = (
          ("Rails", "Channels", "Chainplates", "Headrails", "Beakhead")),
     Line("masts", "Mast, gaff, boom, topsail yard, bowsprit", 700,
          ("Masts", "Tops", "Bowsprit"), ("Gaff_", "Boom_", "Yard_")),
-    Line("sails", "Sails x5 + flag + pennant", 2300,
-         ("Sails", "Jolly_Roger", "Pennant")),
+    Line("sails", "Sails x5 + flag + pennant + band", 2400,
+         ("Sails", "Jolly_Roger", "Pennant", "Sail_Band")),
     Line("rigging", "Standing + running rigging", 300, ("Rigging",)),
     Line("cannons", "Cannons x8, carriages, port lids", 2000,
          (), ("Cannon_", "PortLid_")),
@@ -571,21 +572,21 @@ SLOOP_LINES = (
 # 7 x 232 (Cannon_) + 7 x 12 (PortLid_) + 3 x 156 (Barrel_) + 1 x 1,180
 # (Anchor_): the copies of a shared mesh the `.glb` stores once.
 SLOOP_SHARED_REPEATS = 7 * 232 + 7 * 12 + 3 * 156 + 1180
-SLOOP_GLB_CEILING = texbudget.glb_ceiling(20800 - SLOOP_SHARED_REPEATS, 4)
+SLOOP_GLB_CEILING = texbudget.glb_ceiling(20900 - SLOOP_SHARED_REPEATS, 4)
 
 SLOOP_BUDGET = Budget(
     lines=SLOOP_LINES,
-    total=20800,
-    ceiling=22600,
+    total=20900,
+    ceiling=22700,
     ceiling_why=(
         "the frigate's 50,000 ceiling stands 8.7% over her 46,000 target; "
-        "the same proportion over the sloop's 20,800 is 22,609, rounded "
+        "the same proportion over the sloop's 20,900 is 22,717, rounded "
         "DOWN to the hundred so her margin is no wider than the frigate's"
     ),
     fed_by=FED_BY,
     glb_ceiling=SLOOP_GLB_CEILING,
     glb_why=(
-        "derived the way the frigate's was: her 20,800 drawn target less "
+        "derived the way the frigate's was: her 20,900 drawn target less "
         "the triangles she draws again off a mesh the file stores once "
         "(7 x 232 cannons, 7 x 12 lids, 3 x 156 barrels, 1 x 1,180 "
         "anchor), 3,356, at the frigate's measured 82.37 bytes a "

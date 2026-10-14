@@ -1,10 +1,12 @@
-"""The owner's colours: a masthead pennant and a hull stripe. The plan is pure.
+"""The owner's colours: a masthead pennant, a hull stripe and a band across
+the main course. The plan is pure.
 
-The maintainer's ruling (issue #134, rewritten): the owner's colour goes on a
-pennant, the flag and a hull stripe, and the sails stay plain canvas. The
-game tints a part by multiplying its material's base colour, after it has
-merged the file by material, so each of these two is its OWN mesh wearing its
-OWN plain white material (`palette.tinted_material_names`): white times the
+The maintainer's ruling (issue #134, revised): the owner's colour goes on a
+pennant, a hull stripe and a band across the main course; the rest of the
+canvas stays plain, and the flag flies the captain's nation, which the game
+draws on it. The game tints a part by multiplying its material's base colour,
+after it has merged the file by material, so each of these three is its OWN
+mesh wearing its OWN plain white material (`palette.tinted_material_names`): white times the
 owner's colour is the owner's colour, and nothing else on the ship shares the
 material to be tinted with it.
 
@@ -16,6 +18,10 @@ material to be tinted with it.
     `STRIPE_PROUD` off the RENDERED hull (the bpy half samples the evaluated
     skin). Where a shot scar lies under it, the quad over the scar is left
     out: paint does not bridge a shot hole.
+  * SAIL BAND: a band across the main course (the lowest sail on her
+    mainmast, her largest), leech to leech, in two sheets standing off each
+    face of the cloth (`band_lift`) over the canvas's own grid nodes.
+    A quad over a tear in the canvas is left out, as the stripe's are.
 
 `build_owner_colours` is the bpy half, run from the dressing pass.
 """
@@ -27,7 +33,8 @@ from .params import FrigateParams
 
 PENNANT = "Pennant"
 STRIPE = "Hull_Stripe"
-TINTED_PARTS = (PENNANT, STRIPE)
+SAIL_BAND = "Sail_Band"
+TINTED_PARTS = (PENNANT, STRIPE, SAIL_BAND)
 
 # --- the pennant -------------------------------------------------------------
 
@@ -184,6 +191,123 @@ def stripe_targets(p: FrigateParams, sign: float) -> list[list[tuple]]:
     return out
 
 
+# --- the sail band --------------------------------------------------------------
+
+BAND_MAST = "main"
+# The canvas grid's ROWS (foot = 0) the band runs between: a sixth of the
+# sail's depth, across its middle.
+BAND_ROWS = (5, 7)
+# Off each face of the cloth, along its own normal. To LEEWARD the band is
+# paint: it lies under the sail patches (`wind.PATCH_LIFT`) and the buntlines
+# led down that face (`ropes.BUNTLINE_LIFT`), which cross it as they cross the
+# canvas. To WINDWARD nothing lies on the cloth, so it stands further off,
+# which keeps it clear of the canvas in the depth buffer.
+BAND_LIFT_LEE = 0.02
+BAND_LIFT_WEATHER = 0.06
+
+
+def band_lift(side: float) -> float:
+    """How far a sheet stands off the cloth: to leeward (`side` +1) or to
+    windward (-1)."""
+    return BAND_LIFT_LEE if side > 0 else BAND_LIFT_WEATHER
+
+
+def band_sail(p: FrigateParams):
+    """(mast, sail): the lowest sail on her mainmast, her main course (on
+    the sloop, her gaff mainsail)."""
+    if BAND_MAST not in profiles.mast_names(p):
+        raise ValueError(f"{p.collection} has no {BAND_MAST!r} mast to band")
+    sail = min(p.rig.mast(BAND_MAST).sails, key=lambda s: s.tier)
+    return BAND_MAST, sail
+
+
+def _cloth_normal(p: FrigateParams, mast, sail, u: float, v: float):
+    """The unit direction the cloth bellies at (u, v): the one a sail patch
+    is lifted along (`wind.patch_grid`)."""
+    from . import sailplan
+    from .shiptype import SailKind
+
+    if sail.kind is SailKind.SQUARE:
+        return wind.sail_normal(p, mast, sail.tier, v)
+    corners = sailplan.corners(p, mast, sail)
+    cloth = sailplan.surface_point(p, corners, sail.kind, u, v)
+    return sailplan.belly_direction(p, corners, cloth[2])
+
+
+def band_grid(p: FrigateParams, side: float) -> list[list]:
+    """One sheet: rows foot to head over the canvas rows `BAND_ROWS`,
+    columns over every canvas column, each node `band_lift(side)` off its
+    cloth node, to leeward (`side` +1) or to windward (-1)."""
+    from . import sailplan
+
+    mast, sail = band_sail(p)
+    nu, nv = profiles.SAIL_NU, profiles.SAIL_NV
+    lo, hi = BAND_ROWS
+    out = []
+    for j in range(lo, hi + 1):
+        v = j / (nv - 1)
+        row = []
+        for i in range(nu):
+            u = -1.0 + 2.0 * i / (nu - 1)
+            x, y, z = sailplan.sail_point(p, mast, sail, u, v)
+            n = _cloth_normal(p, mast, sail, u, v)
+            lift = side * band_lift(side)
+            row.append((x + n[0] * lift, y + n[1] * lift, z + n[2] * lift))
+        out.append(row)
+    return out
+
+
+def band_holes(p: FrigateParams) -> set[tuple[int, int]]:
+    """{(column, canvas row)} of every band quad over a tear in the canvas."""
+    if not p.builds("damage"):
+        return set()
+    from . import damage
+
+    mast, sail = band_sail(p)
+    lo, hi = BAND_ROWS
+    return {(i, j) for m, tier, i, j in damage.canvas_tears(
+        p, profiles.SAIL_NU, profiles.SAIL_NV)
+        if m == mast and tier == sail.tier and lo <= j < hi}
+
+
+def _facing(grid, side_pt) -> bool:
+    """Does the quad order (a, a+1, b+1, b) face toward `side_pt` - the
+    middle node of the sheet minus the cloth under it?"""
+    r, i = 0, len(grid[0]) // 2
+    a, b, d = grid[r][i], grid[r][i + 1], grid[r + 1][i]
+    e1 = tuple(x - y for x, y in zip(b, a))
+    e2 = tuple(x - y for x, y in zip(d, a))
+    n = (e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
+         e1[0] * e2[1] - e1[1] * e2[0])
+    return sum(x * y for x, y in zip(n, side_pt)) > 0.0
+
+
+def band_mesh(p: FrigateParams) -> tuple[list, list]:
+    """(vertices, quads as vertex indices): both sheets, each wound to face
+    AWAY from the cloth, with the torn quads left out."""
+    mast, sail = band_sail(p)
+    lo, hi = BAND_ROWS
+    nu = profiles.SAIL_NU
+    holes = band_holes(p)
+    verts, faces = [], []
+    for side in (1.0, -1.0):
+        grid = band_grid(p, side)
+        base = len(verts)
+        verts += [pt for row in grid for pt in row]
+        mid_u = -1.0 + 2.0 * (nu // 2) / (nu - 1)
+        mid_v = lo / (profiles.SAIL_NV - 1)
+        n = _cloth_normal(p, mast, sail, mid_u, mid_v)
+        out = _facing(grid, tuple(side * c for c in n))
+        for r in range(hi - lo):
+            for i in range(nu - 1):
+                if (i, lo + r) in holes:
+                    continue
+                a, b = base + r * nu + i, base + (r + 1) * nu + i
+                quad = (a, a + 1, b + 1, b)
+                faces.append(quad if out else tuple(reversed(quad)))
+    return verts, faces
+
+
 # --- the bpy half --------------------------------------------------------------
 
 
@@ -234,17 +358,29 @@ def _stripe(bm, p: FrigateParams) -> None:
         bm.verts.remove(v)
 
 
+def _band(bm, p: FrigateParams) -> None:
+    verts, faces = band_mesh(p)
+    bverts = [bm.verts.new(pt) for pt in verts]
+    for face in faces:
+        bm.faces.new(tuple(bverts[k] for k in face))
+    loose = [v for v in bm.verts if not v.link_faces]
+    for v in loose:
+        bm.verts.remove(v)
+
+
 def build_owner_colours(p: FrigateParams) -> list:
-    """The pennant, with the canvas, and the stripe, on the hull."""
+    """The pennant and the sail band, with the canvas, and the stripe, on
+    the hull."""
     import bmesh
 
     from . import prims
 
-    # The stripe keeps its own winding (outward on both sides): an open
-    # strip has no outward for `recalc_face_normals` to find.
+    # The stripe and the band keep their own winding (outward on both
+    # sides): an open strip has no outward for `recalc_face_normals` to find.
     parts = []
     if p.builds("sails"):
         parts.append((PENNANT, _pennant, True, True))
+        parts.append((SAIL_BAND, _band, True, False))
     parts.append((STRIPE, _stripe, True, False))
     built = []
     for name, fn, smooth, recalc in parts:

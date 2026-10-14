@@ -16,50 +16,58 @@ import {
   type TypedArray,
 } from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { flagUvs } from "./flagUvs";
+
+type Role = "plain" | "tinted" | "flag";
 
 /**
  * Merges `scene` into a new group holding one mesh per merge group: the
  * parts sharing a material, with the parts named in `tintedParts` (or under
  * a node so named) kept apart in their own group, flagged
  * `userData.tinted`, so a ship can colour them through its own material copy
- * (#134). Geometry is baked into the scene's frame; the materials are the
- * loaded ones, shared. `scene` itself is left as it is.
+ * (#134). The part named `flagPart` is kept apart too, flagged
+ * `userData.flag`, with texture coordinates of its own running hoist to fly
+ * and foot to head (`flagUvs`), so a ship can fly its nation's flag on it.
+ * Geometry is baked into the scene's frame; the materials are the loaded
+ * ones, shared. `scene` itself is left as it is.
  */
-export function mergeShipModel(scene: Object3D, tintedParts: readonly string[]): Group {
+export function mergeShipModel(scene: Object3D, tintedParts: readonly string[], flagPart?: string): Group {
   scene.updateMatrixWorld(true);
   const toScene = new Matrix4().copy(scene.matrixWorld).invert();
-  const groups = new Map<string, { material: Material; tinted: boolean; geometries: BufferGeometry[] }>();
+  const groups = new Map<string, { material: Material; role: Role; geometries: BufferGeometry[] }>();
 
   scene.traverse((object) => {
     const mesh = object as Mesh;
     if (!mesh.isMesh) return;
     if (Array.isArray(mesh.material)) throw new Error(`mergeShipModel: ${mesh.name} has several materials`);
     const material = mesh.material;
-    const tinted = isTinted(mesh, scene, tintedParts);
-    const key = `${material.uuid}|${tinted}`;
-    const group = groups.get(key) ?? { material, tinted, geometries: [] };
+    const role: Role = isPart(mesh, scene, tintedParts) ? "tinted" : flagPart && isPart(mesh, scene, [flagPart]) ? "flag" : "plain";
+    const key = `${material.uuid}|${role}`;
+    const group = groups.get(key) ?? { material, role, geometries: [] };
     groups.set(key, group);
     group.geometries.push(bakedGeometry(mesh, toScene));
   });
 
   const merged = new Group();
   merged.name = scene.name;
-  for (const { material, tinted, geometries } of groups.values()) {
+  for (const { material, role, geometries } of groups.values()) {
     const geometry = mergeGeometries(withSharedAttributes(geometries));
     if (!geometry) throw new Error(`mergeShipModel: the parts in ${material.name} do not merge`);
     for (const part of geometries) part.dispose();
+    if (role === "flag") geometry.setAttribute("uv", new BufferAttribute(flagUvs(geometry.attributes.position.array), 2));
     const mesh = new Mesh(geometry, material);
-    mesh.name = tinted ? `${material.name}_tinted` : material.name;
-    mesh.userData.tinted = tinted;
+    mesh.name = role === "plain" ? material.name : `${material.name}_${role}`;
+    mesh.userData.tinted = role === "tinted";
+    mesh.userData.flag = role === "flag";
     merged.add(mesh);
   }
   return merged;
 }
 
-/** Whether `mesh` or one of its ancestors below `scene` is a tinted part. */
-function isTinted(mesh: Object3D, scene: Object3D, tintedParts: readonly string[]): boolean {
+/** Whether `mesh` or one of its ancestors below `scene` is one of the parts named. */
+function isPart(mesh: Object3D, scene: Object3D, names: readonly string[]): boolean {
   for (let node: Object3D | null = mesh; node && node !== scene; node = node.parent) {
-    if (tintedParts.includes(node.name)) return true;
+    if (names.includes(node.name)) return true;
   }
   return false;
 }

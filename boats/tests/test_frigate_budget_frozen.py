@@ -24,11 +24,13 @@ P = FrigateParams()
 # floor_why, spec_budget, budget_why -- so one changed character anywhere in
 # the table moves it.
 #
-# MOVED ON PURPOSE, ONCE: the maintainer's ruling on the owner's colours
-# (issue #134) puts a `Pennant` on her sails line and a `Hull_Stripe` on her
-# hull line, and nothing else in the table changed. It was
-# 20026aa2925648eff27f92e87ba2e17ba608a10a at ab0168b.
-FRIGATE_LINES_SHA1 = "0ba4f3024120e3d866dbc17f2a72e799fed0a0b5"
+# MOVED ON PURPOSE, TWICE: the maintainer's rulings on the owner's colours
+# (issue #134). The first put a `Pennant` on her sails line and a
+# `Hull_Stripe` on her hull line (it was
+# 20026aa2925648eff27f92e87ba2e17ba608a10a at ab0168b); the second puts a
+# `Sail_Band` on her sails line (it was
+# 0ba4f3024120e3d866dbc17f2a72e799fed0a0b5). Nothing else in the table moved.
+FRIGATE_LINES_SHA1 = "2ee234da63b8ff13141d27ec0ee73056f153f57e"
 
 # The scene at commit 4088f8c (the one tests/test_budget.py indicts), copied
 # here so an edit to that file's fixture cannot move this capture.

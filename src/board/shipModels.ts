@@ -37,15 +37,20 @@ export interface ShipModel {
   readonly draftMetres: number;
   readonly parts: ShipModelParts;
   /**
-   * The parts that take the owner's colour, by node name (#134). Named by
-   * part, not by material: the Frigate's flag and sail patches share the
-   * sails' canvas. Each is merged apart from the rest (#136).
+   * The parts that take the owner's colour, by node name (#134). Each is
+   * merged apart from the rest (#136) and coloured through the ship's own
+   * material copy. The sails stay canvas; the flag is not tinted but
+   * flies the captain's nation (`shipFlags.ts`).
    */
   readonly tintedParts: readonly string[];
 }
 
-/** The parts every class's generator names for the owner's colour (#134, #163): each its own node and material. */
-const OWNER_PARTS: readonly string[] = ["Sails", "Pennant", "Hull_Stripe"];
+/**
+ * The parts every class's generator names for the owner's colour (#134):
+ * the masthead pennant, the hull stripe and the band across the main
+ * course, each its own node with its own white material.
+ */
+const OWNER_PARTS: readonly string[] = ["Pennant", "Hull_Stripe", "Sail_Band"];
 
 const SLOOP: ShipModel = {
   file: "sloop.glb",
@@ -77,7 +82,6 @@ const FRIGATE: ShipModel = {
   mastheadMetres: 36,
   draftMetres: 4.5,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
-  // Whether the sail patches take the colour too is #134's call.
   tintedParts: OWNER_PARTS,
 };
 

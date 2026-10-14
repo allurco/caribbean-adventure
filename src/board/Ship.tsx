@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { Vector3, Mesh, MathUtils, Group, type Object3D } from "three";
@@ -10,6 +10,9 @@ import { moveHeading } from "./shipHeading";
 import { useShipWavePose } from "./useShipWavePose";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
 import { mergeShipModel } from "./shipModelMerge";
+import { dressShipModel } from "./shipDressing";
+import { shipFlagMaterial } from "./shipFlagMaterials";
+import type { ShipFlag } from "./shipFlags";
 
 const modelUrl = (model: ShipModel) => shipModelUrl(model, import.meta.env.BASE_URL);
 
@@ -20,7 +23,7 @@ for (const model of Object.values(SHIP_MODELS)) if (model) useGLTF.preload(model
 const mergedModels = new WeakMap<Object3D, Group>();
 const mergedShipModel = (scene: Object3D, model: ShipModel): Group => {
   let merged = mergedModels.get(scene);
-  if (!merged) mergedModels.set(scene, (merged = mergeShipModel(scene, model.tintedParts)));
+  if (!merged) mergedModels.set(scene, (merged = mergeShipModel(scene, model.tintedParts, model.parts.flag)));
   return merged;
 };
 
@@ -36,6 +39,7 @@ function smoothstep(t: number): number {
 export function Ship({
   position,
   color,
+  flag = null,
   shipClass,
   onPointerEnter,
   onPointerLeave,
@@ -45,7 +49,10 @@ export function Ship({
   foamPlayer = false,
 }: {
   position: [number, number, number];
+  /** The owner's colour: the box, or the model's pennant, hull stripe and main-course band (#134). */
   color: string;
+  /** The flag a model flies (#134): its captain's nation, or the Jolly Roger; `null` for bare cloth. */
+  flag?: ShipFlag | null;
   shipClass?: ShipClass;
   /** World width of the map's east–west wrap (Infinity if it does not wrap). */
   wrapWidth?: number;
@@ -191,7 +198,7 @@ export function Ship({
         </mesh>
         {model ? (
           <Suspense fallback={box}>
-            <ShipModelMesh model={model} />
+            <ShipModelMesh model={model} colour={color} flag={flag} />
           </Suspense>
         ) : (
           box
@@ -205,10 +212,10 @@ export function Ship({
  * A class's generated model in its own frame (real metres, origin at the
  * waterline amidships, bow along −Z), placed in the ship's wave-pose group:
  * scaled to ship scale, turned onto the heading, its waterline on the
- * group's, which is on the sea (shipModelPlacement, #150). Suspends while
- * the file loads.
+ * group's, which is on the sea (shipModelPlacement, #150). Dressed in its
+ * owner's colour and flying its flag (#134). Suspends while the file loads.
  */
-function ShipModelMesh({ model }: { model: ShipModel }) {
+function ShipModelMesh({ model, colour, flag }: { model: ShipModel; colour: string; flag: ShipFlag | null }) {
   const { scene } = useGLTF(modelUrl(model), false, false);
   // One copy per ship of the class's merged model: the nodes are its own, the geometry and materials shared.
   const copy = useMemo(() => {
@@ -218,6 +225,8 @@ function ShipModelMesh({ model }: { model: ShipModel }) {
     });
     return clone;
   }, [scene, model]);
+  // Its own material copies for the tinted parts, disposed when the ship or its colours change.
+  useLayoutEffect(() => dressShipModel(copy, { colour, flagMaterial: shipFlagMaterial(flag) }), [copy, colour, flag]);
   const { y, rotationY, scale } = shipModelPlacement();
   return (
     <group position-y={y} rotation-y={rotationY} scale={scale}>

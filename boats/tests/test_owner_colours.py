@@ -28,14 +28,15 @@ IDS = ["frigate", "galleon", "flute", "sloop"]
 def test_the_two_parts_are_named_for_the_catalogue():
     assert owner.PENNANT == "Pennant"
     assert owner.STRIPE == "Hull_Stripe"
-    assert owner.TINTED_PARTS == ("Pennant", "Hull_Stripe")
+    assert owner.TINTED_PARTS == ("Pennant", "Hull_Stripe", "Sail_Band")
 
 
 @pytest.mark.parametrize("p", SHIPS, ids=IDS)
 def test_each_part_wears_a_material_of_its_own_named_for_her(p):
     names = palette.tinted_material_names(p)
     assert names == {"Pennant": f"{p.collection}_Pennant",
-                     "Hull_Stripe": f"{p.collection}_HullStripe"}
+                     "Hull_Stripe": f"{p.collection}_HullStripe",
+                     "Sail_Band": f"{p.collection}_SailBand"}
     assert not set(names.values()) & set(palette.material_names(p).values())
 
 

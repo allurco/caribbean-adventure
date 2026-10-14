@@ -450,6 +450,15 @@ JOINTS = dict([
        "SQUARE sail has no such joint -- it is set `wind.sail_fwd` forward of "
        "its own mast's SKIN and `check_sails` asserts that separately"),
 
+    _j("Masts", "Sail_Band",
+       "THE BAND RUNS LUFF TO LEECH. The owner's band (`owner.band_mesh`) "
+       "stands over every column of its sail, and a GAFF mainsail's luff is "
+       "laced to its mast, `sailplan.SAIL_ABAFT_MAST` 0.22 m abaft the axis "
+       "against a mast 0.23-0.24 m in the radius there, so the band's luff "
+       "nodes meet the mast where the canvas's own do. Measured on the "
+       "sloop: two face pairs. A square course stands `wind.sail_fwd` "
+       "forward of its mast and its band never touches it"),
+
     # --- a CASTLE ship: a channel on a castle wall ---------------------------
     #
     # `Castle_Quarter x Rigging` and `Deck_Poop x Rigging` WERE joints here,

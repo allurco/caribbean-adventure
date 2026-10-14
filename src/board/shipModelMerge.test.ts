@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Box3, BoxGeometry, BufferGeometry, Group, Mesh, MeshStandardMaterial, Object3D, Vector3 } from "three";
 import { mergeShipModel } from "./shipModelMerge";
+import { flagUvs } from "./flagUvs";
 
 const meshesOf = (object: Object3D): Mesh[] => {
   const meshes: Mesh[] = [];
@@ -99,6 +100,28 @@ describe("mergeShipModel", () => {
     const tinted = meshesOf(mergeShipModel(scene, ["Sails", "Topsails"])).filter((mesh) => mesh.userData.tinted);
     expect(tinted).toHaveLength(1);
     expect(triangles(tinted[0])).toBe(36);
+  });
+
+  it("keeps the flag in a mesh of its own, flagged, apart from the canvas it shares (#134)", () => {
+    const { scene, canvas } = toyShip();
+    const meshes = meshesOf(mergeShipModel(scene, ["Sails"], "Jolly_Roger"));
+    expect(meshes).toHaveLength(4); // timber, iron, the tinted sails and the flag
+    const flags = meshes.filter((mesh) => mesh.userData.flag);
+    expect(flags).toHaveLength(1);
+    expect(flags[0].userData.tinted).toBe(false);
+    expect(flags[0].material).toBe(canvas);
+    expect(triangles(flags[0])).toBe(12);
+    expect(meshes.filter((mesh) => mesh !== flags[0] && mesh.userData.flag)).toEqual([]);
+  });
+
+  it("gives the flag texture coordinates of its own, hoist to fly and foot to head", () => {
+    const { scene } = toyShip();
+    const flag = meshesOf(mergeShipModel(scene, [], "Jolly_Roger")).find((mesh) => mesh.userData.flag)!;
+    const { position, uv } = flag.geometry.attributes;
+    expect(Array.from(uv.array)).toEqual(Array.from(flagUvs(position.array)));
+    // the loaded flag keeps the atlas coordinates it came with
+    const loaded = scene.getObjectByName("Jolly_Roger") as Mesh;
+    expect(Array.from(loaded.geometry.attributes.uv.array)).toEqual(Array.from(new BoxGeometry(0.5, 0.5, 0.5).attributes.uv.array));
   });
 
   it("leaves the loaded model as it was", () => {

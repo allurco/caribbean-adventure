@@ -63,16 +63,23 @@ describe("ship model catalogue", () => {
     expect(shipModel("Flute")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
   });
 
-  it("tints the Frigate's sails by part name, not the flag that shares their canvas", () => {
-    const frigate = shipModel("Frigate")!;
-    expect(frigate.tintedParts).toContain("Sails");
-    expect(frigate.tintedParts).not.toContain("Jolly_Roger");
+  it("tints every class's pennant, hull stripe and main-course band, the owner-colour parts (#134)", () => {
+    for (const shipClass of SHIP_CLASSES) {
+      expect(shipModel(shipClass)!.tintedParts).toEqual(["Pennant", "Hull_Stripe", "Sail_Band"]);
+    }
   });
 
-  it("tints every class's sails, pennant and hull stripe, the owner-colour parts (#134, #163)", () => {
+  it("never tints the sails, the hull, the deck, the rigging or the flag, which flies a nation (#134)", () => {
     for (const shipClass of SHIP_CLASSES) {
-      expect(shipModel(shipClass)!.tintedParts).toEqual(["Sails", "Pennant", "Hull_Stripe"]);
+      const model = shipModel(shipClass)!;
+      for (const part of ["Sails", "Sail_Patches", "Hull", "Deck_Main", "Rigging", model.parts.flag]) {
+        expect(model.tintedParts).not.toContain(part);
+      }
     }
+  });
+
+  it("has nothing to tint on a class without a model", () => {
+    expect(shipModel(undefined)).toBeNull();
   });
 
   it("serves the model under the app's base path", () => {
