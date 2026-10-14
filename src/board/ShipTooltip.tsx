@@ -2,6 +2,7 @@ import { Html } from "@react-three/drei";
 import type { ShipState, NPCShip, GoodType } from "../game/types";
 import { GOOD_TYPES } from "../game/types";
 import { NationFlag } from "./NationFlag";
+import { shipTooltipHeight } from "./shipHull";
 
 interface ShipTooltipProps {
   position: [number, number, number];
@@ -66,8 +67,10 @@ export function ShipTooltip({
   const showCargo = isNPC ? npc.isIdentified : isScouted;
 
   return (
-    <Html position={[position[0], position[1] + 1.2, position[2]]} center>
+    // Its bottom edge just over the masthead (ADR 0006), so it never covers the ship.
+    <Html position={[position[0], position[1] + shipTooltipHeight(ship.shipClass), position[2]]}>
       <div
+        style={{ transform: "translate(-50%, -100%)" }}
         className="bg-stone-900/95 text-amber-100 px-3 py-2 rounded-lg
                       text-xs shadow-lg border border-amber-800/30
                       whitespace-nowrap pointer-events-none"

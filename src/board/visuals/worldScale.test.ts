@@ -4,11 +4,15 @@ import {
   BUILDING_ENLARGEMENT,
   BUILDING_SCALE,
   HEX_METRES,
+  LANDMARK_SCALE,
   METRES_PER_UNIT,
   PROP_DENSITY,
   PROP_DENSITY_CAP,
   PROP_SCALE,
+  SHIP_ENLARGEMENT,
   SHIP_SCALE,
+  TOWN_PIECE_SCALE,
+  VEGETATION_SCALE,
   metresToUnits,
   propDensityFor,
   unitsToMetres,
@@ -34,7 +38,7 @@ describe("world scale", () => {
   });
 });
 
-describe("the props' scale (ADR 0003)", () => {
+describe("the props' scale (ADR 0003, ADR 0006)", () => {
   it("draws a hex as 350 m, against the 115 m the props were authored at", () => {
     expect(AUTHORED_HEX_METRES).toBe(115);
     expect(HEX_METRES).toBe(350);
@@ -45,9 +49,17 @@ describe("the props' scale (ADR 0003)", () => {
     expect(PROP_SCALE).toBeCloseTo(0.329, 3);
   });
 
-  it("draws ships at twice true scale", () => {
-    expect(SHIP_SCALE).toBe(2 * (115 / 350));
-    expect(SHIP_SCALE).toBeCloseTo(0.657, 3);
+  it("draws ships 2.3 times their old twice-true size (ADR 0006)", () => {
+    expect(SHIP_ENLARGEMENT).toBe(2.3);
+    expect(SHIP_SCALE).toBe(2.3 * 2 * (115 / 350));
+    expect(SHIP_SCALE).toBeCloseTo(1.511, 3);
+  });
+
+  it("starts the other picture families at today's factors, each its own constant (ADR 0006)", () => {
+    // Each is flipped by its own slice of #158; until then they draw exactly as before.
+    expect(VEGETATION_SCALE).toBe(PROP_SCALE);
+    expect(TOWN_PIECE_SCALE).toBe(PROP_SCALE);
+    expect(LANDMARK_SCALE).toBe(BUILDING_SCALE);
   });
 
   it("draws buildings 1.125 times true scale", () => {

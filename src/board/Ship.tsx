@@ -5,7 +5,7 @@ import { Vector3, Mesh, MathUtils, Group, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
 import { shipFoamSources } from "./shipFoamSources";
-import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHullBox } from "./shipHull";
+import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox } from "./shipHull";
 import { moveHeading } from "./shipHeading";
 import { useShipWavePose } from "./useShipWavePose";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
@@ -72,6 +72,7 @@ export function Ship({
   const foamSpeed = useRef(0);
   const hull = shipHullBox(shipClass);
   const hullLength = hull[2];
+  const hover = shipHoverBox(shipClass);
   const model = shipModel(shipClass);
   // The wave pose rides on an inner group, under the group that sails and turns.
   const innerRef = useShipWavePose(hull);
@@ -161,7 +162,8 @@ export function Ship({
   // The group stands on the sea at the ship's waterline, sails and turns; its
   // inner group rides the swell about that waterline (#150); the box or the
   // model inside it is what is drawn and hit, so hover and click work over the
-  // whole model and follow the tilted hull.
+  // whole model and follow the tilted hull. An undrawn box from the hull up to
+  // the masthead (ADR 0006) catches the pointer between the sails too.
   return (
     <group
       ref={groupRef}
@@ -179,6 +181,10 @@ export function Ship({
       }}
     >
       <group ref={innerRef}>
+        <mesh position-y={(hover.top + hover.bottom) / 2}>
+          <boxGeometry args={[hover.width, hover.top - hover.bottom, hover.length]} />
+          <meshBasicMaterial visible={false} />
+        </mesh>
         {model ? (
           <Suspense fallback={box}>
             <ShipModelMesh model={model} />

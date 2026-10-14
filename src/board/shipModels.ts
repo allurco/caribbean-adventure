@@ -27,6 +27,8 @@ export interface ShipModel {
   readonly beamMetres: number;
   /** The hull's depth in metres, keel to sheer. */
   readonly depthMetres: number;
+  /** How high the rig's top stands above the waterline, in metres: the hover box reaches it (ADR 0006). */
+  readonly mastheadMetres: number;
   /**
    * How far the keel stands under the waterline in metres, the generator's
    * declared draft (its `*Params.draft`): the model's lowest hull point is
@@ -50,6 +52,7 @@ const SLOOP: ShipModel = {
   lengthMetres: 18,
   beamMetres: 5.6,
   depthMetres: 4.15,
+  mastheadMetres: 18.9,
   draftMetres: 2.6,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
   tintedParts: OWNER_PARTS,
@@ -60,6 +63,7 @@ const FLUTE: ShipModel = {
   lengthMetres: 30,
   beamMetres: 7.4,
   depthMetres: 7.2,
+  mastheadMetres: 25.8,
   draftMetres: 3.0,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
   tintedParts: OWNER_PARTS,
@@ -70,6 +74,7 @@ const FRIGATE: ShipModel = {
   lengthMetres: 38,
   beamMetres: 10.2,
   depthMetres: 8.4,
+  mastheadMetres: 36,
   draftMetres: 4.5,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
   // Whether the sail patches take the colour too is #134's call.
@@ -81,6 +86,7 @@ const GALLEON: ShipModel = {
   lengthMetres: 42,
   beamMetres: 13.6,
   depthMetres: 11.1,
+  mastheadMetres: 39.1,
   draftMetres: 5.3,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
   tintedParts: OWNER_PARTS,
@@ -98,7 +104,7 @@ export const SHIP_MODELS: Readonly<Record<ShipClass, ShipModel | null>> = {
 export const shipModel = (shipClass: ShipClass | undefined): ShipModel | null =>
   shipClass ? SHIP_MODELS[shipClass] : null;
 
-/** The uniform scale that turns a model's metres into world units at ship scale (ADR 0003). */
+/** The uniform scale that turns a model's metres into world units at ship scale (ADR 0006). */
 export const shipModelScale = (): number => metresToUnits(1) * SHIP_SCALE;
 
 /** The turn about +Y that points the model's bow (glTF −Z) along the board's heading (+Z, `atan2(dx, dz)` in `Ship`). */

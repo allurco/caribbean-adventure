@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { METRES_PER_UNIT, PROP_SCALE } from "./worldScale";
 import {
   HULL_FOAM_ANCHOR_STRENGTH,
   HULL_FOAM_FULL_SPEED,
   HULL_FOAM_GLSL,
+  HULL_FOAM_NOISE_METRES,
+  HULL_FOAM_NOISE_SCALE,
   HULL_FOAM_REACH,
   HULL_FOAM_WAKE_LENGTHS,
   hullFoamCoverage,
@@ -70,5 +73,14 @@ describe("HULL_FOAM_GLSL", () => {
     expect(HULL_FOAM_GLSL).toContain(`const float HULL_FOAM_FULL_SPEED = ${HULL_FOAM_FULL_SPEED.toFixed(4)};`);
     expect(HULL_FOAM_GLSL).toContain(`const float HULL_FOAM_WAKE_LENGTHS = ${HULL_FOAM_WAKE_LENGTHS.toFixed(4)};`);
     expect(HULL_FOAM_GLSL).toContain("float hullFoamCoverage(vec2 offset, vec2 heading, float hullLength, float speed)");
+  });
+});
+
+describe("hull foam lace size (ADR 0006)", () => {
+  it("is set in water metres, so it keeps its size between ship scale ×1 and ×2.3", () => {
+    // One noise cycle in metres, as the water measures them; ship scale is not an input.
+    expect(HULL_FOAM_NOISE_SCALE).toBeCloseTo(METRES_PER_UNIT / HULL_FOAM_NOISE_METRES, 12);
+    // Its size before ADR 0006, when it followed the ship scale of 2 × PROP_SCALE.
+    expect(HULL_FOAM_NOISE_METRES).toBeCloseTo((METRES_PER_UNIT * 2 * PROP_SCALE) / 14, 12);
   });
 });

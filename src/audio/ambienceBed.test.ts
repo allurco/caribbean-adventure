@@ -3,7 +3,7 @@ import { createAmbienceBed } from "./ambienceBed";
 import type { PlayOptions, SoundHandle } from "./audioEngine";
 import type { SoundId } from "./soundRegistry";
 import { soundById } from "./soundRegistry";
-import { AMBIENCE_WIDE_FLOOR, ambienceMix } from "./ambienceMix";
+import { AMBIENCE_CLOSE_DISTANCE, AMBIENCE_WIDE_FLOOR, ambienceMix } from "./ambienceMix";
 
 interface FakeSound {
   id: SoundId;
@@ -44,7 +44,7 @@ describe("ambience bed", () => {
   it("plays nothing before audio is unlocked", () => {
     const engine = fakeEngine();
     const bed = createAmbienceBed(engine);
-    bed.setDistance(4.32);
+    bed.setDistance(AMBIENCE_CLOSE_DISTANCE);
     bed.setDistance(20);
     expect(engine.sounds).toHaveLength(0);
     expect(bed.levels().playing).toBe(false);
@@ -53,9 +53,9 @@ describe("ambience bed", () => {
   it("starts both layers looping on the first frame after the unlock", () => {
     const engine = fakeEngine();
     const bed = createAmbienceBed(engine);
-    bed.setDistance(4.32);
+    bed.setDistance(AMBIENCE_CLOSE_DISTANCE);
     engine.unlock();
-    bed.setDistance(4.32);
+    bed.setDistance(AMBIENCE_CLOSE_DISTANCE);
     expect(engine.sounds.map((s) => s.id).sort()).toEqual(["sea-close", "sea-wide"]);
     for (const s of engine.sounds) expect(s.options.loop).toBe(true);
     expect(bed.levels().playing).toBe(true);
@@ -65,7 +65,7 @@ describe("ambience bed", () => {
     const engine = fakeEngine();
     engine.unlock();
     const bed = createAmbienceBed(engine);
-    bed.setDistance(4.32);
+    bed.setDistance(AMBIENCE_CLOSE_DISTANCE);
     expect(playing(engine, "sea-close")?.volume).toBeCloseTo(soundById("sea-close").volume, 9);
     expect(playing(engine, "sea-wide")?.volume).toBeCloseTo(AMBIENCE_WIDE_FLOOR * soundById("sea-wide").volume, 9);
 

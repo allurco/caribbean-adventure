@@ -1,24 +1,27 @@
 /**
- * The picture's two scales (ADR 0003). Pure, no Three.js.
+ * The picture's scales (ADR 0003, ADR 0006). Pure, no Three.js.
  *
  * The water: one world unit is 65 m. Wave spectra, dispersion (ω² = g·k),
  * water absorption and the seabed shelf are physical, so the renderer needs
  * one constant to convert them. It was set by the first galleon model (0.8
  * units long for a ship about 50 m), which made a hex about 115 m across.
  *
- * The props: a hex stands for about 350 m. Every authored prop (palms,
- * shrubs, rocks, stones, the port kit) was modelled for the 115 m hex, so
- * it is drawn at `PROP_SCALE` = 115 / 350 of its authored size, with its
- * footprint, clearances and placement margins; buildings take a little
- * more (`BUILDING_SCALE`) so houses do not read as sheds, and ships twice
- * true scale (`SHIP_SCALE`) so they still read at ship and map zoom. The
- * derived props are placed `PROP_DENSITY` times as densely so the land
- * does not go bare. The terrain, the hex grid and the camera keep their
- * world units.
+ * Everything else: the hex is a board space, not a distance (ADR 0006).
+ * Each family of things on it carries its own picture factor, the one that
+ * makes it read against the hex at ship and map zoom, rather than one shared
+ * metres-per-hex. The props were authored for the 115 m hex; `PROP_SCALE`
+ * (115 / 350, from ADR 0003's 350 m hex) is the base the families start
+ * from, and rocks and stones stay on it. Ships are `SHIP_SCALE`, buildings
+ * `BUILDING_SCALE`, landmarks (the tower, the fort) `LANDMARK_SCALE`,
+ * vegetation `VEGETATION_SCALE` and the town's pieces (piers, quays)
+ * `TOWN_PIECE_SCALE`; each slice of #158 flips its own. The derived props
+ * are placed `PROP_DENSITY` times as densely so the land does not go bare.
+ * The terrain, the hex grid and the camera keep their world units.
  *
- * The two differ on purpose: scaling the water with the hex washes out the
- * turquoise shallows. Both are the scale of the picture only; how far a
- * move travels in the game's fiction is abstract and not tied to them.
+ * The water and the families differ on purpose: scaling the water with the
+ * hex washes out the turquoise shallows. All are the scale of the picture
+ * only; how far a move travels in the game's fiction is abstract and not
+ * tied to them.
  */
 export const METRES_PER_UNIT = 65;
 
@@ -32,16 +35,29 @@ export function unitsToMetres(units: number): number {
 
 /** What a hex is across at `METRES_PER_UNIT` (√3 units flat to flat, rounded): the scale the props were authored at. */
 export const AUTHORED_HEX_METRES = 115;
-/** What a hex stands for in the picture, metres across. */
+/** The hex ADR 0003 drew, metres across: it sets the base prop factor, which ADR 0006 keeps for rocks and stones. */
 export const HEX_METRES = 350;
-/** Factor on every authored prop's world size, footprint and margins. */
+/** Factor on every authored prop's world size, footprint and margins: the base the per-family factors build on. */
 export const PROP_SCALE = AUTHORED_HEX_METRES / HEX_METRES;
-/** Factor on the ships (hulls, ride height, sink depth, hull foam): twice true scale. */
-export const SHIP_SCALE = 2 * PROP_SCALE;
+/**
+ * How much bigger the ships are drawn than ADR 0003's twice true scale (ADR
+ * 0006): the Frigate's hull is then 0.44 of a hex vertex to vertex, about
+ * half a hex at the opening view, and the 42 m Galleon's hull box still
+ * clears the hex inradius at every heading (`HULL_FIT_MARGIN`).
+ */
+export const SHIP_ENLARGEMENT = 2.3;
+/** Factor on the ships (hulls, ride height, sink depth, hover box): ×2.3 on twice true scale (ADR 0006). */
+export const SHIP_SCALE = SHIP_ENLARGEMENT * 2 * PROP_SCALE;
 /** How much bigger than true scale the buildings are drawn. */
 export const BUILDING_ENLARGEMENT = 1.125;
 /** Factor on every port building (and its flag), its footprint, margins and footing rule. */
 export const BUILDING_SCALE = PROP_SCALE * BUILDING_ENLARGEMENT;
+/** Factor for the landmarks (watchtower, fort): today's building factor, until the village slice of #158 sets its own (ADR 0006). */
+export const LANDMARK_SCALE = BUILDING_SCALE;
+/** Factor for the vegetation (palms, shrubs, town palms): today's prop factor, until the island-look slice of #158 (ADR 0006). */
+export const VEGETATION_SCALE = PROP_SCALE;
+/** Factor for the town's pieces (piers, quays): today's prop factor, until the village slice of #158 (ADR 0006). */
+export const TOWN_PIECE_SCALE = PROP_SCALE;
 /** The densest the derived props go, as a multiple of their authored count per cell. */
 export const PROP_DENSITY_CAP = 80;
 

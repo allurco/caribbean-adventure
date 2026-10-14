@@ -41,12 +41,13 @@ export const CAMERA_MAX_DISTANCE = 28;
  * distance on every map size (#62): a town zoom (#90), close enough to walk
  * the eye down a port's street, across its square and up to its fort. The
  * #84 village and fort were approved from dist 1.0 to 1.2 in the units before
- * #78 (0.82 to 0.99 now); 0.8 reaches the closest of those views. Below
+ * #78 (0.82 to 0.99 now); 1.0 keeps within those views while leaving the
+ * camera clear of the diorama-scale rigs (ADR 0006). Below
  * `OLD_CAMERA_MIN_DISTANCE` the focus follows the ground (`groundFollow.ts`)
  * and the near plane closes in (`cameraNearFor`); the fine ring of the ocean
  * grid must still cover the view here (oceanGrid.test.ts).
  */
-export const CAMERA_MIN_DISTANCE = 0.8;
+export const CAMERA_MIN_DISTANCE = 1.0;
 /**
  * The zoom floor before the town zoom (#90): the small map's old ship-zoom
  * floor, 0.15 of its old iso distance (0.8 × 36). Every view from here out

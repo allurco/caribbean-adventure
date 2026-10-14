@@ -10,3 +10,8 @@
  * below that is the 58 px the bar drew at when its height came from its content.
  */
 export const HUD_TOP_BAR_HEIGHT = 58;
+
+/** Width of the port panel (`PortPanel`, Tailwind `w-72`), in CSS pixels; the ship view keeps the ship clear of it. */
+export const HUD_PORT_PANEL_WIDTH = 288;
+/** Gap between the port panel and the screen's right edge (`right-4`), in CSS pixels. */
+export const HUD_PORT_PANEL_INSET = 16;

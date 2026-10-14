@@ -397,8 +397,11 @@ small map at distance 28 on a 16:9 screen: ~61 units of view against 30 of
 rows), so only east–west panning worked. The ocean grid is centred under
 the focus and reaches past the view's reach at full zoom-out on the widest
 screen, so its edge stays off screen with the focus anywhere in the band.
-The zoom-in floor is `CAMERA_MIN_DISTANCE` (0.8), a **town zoom** (#90):
-the #84 village and fort were approved from about that close. From the old
+The zoom-in floor is `CAMERA_MIN_DISTANCE` (1.0), a **town zoom** (#90):
+the #84 village and fort were approved from about that close (0.8 until
+ADR 0006 raised it to keep the camera clear of the bigger ships' rigs). The
+ship view (`SHIP_VIEW_DISTANCE`, 3.4 since ADR 0006) sits inside the band
+below. From the old
 ship-zoom floor (`OLD_CAMERA_MIN_DISTANCE`, 4.32) out, every view is as it
 was. Closer in, the focus leaves the sea plane: `groundFollow.ts` eases it
 onto this field's height (averaged over a 0.4-unit disc, never below the
@@ -407,7 +410,7 @@ or the first 0.5 units of its line of sight would come within 0.2 units of
 the ground, so zooming onto a hilltop never puts the camera in the hill. The
 map-bounds clamp applies it after every controls update, moving the camera
 by the same delta. The camera's near plane shrinks in proportion below the
-old floor (`cameraNearFor`, 0.1 → 0.0185 at the floor), the shadow fit
+old floor (`cameraNearFor`, 0.1 → 0.023 at the floor), the shadow fit
 measures the view's reach from the lifted focus (`shadowExtentFor`'s
 `focusHeight`), and the port labels fade out entirely between camera
 distances 3 and 2, hover or not (`portLabel.ts`).

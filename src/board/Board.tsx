@@ -96,6 +96,9 @@ import { MissionCompleteToast } from "./MissionCompleteToast";
 import { CameraAudioListener } from "./CameraAudioListener";
 import { AmbienceBedDriver } from "./AmbienceBedDriver";
 import { HudSoundControl } from "./HudSoundControl";
+import { RenderStatsProbe } from "./RenderStatsProbe";
+import { RenderStatsOverlay } from "./RenderStatsOverlay";
+import { createRenderStatsFeed } from "./renderStats";
 import { useAudioUnlock } from "../audio/useAudioUnlock";
 import { useGameSounds } from "../audio/useGameSounds";
 import type { Mission } from "../game/types";
@@ -549,10 +552,14 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   cameraDistance?: number;
   /** Float buoys on the CPU sea surface round the camera focus (dev, #141). */
   seaBuoys?: boolean;
+  /** Show the fps, draw calls and triangles readout (dev, #162); ignored in production builds. */
+  renderStats?: boolean;
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance, seaBuoys } = props;
+  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, renderStats } = props;
+  // Dev `stats=1` (#162): the probe in the Canvas reports to the overlay through this feed.
+  const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
   const [sinkingShips, setSinkingShips] = useState<SinkingShipData[]>([]);
@@ -851,7 +858,11 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onPortHover={setHoveredPort}
           seaBuoys={seaBuoys ?? false}
         />
+        {/* Dev: fps, draw calls and triangles (#162); the DEV guard drops it from production builds */}
+        {import.meta.env.DEV && renderStatsFeed && <RenderStatsProbe onStats={renderStatsFeed.publish} />}
       </Canvas>
+
+      {import.meta.env.DEV && renderStatsFeed && <RenderStatsOverlay feed={renderStatsFeed} />}
 
       {/* Combat Panel */}
       {inCombat && G.combat && (

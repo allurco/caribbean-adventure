@@ -14,6 +14,7 @@ The water's waves are an FFT simulation on the GPU (#38): three cascades evaluat
 - The chop and ripple bands stay GPU-only. Under a hull the chop carries a few percent of the motion and the ripple none.
 - Where the GPU cannot run the cascades and draws a flat sea, the CPU sea is flat too.
 - Anything that rides the sea takes a pose that is a pure function of the sea, its hull footprint and its drawn world position, with no state carried between frames, so it is the same wherever and whenever it is drawn.
+- The pose averages the sea over the hull's footprint, so a longer hull averages out more of the swell and heaves and pitches less on the same sea. ADR 0006's diorama-scale ships (×2.3) are long against the swell's shorter waves, and the Galleon rides steadier than the Sloop; the wave pose tests pin both the long-wave and short-wave behaviour with the scaled hull boxes.
 
 ## Considered options
 
