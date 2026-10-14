@@ -15,6 +15,8 @@ const EVENT_SOUNDS: Partial<Record<SoundEventType, SoundId>> = {
   shipBought: "coins",
   goldStashed: "coins",
   cannonsFired: "cannon-fire",
+  // TODO(#201): turnedPirate stays silent until the registry has a fitting
+  // sound (a bell or a shanty sting); none of the current ones suits it.
 };
 
 export function soundForEvent(event: SoundEvent): SoundId | null {

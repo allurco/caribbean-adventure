@@ -18,6 +18,7 @@ describe("soundForEvent", () => {
     expect(soundForEvent({ type: "docked", shipId: "0", portName: "Port Royal" })).toBeNull();
     expect(soundForEvent({ type: "combatStarted", attackerId: "0", defenderId: "1" })).toBeNull();
     expect(soundForEvent({ type: "shipSunk", shipId: "1", isNpc: false })).toBeNull();
+    expect(soundForEvent({ type: "turnedPirate", playerId: "0", cause: "sink" })).toBeNull();
   });
 });
 

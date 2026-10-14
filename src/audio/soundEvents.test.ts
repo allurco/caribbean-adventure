@@ -226,6 +226,13 @@ describe("soundEventsFrom", () => {
     expect(soundEventsFrom(prev, makeState())).toEqual([]);
   });
 
+  it("emits a player turning pirate once, when they first do (#201)", () => {
+    const prev = makeState({ pirates: {} });
+    const next = makeState({ pirates: { "0": { turn: 2, cause: "board" } } });
+    expect(soundEventsFrom(prev, next)).toEqual([{ type: "turnedPirate", playerId: "0", cause: "board" }]);
+    expect(soundEventsFrom(next, structuredClone(next))).toEqual([]);
+  });
+
   it("emits a ship going derelict", () => {
     const prev = makeState();
     expect(soundEventsFrom(prev, withShip(prev, "1", { isDerelict: true }))).toEqual([

@@ -224,4 +224,21 @@ export interface CaribbeanState {
   combat?: CombatState;
   floatingLoot: FloatingLoot[];
   npcIdCounter: number;
+  /**
+   * The players who have turned pirate, by player id (#201). Kept on the
+   * player rather than the ship, so it outlives a sunk or replaced ship;
+   * entries are added once and never removed. Read it through
+   * `isPlayerPirate`. Always set by `setup()`; optional only so hand-built
+   * states in tests can leave it out (missing means nobody is a pirate).
+   */
+  pirates?: Record<string, PirateRecord>;
+}
+
+/** How a player turned pirate: by sinking or by boarding an NPC merchant. */
+export type PirateCause = "sink" | "board";
+
+export interface PirateRecord {
+  /** The game turn (`ctx.turn`) on which the player turned pirate. */
+  turn: number;
+  cause: PirateCause;
 }

@@ -6,13 +6,16 @@ import {
   getPlayerBountyWithNation,
   shouldSpawnFlotilla,
   getTotalBounty,
-  isPirate,
+  hasBounty,
   isBannedAtPort,
   getWantedNations,
+  isPlayerPirate,
+  turnPirate,
+  pirateCauseFor,
   type BountyAction,
 } from "./reputation";
 import { emptyBounties, createShipState } from "./economy";
-import type { Nation } from "./types";
+import type { CaribbeanState, Nation, ShipState } from "./types";
 
 describe("getBountyForAction", () => {
   it("returns base bounty for attacking a merchant", () => {
@@ -137,16 +140,16 @@ describe("getTotalBounty", () => {
   });
 });
 
-describe("isPirate", () => {
+describe("hasBounty", () => {
   it("returns false when no bounties", () => {
     const bounties = emptyBounties();
-    expect(isPirate(bounties)).toBe(false);
+    expect(hasBounty(bounties)).toBe(false);
   });
 
   it("returns true when any bounty is greater than 0", () => {
     const bounties = emptyBounties();
     bounties.Spain = 1;
-    expect(isPirate(bounties)).toBe(true);
+    expect(hasBounty(bounties)).toBe(true);
   });
 
   it("returns true when multiple bounties exist", () => {
@@ -156,7 +159,7 @@ describe("isPirate", () => {
       Spain: 30,
       Netherlands: 0,
     };
-    expect(isPirate(bounties)).toBe(true);
+    expect(hasBounty(bounties)).toBe(true);
   });
 });
 
@@ -233,4 +236,40 @@ describe("getWantedNations", () => {
     const wanted = getWantedNations(bounties);
     expect(wanted).toHaveLength(4);
   });
+});
+
+describe("pirate status helpers (#201)", () => {
+  // The rules are proven through the game client in pirates.test.ts.
+  const shipOf = (): ShipState => createShipState({ q: 0, r: 0, s: 0 }, "Sloop");
+  const stateWith = (ships: Record<string, ShipState>, extra: Partial<CaribbeanState> = {}): CaribbeanState => ({
+    cells: [],
+    ships,
+    mapSize: "small",
+    captainDeck: [],
+    draftHands: {},
+    floatingLoot: [],
+    npcs: {},
+    npcIdCounter: 0,
+    wrap: null,
+    ...extra,
+  });
+
+  it("only sinking and boarding turn a player pirate", () => {
+    expect(pirateCauseFor("attack_merchant")).toBeNull();
+    expect(pirateCauseFor("sink_merchant")).toBe("sink");
+    expect(pirateCauseFor("board_merchant")).toBe("board");
+  });
+
+  it("treats a state without a pirates record as nobody being a pirate", () => {
+    expect(isPlayerPirate(stateWith({ "0": shipOf() }), "0")).toBe(false);
+  });
+
+  it("keeps the first record when a pirate turns pirate again", () => {
+    const G = stateWith({ "0": shipOf() });
+    turnPirate(G, "0", "board", 3);
+    turnPirate(G, "0", "sink", 9);
+    expect(G.pirates).toEqual({ "0": { turn: 3, cause: "board" } });
+  });
+
+
 });

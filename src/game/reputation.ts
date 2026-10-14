@@ -1,4 +1,4 @@
-import type { Nation, PortNation, ShipState } from "./types";
+import type { CaribbeanState, Nation, PirateCause, PortNation, ShipState } from "./types";
 import { NATIONS } from "./types";
 
 /**
@@ -83,12 +83,67 @@ export function getTotalBounty(bounties: Record<Nation, number>): number {
 }
 
 /**
- * Check if a player is considered a pirate (has any bounty).
+ * Check if a player has any bounty with any nation. This is not the same as
+ * being a pirate: attacking a merchant earns a bounty without turning the
+ * player pirate (see `isPlayerPirate`).
  * @param bounties - The player's bounty record
  * @returns True if the player has any bounty with any nation
  */
-export function isPirate(bounties: Record<Nation, number>): boolean {
+export function hasBounty(bounties: Record<Nation, number>): boolean {
   return getTotalBounty(bounties) > 0;
+}
+
+/**
+ * How an action against a merchant turns the player pirate: sinking or
+ * boarding does, merely attacking does not (#201).
+ */
+export function pirateCauseFor(action: BountyAction): PirateCause | null {
+  if (action === "sink_merchant") return "sink";
+  if (action === "board_merchant") return "board";
+  return null;
+}
+
+/**
+ * Whether a player has turned pirate (sunk or boarded an NPC merchant). The
+ * one question the rules, the HUD and the board ask: a pirate's ship flies
+ * the Jolly Roger instead of their captain's flag (#134). Status belongs to
+ * the player, so it holds even when their ship is gone.
+ */
+export function isPlayerPirate(G: CaribbeanState, playerId: string): boolean {
+  return G.pirates?.[playerId] !== undefined;
+}
+
+/**
+ * Turn a player pirate. Permanent: a player already a pirate keeps the turn
+ * and cause they first turned pirate with.
+ */
+export function turnPirate(
+  G: CaribbeanState,
+  playerId: string,
+  cause: PirateCause,
+  turn: number
+): void {
+  if (isPlayerPirate(G, playerId)) return;
+  G.pirates ??= {};
+  G.pirates[playerId] = { turn, cause };
+}
+
+/**
+ * Apply an action by a player against an NPC merchant: add the bounty it
+ * earns with the merchant's nation, and turn the player pirate if the action
+ * sinks or boards it.
+ */
+export function applyMerchantAction(
+  G: CaribbeanState,
+  playerId: string,
+  action: BountyAction,
+  nation: Nation,
+  npcBountyValue: number,
+  turn: number
+): void {
+  addBounty(G.ships[playerId].bounties, nation, getBountyForAction(action, npcBountyValue));
+  const cause = pirateCauseFor(action);
+  if (cause) turnPirate(G, playerId, cause, turn);
 }
 
 /**
