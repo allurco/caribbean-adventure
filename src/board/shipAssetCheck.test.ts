@@ -89,6 +89,12 @@ describe("shipAssetProblems", () => {
     expect(shipAssetProblems(MODEL, glb({ parts: [HULL, SAILS, BOWSPRIT] })).join("\n")).toMatch(/Flag/);
   });
 
+  it("flags a part named for the owner's colour that is missing, so a renamed part cannot lose its colour quietly (#134)", () => {
+    const tinted: ShipModel = { ...MODEL, tintedParts: ["Sails", "Sail_Band"] };
+    expect(shipAssetProblems(tinted, glb({ parts: SHIP })).join("\n")).toMatch(/Sail_Band/);
+    expect(shipAssetProblems(tinted, glb({ parts: [...SHIP, { ...FLAG, name: "Sail_Band" }] }))).toEqual([]);
+  });
+
   it("flags a hull whose length along the bow axis is off the catalogue by more than a few percent", () => {
     const long = { ...HULL, min: [-5, -4, -22], max: [5, 4, 22] } as Part;
     expect(shipAssetProblems(MODEL, glb({ parts: [long, SAILS, FLAG, BOWSPRIT] })).join("\n")).toMatch(/length/);

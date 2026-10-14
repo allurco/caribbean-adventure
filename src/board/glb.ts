@@ -1,8 +1,8 @@
 /**
  * Reads what the ship asset test checks out of a binary glTF (`.glb`): the
- * named parts' bounds in the model's frame, the triangles drawn and the
- * texture sizes. Pure, no Three.js and no Node: it works on the bytes, the
- * JSON chunk's accessor bounds and the image headers.
+ * named parts' bounds and vertex positions in the model's frame, the
+ * triangles drawn and the texture sizes. Pure, no Three.js and no Node: it
+ * works on the bytes, the JSON chunk's accessors and the image headers.
  */
 
 type Vec3 = [number, number, number];
@@ -22,9 +22,17 @@ interface GltfJson {
   scenes?: { nodes?: number[] }[];
   nodes?: GltfNode[];
   meshes?: { primitives: { attributes: { POSITION?: number }; indices?: number }[] }[];
-  accessors?: { count: number; min?: number[]; max?: number[] }[];
+  accessors?: {
+    count: number;
+    min?: number[];
+    max?: number[];
+    bufferView?: number;
+    byteOffset?: number;
+    componentType?: number;
+    type?: string;
+  }[];
   images?: { name?: string; bufferView?: number; uri?: string }[];
-  bufferViews?: { byteOffset?: number; byteLength: number }[];
+  bufferViews?: { byteOffset?: number; byteLength: number; byteStride?: number }[];
 }
 
 export interface Glb {
@@ -133,6 +141,39 @@ export function glbBounds(glb: Glb): Bounds | null {
   let all: Bounds | null = null;
   for (const bounds of glbPartBounds(glb).values()) all = all ? union(all, bounds) : bounds;
   return all;
+}
+
+const FLOAT = 5126;
+
+/** One float VEC3 accessor's values, read off the binary chunk. */
+const vec3s = (glb: Glb, index: number): Vec3[] => {
+  const accessor = glb.json.accessors?.[index];
+  if (!accessor || accessor.bufferView === undefined) return [];
+  if (accessor.componentType !== FLOAT || accessor.type !== "VEC3") throw new Error(`accessor ${index} is not a float VEC3`);
+  const view = glb.json.bufferViews?.[accessor.bufferView];
+  if (!view) return [];
+  const start = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const stride = view.byteStride ?? 12;
+  const data = new DataView(glb.bin.buffer, glb.bin.byteOffset, glb.bin.byteLength);
+  const out: Vec3[] = [];
+  for (let k = 0; k < accessor.count; k++) {
+    const at = start + k * stride;
+    out.push([data.getFloat32(at, true), data.getFloat32(at + 4, true), data.getFloat32(at + 8, true)]);
+  }
+  return out;
+};
+
+/** The vertex positions of every node named `name`, in the model's frame. */
+export function glbPartPositions(glb: Glb, name: string): Vec3[] {
+  const out: Vec3[] = [];
+  for (const { node, toModel } of placedNodes(glb.json)) {
+    if (node.mesh === undefined || node.name !== name) continue;
+    for (const primitive of glb.json.meshes?.[node.mesh]?.primitives ?? []) {
+      if (primitive.attributes.POSITION === undefined) continue;
+      for (const p of vec3s(glb, primitive.attributes.POSITION)) out.push(toModel(p));
+    }
+  }
+  return out;
 }
 
 /** The triangles drawn: every mesh counted once per node that draws it. */

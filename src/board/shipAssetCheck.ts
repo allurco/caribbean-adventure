@@ -41,6 +41,10 @@ export function shipAssetProblems(model: ShipModel, bytes: Uint8Array): string[]
   for (const name of Object.values(model.parts)) {
     if (!parts.has(name)) problems.push(`${file}: no part named ${name}`);
   }
+  // A part renamed in the generator would otherwise lose the owner's colour quietly (#134).
+  for (const name of model.tintedParts) {
+    if (!parts.has(name)) problems.push(`${file}: no part named ${name} to take the owner's colour`);
+  }
 
   const hull = parts.get(model.parts.hull);
   if (hull) {

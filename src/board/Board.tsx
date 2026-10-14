@@ -98,6 +98,8 @@ import { HudSoundControl } from "./HudSoundControl";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { RenderStatsOverlay } from "./RenderStatsOverlay";
 import { DevSeedControl } from "./DevSeedControl";
+import { PLAYER_COLOURS, shipOwnerColour } from "./shipOwnerColour";
+import { shipFlagFor } from "./shipFlags";
 import { GallerySnapshot } from "../lab/GallerySnapshot";
 import { STARTER_SHIP_CLASSES } from "../game/types";
 import { createRenderStatsFeed } from "./renderStats";
@@ -113,14 +115,6 @@ interface SinkingShipData {
   /** The heading it last sailed on, which it goes down facing. */
   heading: number;
 }
-
-const PLAYER_COLORS: Record<string, string> = {
-  "0": "#3b82f6", // blue
-  "1": "#ef4444", // red
-};
-
-const NPC_MERCHANT_COLOR = "#d4a574"; // tan/beige for merchant ships
-const NPC_FLOTILLA_COLOR = "#8b0000"; // dark red for military/flotilla ships
 
 /**
  * World units past the edge of the view that copies of a wrapping world still
@@ -432,7 +426,10 @@ function Scene({
         <Ship
           key={id}
           position={hexToWorld(ship.position)}
-          color={PLAYER_COLORS[id] ?? "#888888"}
+          color={shipOwnerColour({ kind: "player", playerId: id })}
+          // STUB (#201): pirate is false until the piracy rule lands (PR #202);
+          // then it reads isPlayerPirate(G, id) from src/game/reputation.ts.
+          flag={shipFlagFor({ nation: ship.captain?.nation, pirate: false })}
           shipClass={ship.shipClass}
           wrapWidth={period}
           foamId={copy === 0 ? id : undefined}
@@ -448,7 +445,8 @@ function Scene({
         <Ship
           key={npc.id}
           position={hexToWorld(npc.position)}
-          color={npc.role === "FLOTILLA" ? NPC_FLOTILLA_COLOR : NPC_MERCHANT_COLOR}
+          color={shipOwnerColour({ kind: "npc", role: npc.role })}
+          flag={shipFlagFor({ nation: npc.nation, pirate: false })}
           shipClass={npc.shipClass}
           wrapWidth={period}
           foamId={copy === 0 ? npc.id : undefined}
@@ -627,7 +625,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       const newSinking = removedIds.map((id) => ({
         id,
         position: hexToWorld(prevSnapshots[id].position),
-        color: PLAYER_COLORS[id] ?? "#888888",
+        color: PLAYER_COLOURS[id] ?? "#888888",
         shipClass: prevSnapshots[id].shipClass,
         heading: headings[id] ?? 0,
       }));
@@ -912,7 +910,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         <HudParchmentPanel
           ship={currentShipState}
           playerIndex={currentPlayer}
-          playerColor={PLAYER_COLORS[currentPlayer] ?? "#888"}
+          playerColor={PLAYER_COLOURS[currentPlayer] ?? "#888"}
         />
       )}
 
@@ -1023,7 +1021,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {showTurnChange && currentShipState && (
         <TurnChangeAnimation
           playerIndex={currentPlayer}
-          playerColor={PLAYER_COLORS[currentPlayer] ?? "#888888"}
+          playerColor={PLAYER_COLOURS[currentPlayer] ?? "#888888"}
           captain={currentShipState.captain}
           onComplete={() => setShowTurnChange(false)}
         />
