@@ -14,8 +14,8 @@ import {
 import type { Hex, MapWrap } from "./hex";
 import type { MapDimensions } from "./mapConfig";
 import type { Terrain } from "./terrain";
-import type { MapCell, PortNation, Decoration, Elevation, Biome } from "./types";
-import { NATIONS } from "./types";
+import type { MapCell, PortNation, Decoration, Elevation, Biome, Region, RegionId } from "./types";
+import { REGION_CHANNEL, REGION_NATIONS, assignRegions, buildRegionTable, placeRegionCentres } from "./regions";
 import { generatePortMarket } from "./economy";
 
 export type { MapCell } from "./types";
@@ -23,6 +23,7 @@ export type { MapCell } from "./types";
 const MIN_ISLAND_DISTANCE = 3; // Minimum distance between islands
 const MIN_ISLAND_SIZE = 3; // Minimum island size
 const MAX_ISLAND_SIZE = 10; // Maximum island size
+const ISLET_MAX_SIZE = 5; // Islands without a port are islets: the ports' islands carry the big land
 const MIN_PORT_ISLAND_SIZE = 3; // Minimum island size to have a port
 const SHIPYARD_CHANCE = 0.5;
 const REEF_CHANCE = 0.2; // 20% of coastal hexes become reefs
@@ -33,12 +34,21 @@ const REEF_CHANCE = 0.2; // 20% of coastal hexes become reefs
  */
 export const OPEN_SEA_EDGE_ROWS = 3;
 
-/** Max ports by map size: 5 small, 10 medium, 15 large (about 1 per 85 hexes, capped). */
-function getMaxPorts(cellCount: number): number {
-  if (cellCount <= 500) return 5;
-  if (cellCount <= 1100) return 10;
-  return 15;
+/**
+ * Ports in each nation's region (#239): 2 on the small map, 3 on the medium
+ * and 4 on the large. The pirate region holds one, the pirate haven.
+ */
+function portsPerNationRegion(cellCount: number): number {
+  if (cellCount <= 600) return 2;
+  if (cellCount <= 1100) return 3;
+  return 4;
 }
+
+/** Tries at a region layout before the generator keeps its best one (only too small a map runs out). */
+const REGION_LAYOUT_ATTEMPTS = 64;
+
+/** How loosely a region's islands keep to its centre: seeds are taken by distance plus up to this. */
+const REGION_SEED_JITTER = 3;
 
 // Fictional Caribbean-style port names
 const PORT_NAMES = [
@@ -99,16 +109,6 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 
 /** Key of a (canonical) hex for the generator's lookup sets. */
 const hexKey = (h: Hex): string => `${h.q},${h.r}`;
-
-/** Check if a hex is at least minDist away (the short way round the seam) from all hexes in the set */
-function isFarEnough(hex: Hex, existingIslandHexes: Hex[], minDist: number, wrap: MapWrap): boolean {
-  for (const existing of existingIslandHexes) {
-    if (wrappedDistance(hex, existing, wrap) < minDist) {
-      return false;
-    }
-  }
-  return true;
-}
 
 /** Find the docking water hex for a port (where ships dock) */
 function findDockingHex(
@@ -383,6 +383,134 @@ function growIsland(
   return island;
 }
 
+/** Islands laid out region by region: the contiguous patches, whose region each is, and which carry a port. */
+interface RegionLayout {
+  centres: Hex[];
+  patches: Hex[][];
+  regionOfPatch: RegionId[];
+  portIsland: boolean[];
+  /** Port islands short of the regions' quotas: 0 when every region got its ports. */
+  missing: number;
+}
+
+/**
+ * Lay the islands out as one cluster per region (#239). Region centres are
+ * spread over `candidates` and each candidate hex belongs to the nearest
+ * centre's territory; a region grows its islands only in its territory,
+ * nearest its centre first. Islands of one region keep `MIN_ISLAND_DISTANCE`
+ * apart, and land of different regions `REGION_CHANNEL` apart, round the seam.
+ * First every region takes turns placing its port islands (`quotas`, by
+ * region id), then extra islands up to `targetIslands` in all.
+ */
+function layOutRegionsOnce(
+  candidates: readonly Hex[],
+  quotas: readonly number[],
+  targetIslands: number,
+  rng: () => number,
+  wrap: MapWrap
+): RegionLayout {
+  const centres = placeRegionCentres(candidates, REGION_NATIONS.length, rng, wrap);
+  const territory = new Map<string, RegionId>();
+  for (const h of candidates) {
+    let nearest = 0;
+    let nearestDistance = Infinity;
+    centres.forEach((c, id) => {
+      const d = wrappedDistance(c, h, wrap);
+      if (d < nearestDistance) {
+        nearest = id;
+        nearestDistance = d;
+      }
+    });
+    territory.set(hexKey(h), nearest);
+  }
+
+  // Each region's island seeds, nearest its centre first, loosely
+  const seeds = centres.map((centre, id) =>
+    candidates
+      .filter((h) => territory.get(hexKey(h)) === id)
+      .map((h) => ({ h, order: wrappedDistance(centre, h, wrap) + rng() * REGION_SEED_JITTER }))
+      .sort((a, b) => a.order - b.order)
+      .map(({ h }) => h)
+  );
+  const nextSeed = centres.map(() => 0);
+
+  const land: { hex: Hex; region: RegionId }[] = [];
+  const used = new Set<string>();
+  const fits = (h: Hex, region: RegionId): boolean =>
+    land.every(
+      (other) => wrappedDistance(h, other.hex, wrap) >= (other.region === region ? MIN_ISLAND_DISTANCE : REGION_CHANNEL)
+    );
+
+  const patches: Hex[][] = [];
+  const regionOfPatch: RegionId[] = [];
+  const portIsland: boolean[] = [];
+
+  /** Grow one island in `region`'s territory, or report that it has no room left. */
+  const placeIsland = (region: RegionId, minSize: number, maxSize: number, port: boolean): boolean => {
+    const canGrowInto = (h: Hex): boolean => {
+      const key = hexKey(h);
+      return territory.get(key) === region && !used.has(key) && fits(h, region);
+    };
+    while (nextSeed[region] < seeds[region].length) {
+      const seed = seeds[region][nextSeed[region]++];
+      if (!canGrowInto(seed)) continue;
+      const targetSize = minSize + Math.floor(rng() * (maxSize - minSize + 1));
+      const patch = growIsland(seed, targetSize, canGrowInto, rng, wrap);
+      if (patch.length < minSize) continue;
+      for (const h of patch) {
+        const canonical = canonicalHex(h, wrap);
+        used.add(hexKey(canonical));
+        land.push({ hex: canonical, region });
+      }
+      patches.push(patch);
+      regionOfPatch.push(region);
+      portIsland.push(port);
+      return true;
+    }
+    return false;
+  };
+
+  // Port islands first, the regions taking turns in a seeded order
+  const order = shuffle(centres.map((_, id) => id), rng);
+  const owed = [...quotas];
+  let placing = order.filter((id) => owed[id] > 0);
+  while (placing.length > 0) {
+    placing = placing.filter((id) => {
+      if (!placeIsland(id, MIN_PORT_ISLAND_SIZE, MAX_ISLAND_SIZE, true)) return false;
+      owed[id]--;
+      return owed[id] > 0;
+    });
+  }
+
+  // Then islets without a port, until the map has its share
+  let growing = [...order];
+  while (growing.length > 0 && patches.length < targetIslands) {
+    growing = growing.filter((id) => patches.length < targetIslands && placeIsland(id, MIN_ISLAND_SIZE, ISLET_MAX_SIZE, false));
+  }
+
+  return { centres, patches, regionOfPatch, portIsland, missing: owed.reduce((a, b) => a + b, 0) };
+}
+
+/**
+ * The region layout: the first try whose regions all get their port islands,
+ * else (only on a map too small for them) the try that came closest.
+ */
+function layOutRegions(
+  candidates: readonly Hex[],
+  quotas: readonly number[],
+  targetIslands: number,
+  rng: () => number,
+  wrap: MapWrap
+): RegionLayout {
+  let best: RegionLayout | null = null;
+  for (let attempt = 0; attempt < REGION_LAYOUT_ATTEMPTS; attempt++) {
+    const layout = layOutRegionsOnce(candidates, quotas, targetIslands, rng, wrap);
+    if (layout.missing === 0) return layout;
+    if (!best || layout.missing < best.missing) best = layout;
+  }
+  return best!;
+}
+
 /**
  * Generate a rectangular map of `dimensions.columns × dimensions.rows` hexes
  * (see `hexRect`), every cell stored canonically.
@@ -397,6 +525,22 @@ function growIsland(
  * there is no unseeded fallback for clients to disagree on.
  */
 export function generateMap(dimensions: MapDimensions, seed: number, wrap: MapWrap = null): MapCell[] {
+  return generateWorld(dimensions, seed, wrap).cells;
+}
+
+/** A generated map: its cells, each naming its region, and the region table (#239). */
+export interface MapWorld {
+  cells: MapCell[];
+  regions: Region[];
+}
+
+/**
+ * The map `generateMap` makes, with its regions (#239): five, one per nation
+ * plus the Pirates, each a cluster of islands whose ports fly its flag, kept
+ * apart by open-sea channels (`REGION_CHANNEL`). Every cell, water too, names
+ * the region of its nearest land.
+ */
+export function generateWorld(dimensions: MapDimensions, seed: number, wrap: MapWrap = null): MapWorld {
   const { columns, rows } = dimensions;
   if (!Number.isInteger(columns) || columns % 2 !== 0) {
     throw new Error(`Map width must be an even number of columns, got ${columns}`);
@@ -425,53 +569,13 @@ export function generateMap(dimensions: MapDimensions, seed: number, wrap: MapWr
     }
   }
 
-  // Track all used hexes (for island growth) and all island hexes (for distance checks), canonically
-  const usedHexes = new Set<string>();
-  const allIslandHexes: Hex[] = [];
-  // Each island as a contiguous patch (see growIsland), for its centre and elevation
-  const islandPatches: Hex[][] = [];
-
-  // Get candidate seed positions (shuffled for randomness)
-  const candidateSeeds = grid.filter((h) => validHexes.has(hexKey(h)));
-  shuffle(candidateSeeds, rng);
-
-  // Determine target number of islands based on map size
-  // More islands for larger maps, aiming for good coverage with open water
-  const totalHexes = grid.length;
-  const targetIslands = Math.max(3, Math.floor(totalHexes / 40));
-
-  // Place island seeds with minimum distance constraint
-  const canGrowInto = (h: Hex): boolean => {
-    const key = hexKey(h);
-    return validHexes.has(key) && !usedHexes.has(key);
-  };
-  for (const candidate of candidateSeeds) {
-    if (islandPatches.length >= targetIslands) break;
-
-    // Check if this candidate is far enough from all existing island hexes
-    if (isFarEnough(candidate, allIslandHexes, MIN_ISLAND_DISTANCE, wrap)) {
-      // Random island size between MIN and MAX
-      const targetSize = MIN_ISLAND_SIZE + Math.floor(rng() * (MAX_ISLAND_SIZE - MIN_ISLAND_SIZE + 1));
-
-      // Grow the island from this seed
-      const patch = growIsland(candidate, targetSize, canGrowInto, rng, wrap);
-      const island = patch.map((h) => canonicalHex(h, wrap));
-
-      // Verify ALL hexes in the grown island are far enough from existing islands
-      const allFarEnough = island.every((h) =>
-        isFarEnough(h, allIslandHexes, MIN_ISLAND_DISTANCE, wrap)
-      );
-
-      if (allFarEnough) {
-        islandPatches.push(patch);
-        allIslandHexes.push(...island);
-        // Commit the used hexes
-        for (const h of island) {
-          usedHexes.add(hexKey(h));
-        }
-      }
-    }
-  }
+  // Lay the islands out region by region (#239): five clusters, each round
+  // its region's centre, with open-sea channels between them.
+  const candidates = grid.filter((h) => validHexes.has(hexKey(h)));
+  const quotas = REGION_NATIONS.map((nation) => (nation === "Pirate" ? 1 : portsPerNationRegion(grid.length)));
+  const targetIslands = quotas.reduce((a, b) => a + b, 0) + Math.floor(grid.length / 60);
+  const layout = layOutRegions(candidates, quotas, targetIslands, rng, wrap);
+  const islandPatches = layout.patches;
 
   // The islands' cells, canonically
   const islands = islandPatches.map((patch) => patch.map((h) => canonicalHex(h, wrap)));
@@ -494,11 +598,12 @@ export function generateMap(dimensions: MapDimensions, seed: number, wrap: MapWr
     }
   }
 
-  // Determine which islands get ports (only islands with exactly ISLAND_SIZE hexes)
-  // and pick one hex per island to be the port
+  // One port on each port island, flying its region's flag
   const portHexes = new Set<string>();
   const portShipyards = new Map<string, boolean>();
-  const portKeys: string[] = []; // Track order of port creation for nation assignment
+  const portNations = new Map<string, PortNation>();
+  const portNames = new Map<string, string>();
+  const portKeys: string[] = [];
 
   // Build set of all island hex keys for quick lookup
   const allIslandKeys = new Set<string>();
@@ -511,76 +616,42 @@ export function generateMap(dimensions: MapDimensions, seed: number, wrap: MapWr
   // Build set of all grid hex keys for boundary check
   const gridHexKeys = new Set<string>(grid.map(hexKey));
 
-  const maxPorts = getMaxPorts(grid.length);
-  for (const island of islands) {
-    // Stop if we've reached the maximum number of ports
-    if (portKeys.length >= maxPorts) break;
+  const shuffledNames = shuffle([...PORT_NAMES], rng);
+  let nameIndex = 0;
+  islands.forEach((island, i) => {
+    if (!layout.portIsland[i]) return;
+    // Filter to hexes that have at least one on-grid water neighbor (coastal)
+    const coastalHexes = island.filter((h) =>
+      wrappedNeighbors(h, wrap).some((n) => {
+        const nKey = hexKey(n);
+        // Neighbor must be on the grid AND not an island
+        return gridHexKeys.has(nKey) && !allIslandKeys.has(nKey);
+      })
+    );
 
-    if (island.length >= MIN_PORT_ISLAND_SIZE) {
-      // Filter to hexes that have at least one on-grid water neighbor (coastal)
-      const coastalHexes = island.filter((h) =>
-        wrappedNeighbors(h, wrap).some((n) => {
-          const nKey = hexKey(n);
-          // Neighbor must be on the grid AND not an island
-          return gridHexKeys.has(nKey) && !allIslandKeys.has(nKey);
-        })
-      );
+    // Ports must be on beach hexes (elevation 1), which are coastal hexes
+    // that are NOT at the center (distance > 1 from center for large islands)
+    const beachHexes = coastalHexes.filter((h) => islandElevations.get(hexKey(h)) === 1);
 
-      // Ports must be on beach hexes (elevation 1), which are coastal hexes
-      // that are NOT at the center (distance > 1 from center for large islands)
-      const beachHexes = coastalHexes.filter((h) => islandElevations.get(hexKey(h)) === 1);
-
-      // Pick a random beach hex for the port (fallback to coastal, then any hex)
-      const candidates =
-        beachHexes.length > 0
-          ? beachHexes
-          : coastalHexes.length > 0
-          ? coastalHexes
-          : island;
-      const portHex = candidates[Math.floor(rng() * candidates.length)];
-      const key = hexKey(portHex);
-      portHexes.add(key);
-      portKeys.push(key);
+    // Pick a random beach hex for the port (fallback to a coastal slope, so a
+    // small island keeps its peak, then any coastal hex, then any hex)
+    const slopeHexes = coastalHexes.filter((h) => islandElevations.get(hexKey(h)) !== 3);
+    const portCandidates = [beachHexes, slopeHexes, coastalHexes, island].find((hexes) => hexes.length > 0)!;
+    const portHex = portCandidates[Math.floor(rng() * portCandidates.length)];
+    const key = hexKey(portHex);
+    portHexes.add(key);
+    portKeys.push(key);
+    const nation = REGION_NATIONS[layout.regionOfPatch[i]];
+    portNations.set(key, nation);
+    if (nation === "Pirate") {
+      // The pirate haven always has a shipyard (it caters to outlaws) and a pirate name
+      portShipyards.set(key, true);
+      portNames.set(key, PIRATE_PORT_NAMES[Math.floor(rng() * PIRATE_PORT_NAMES.length)]);
+    } else {
       portShipyards.set(key, rng() < SHIPYARD_CHANCE);
+      portNames.set(key, shuffledNames[nameIndex++ % shuffledNames.length]);
     }
-  }
-
-  // Assign nations and names to ports
-  // First, ensure at least one pirate port (pick a random port to be pirate)
-  // Then assign regular nations round-robin to the rest
-  const portNations = new Map<string, PortNation>();
-  const portNames = new Map<string, string>();
-
-  if (portKeys.length > 0) {
-    // Shuffle port names for variety
-    const shuffledNames = [...PORT_NAMES];
-    for (let i = shuffledNames.length - 1; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      [shuffledNames[i], shuffledNames[j]] = [shuffledNames[j], shuffledNames[i]];
-    }
-
-    // Pick one random port to be a pirate haven
-    const pirateIndex = Math.floor(rng() * portKeys.length);
-    const piratePortKey = portKeys[pirateIndex];
-    portNations.set(piratePortKey, "Pirate");
-    // Pirate ports always have shipyards (they cater to outlaws)
-    portShipyards.set(piratePortKey, true);
-    // Assign a pirate-themed name
-    const pirateNameIndex = Math.floor(rng() * PIRATE_PORT_NAMES.length);
-    portNames.set(piratePortKey, PIRATE_PORT_NAMES[pirateNameIndex]);
-
-    // Assign regular nations and names to remaining ports (round-robin)
-    let nationIndex = 0;
-    let nameIndex = 0;
-    for (const key of portKeys) {
-      if (key !== piratePortKey) {
-        portNations.set(key, NATIONS[nationIndex % NATIONS.length]);
-        portNames.set(key, shuffledNames[nameIndex % shuffledNames.length]);
-        nationIndex++;
-        nameIndex++;
-      }
-    }
-  }
+  });
 
   // Identify coastal water hexes (adjacent to any island) for reef generation
   const islandHexSet = new Set<string>();
@@ -638,8 +709,15 @@ export function generateMap(dimensions: MapDimensions, seed: number, wrap: MapWr
     }
   }
 
+  // Every hex takes the region of its nearest land
+  const landRegions = new Map<string, RegionId>();
+  islands.forEach((island, i) => {
+    for (const h of island) landRegions.set(hexKey(h), layout.regionOfPatch[i]);
+  });
+  const hexRegions = assignRegions(grid, landRegions, layout.centres, wrap);
+
   // Build the final map cells
-  return grid.map((h) => {
+  const cells = grid.map((h) => {
     const key = hexKey(h);
     const isIsland = hexToIsland.has(key);
     const isReef = reefHexes.has(key);
@@ -651,7 +729,7 @@ export function generateMap(dimensions: MapDimensions, seed: number, wrap: MapWr
 
     const biome = getBiome(elevation);
 
-    const cell: MapCell = { hex: h, terrain, hasPort, elevation };
+    const cell: MapCell = { hex: h, terrain, hasPort, elevation, region: hexRegions.get(key)! };
     if (biome) {
       cell.biome = biome;
     }
@@ -672,4 +750,6 @@ export function generateMap(dimensions: MapDimensions, seed: number, wrap: MapWr
 
     return cell;
   });
+
+  return { cells, regions: buildRegionTable(cells, wrap, rng) };
 }

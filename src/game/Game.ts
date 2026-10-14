@@ -110,7 +110,7 @@ export function withGeneratedMap(game: Game<CaribbeanState>, map: GeneratedMap):
  * The state a match starts in, on `map`: the players' ships, the captain draft, no NPCs yet.
  * `random` is boardgame.io's setup `random.Number`, so the match's seed reproduces the draft (#160).
  */
-function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: () => number): CaribbeanState {
+function createInitialState({ mapSize, mapSeed, cells, regions }: GeneratedMap, random: () => number): CaribbeanState {
   // The map is a rectangle that wraps east–west, a cylinder as wide as its
   // columns (#36); the generator and G share the wrap.
   const wrap: MapWrap = createWrap(getMapPreset(mapSize).columns);
@@ -126,6 +126,7 @@ function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: (
 
   return {
     cells,
+    regions,
     ships,
     npcs: {},
     mapSize,
@@ -176,7 +177,7 @@ export const Caribbean: Game<CaribbeanState> = {
   setup: ({ random }, setupData?: CaribbeanSetupData) => {
     // The provided size and seed, else random ones (see resolveMapRequest).
     const request = resolveMapRequest(setupData, random.Number);
-    return createInitialState({ ...request, cells: generateMapFor(request) }, random.Number);
+    return createInitialState({ ...request, ...generateMapFor(request) }, random.Number);
   },
 
   // Top-level moves/turn serve as defaults when tests override phases

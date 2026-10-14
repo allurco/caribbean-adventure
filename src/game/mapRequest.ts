@@ -1,6 +1,6 @@
 import { createWrap } from "./hex";
-import { generateMap } from "./mapGenerator";
-import type { MapCell } from "./mapGenerator";
+import { generateWorld } from "./mapGenerator";
+import type { MapWorld } from "./mapGenerator";
 import { getMapPreset } from "./mapConfig";
 import type { MapSizeId } from "./mapConfig";
 import { isValidMapSeed } from "./mapSeed";
@@ -13,9 +13,7 @@ export interface MapRequest {
 }
 
 /** A map generated ahead of `setup()` (off the main thread, #124), with what it was generated from. */
-export interface GeneratedMap extends MapRequest {
-  cells: MapCell[];
-}
+export interface GeneratedMap extends MapRequest, MapWorld {}
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
 
@@ -34,11 +32,12 @@ export function resolveMapRequest(setupData: CaribbeanSetupData | undefined, ran
 }
 
 /**
- * The cells for `request`: the size's preset as a rectangle that wraps
- * east–west, a cylinder as wide as its columns (#36), generated from the seed.
- * Pure and deterministic, so the map worker and the main thread agree.
+ * The map for `request`, its cells and regions (#239): the size's preset as a
+ * rectangle that wraps east–west, a cylinder as wide as its columns (#36),
+ * generated from the seed. Pure and deterministic, so the map worker and the
+ * main thread agree.
  */
-export function generateMapFor({ mapSize, mapSeed }: MapRequest): MapCell[] {
+export function generateMapFor({ mapSize, mapSeed }: MapRequest): MapWorld {
   const preset = getMapPreset(mapSize);
-  return generateMap(preset, mapSeed, createWrap(preset.columns));
+  return generateWorld(preset, mapSeed, createWrap(preset.columns));
 }

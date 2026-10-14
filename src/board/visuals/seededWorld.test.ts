@@ -147,7 +147,7 @@ describe("the board's seeded world (ADR 0007, #165)", () => {
   let cells: MapCell[];
   let base: World;
   beforeAll(() => {
-    cells = generateMapFor(REQUEST);
+    cells = generateMapFor(REQUEST).cells;
     base = world(cells, REQUEST.mapSeed);
   });
 

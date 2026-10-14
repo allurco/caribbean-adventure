@@ -35,7 +35,7 @@ function mulberry32(seed: number): () => number {
 
 /** The ships after six players draft on map `seed` of `mapSize`, each taking the first captain of their hand. */
 function draftedShips(mapSize: MapSizeId, mapSeed: number) {
-  const cells = generateMapFor({ mapSize, mapSeed });
+  const { cells, regions } = generateMapFor({ mapSize, mapSeed });
   const { hands, remaining } = dealHands(createCaptainDeck(mulberry32(mapSeed)), PLAYERS);
   const ships: CaribbeanState["ships"] = {};
   for (let i = 0; i < PLAYERS; i++) ships[String(i)] = createShipState(hex(0, 0));
@@ -43,6 +43,7 @@ function draftedShips(mapSize: MapSizeId, mapSeed: number) {
     ...Caribbean,
     setup: () => ({
       cells,
+      regions,
       ships,
       npcs: {},
       mapSize,
@@ -59,7 +60,7 @@ function draftedShips(mapSize: MapSizeId, mapSeed: number) {
   for (let i = 0; i < PLAYERS; i++) client.moves.pickCaptain(0, STARTER_SHIP_CLASSES[i % STARTER_SHIP_CLASSES.length]);
   const { G, ctx } = client.getState()!;
   client.stop();
-  return { G, phase: ctx.phase, cells };
+  return { G, phase: ctx.phase, cells, regions };
 }
 
 describe(`the draft's ship placement over ${SEEDS} seeds per map size (#166)`, () => {

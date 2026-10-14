@@ -39,7 +39,7 @@ describe("the seed gallery's seeds and views", () => {
 });
 
 describe("galleryShotView", () => {
-  const cells = generateMapFor({ mapSize: "small", mapSeed: 1 });
+  const cells = generateMapFor({ mapSize: "small", mapSeed: 1 }).cells;
   const camera = computeCameraConfig(getMapPreset("small"));
 
   it("frames the whole map from its iso distance in the map view", () => {
@@ -69,9 +69,9 @@ describe("galleryShotView", () => {
   });
 
   it("is the same for the same seed and differs between seeds (S1, S2)", () => {
-    expect(galleryShotView("port", "small", generateMapFor({ mapSize: "small", mapSeed: 1 }))).toEqual(galleryShotView("port", "small", cells));
+    expect(galleryShotView("port", "small", generateMapFor({ mapSize: "small", mapSeed: 1 }).cells)).toEqual(galleryShotView("port", "small", cells));
     const targets = new Set(
-      SEED_GALLERY_SEEDS.map((mapSeed) => galleryShotView("port", "small", generateMapFor({ mapSize: "small", mapSeed })).target.join(",")),
+      SEED_GALLERY_SEEDS.map((mapSeed) => galleryShotView("port", "small", generateMapFor({ mapSize: "small", mapSeed }).cells).target.join(",")),
     );
     expect(targets.size).toBeGreaterThan(1);
   });
