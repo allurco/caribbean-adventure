@@ -45,7 +45,14 @@ export const DEFAULT_HULL_BOX: HullBox = scaled([0.3, 0.25, 0.7]);
 /** The hull box for a ship of `shipClass`. */
 export const shipHullBox = (shipClass: ShipClass | undefined): HullBox => (shipClass ? SHIP_HULL_BOXES[shipClass] : DEFAULT_HULL_BOX);
 
-/** How far the hull box's centre rides above the sea. */
+/**
+ * Height of a ship's group above the sea level it is placed at: none. The
+ * group stands on the sea at the ship's waterline, so the wave pose (#142)
+ * heaves, pitches and rolls the hull about its waterline, and a model, whose
+ * origin is its waterline, sits in it as it is (#150).
+ */
+export const SHIP_WATERLINE_Y = 0;
+/** How far the hull box's centre rides above the ship's waterline: the box alone; a model sits on its waterline (`shipModelPlacement`). */
 export const SHIP_RIDE_HEIGHT = 0.12 * SHIP_SCALE;
 /** How far a sinking ship goes down. */
 export const SHIP_SINK_DEPTH = 1.5 * SHIP_SCALE;
