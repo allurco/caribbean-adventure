@@ -16,7 +16,7 @@
  * tests), so the opening view of the main phase hears the water around the
  * player's ship.
  */
-export const AMBIENCE_CLOSE_DISTANCE = 4.32;
+export const AMBIENCE_CLOSE_DISTANCE = 3.4;
 
 /** Camera-to-target distance at and beyond which only the wide sea plays: well inside map zoom (20 to 28). */
 export const AMBIENCE_WIDE_DISTANCE = 16;

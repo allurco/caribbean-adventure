@@ -33,13 +33,14 @@ describe("the game camera", () => {
     expect(CAMERA_DIRECTION[2]).toBeGreaterThan(0);
   });
 
-  it("zooms in to one world distance on every map size, a town zoom (#62, #90)", () => {
+  it("zooms in to one world distance on every map size, a town zoom (#62, #90, ADR 0006)", () => {
     // The #84 town and fort were approved from dist 1.0 to 1.2 in the old
-    // units, which #78 rescaled by 1 / |(0.4, 0.6, 0.4)| (~0.8246): the floor
-    // must reach the closest of those views.
+    // units, which #78 rescaled by 1 / |(0.4, 0.6, 0.4)| (~0.8246 to 0.99).
+    // ADR 0006 lifts the floor to 1.0, inside that band, so the camera stays
+    // clear of the diorama-scale rigs.
     const oldUnit = 1 / Math.hypot(0.4, 0.6, 0.4);
-    expect(CAMERA_MIN_DISTANCE).toBeLessThanOrEqual(1.0 * oldUnit);
-    expect(CAMERA_MIN_DISTANCE).toBeCloseTo(0.8, 12);
+    expect(CAMERA_MIN_DISTANCE).toBeLessThanOrEqual(1.2 * oldUnit);
+    expect(CAMERA_MIN_DISTANCE).toBeCloseTo(1.0, 12);
     expect(CAMERA_MIN_DISTANCE).toBeLessThan(CAMERA_MAX_DISTANCE);
   });
 

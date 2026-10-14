@@ -1,6 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { SHIP_SCALE, metresToUnits } from "./visuals/worldScale";
-import { DEFAULT_HULL_BOX, SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, shipHullBox } from "./shipHull";
+import { SHIP_CLASSES } from "../game/types";
+import { hex, hexToWorld } from "../game/hex";
+import {
+  DEFAULT_HULL_BOX,
+  HULL_FIT_MARGIN,
+  SHIP_RIDE_HEIGHT,
+  SHIP_SINK_DEPTH,
+  hullFootprintRadius,
+  SHIP_TOOLTIP_CLEARANCE,
+  shipHoverBox,
+  shipHullBox,
+  shipTooltipHeight,
+} from "./shipHull";
+import { SHIP_MODELS, shipModelScale } from "./shipModels";
 
 const expectBox = (actual: readonly number[], expected: readonly number[]) => {
   expect(actual).toHaveLength(3);
@@ -34,5 +47,93 @@ describe("shipHullBox", () => {
   it("keeps the ride height and sink depth", () => {
     expect(SHIP_RIDE_HEIGHT).toBeCloseTo(0.12 * SHIP_SCALE, 10);
     expect(SHIP_SINK_DEPTH).toBeCloseTo(1.5 * SHIP_SCALE, 10);
+  });
+});
+
+// A hex's inradius is half the distance between neighbouring centres; its
+// width vertex to vertex is twice its circumradius, 2 / √3 of that.
+const [ax, , az] = hexToWorld(hex(0, 0));
+const [bx, , bz] = hexToWorld(hex(1, 0));
+const HEX_INRADIUS = Math.hypot(bx - ax, bz - az) / 2;
+const HEX_WIDTH = (4 / Math.sqrt(3)) * HEX_INRADIUS;
+
+describe("ships at diorama scale (ADR 0006)", () => {
+  it("measures the hex as the board draws it: 2 units vertex to vertex, √3/2 inradius", () => {
+    expect(HEX_WIDTH).toBeCloseTo(2, 12);
+    expect(HEX_INRADIUS).toBeCloseTo(Math.sqrt(3) / 2, 12);
+  });
+
+  it("draws the Frigate's hull 0.44 ± 0.02 of a hex long, vertex to vertex", () => {
+    const ratio = shipHullBox("Frigate")[2] / HEX_WIDTH;
+    expect(ratio).toBeGreaterThanOrEqual(0.42);
+    expect(ratio).toBeLessThanOrEqual(0.46);
+  });
+
+  it("follows SHIP_SCALE: the Frigate's hull is 38 m at 65 m a unit, times the ship factor", () => {
+    expect(shipHullBox("Frigate")[2] / HEX_WIDTH).toBeCloseTo((metresToUnits(38) * SHIP_SCALE) / HEX_WIDTH, 12);
+  });
+
+  const SWEEP = Array.from({ length: 72 }, (_, i) => (i * 2 * Math.PI) / 72);
+  const CORNERS: readonly (readonly [number, number])[] = [
+    [-1, -1],
+    [-1, 1],
+    [1, -1],
+    [1, 1],
+  ];
+
+  for (const shipClass of SHIP_CLASSES) {
+    it(`fits the ${shipClass}'s hull box inside the hex's inradius, less the margin, at every heading`, () => {
+      const [width, , length] = shipHullBox(shipClass);
+      for (const heading of SWEEP) {
+        for (const [sx, sz] of CORNERS) {
+          const x = (sx * width) / 2;
+          const z = (sz * length) / 2;
+          const rx = x * Math.cos(heading) + z * Math.sin(heading);
+          const rz = -x * Math.sin(heading) + z * Math.cos(heading);
+          expect(Math.hypot(rx, rz)).toBeLessThanOrEqual(HEX_INRADIUS - HULL_FIT_MARGIN);
+        }
+      }
+      expect(hullFootprintRadius(shipHullBox(shipClass))).toBeLessThanOrEqual(HEX_INRADIUS - HULL_FIT_MARGIN);
+    });
+  }
+
+  it("fits the 42 m Galleon, the longest hull, with half its length inside the inradius less the margin", () => {
+    expect(SHIP_MODELS.Galleon!.lengthMetres).toBeGreaterThanOrEqual(42);
+    const [, , length] = shipHullBox("Galleon");
+    expect(length / 2).toBeLessThanOrEqual(HEX_INRADIUS - HULL_FIT_MARGIN);
+    expect(HULL_FIT_MARGIN).toBeGreaterThan(0);
+  });
+});
+
+describe("shipHoverBox", () => {
+  for (const shipClass of SHIP_CLASSES) {
+    it(`reaches from the ${shipClass}'s hull bottom up to its masthead, as wide and long as its hull`, () => {
+      const hull = shipHullBox(shipClass);
+      const box = shipHoverBox(shipClass);
+      const masthead = SHIP_MODELS[shipClass]!.mastheadMetres * shipModelScale();
+      expect(box.top).toBeCloseTo(masthead, 12);
+      expect(box.bottom).toBeCloseTo(SHIP_RIDE_HEIGHT - hull[1] / 2, 12);
+      expect(box.width).toBe(hull[0]);
+      expect(box.length).toBe(hull[2]);
+      // The topsails stand well above the hull box, where the old hit test stopped.
+      expect(box.top).toBeGreaterThan(SHIP_RIDE_HEIGHT + 1.5 * hull[1]);
+    });
+  }
+
+  it("is the hull box for a ship without a class", () => {
+    const hull = shipHullBox(undefined);
+    const box = shipHoverBox(undefined);
+    expect(box.top).toBeCloseTo(SHIP_RIDE_HEIGHT + hull[1] / 2, 12);
+    expect(box.bottom).toBeCloseTo(SHIP_RIDE_HEIGHT - hull[1] / 2, 12);
+  });
+});
+
+describe("shipTooltipHeight", () => {
+  it("anchors the tooltip's bottom edge above the masthead, so it never covers the ship", () => {
+    for (const shipClass of [...SHIP_CLASSES, undefined]) {
+      expect(SHIP_TOOLTIP_CLEARANCE).toBeGreaterThan(0);
+      expect(shipTooltipHeight(shipClass)).toBeCloseTo(shipHoverBox(shipClass).top + SHIP_TOOLTIP_CLEARANCE, 12);
+    }
+    expect(shipTooltipHeight("Galleon")).toBeGreaterThan(shipTooltipHeight("Sloop"));
   });
 });

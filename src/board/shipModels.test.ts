@@ -46,9 +46,8 @@ describe("ship model catalogue", () => {
 
   it("draws the Frigate its real length in metres, at ship scale", () => {
     const frigate = shipModel("Frigate")!;
-    // 38 m at 65 m a unit, twice true scale for the 350 m hex: about 0.384 units.
+    // 38 m at 65 m a unit, at the diorama ship scale (ADR 0006).
     expect(frigate.lengthMetres * shipModelScale()).toBeCloseTo(metresToUnits(38) * SHIP_SCALE, 10);
-    expect(frigate.lengthMetres * shipModelScale()).toBeCloseTo(0.3842, 3);
   });
 
   it("turns the model's bow (glTF −Z) onto the board's heading (+Z)", () => {

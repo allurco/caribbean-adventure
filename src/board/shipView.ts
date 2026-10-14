@@ -7,11 +7,29 @@ import { hexToWorld } from "../game/hex";
  */
 
 /**
- * Camera-to-target distance of the ship view. Today's zoom floor, but its own
- * constant: `CAMERA_MIN_DISTANCE` may go lower (#90) without pulling the
- * opening view in with it.
+ * Camera-to-target distance of the ship view (ADR 0006): close enough that
+ * about 2.2 hexes fill the screen top to bottom (`hexesFramed`), so the
+ * diorama-scale ship, about half a hex long, is the subject. Its own
+ * constant, apart from the zoom floor `CAMERA_MIN_DISTANCE`.
  */
-export const SHIP_VIEW_DISTANCE = 4.32;
+export const SHIP_VIEW_DISTANCE = 3.4;
+
+/**
+ * How far east of the ship the ship view looks, world units (ADR 0006):
+ * east is screen right, so the ship sits left of centre, in the middle of
+ * the space the port panel leaves on a 16:9 screen.
+ */
+export const SHIP_VIEW_OFFSET_X = 0.6;
+
+/**
+ * How many hex rows a view `distance` from its focus frames top to bottom,
+ * measured at the focus: the view's height there over a row's height on
+ * screen (√3 on the sea, foreshortened by the pitch).
+ */
+export function hexesFramed(distance: number, fovDeg: number, pitch: number): number {
+  const height = 2 * distance * Math.tan(((fovDeg / 2) * Math.PI) / 180);
+  return height / (Math.sqrt(3) * Math.sin(pitch));
+}
 
 /** A camera view: the focus on the sea plane and the distance to it. */
 export interface CameraView {
@@ -59,5 +77,6 @@ export function turnChangeView(input: ShipViewInput): CameraView | null {
 function shipView({ ships, currentPlayer, playerID }: ShipViewInput): CameraView | null {
   const ship = ships[playerID ?? currentPlayer];
   if (!ship) return null;
-  return { target: hexToWorld(ship.position), distance: SHIP_VIEW_DISTANCE };
+  const [x, y, z] = hexToWorld(ship.position);
+  return { target: [x + SHIP_VIEW_OFFSET_X, y, z], distance: SHIP_VIEW_DISTANCE };
 }

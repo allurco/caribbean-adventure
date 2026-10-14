@@ -128,9 +128,28 @@ describe("ship wave pose on the sea surface", () => {
   const OPEN_SEA = () => -10;
   const deep = poseOn(OPEN_SEA);
 
+  /** The hull's pose over a minute of the sea, every half second. */
+  const poses = (hull: typeof FRIGATE) => {
+    const surface = createSeaSurface({ seabedHeightAt: OPEN_SEA, enabled: true });
+    return Array.from({ length: 120 }, (_, i) =>
+      shipWavePose((px, pz) => surface.heightAt(px, pz, i * 0.5, near), hull, x, z, 0.6),
+    );
+  };
+  const rms = (values: number[]) => Math.sqrt(values.reduce((sum, v) => sum + v * v, 0) / values.length);
+
   it("rides the open sea", () => {
-    expect(Math.abs(deep.heave)).toBeGreaterThan(1e-3);
+    // One moment can catch the hull near a node; over a minute it heaves and tilts.
+    const frigate = poses(FRIGATE);
+    expect(Math.max(...frigate.map((p) => Math.abs(p.heave)))).toBeGreaterThan(1e-3);
+    expect(Math.abs(deep.heave)).toBeGreaterThan(0);
     expect(Math.abs(deep.pitch) + Math.abs(deep.roll)).toBeGreaterThan(1e-4);
+  });
+
+  it("pitches a longer hull less: it averages more of the swell (ADR 0004, ADR 0006)", () => {
+    const sloop = poses(shipHullBox("Sloop"));
+    const galleon = poses(shipHullBox("Galleon"));
+    expect(rms(galleon.map((p) => p.pitch))).toBeLessThan(rms(sloop.map((p) => p.pitch)));
+    expect(rms(galleon.map((p) => p.heave))).toBeLessThan(rms(sloop.map((p) => p.heave)));
   });
 
   it("holds still on land", () => {

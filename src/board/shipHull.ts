@@ -1,7 +1,7 @@
 /**
- * The ships' hull boxes and how they sit on the water, drawn at twice true
- * scale for the 350 m hex (`SHIP_SCALE`, ADR 0003). Pure, no Three.js;
- * `Ship.tsx` draws them.
+ * The ships' hull boxes, their hover boxes and how they sit on the water,
+ * drawn at the diorama ship scale (`SHIP_SCALE`, ADR 0006). Pure, no
+ * Three.js; `Ship.tsx` draws them.
  */
 import type { ShipClass } from "../game/types";
 import { SHIP_SCALE } from "./visuals/worldScale";
@@ -49,3 +49,43 @@ export const shipHullBox = (shipClass: ShipClass | undefined): HullBox => (shipC
 export const SHIP_RIDE_HEIGHT = 0.12 * SHIP_SCALE;
 /** How far a sinking ship goes down. */
 export const SHIP_SINK_DEPTH = 1.5 * SHIP_SCALE;
+
+/**
+ * How far inside a hex's inradius every hull box's footprint stays, at any
+ * heading, in world units (ADR 0006): room for the bowsprit, the hull foam
+ * and a neighbour's hull, so a ship reads as on its own hex.
+ */
+export const HULL_FIT_MARGIN = 0.25;
+
+/** How far the farthest corner of a hull box's footprint reaches from its centre: its reach at the worst heading. */
+export const hullFootprintRadius = (box: HullBox): number => Math.hypot(box[0] / 2, box[2] / 2);
+
+/**
+ * What the pointer hits for a ship (ADR 0006): its hull's footprint, from
+ * the hull box's bottom up to the masthead, so hovering the topsails, or
+ * the gaps between them, hits the ship. Heights from the waterline.
+ */
+export interface HoverBox {
+  readonly width: number;
+  readonly length: number;
+  readonly bottom: number;
+  readonly top: number;
+}
+
+export const shipHoverBox = (shipClass: ShipClass | undefined): HoverBox => {
+  const [width, height, length] = shipHullBox(shipClass);
+  const model = shipClass ? SHIP_MODELS[shipClass] : null;
+  const hullTop = SHIP_RIDE_HEIGHT + height / 2;
+  return {
+    width,
+    length,
+    bottom: SHIP_RIDE_HEIGHT - height / 2,
+    top: model ? Math.max(hullTop, model.mastheadMetres * shipModelScale()) : hullTop,
+  };
+};
+
+/** World units between a ship's masthead and the bottom edge of its tooltip. */
+export const SHIP_TOOLTIP_CLEARANCE = 0.08;
+
+/** How high above the sea a ship's tooltip stands: its bottom edge just over the masthead (ADR 0006). */
+export const shipTooltipHeight = (shipClass: ShipClass | undefined): number => shipHoverBox(shipClass).top + SHIP_TOOLTIP_CLEARANCE;

@@ -11,7 +11,7 @@
  * anchor (water slapping the hull) to full. The shaders break the patch up
  * with the same lace and churn as the shore foam (foamShading.ts).
  */
-import { SHIP_SCALE } from "./worldScale";
+import { METRES_PER_UNIT } from "./worldScale";
 
 /** How far out the foam reaches, in hull lengths. */
 export const HULL_FOAM_REACH = 0.5;
@@ -21,8 +21,15 @@ export const HULL_FOAM_ANCHOR_STRENGTH = 0.35;
 export const HULL_FOAM_FULL_SPEED = 2;
 /** How far the wake trails astern at full speed, in hull lengths. */
 export const HULL_FOAM_WAKE_LENGTHS = 1;
-/** STYLISTIC: the breakup noise's cycles per world unit (finer with the ship scale, so it keeps to the hull) and the lace's feature size (metres) for the detail fade. */
-export const HULL_FOAM_NOISE_SCALE = 14 / SHIP_SCALE;
+/**
+ * STYLISTIC: one cycle of the breakup noise in water metres (ADR 0006). It
+ * no longer follows the ship scale, so the lace keeps its size against the
+ * waves however big the hulls are drawn; this is its size before ADR 0006
+ * (14 cycles per unit at twice true scale, 2 × 115 / 350).
+ */
+export const HULL_FOAM_NOISE_METRES = (METRES_PER_UNIT * 2 * (115 / 350)) / 14;
+/** The breakup noise's cycles per world unit, and the lace's feature size (metres) for the detail fade. */
+export const HULL_FOAM_NOISE_SCALE = METRES_PER_UNIT / HULL_FOAM_NOISE_METRES;
 export const HULL_FOAM_LACE_METRES = 1.2;
 
 const smoothstep = (e0: number, e1: number, x: number) => {

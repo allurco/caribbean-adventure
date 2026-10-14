@@ -60,6 +60,9 @@ export function shipAssetProblems(model: ShipModel, bytes: Uint8Array): string[]
 
   const all = glbBounds(glb);
   if (all && -all.min[2] <= all.max[2]) problems.push(`${file}: the bow does not point along −Z (it reaches further along +Z)`);
+  if (all && offBy(all.max[1], model.mastheadMetres) > SHIP_DIMENSION_TOLERANCE) {
+    problems.push(`${file}: masthead ${all.max[1].toFixed(2)} m above the waterline, the catalogue says ${model.mastheadMetres} m`);
+  }
 
   return problems;
 }

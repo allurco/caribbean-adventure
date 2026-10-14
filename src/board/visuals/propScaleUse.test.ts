@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createWrap } from "../../game/hex";
-import { BUILDING_SCALE, PROP_DENSITY, PROP_SCALE, SHIP_SCALE } from "./worldScale";
+import { BUILDING_SCALE, METRES_PER_UNIT, PROP_DENSITY, PROP_SCALE, SHIP_SCALE } from "./worldScale";
 import { HULL_FOAM_NOISE_SCALE } from "./hullFoam";
 import { PIER_LAND_OVERLAP } from "./pierPlacement";
 import { ROCK_SINK } from "./rockPlacement";
@@ -134,7 +134,7 @@ describe("the port kit at the 350 m hex", () => {
   });
 });
 
-describe("the ships at the 350 m hex", () => {
+describe("the ships at diorama scale (ADR 0006)", () => {
   it("draws every hull at SHIP_SCALE, riding and sinking by it", () => {
     // Every class's box comes from its model at SHIP_SCALE (shipHull.test.ts), by its length overall.
     expect(SHIP_HULL_BOXES.Sloop[2]).toBeCloseTo((18 / 65) * SHIP_SCALE, 12);
@@ -147,7 +147,9 @@ describe("the ships at the 350 m hex", () => {
     expect(SHIP_SINK_DEPTH).toBe(1.5 * SHIP_SCALE);
   });
 
-  it("keeps the hull foam's breakup the same size against the smaller hull", () => {
-    expect(HULL_FOAM_NOISE_SCALE).toBe(14 / SHIP_SCALE);
+  it("keeps the hull foam's lace its size in water metres, whatever the ship scale", () => {
+    // Its size at the ship scale before ADR 0006 (2 × PROP_SCALE): 14 cycles per unit there.
+    expect(METRES_PER_UNIT / HULL_FOAM_NOISE_SCALE).toBeCloseTo((METRES_PER_UNIT * 2 * PROP_SCALE) / 14, 12);
+    expect(HULL_FOAM_NOISE_SCALE).not.toBeCloseTo(14 / SHIP_SCALE, 3);
   });
 });

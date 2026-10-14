@@ -7,6 +7,7 @@ const MODEL: ShipModel = {
   lengthMetres: 40,
   beamMetres: 10,
   depthMetres: 8,
+  mastheadMetres: 30,
   parts: { hull: "Hull", sails: "Sails", flag: "Flag" },
   tintedParts: ["Sails"],
 };
@@ -109,6 +110,11 @@ describe("shipAssetProblems", () => {
   it("flags a model whose bow points along +Z", () => {
     const reversed = { ...BOWSPRIT, min: [-0.4, 4, 16], max: [0.4, 11, 32] } as Part;
     expect(shipAssetProblems(MODEL, glb({ parts: [HULL, SAILS, FLAG, reversed] })).join("\n")).toMatch(/bow/);
+  });
+
+  it("flags a rig whose masthead is off the catalogue (the hover box reaches it, ADR 0006)", () => {
+    const taller = { ...SAILS, max: [6, 36, 12] } as Part;
+    expect(shipAssetProblems(MODEL, glb({ parts: [HULL, taller, FLAG, BOWSPRIT] })).join("\n")).toMatch(/masthead/);
   });
 });
 

@@ -63,13 +63,13 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `size=small\|medium\|large` | Map size (random otherwise) |
 | `seed=<integer>` | Map generation seed: a plain decimal integer from -2147483648 to 2147483647 (random otherwise) |
 | `cx=<x>&cz=<z>` | Where the camera looks on the first frame, in world units (both needed; the map's middle otherwise) |
-| `dist=<positive number>` | How far the camera starts from its target, in world units (the map's iso distance otherwise); the zoom limits still apply: 0.8 (town zoom) to 28. Below 4.32 the target settles onto the ground, so a hilltop is framed without lifting it by hand |
+| `dist=<positive number>` | How far the camera starts from its target, in world units (the map's iso distance otherwise); the zoom limits still apply: 1.0 (town zoom) to 28. Below 4.32 the target settles onto the ground, so a hilltop is framed without lifting it by hand |
 | `view=props` | The prop viewer instead of the game, with `focus=<n>` to start close up on entry n |
 | `view=sound` | The sound lab instead of the game: every registered sound with play/stop, a loop toggle, its volume and its source, for approving sounds by ear |
 | `stats=1` | A corner readout of fps, draw calls and triangles per frame (every pass: shadows, wave cascades, postprocessing), averaged over half a second, for the numbers each visual slice reports in its PR (#162). Dev server only: production builds leave it out |
 | `buoys=1` | Small orange buoys on the CPU sea surface, on a 9 × 9 grid round the camera focus, to check by eye that it rides the drawn swell (#141) |
 
-The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=4.32` opens the same small map every time, at ship zoom over its middle port, and `/?size=small&seed=1&cx=15.5&cz=24.45&dist=0.8` at town zoom over Crescent Harbor's tower. The size and seed choose the map the local client generates before its match starts (in a Web Worker, see `src/mapWorker/`); the camera values go to the board. Captains and NPCs stay random.
+The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=12&cz=13.9&dist=3.4` opens the same small map every time, at ship zoom over its middle port, and `/?size=small&seed=1&cx=15.5&cz=24.45&dist=1` at town zoom over Crescent Harbor's tower. The size and seed choose the map the local client generates before its match starts (in a Web Worker, see `src/mapWorker/`); the camera values go to the board. Captains and NPCs stay random.
 
 ## Project structure
 
