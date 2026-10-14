@@ -5,10 +5,10 @@ import { Vector3, Mesh, MathUtils, Group, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
 import { shipFoamSources } from "./shipFoamSources";
-import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, shipHullBox } from "./shipHull";
+import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHullBox } from "./shipHull";
 import { moveHeading } from "./shipHeading";
 import { useShipWavePose } from "./useShipWavePose";
-import { type ShipModel, SHIP_MODELS, SHIP_MODEL_ROTATION_Y, shipModel, shipModelScale, shipModelUrl } from "./shipModels";
+import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
 import { mergeShipModel } from "./shipModelMerge";
 
 const modelUrl = (model: ShipModel) => shipModelUrl(model, import.meta.env.BASE_URL);
@@ -86,9 +86,9 @@ export function Ship({
       if (!group) return;
       ref.current = group;
       if (!initialized.current) {
-        group.position.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
+        group.position.set(position[0], position[1] + SHIP_WATERLINE_Y, position[2]);
         prevTarget.current = position;
-        to.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
+        to.set(position[0], position[1] + SHIP_WATERLINE_Y, position[2]);
         initialized.current = true;
       }
     },
@@ -107,7 +107,7 @@ export function Ship({
       prev[2] !== position[2]
     ) {
       from.copy(ref.current.position);
-      to.set(position[0], position[1] + SHIP_RIDE_HEIGHT, position[2]);
+      to.set(position[0], position[1] + SHIP_WATERLINE_Y, position[2]);
       // Across the seam, sail straight over it rather than back across the map.
       from.setX(seamAwareStart(from.x, to.x, wrapWidth));
       prevTarget.current = position;
@@ -150,14 +150,16 @@ export function Ship({
     }
   });
 
+  // The box's centre rides above the waterline the group stands on.
   const box = (
-    <mesh castShadow receiveShadow>
+    <mesh position-y={SHIP_RIDE_HEIGHT} castShadow receiveShadow>
       <boxGeometry args={[...hull]} />
       <meshStandardMaterial color={color} />
     </mesh>
   );
 
-  // The group sails and turns, its inner group rides the swell; the box or the
+  // The group stands on the sea at the ship's waterline, sails and turns; its
+  // inner group rides the swell about that waterline (#150); the box or the
   // model inside it is what is drawn and hit, so hover and click work over the
   // whole model and follow the tilted hull.
   return (
@@ -191,9 +193,10 @@ export function Ship({
 
 /**
  * A class's generated model in its own frame (real metres, origin at the
- * waterline amidships, bow along −Z), placed in the ship's group: scaled to
- * ship scale, turned onto the heading, and lowered from the ride height so
- * its waterline sits on the sea. Suspends while the file loads.
+ * waterline amidships, bow along −Z), placed in the ship's wave-pose group:
+ * scaled to ship scale, turned onto the heading, its waterline on the
+ * group's, which is on the sea (shipModelPlacement, #150). Suspends while
+ * the file loads.
  */
 function ShipModelMesh({ model }: { model: ShipModel }) {
   const { scene } = useGLTF(modelUrl(model), false, false);
@@ -205,8 +208,9 @@ function ShipModelMesh({ model }: { model: ShipModel }) {
     });
     return clone;
   }, [scene, model]);
+  const { y, rotationY, scale } = shipModelPlacement();
   return (
-    <group position-y={-SHIP_RIDE_HEIGHT} rotation-y={SHIP_MODEL_ROTATION_Y} scale={shipModelScale()}>
+    <group position-y={y} rotation-y={rotationY} scale={scale}>
       <primitive object={copy} />
     </group>
   );
@@ -230,7 +234,7 @@ export function SinkingShip({
   const hull = shipHullBox(shipClass);
   const innerRef = useShipWavePose(hull);
   const progressRef = useRef(0);
-  const startY = position[1] + SHIP_RIDE_HEIGHT;
+  const startY = position[1] + SHIP_WATERLINE_Y;
   const [opacity, setOpacity] = useState(1);
   const completedRef = useRef(false);
 
@@ -240,8 +244,8 @@ export function SinkingShip({
     progressRef.current = Math.min(progressRef.current + delta / SINK_DURATION, 1);
     const t = smoothstep(progressRef.current);
 
-    // Sink down, below the swell it rides
-    ref.current.position.y = MathUtils.lerp(0, -SHIP_SINK_DEPTH, t);
+    // Sink down from the ride height, below the swell it rides
+    ref.current.position.y = SHIP_RIDE_HEIGHT - MathUtils.lerp(0, SHIP_SINK_DEPTH, t);
 
     // Tilt to one side (roll)
     ref.current.rotation.z = MathUtils.lerp(0, Math.PI / 4, t);
@@ -264,7 +268,7 @@ export function SinkingShip({
   return (
     <group position={[position[0], startY, position[2]]} rotation-y={heading}>
       <group ref={innerRef}>
-        <mesh ref={ref} castShadow>
+        <mesh ref={ref} position-y={SHIP_RIDE_HEIGHT} castShadow>
           <boxGeometry args={[...hull]} />
           <meshStandardMaterial
             color={color}
