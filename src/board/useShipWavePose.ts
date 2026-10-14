@@ -6,6 +6,12 @@ import { ZERO_WAVE_POSE, shipWavePose, wavePoseRotation, type WavePose } from ".
 import { SHIP_POSE_PRIORITY } from "./visuals/frameOrder";
 import { useSeaSurface } from "./visuals/seaSurfaceContext";
 
+/** Extra pitch (bow up) and roll (local +X side up), radians, from how the ship sails. */
+export interface ShipLean {
+  pitch: number;
+  roll: number;
+}
+
 /**
  * Sets a ship's wave pose (shipWavePose.ts, #142) each frame on its inner
  * group, the one the returned ref is put on: heave as the group's height,
@@ -15,9 +21,11 @@ import { useSeaSurface } from "./visuals/seaSurfaceContext";
  * matrixWorld, which still holds last frame's copy offset when the copies
  * move by a wrap width (the swell does not repeat over the map's width). Runs
  * after the copies move and the ship sails (SHIP_POSE_PRIORITY). Outside a
- * sea surface provider the ship sits level.
+ * sea surface provider the ship sits level. `lean`, if given, is the heel
+ * and pitch of the ship's own motion (shipMotion.ts, #212), added on top of
+ * the wave pose, which stays a pure function of the sea.
  */
-export function useShipWavePose(hull: HullBox): RefObject<Group | null> {
+export function useShipWavePose(hull: HullBox, lean?: () => ShipLean): RefObject<Group | null> {
   const inner = useRef<Group>(null);
   const sea = useSeaSurface();
   useFrame(({ camera }) => {
@@ -32,6 +40,10 @@ export function useShipWavePose(hull: HullBox): RefObject<Group | null> {
       const seconds = sea.clock.waveTimeAt();
       const eye = [camera.position.x, camera.position.y, camera.position.z] as const;
       pose = shipWavePose((px, pz) => sea.surface.heightAt(px, pz, seconds, eye), hull, x, z, ship.rotation.y);
+    }
+    if (lean) {
+      const { pitch, roll } = lean();
+      pose = { heave: pose.heave, pitch: pose.pitch + pitch, roll: pose.roll + roll };
     }
     group.position.y = pose.heave;
     group.rotation.set(...wavePoseRotation(pose));
