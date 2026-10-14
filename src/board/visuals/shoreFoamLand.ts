@@ -2,12 +2,13 @@
  * The shore wash on the sand (#38 step 7). The water's foam stops where the
  * land mesh rises above the waterline and covers the water plane, so on its
  * own the wash was cut off at the island's edge. The land material therefore
- * draws the same wash up the beach: by the baked coast distance
- * (shoreFoam.ts `beachWashBand`), on the same surf clock, with the same
- * lace, only above the waterline (below it the water's wash takes over)
- * and only where the field itself reads land (the band is gated on the
- * water side: the field and the mesh disagree in places), fading with
- * distance like the waves.
+ * draws the same wash up the beach: by the baked coast distance, and no
+ * higher over the sea than the swell runs up, so it stays a thin band at the
+ * foot of a cliff (shoreFoam.ts `landWashBand`, #149), on the same surf
+ * clock, with the same lace, only above the waterline (below it the water's
+ * wash takes over), full on land the mesh stands above the sea where the
+ * field still reads water (that land is at the drawn waterline, #147), and
+ * fading with distance like the waves.
  *
  * Like the caustics (seabedCaustics.ts) this patches three's standard
  * material from `onBeforeCompile`, and it is applied after the caustic patch
@@ -52,7 +53,7 @@ export const LAND_FOAM_GLSL = `
     if (!terrainFieldInside(fieldUv)) return 0.0;
     float coast = terrainFieldCoastDistance(texel);
     float pulse = surfPulse(vFoamWorld.xz, surfTime, 0.0);
-    float coverage = beachWashBand(coast, pulse) * SHORE_FOAM_COVERAGE;
+    float coverage = landWashBand(coast, vFoamWorld.y * FOAM_METRES_PER_UNIT, pulse) * SHORE_FOAM_COVERAGE;
     // Only above the waterline: the submerged shoreline triangles are seabed.
     coverage *= smoothstep(-FOAM_WATERLINE_SOFTNESS, 0.0, vFoamWorld.y);
     float footprintMetres = max(length(dFdx(vFoamWorld.xz)), length(dFdy(vFoamWorld.xz))) * FOAM_METRES_PER_UNIT;

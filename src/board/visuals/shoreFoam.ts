@@ -11,8 +11,9 @@
  * - **Shore wash** at the waterline: full at depth 0 and gone by a fraction
  *   of a metre, reaching deeper at the flood of the surf pulse than at the
  *   ebb (surfMotion.ts). On the sand side of the waterline the land draws
- *   the same wash by the baked coast distance (`beachWashBand`), so the foam
- *   is never cut off at the island's edge.
+ *   the same wash by the baked coast distance, no higher than the swell runs
+ *   up (`landWashBand`), so the foam is never cut off at the island's edge
+ *   and never climbs a cliff.
  * - **Breaker line** where the waves break. By McCowan's criterion a wave
  *   of height H breaks where the depth is H / 0.78 (McCowan 1894, Phil.
  *   Mag. 38, "On the highest wave of permanent type"); with the trade-wind
@@ -62,11 +63,14 @@ export const BEACH_WASH_EBB = 0.03;
 /** ... and at the flood: ~6 m of sand. */
 export const BEACH_WASH_FLOOD = 0.09;
 /**
- * Coast distance (world units) over which the beach wash fades in from the
- * water side, about a tenth of a field texel (~0.65 m), so the gate below
- * leaves no hard edge where the field's zero contour crosses the land mesh.
+ * Height (metres above sea level) the wash climbs the land to at the ebb of
+ * the surf pulse ... and at the flood: the trade-wind sea's significant
+ * height, about as high as its waves run up a steep shore (#149). On a beach
+ * the wash's reach up the sand stays well under both, so only steep ground
+ * (a cliff, a rocky point) is capped.
  */
-export const BEACH_WASH_WATERSIDE_FADE = 0.01;
+export const WASH_RUNUP_EBB_METRES = 0.6;
+export const WASH_RUNUP_FLOOD_METRES = jonswapSignificantHeight(TRADE_WIND_SEA);
 
 /** Reef crest depths (metres) between which the persistent reef band fades out. */
 export const REEF_FOAM_DEPTH_FADE: readonly [number, number] = [3, 4.5];
@@ -100,18 +104,33 @@ export function washBand(depthMetres: number, pulse: number): number {
 
 /**
  * The wash on the sand at signed `coastDistance` (+ up the beach) for the
- * surf `pulse`: 1 at the waterline, gone past the reach up the beach, and
- * gone on the water side too. The land only draws it above the waterline,
- * but the baked field and the land mesh disagree in places, and where the
- * mesh stands above the water while the field still reads water (coast ≤ 0)
- * the field says nothing about how far the real waterline is, so no wash is
- * drawn there rather than a full one; the water's own wash takes over below
- * the waterline anyway.
+ * surf `pulse`: 1 at the waterline, gone past the reach up the beach. The
+ * land only draws it above the waterline. Where the land mesh stands above
+ * the sea while the baked field still reads water (coast ≤ 0; the mesh and
+ * the field disagree by a fraction of a lattice step near the coast) that
+ * land is at the drawn waterline, so the band is full there: no dry strip
+ * between the water's edge and the foam on the sand (#147). The run-up gate
+ * (`landWashBand`) keeps it to the lowest ground.
  */
 export function beachWashBand(coastDistance: number, pulse: number): number {
   const reach = BEACH_WASH_EBB + (BEACH_WASH_FLOOD - BEACH_WASH_EBB) * pulse;
-  const upTheBeach = 1 - smoothstep(reach * WASH_SOLID_SHARE, reach, coastDistance);
-  return upTheBeach * smoothstep(-BEACH_WASH_WATERSIDE_FADE, 0, coastDistance);
+  return 1 - smoothstep(reach * WASH_SOLID_SHARE, reach, coastDistance);
+}
+
+/**
+ * How much of the wash reaches land `heightMetres` above sea level at surf
+ * `pulse` (#149): 1 low down, gone above the run-up height (higher at the
+ * flood). The beach band is measured across the ground, in plan; on a cliff
+ * a few metres in plan is many metres up the rock, and this caps it.
+ */
+export function washRunUpGate(heightMetres: number, pulse: number): number {
+  const top = WASH_RUNUP_EBB_METRES + (WASH_RUNUP_FLOOD_METRES - WASH_RUNUP_EBB_METRES) * pulse;
+  return 1 - smoothstep(top * WASH_SOLID_SHARE, top, heightMetres);
+}
+
+/** The wash the land draws: the band up the beach, capped at the swell's run-up height over the sea. */
+export function landWashBand(coastDistance: number, heightMetres: number, pulse: number): number {
+  return beachWashBand(coastDistance, pulse) * washRunUpGate(heightMetres, pulse);
 }
 
 /** The persistent reef band over a reef crest `depthMetres` down. */
@@ -165,7 +184,8 @@ export const SHORE_FOAM_GLSL = `
   const float WASH_SOLID_SHARE = ${WASH_SOLID_SHARE.toFixed(4)};
   const float BEACH_WASH_EBB = ${BEACH_WASH_EBB.toFixed(4)};
   const float BEACH_WASH_FLOOD = ${BEACH_WASH_FLOOD.toFixed(4)};
-  const float BEACH_WASH_WATERSIDE_FADE = ${BEACH_WASH_WATERSIDE_FADE.toFixed(4)};
+  const float WASH_RUNUP_EBB_METRES = ${WASH_RUNUP_EBB_METRES.toFixed(4)};
+  const float WASH_RUNUP_FLOOD_METRES = ${WASH_RUNUP_FLOOD_METRES.toFixed(4)};
   const vec2 REEF_FOAM_DEPTH_FADE = vec2(${REEF_FOAM_DEPTH_FADE.map((v) => v.toFixed(4)).join(", ")});
 
   float breakerBand(float depthMetres, float breakingDepthMetres) {
@@ -177,12 +197,19 @@ export const SHORE_FOAM_GLSL = `
     float reach = mix(WASH_DEPTH_EBB, WASH_DEPTH_FLOOD, pulse);
     return 1.0 - smoothstep(reach * WASH_SOLID_SHARE, reach, depthMetres);
   }
-  // Gone on the water side (coast <= 0): where the field reads water under
-  // land mesh it cannot say how far the real waterline is.
+  // Full on the water side (coast <= 0): land standing above the sea where
+  // the field reads water is at the drawn waterline (#147).
   float beachWashBand(float coastDistance, float pulse) {
     float reach = mix(BEACH_WASH_EBB, BEACH_WASH_FLOOD, pulse);
-    float upTheBeach = 1.0 - smoothstep(reach * WASH_SOLID_SHARE, reach, coastDistance);
-    return upTheBeach * smoothstep(-BEACH_WASH_WATERSIDE_FADE, 0.0, coastDistance);
+    return 1.0 - smoothstep(reach * WASH_SOLID_SHARE, reach, coastDistance);
+  }
+  // Capped at the swell's run-up height over the sea (#149).
+  float washRunUpGate(float heightMetres, float pulse) {
+    float top = mix(WASH_RUNUP_EBB_METRES, WASH_RUNUP_FLOOD_METRES, pulse);
+    return 1.0 - smoothstep(top * WASH_SOLID_SHARE, top, heightMetres);
+  }
+  float landWashBand(float coastDistance, float heightMetres, float pulse) {
+    return beachWashBand(coastDistance, pulse) * washRunUpGate(heightMetres, pulse);
   }
   float reefFoamBand(float depthMetres) {
     return 1.0 - smoothstep(REEF_FOAM_DEPTH_FADE.x, REEF_FOAM_DEPTH_FADE.y, depthMetres);

@@ -459,6 +459,11 @@ const fragmentShader = `
     // The sun's own reflection (the sky map has no solar disc): GGX, HDR and
     // unclamped so its brightest sparkles bloom.
     seaColor += sunGlintRadiance(n, -dir, light, alpha2, sunIrradiance);
+    // At the waterline the sea is a film on the sand (#147): it fades to the
+    // seabed it lies on over the first decimetres (waterlineBlend), so where
+    // it meets the land there is no edge, whichever way the mesh's lattice
+    // crosses sea level there.
+    seaColor = mix(seabed, seaColor, waterlineBlend(max(vWorld.y - seabedWorldY, 0.0) * METRES_PER_UNIT));
 
     // Foam on top. The shore bands pulse on the surf clock (the breaker sets
     // lead the wash); every coverage is laced by its own breakup noise and

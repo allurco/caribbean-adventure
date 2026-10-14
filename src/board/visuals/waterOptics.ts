@@ -295,6 +295,20 @@ export function liftedDeepWaterReflectance(weight: number): [number, number, num
 }
 
 /**
+ * Depth (metres) over which the water's own look fades in from the shore
+ * (#147). At the waterline the sea is a film on the sand: what shows is the
+ * seabed it lies on, with no body tint, sky reflection or glint, so where the
+ * water meets the beach there is no edge, only the wash. The full water is
+ * drawn from this depth down, well inside the wash (`WASH_DEPTH_EBB`).
+ */
+export const WATERLINE_BLEND_METRES = 0.3;
+
+/** Share of the water's own look over a seabed `depthMetres` down: 0 at the waterline, 1 from `WATERLINE_BLEND_METRES`. */
+export function waterlineBlend(depthMetres: number): number {
+  return smoothstep(0, WATERLINE_BLEND_METRES, depthMetres);
+}
+
+/**
  * The water shader fades the seabed's remaining light out between these
  * depths (metres), so wherever the mesh stops, the cut never shows.
  */
@@ -362,6 +376,12 @@ export const WATER_OPTICS_GLSL = `
   const float SEABED_FADE_END = ${SEABED_FADE_END.toFixed(1)};
   const float NO_SEABED_DEPTH = ${NO_SEABED_DEPTH.toFixed(1)};
   const float MAX_REFRACTED_TRAVEL = ${MAX_REFRACTED_TRAVEL.toFixed(6)};
+  const float WATERLINE_BLEND_METRES = ${WATERLINE_BLEND_METRES.toFixed(3)};
+
+  // The share of the water's own look over the seabed (#147): see waterlineBlend in waterOptics.ts.
+  float waterlineBlend(float depthMetres) {
+    return smoothstep(0.0, WATERLINE_BLEND_METRES, depthMetres);
+  }
 
   vec3 waterTransmittance(float pathMetres) {
     return exp(-(WATER_ABSORPTION + WATER_SCATTERING) * max(pathMetres, 0.0));

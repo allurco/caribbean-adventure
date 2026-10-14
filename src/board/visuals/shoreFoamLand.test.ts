@@ -66,10 +66,10 @@ describe("injectShoreFoam (the wash on the sand, #38 step 7)", () => {
 });
 
 describe("LAND_FOAM_GLSL", () => {
-  it("draws the wash by the baked coast distance, only above the waterline, pulsed and laced like the water's", () => {
+  it("draws the wash by the baked coast distance and the height over the sea, only above the waterline, pulsed and laced like the water's", () => {
     expect(LAND_FOAM_GLSL).toContain("float coast = terrainFieldCoastDistance(texel);");
     expect(LAND_FOAM_GLSL).toContain("float pulse = surfPulse(vFoamWorld.xz, surfTime, 0.0);");
-    expect(LAND_FOAM_GLSL).toContain("float coverage = beachWashBand(coast, pulse) * SHORE_FOAM_COVERAGE;");
+    expect(LAND_FOAM_GLSL).toContain("float coverage = landWashBand(coast, vFoamWorld.y * FOAM_METRES_PER_UNIT, pulse) * SHORE_FOAM_COVERAGE;");
     expect(LAND_FOAM_GLSL).toContain("coverage *= smoothstep(-FOAM_WATERLINE_SOFTNESS, 0.0, vFoamWorld.y);");
     expect(LAND_FOAM_GLSL).toContain("foamLace(coverage, foamBreakupNoise(vFoamWorld.xz, SHORE_FOAM_NOISE_SCALE, surfChurn(surfTime)))");
     expect(LAND_FOAM_GLSL).toContain("waveDetailFade(length(vFoamWorld - cameraPosition))");
