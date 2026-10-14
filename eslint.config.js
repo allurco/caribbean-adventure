@@ -21,6 +21,13 @@ export default defineConfig([
     },
   },
   {
+    // The /api function, its routes and the database tests run on Node (#105).
+    files: ['api/**/*.ts', 'server/**/*.ts', 'supabase/tests/**/*.ts'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
     // Game logic stays pure: no rendering libraries in src/game/.
     files: ['src/game/**/*.{ts,tsx}'],
     rules: {

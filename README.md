@@ -41,7 +41,7 @@ npm run dev
 
 Then open the URL Vite prints (usually http://localhost:5173).
 
-The game currently runs as a single local client: all players take turns on one screen. Networked multiplayer through a boardgame.io server is planned.
+The game currently runs as a single local client: all players take turns on one screen. Online play is being built on Vercel and Supabase (#104); with no Supabase settings the app stays the local game. Deployment and local backend set-up: [docs/deploy.md](docs/deploy.md).
 
 ## Scripts
 
@@ -53,6 +53,7 @@ The game currently runs as a single local client: all players take turns on one 
 | `npm test` | Run the test suite once |
 | `npm run test:watch` | Run tests in watch mode |
 | `npm run lint` | Lint with ESLint |
+| `npm run test:db` | Row-level security tests against a local Supabase (`npx supabase start`, needs Docker) |
 
 ## Dev URL parameters
 
@@ -66,6 +67,8 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `dist=<positive number>` | How far the camera starts from its target, in world units (the map's iso distance otherwise); the zoom limits still apply: 1.0 (town zoom) to 28. Below 4.32 the target settles onto the ground, so a hilltop is framed without lifting it by hand |
 | `view=props` | The prop viewer instead of the game, with `focus=<n>` to start close up on entry n |
 | `view=sound` | The sound lab instead of the game: every registered sound with play/stop, a loop toggle, its volume and its source, for approving sounds by ear |
+| `view=account` | The sign-in page, or your own captain once signed in (#105). Only with a Supabase backend configured ([docs/deploy.md](docs/deploy.md)); otherwise the game |
+| `view=profile&id=<uuid>` | A player's public profile (#105). Only with a Supabase backend configured |
 | `stats=1` | A corner readout of fps, draw calls and triangles per frame (every pass: shadows, wave cascades, postprocessing), averaged over half a second, for the numbers each visual slice reports in its PR (#162). Dev server only: production builds leave it out |
 | `buoys=1` | Small orange buoys on the CPU sea surface, on a 9 × 9 grid round the camera focus, to check by eye that it rides the drawn swell (#141) |
 | `seedGallery=1` | The 12-seed contact sheet instead of the game (#161): every seed in `SEED_GALLERY_SEEDS` at map zoom and at ship zoom over the port nearest the map's middle (`SEED_GALLERY_VIEWS`, both in `src/lab/seedGalleryShots.ts`), one row a seed. With `size=medium\|large` for that size (small otherwise). The shots render one at a time (about 5 s each); click one to open its view, or **save PNG** for the whole sheet. Dev server only |
@@ -84,8 +87,11 @@ src/
 ├── audio/   Sound: the registry, settings, the state-diff events, three.js playback
 ├── lab/     Shader experiments (open the app at /#lab) and the sound lab (/?view=sound)
 ├── mapWorker/  Generates the map in a Web Worker, with a main-thread fallback
+├── online/  Sign-in and profile pages, when a Supabase backend is configured
 └── App.tsx  Wires the game to the board via boardgame.io
-docs/        Design notes (for example, terrain-system.md)
+api/         The Vercel Function serving /api/* (routes in server/)
+supabase/    Local Supabase config, SQL migrations and database tests
+docs/        Design notes (for example, terrain-system.md) and deploy.md
 ```
 
 Game logic and rendering are kept strictly separate. Everything under `src/game/` is pure functions over a JSON-serializable state, and it is unit-tested. `src/board/` only reads state and dispatches moves.
