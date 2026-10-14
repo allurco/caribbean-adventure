@@ -10,9 +10,12 @@ import { sharedTerrainField } from "./visuals/sharedTerrainField";
 import {
   GRID_EMPHASIS_COLOR,
   GRID_FADE,
+  GRID_GLARE,
+  GRID_GLARE_COLOR,
   GRID_LINE_COLOR,
   gridFadeForCameraDistance,
 } from "./hexOutlineGrid";
+import { SUN_DIRECTION } from "./visuals/atmosphere";
 import {
   buildEdgeEmphasis,
   buildEdgeLinePositions,
@@ -86,7 +89,14 @@ export interface WaterGridLines {
 export function useWaterGridLines({ data, emphasis, surface }: WaterGridLinesOptions): WaterGridLines {
   const controls = useThree((s) => s.controls);
   const material = useMemo(
-    () => createHexOutlineMaterial(GRID_LINE_COLOR, GRID_EMPHASIS_COLOR, GRID_FADE, surface),
+    () =>
+      createHexOutlineMaterial(
+        GRID_LINE_COLOR,
+        GRID_EMPHASIS_COLOR,
+        GRID_FADE,
+        { ...GRID_GLARE, color: GRID_GLARE_COLOR, sun: SUN_DIRECTION },
+        surface
+      ),
     [surface]
   );
 

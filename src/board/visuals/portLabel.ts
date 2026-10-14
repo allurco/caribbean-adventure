@@ -6,8 +6,11 @@
  * to perspective it grew with every step closer, until at the ship-zoom floor
  * it filled a third of the screen and lay across the settlement. So:
  *
- * - Size: its glyphs never grow past `PORT_LABEL_MAX_PX` on screen. At map
- *   zoom the label is smaller than that and is drawn as before.
+ * - Size: its glyphs never grow past `PORT_LABEL_MAX_PX` on screen, nor
+ *   shrink below `PORT_LABEL_MIN_PX` far out (#151), so every name reads at a
+ *   glance at the overview. In between it is drawn as before.
+ * - Facing: the text is turned about its baseline to face the camera
+ *   (`portLabelViewPitch`); upright, it was foreshortened by the look down.
  * - Lift: its baseline sits above every building's roof, raised far enough
  *   that, seen down the camera's pitch, it also clears the buildings behind
  *   the port's centre, so it never sits across the settlement (the quay and
@@ -17,8 +20,12 @@
  *   hovering the port brings it back, short of town zoom.
  * - Clamp: the lift can carry it off the top of the screen at ship zoom while
  *   the port is still in view, so it is brought back down inside the edge.
+ * - Anchor: over the middle of the port's own buildings (`portLabelAnchor`),
+ *   and the lift is worked out for the pitch the camera actually looks down
+ *   at, so the label stays on its town at every angle (#151).
  */
 
+import { CAMERA_PITCH } from "../cameraBounds";
 import { HUD_TOP_BAR_HEIGHT } from "../hudLayout";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
 import { portOwnBuildings } from "./portHover";
@@ -26,10 +33,27 @@ import type { PortBuilding } from "./portSettlement";
 
 /** The label's font size in world units: its size at map zoom. */
 export const PORT_LABEL_FONT_SIZE = 0.4;
-/** Largest on-screen font size, in CSS pixels: about the HUD's headings. */
-export const PORT_LABEL_MAX_PX = 24;
-/** The old fixed baseline over the ground, kept as the lowest the label sits. */
+/** Largest on-screen font size, in CSS pixels: the size it has at ship zoom, about the HUD's headings. */
+export const PORT_LABEL_MAX_PX = 22;
+/** Smallest on-screen font size, in CSS pixels: about the HUD's small print, readable at a glance (#151). */
+export const PORT_LABEL_MIN_PX = 14;
+/**
+ * The old fixed baseline over the ground, kept as the lowest the label sits
+ * at the game's pitch (`CAMERA_PITCH`). Seen lower down it is shortened so
+ * the baseline stays as far across the ground from the port, inside its hex
+ * (see `portLabelBaseY`); seen steeper it stays this height.
+ */
 export const PORT_LABEL_MIN_HEIGHT = 0.6;
+/** The flattest look `portLabelViewPitch` reports, radians, so a grazing view never divides by zero. */
+export const PORT_LABEL_MIN_VIEW_PITCH = (2 * Math.PI) / 180;
+/**
+ * The steepest look `portLabelViewPitch` reports, radians: 70°, steeper than
+ * the overview camera's look at its focus (about 64°). Seen straight down no
+ * lift can clear a roof behind the anchor (the rise per unit north,
+ * tan(pitch), grows without bound), and a port south of the camera would read
+ * as straight down too, so the pitch stops here and the lift stays finite.
+ */
+export const PORT_LABEL_MAX_VIEW_PITCH = (70 * Math.PI) / 180;
 /** Air between a building's projected top and the label's baseline, in world units. */
 export const PORT_LABEL_LIFT_MARGIN = 0.08;
 /** Camera-to-label distance at and beyond which the label is fully opaque. */
@@ -62,14 +86,46 @@ export function worldUnitsPerPixel(distance: number, fovDeg: number, viewportHei
 }
 
 /**
- * The scale (at most 1) applied to the label so its font is never more than
- * `PORT_LABEL_MAX_PX` on screen. 1 wherever the label is already smaller
- * than that (map zoom), so the map view is unchanged.
+ * The scale applied to the label so its font is never more than
+ * `PORT_LABEL_MAX_PX` on screen (close in) nor less than `PORT_LABEL_MIN_PX`
+ * (far out, #151). 1 wherever the label already falls between the two (map
+ * zoom), so the map view is unchanged.
  */
 export function portLabelScale(distance: number, fovDeg: number, viewportHeightPx: number): number {
   if (!(distance > 0) || !(viewportHeightPx > 0)) return 1;
-  const maxWorldFont = PORT_LABEL_MAX_PX * worldUnitsPerPixel(distance, fovDeg, viewportHeightPx);
-  return Math.min(1, maxWorldFont / PORT_LABEL_FONT_SIZE);
+  const unitsPerPx = worldUnitsPerPixel(distance, fovDeg, viewportHeightPx);
+  const maxScale = (PORT_LABEL_MAX_PX * unitsPerPx) / PORT_LABEL_FONT_SIZE;
+  const minScale = (PORT_LABEL_MIN_PX * unitsPerPx) / PORT_LABEL_FONT_SIZE;
+  return Math.min(maxScale, Math.max(minScale, 1));
+}
+
+/**
+ * How steeply, radians, the camera at `camera` looks down at `point` (both
+ * y up, z toward the camera: it looks due north, cameraBounds.ts), between
+ * `PORT_LABEL_MIN_VIEW_PITCH` and `PORT_LABEL_MAX_VIEW_PITCH` (a port
+ * straight below the camera, or south of it, gets the cap). The label is turned by it
+ * to face the camera, and its lift is worked out for it.
+ */
+export function portLabelViewPitch(camera: { y: number; z: number }, point: { y: number; z: number }): number {
+  const pitch = Math.atan2(camera.y - point.y, Math.max(0, camera.z - point.z));
+  return Math.min(PORT_LABEL_MAX_VIEW_PITCH, Math.max(PORT_LABEL_MIN_VIEW_PITCH, pitch));
+}
+
+/**
+ * Where the label of the port at `centre` stands across the ground: over the
+ * middle of the port's own buildings, the town the name belongs to, or the
+ * port's centre when it has none.
+ */
+export function portLabelAnchor(centre: { x: number; z: number }, buildings: readonly PortBuilding[]): { x: number; z: number } {
+  const own = portOwnBuildings(centre, buildings);
+  if (own.length === 0) return { x: centre.x, z: centre.z };
+  let x = 0;
+  let z = 0;
+  for (const b of own) {
+    x += b.worldX;
+    z += b.worldZ;
+  }
+  return { x: x / own.length, z: z / own.length };
 }
 
 /**
@@ -81,6 +137,9 @@ export function portLabelScale(distance: number, fovDeg: number, viewportHeightP
  * its farthest-north corner, so no building or tower reaches up into the
  * label; never below the old fixed baseline (`PORT_LABEL_MIN_HEIGHT` over the
  * ground), so a port's label sits where it always did when nothing is in the way.
+ * Looked at lower than the game's pitch, that floor is shortened in step with
+ * tan(pitch), so it is seen no further across the ground from the port: a
+ * fixed height seen at a low angle would put the label out over the sea (#151).
  */
 export function portLabelBaseY(
   centre: { x: number; z: number },
@@ -88,11 +147,26 @@ export function portLabelBaseY(
   buildings: readonly PortBuilding[],
   pitch: number
 ): number {
-  const rise = Math.tan(pitch);
-  let base = groundY + PORT_LABEL_MIN_HEIGHT;
-  for (const b of portOwnBuildings(centre, buildings)) {
+  return portLabelLiftOver(centre, groundY, portOwnBuildings(centre, buildings), pitch);
+}
+
+/**
+ * `portLabelBaseY` for buildings already known to be the port's own, measured
+ * from `anchor` (which may sit off the port's centre, `portLabelAnchor`).
+ */
+export function portLabelLiftOver(
+  anchor: { x: number; z: number },
+  groundY: number,
+  ownBuildings: readonly PortBuilding[],
+  pitch: number
+): number {
+  // Held inside the pitches `portLabelViewPitch` reports, so tan stays finite
+  const rise = Math.tan(Math.min(PORT_LABEL_MAX_VIEW_PITCH, Math.max(PORT_LABEL_MIN_VIEW_PITCH, pitch)));
+  const floorScale = Math.min(1, rise / Math.tan(CAMERA_PITCH));
+  let base = groundY + PORT_LABEL_MIN_HEIGHT * floorScale;
+  for (const b of ownBuildings) {
     const top = b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale;
-    const north = centre.z - b.worldZ + AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
+    const north = anchor.z - b.worldZ + AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale;
     base = Math.max(base, top + Math.max(0, north) * rise + PORT_LABEL_LIFT_MARGIN);
   }
   return base;

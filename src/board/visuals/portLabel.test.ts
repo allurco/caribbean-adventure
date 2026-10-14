@@ -7,13 +7,18 @@ import {
   PORT_LABEL_LIFT_MARGIN,
   PORT_LABEL_MAX_PX,
   PORT_LABEL_MIN_HEIGHT,
+  PORT_LABEL_MIN_PX,
+  PORT_LABEL_MAX_VIEW_PITCH,
   PORT_LABEL_HUD_GAP,
   PORT_LABEL_MIN_OPACITY,
   PORT_LABEL_TOWN_FADE_FAR,
   PORT_LABEL_TOWN_FADE_NEAR,
   PORT_LABEL_VIEWPORT_MARGIN,
+  portLabelAnchor,
   portLabelBaseY,
+  portLabelLiftOver,
   portLabelOpacity,
+  portLabelViewPitch,
   portLabelScale,
   portLabelScreenShift,
   worldUnitsPerPixel,
@@ -68,6 +73,27 @@ describe("portLabelScale", () => {
     expect(screenPx(4.3, 1440)).toBeCloseTo(PORT_LABEL_MAX_PX, 6);
   });
 
+  it("never lets the glyphs drop below a readable size on screen, however far out (#151)", () => {
+    for (const d of [28, 32, 40, 60, 100]) {
+      expect(screenPx(d)).toBeGreaterThanOrEqual(PORT_LABEL_MIN_PX - 1e-9);
+      expect(screenPx(d, 1000)).toBeGreaterThanOrEqual(PORT_LABEL_MIN_PX - 1e-9);
+    }
+    // The #151 overview: camera (17.5, 36, 33) over (17.5, 0, 15.5), a 1000 px tall view
+    expect(screenPx(Math.hypot(36, 17.5), 1000)).toBeCloseTo(PORT_LABEL_MIN_PX, 6);
+  });
+
+  it("caps the glyphs at 22 px, the size they have at ship zoom today", () => {
+    expect(PORT_LABEL_MAX_PX).toBe(22);
+    for (const d of [0.8, 2, 4.3, 8]) {
+      expect(screenPx(d)).toBeCloseTo(PORT_LABEL_MAX_PX, 6);
+    }
+  });
+
+  it("keeps a readable minimum below the cap", () => {
+    expect(PORT_LABEL_MIN_PX).toBeGreaterThanOrEqual(12);
+    expect(PORT_LABEL_MIN_PX).toBeLessThan(PORT_LABEL_MAX_PX);
+  });
+
   it("falls back to 1 on a degenerate viewport or distance", () => {
     expect(portLabelScale(0, CAMERA_FOV, VIEWPORT)).toBe(1);
     expect(portLabelScale(5, CAMERA_FOV, 0)).toBe(1);
@@ -117,6 +143,127 @@ describe("portLabelBaseY", () => {
   it("ignores another port's buildings", () => {
     const far = building("watchtower", 30, 3, 0, 2);
     expect(portLabelBaseY(centre, 0.2, [far], CAMERA_PITCH)).toBeCloseTo(0.2 + PORT_LABEL_MIN_HEIGHT, 10);
+  });
+});
+
+/** How far north across the ground, from its anchor, a baseline at height `lift` over the ground is seen at `pitch`. */
+const groundDrift = (lift: number, pitch: number) => lift / Math.tan(pitch);
+const deg = (d: number) => (d * Math.PI) / 180;
+/** A hex's inner radius (centre to edge), world units: hexes are one unit to a corner. */
+const HEX_INNER_RADIUS = Math.sqrt(3) / 2;
+
+describe("portLabelBaseY at other camera pitches (#151)", () => {
+  const centre = { x: 10, z: 10 };
+  const town = [
+    building("church", 10.2, 0.3, 9.7, 1.1),
+    building("watchtower", 9.8, 0.25, 9.8, 1.2),
+    building("house", 10.3, 0.15, 10.3, 0.9),
+  ];
+
+  it("keeps a port with nothing in the way over its own hex at low pitch", () => {
+    for (const pitch of [deg(10), deg(15), deg(25), deg(35), CAMERA_PITCH]) {
+      const lift = portLabelBaseY(centre, 0.2, [], pitch) - 0.2;
+      expect(groundDrift(lift, pitch)).toBeLessThan(HEX_INNER_RADIUS);
+    }
+  });
+
+  it("is unchanged at the game's own pitch and never higher than the old baseline when steeper", () => {
+    expect(portLabelBaseY(centre, 0.2, [], CAMERA_PITCH)).toBeCloseTo(0.2 + PORT_LABEL_MIN_HEIGHT, 10);
+    expect(portLabelBaseY(centre, 0.2, [], deg(64))).toBeCloseTo(0.2 + PORT_LABEL_MIN_HEIGHT, 10);
+  });
+
+  it("hugs the town's drawn roofs at low pitch instead of floating off over the sea", () => {
+    for (const pitch of [deg(12), deg(20), deg(30)]) {
+      const base = portLabelBaseY(centre, 0.1, town, pitch);
+      const up = (y: number, z: number) => y * Math.cos(pitch) - z * Math.sin(pitch);
+      const roofs = Math.max(
+        ...town.map((b) => up(topOf(b), b.worldZ - AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale))
+      );
+      const floor = up(0.1 + PORT_LABEL_MIN_HEIGHT * Math.min(1, Math.tan(pitch) / Math.tan(CAMERA_PITCH)), centre.z);
+      // Clear of every roof, and no higher than the margin over the highest (or the minimum lift)
+      expect(up(base, centre.z)).toBeGreaterThan(roofs);
+      expect(up(base, centre.z)).toBeLessThanOrEqual(Math.max(roofs + PORT_LABEL_LIFT_MARGIN * Math.cos(pitch), floor) + 1e-9);
+    }
+  });
+});
+
+describe("portLabelViewPitch", () => {
+  it("is the game camera's pitch for a camera on its usual line of sight", () => {
+    const d = 10;
+    const camera = { y: d * Math.sin(CAMERA_PITCH), z: 5 + d * Math.cos(CAMERA_PITCH) };
+    expect(portLabelViewPitch(camera, { y: 0, z: 5 })).toBeCloseTo(CAMERA_PITCH, 10);
+  });
+
+  it("measures the #151 overview camera's steeper look", () => {
+    expect(portLabelViewPitch({ y: 36, z: 33 }, { y: 0, z: 15.5 })).toBeCloseTo(Math.atan2(36, 17.5), 10);
+  });
+
+  it("stays between a grazing floor and a steep cap short of straight down", () => {
+    expect(PORT_LABEL_MAX_VIEW_PITCH).toBeLessThan(Math.PI / 2);
+    // Steeper than the overview camera's look at its focus, so that view is measured as it is
+    expect(PORT_LABEL_MAX_VIEW_PITCH).toBeGreaterThan(Math.atan2(36, 17.5));
+    expect(portLabelViewPitch({ y: 10, z: 0 }, { y: 0, z: 5 })).toBeCloseTo(PORT_LABEL_MAX_VIEW_PITCH, 10);
+    const grazing = portLabelViewPitch({ y: 0, z: 50 }, { y: 0.5, z: 0 });
+    expect(grazing).toBeGreaterThan(0);
+    expect(grazing).toBeLessThan(deg(10));
+  });
+});
+
+describe("the label's lift for any camera and port position", () => {
+  const anchor = { x: 10, z: 10 };
+  const town = [
+    building("church", 10.2, 0.3, 9.7, 1.1),
+    building("watchtower", 9.8, 0.25, 9.6, 1.4),
+    building("house", 10.3, 0.15, 10.3, 0.9),
+  ];
+  /** The lift over a port at (y 0.1, z 10) seen from a camera at `camera`. */
+  const liftFrom = (camera: { y: number; z: number }) =>
+    portLabelLiftOver(anchor, 0.1, town, portLabelViewPitch(camera, { y: 0.1, z: anchor.z })) - 0.1;
+  // Highest the town's own roofs reach over the ground, plus room to clear the ones behind at the steep cap
+  const sane = 3;
+
+  it("stays finite and modest for a port directly below the camera", () => {
+    const lift = liftFrom({ y: 12, z: anchor.z });
+    expect(Number.isFinite(lift)).toBe(true);
+    expect(lift).toBeGreaterThan(0);
+    expect(lift).toBeLessThan(sane);
+  });
+
+  it("stays finite and modest for a port south of the camera", () => {
+    for (const camera of [{ y: 12, z: anchor.z - 0.5 }, { y: 4, z: anchor.z - 6 }, { y: 0.5, z: anchor.z - 20 }]) {
+      const lift = liftFrom(camera);
+      expect(Number.isFinite(lift)).toBe(true);
+      expect(lift).toBeGreaterThan(0);
+      expect(lift).toBeLessThan(sane);
+    }
+  });
+
+  it("stays finite, above the roofs, for a port far off at a grazing look", () => {
+    const lift = liftFrom({ y: 2, z: anchor.z + 500 });
+    expect(Number.isFinite(lift)).toBe(true);
+    expect(lift + 0.1).toBeGreaterThan(Math.max(...town.map(topOf)));
+    expect(lift).toBeLessThan(sane);
+  });
+
+  it("never lifts higher for a steeper look past the cap", () => {
+    const atCap = portLabelLiftOver(anchor, 0.1, town, PORT_LABEL_MAX_VIEW_PITCH);
+    expect(portLabelLiftOver(anchor, 0.1, town, Math.PI / 2)).toBeCloseTo(atCap, 10);
+  });
+});
+
+describe("portLabelAnchor", () => {
+  const centre = { x: 10, z: 10 };
+
+  it("is the middle of the port's own buildings, where the town stands", () => {
+    const set = [building("house", 10.4, 0.1, 10.2), building("church", 10.6, 0.1, 9.8)];
+    const a = portLabelAnchor(centre, set);
+    expect(a.x).toBeCloseTo(10.5, 10);
+    expect(a.z).toBeCloseTo(10, 10);
+  });
+
+  it("ignores another port's buildings and falls back to the port's centre with none of its own", () => {
+    expect(portLabelAnchor(centre, [building("watchtower", 30, 3, 0, 2)])).toEqual(centre);
+    expect(portLabelAnchor(centre, [])).toEqual(centre);
   });
 });
 
