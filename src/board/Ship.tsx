@@ -5,7 +5,7 @@ import { Mesh, MathUtils, Group, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
 import { type ShipFoamSource, shipFoamSources } from "./shipFoamSources";
 import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox, shipWaterline } from "./shipHull";
-import { type Point, type ShipMotion, restingMotion, setCourse, stepMotion } from "./shipMotion";
+import { type OpenWater, type Point, type ShipMotion, restingMotion, setCourse, stepMotion } from "./shipMotion";
 import { useShipWavePose } from "./useShipWavePose";
 import { SHIP_POSE_PRIORITY } from "./visuals/frameOrder";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
@@ -53,6 +53,8 @@ export function Ship({
   onClick,
   wrapWidth = Infinity,
   seaRoute,
+  openWater,
+  initialHeading = 0,
   foamId,
   foamPlayer = false,
 }: {
@@ -70,6 +72,10 @@ export function Ship({
    * them rather than straight over whatever lies between. Just `[to]` if not given.
    */
   seaRoute?: (from: Point, to: Point) => Point[];
+  /** Where the open water is, so the ship comes about clear of the shore (shipRoute.ts's openWaterFrom). */
+  openWater?: OpenWater;
+  /** The heading it lies at when first drawn, before it sails (shipSpawnHeading.ts). Read once, on mount. */
+  initialHeading?: number;
   /**
    * Registers the ship's animated position for the water's hull foam under
    * this id (shipFoamSources.ts, #38 step 7). Given only in the canonical
@@ -86,7 +92,7 @@ export function Ship({
   const prevTarget = useRef<[number, number, number] | null>(null);
   const initialized = useRef(false);
   /** How it sails (shipMotion.ts, #212): where it is on its course, its heading, way, heel and pitch. */
-  const motion = useRef<ShipMotion>(restingMotion(position[0], position[2], 0));
+  const motion = useRef<ShipMotion>(restingMotion(position[0], position[2], initialHeading));
   const reducedMotion = usePrefersReducedMotion();
   const foamSpeed = useRef(0);
   /** Written in place each frame (the registry copies it), so registering allocates nothing. */
@@ -113,7 +119,8 @@ export function Ship({
       if (!initialized.current) {
         group.position.set(position[0], position[1] + SHIP_WATERLINE_Y, position[2]);
         prevTarget.current = position;
-        motion.current = restingMotion(position[0], position[2], 0);
+        motion.current = restingMotion(position[0], position[2], initialHeading);
+        group.rotation.y = initialHeading;
         initialized.current = true;
       }
     },
@@ -132,7 +139,7 @@ export function Ship({
       // over the seam on a wrapping map (shipMotion.ts).
       const here: Point = [motion.current.x, motion.current.z];
       const to: Point = [position[0], position[2]];
-      motion.current = setCourse(motion.current, seaRoute ? seaRoute(here, to) : [to], wrapWidth);
+      motion.current = setCourse(motion.current, seaRoute ? seaRoute(here, to) : [to], wrapWidth, openWater);
     }
 
     const m = (motion.current = stepMotion(motion.current, delta, reducedMotion));

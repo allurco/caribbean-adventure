@@ -49,6 +49,8 @@ export const SEED_FEATURES = {
   retainingWalls: "retainingWalls",
   /** The kerb stones of a town's street, per port and street index. */
   kerbs: "kerbs",
+  /** The heading a ship lies at before it first sails (`shipSpawnHeading.ts`), per ship id. */
+  shipSpawnHeading: "shipSpawnHeading",
 } as const;
 
 export type SeedFeature = (typeof SEED_FEATURES)[keyof typeof SEED_FEATURES];
