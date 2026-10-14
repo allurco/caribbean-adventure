@@ -1,8 +1,16 @@
+import { useRef } from "react";
 import { Html } from "@react-three/drei";
+import { useFrame } from "@react-three/fiber";
+import { Vector3 } from "three";
+import type { Group } from "three";
 import type { ShipState, NPCShip, GoodType } from "../game/types";
 import { GOOD_TYPES } from "../game/types";
 import { NationFlag } from "./NationFlag";
 import { shipTooltipHeight } from "./shipHull";
+import { ndcToScreen, placementOffset, placeShipTooltip } from "./shipTooltipPlacement";
+
+const masthead = new Vector3();
+const waterline = new Vector3();
 
 interface ShipTooltipProps {
   position: [number, number, number];
@@ -66,11 +74,37 @@ export function ShipTooltip({
   // Show cargo if scouted (for players) or identified (for NPCs)
   const showCargo = isNPC ? npc.isIdentified : isScouted;
 
+  // Drawn at the waterline and moved each frame to where shipTooltipPlacement
+  // puts it: over the masthead (ADR 0006), so it never covers the ship, or
+  // under the hull when the HUD's top bar is in the way (#199). Hidden until
+  // its first placement.
+  const anchorRef = useRef<Group>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
+  const mastheadHeight = shipTooltipHeight(ship.shipClass);
+  useFrame(({ camera, size }) => {
+    const anchor = anchorRef.current;
+    const tooltip = tooltipRef.current;
+    if (!anchor || !tooltip) return;
+    anchor.localToWorld(waterline.set(position[0], position[1], position[2])).project(camera);
+    anchor.localToWorld(masthead.set(position[0], position[1] + mastheadHeight, position[2])).project(camera);
+    const atWaterline = ndcToScreen(waterline, size);
+    const placement = placeShipTooltip({
+      masthead: ndcToScreen(masthead, size),
+      waterline: atWaterline,
+      tooltip: { width: tooltip.offsetWidth, height: tooltip.offsetHeight },
+      viewport: size,
+    });
+    const offset = placementOffset(placement, atWaterline);
+    tooltip.style.transform = `translate(${offset.x}px, ${offset.y}px)`;
+    tooltip.style.visibility = "visible";
+  });
+
   return (
-    // Its bottom edge just over the masthead (ADR 0006), so it never covers the ship.
-    <Html position={[position[0], position[1] + shipTooltipHeight(ship.shipClass), position[2]]}>
+    <group ref={anchorRef}>
+    <Html position={position}>
       <div
-        style={{ transform: "translate(-50%, -100%)" }}
+        ref={tooltipRef}
+        style={{ visibility: "hidden" }}
         className="bg-stone-900/95 text-amber-100 px-3 py-2 rounded-lg
                       text-xs shadow-lg border border-amber-800/30
                       whitespace-nowrap pointer-events-none"
@@ -128,5 +162,6 @@ export function ShipTooltip({
         )}
       </div>
     </Html>
+    </group>
   );
 }
