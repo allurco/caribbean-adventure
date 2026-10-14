@@ -3,7 +3,7 @@
  * 0002 amendment b).
  *
  * `lightingFor(timeOfDay)` returns the whole light state: the sun and the fill,
- * the sky the environment map is baked from, the haze, the exposure and grade,
+ * the warm ambient, the sky the environment map is baked from, the haze, the exposure and grade,
  * bloom and vignette, and the ocean's reflection tint. No other module holds a
  * lighting value; they all read the record (a test scans the sources).
  *
@@ -87,12 +87,34 @@ export interface VignetteLighting {
 export interface OceanLighting {
   /** Tint on the sea's sky reflection and glare, "#rrggbb" (wired by #175). */
   reflectionTint: string;
+  /**
+   * Linear gain on the light coming up out of the water (the seabed seen
+   * through it and the water's glow): the sea's white balance, so a warm
+   * sun on the sand does not turn the turquoise shallows olive.
+   */
+  bodyTint: Rgb;
+  /**
+   * Share of the unresolved wave slope that widens the sun's glint (1 is
+   * the physical GGX lobe). Below 1 the glare narrows where the waves are
+   * sub-pixel, at map zoom; close up the drawn slopes dominate and it
+   * barely changes.
+   */
+  glintSpread: number;
+}
+
+/** A soft, normal-only light: three's hemisphere light, sky colour above and ground colour below. */
+export interface AmbientLighting {
+  skyColor: string;
+  groundColor: string;
+  intensity: number;
 }
 
 export interface Lighting {
   sun: DirectionalLighting;
   /** Shadowless fill from behind the camera: the sand and whitewash bounce the sky map cannot carry (#63). */
   fill: DirectionalLighting;
+  /** Warm ambient that keeps faces turned from a low sun readable (#169). */
+  ambient: AmbientLighting;
   sky: SkyLighting;
   haze: HazeLighting;
   grade: GradeLighting;
@@ -108,6 +130,7 @@ interface LightingKey {
   time: TimeOfDay;
   sun: KeyLight;
   fill: KeyLight;
+  ambient: AmbientLighting;
   sky: SkyLighting;
   haze: HazeLighting;
   grade: GradeLighting;
@@ -135,7 +158,9 @@ const CLEAR_SKY: SkyLighting = {
 /** Pale, slightly warm haze; the fog starts just past the camera's furthest zoom, so only the far third of the view softens. */
 const PALE_HAZE: HazeLighting = { color: "#bcd4da", near: 28, far: 85 };
 const VIGNETTE: VignetteLighting = { darkness: 0.35, offset: 0.3 };
-const NEUTRAL_SEA: OceanLighting = { reflectionTint: "#ffffff" };
+const NEUTRAL_SEA: OceanLighting = { reflectionTint: "#ffffff", bodyTint: [1, 1, 1], glintSpread: 1 };
+/** No ambient: the sky map and the fill carried the midday look on their own. */
+const NO_AMBIENT: AmbientLighting = { skyColor: "#ffffff", groundColor: "#ffffff", intensity: 0 };
 
 /**
  * Midday: the look before #169, kept as the day's high point. A high warm
@@ -147,6 +172,7 @@ const MIDDAY: LightingKey = {
   time: 12,
   sun: { elevationDeg: 55, azimuthDeg: -48, color: "#ffd2a1", intensity: 2.5 },
   fill: { elevationDeg: 35, azimuthDeg: 132, color: "#cfdcea", intensity: 0.8 },
+  ambient: NO_AMBIENT,
   sky: CLEAR_SKY,
   haze: PALE_HAZE,
   grade: { exposure: 1, gain: [1, 1, 1] },
@@ -167,24 +193,39 @@ const MIDDAY: LightingKey = {
  *   midday's light on level ground. A stronger sun (4.0) under a 1.25
  *   exposure brings level ground back to ~90 % of midday before the warmer
  *   colour, so the board is a warm evening, not a dim one.
- * - **Fill** cooler and bluer, mirrored to the left behind the camera now the
- *   sun is on the right, and lower than the sun so it grazes the walls the
- *   player sees (they all face away from a sun in front of the camera). A
- *   quarter of the sun, before exposure a little stronger than midday's, to
- *   lift the camera-facing slopes the low sun leaves in shade.
+ * - **Faces turned from the sun stay warm and readable.** A sun this low
+ *   leaves every face tilted ~20° away from it with no direct light, among
+ *   them the camera-facing slopes and sand just past the terminator. Three
+ *   terms carry them, none with an edge at the sun's terminator, so a facet
+ *   just past it is not a hard grey patch (lightingBalance.ts pins it near
+ *   half a level sunlit facet):
+ *   - the **fill**, a warm pale bounce off sunlit sand (not a blue sky stand-in,
+ *     which turned the shade grey-blue and olive), from behind the camera and
+ *     a little left, high enough (35°) to face the camera-facing slopes; 0.15
+ *     of the sun, so never a second key;
+ *   - a warm **ambient** hemisphere: golden sky glow above, sand and earth
+ *     bounce below (kept off the seabed prepass, like every light but the
+ *     sun and fill);
+ *   - the **sky map** at a larger diffuse share: under a low sun the sky's
+ *     share of the light on level ground rises (0.18 → 0.2).
+ * - **Sea**: the light up out of the water is white-balanced back toward
+ *   midday (`bodyTint`, about half the warm sun's shift), so the shallows
+ *   stay turquoise over sand lit orange; the glint's lobe takes 0.7 of the
+ *   unresolved wave slope, narrowing the broad glare at map zoom.
  * - **Post**: bloom 0.25 → 0.4 over a 0.8 threshold so glints and embers glow;
  *   a mild warm gain after ACES; the vignette is unchanged.
  */
 const GOLDEN: LightingKey = {
   time: GOLDEN_HOUR,
   sun: { elevationDeg: 22, azimuthDeg: 30, color: kelvinToHex(3200), intensity: 4 },
-  fill: { elevationDeg: 18, azimuthDeg: -132, color: "#a9c2e8", intensity: 1 },
-  sky: CLEAR_SKY,
+  fill: { elevationDeg: 35, azimuthDeg: -160, color: "#f0d8bc", intensity: 0.6 },
+  ambient: { skyColor: "#ffe0b8", groundColor: "#a8845a", intensity: 0.25 },
+  sky: { ...CLEAR_SKY, diffuseFraction: 0.2 },
   haze: PALE_HAZE,
   grade: { exposure: 1.25, gain: [1.04, 1, 0.93] },
   bloom: { intensity: 0.4, threshold: 0.8, smoothing: 0.9 },
   vignette: VIGNETTE,
-  ocean: NEUTRAL_SEA,
+  ocean: { reflectionTint: "#ffffff", bodyTint: [0.86, 1.03, 1.18], glintSpread: 0.7 },
 };
 
 /**
@@ -197,12 +238,13 @@ const MIDNIGHT: LightingKey = {
   time: 0,
   sun: { elevationDeg: -30, azimuthDeg: 180, color: kelvinToHex(2000), intensity: 0 },
   fill: { elevationDeg: 30, azimuthDeg: -48, color: "#7088b8", intensity: 0.3 },
+  ambient: { skyColor: "#2a3a5a", groundColor: "#101820", intensity: 0.2 },
   sky: CLEAR_SKY,
   haze: { color: "#1c2a3a", near: PALE_HAZE.near, far: PALE_HAZE.far },
   grade: { exposure: 1, gain: [0.9, 0.95, 1.1] },
   bloom: { intensity: 0.4, threshold: 0.8, smoothing: 0.9 },
   vignette: VIGNETTE,
-  ocean: { reflectionTint: "#8aa0c8" },
+  ocean: { reflectionTint: "#8aa0c8", bodyTint: [1, 1, 1], glintSpread: 1 },
 };
 
 /** The day's keys in time order, starting at midnight. */
@@ -236,6 +278,8 @@ function lerpHex(a: string, b: string, f: number): string {
 
 const lerpRgb = (a: Rgb, b: Rgb, f: number): Rgb => [lerp(a[0], b[0], f), lerp(a[1], b[1], f), lerp(a[2], b[2], f)];
 
+const isRgb = (v: unknown): v is Rgb => Array.isArray(v) && v.length === 3 && v.every((c) => typeof c === "number");
+
 function lerpRecord<T extends object>(a: T, b: T, f: number): T {
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(a) as (keyof T & string)[]) {
@@ -246,7 +290,9 @@ function lerpRecord<T extends object>(a: T, b: T, f: number): T {
         ? lerp(x, y, f)
         : typeof x === "string" && typeof y === "string"
           ? lerpHex(x, y, f)
-          : x;
+          : isRgb(x) && isRgb(y)
+            ? lerpRgb(x, y, f)
+            : x;
   }
   return out as T;
 }
@@ -282,6 +328,7 @@ export function lightingFor(timeOfDay: TimeOfDay): Lighting {
   return {
     sun: directional(from.sun, to.sun, f),
     fill: directional(from.fill, to.fill, f),
+    ambient: lerpRecord(from.ambient, to.ambient, f),
     sky: lerpRecord(from.sky, to.sky, f),
     haze: lerpRecord(from.haze, to.haze, f),
     grade: { exposure: lerp(from.grade.exposure, to.grade.exposure, f), gain: lerpRgb(from.grade.gain, to.grade.gain, f) },

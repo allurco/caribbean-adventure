@@ -117,8 +117,8 @@ describe("the golden-hour look (#169)", () => {
 describe("the fill light (#63)", () => {
   const golden = lightingFor(GOLDEN_HOUR);
 
-  it("is cooler and bluer than the sun", () => {
-    expect(blueOverRed(golden.fill.color)).toBeGreaterThan(1);
+  it("is a warm sand bounce, not a blue cast: warm, but paler than the sun", () => {
+    expect(blueOverRed(golden.fill.color)).toBeLessThan(1);
     expect(blueOverRed(golden.fill.color)).toBeGreaterThan(blueOverRed(golden.sun.color));
   });
 
@@ -134,9 +134,9 @@ describe("the fill light (#63)", () => {
     expect(Math.sign(golden.fill.direction[0])).toBe(-Math.sign(golden.sun.direction[0]));
   });
 
-  it("sits lower than the sun, as bounce light does", () => {
-    expect(golden.fill.elevationDeg).toBeLessThan(golden.sun.elevationDeg);
-    expect(golden.fill.elevationDeg).toBeGreaterThan(0);
+  it("rises high enough to face the camera-facing slopes (the camera looks 47° down)", () => {
+    expect(golden.fill.elevationDeg).toBeGreaterThanOrEqual(30);
+    expect(golden.fill.elevationDeg).toBeLessThan(60);
   });
 
   it("is a fraction of the sun's strength, never a second key light", () => {
@@ -150,6 +150,37 @@ describe("the fill light (#63)", () => {
     expect(Math.hypot(...golden.fill.offset)).toBeCloseTo(sunDistance, 9);
     golden.fill.offset.forEach((c, i) => expect(c / sunDistance).toBeCloseTo(golden.fill.direction[i], 12));
     golden.sun.offset.forEach((c, i) => expect(c / sunDistance).toBeCloseTo(golden.sun.direction[i], 12));
+  });
+});
+
+describe("the sea under the golden-hour sun (#169)", () => {
+  const golden = lightingFor(GOLDEN_HOUR);
+  const noon = lightingFor(NOON);
+  const linear = (hex: string): [number, number, number] =>
+    [1, 3, 5].map((i) => {
+      const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }) as [number, number, number];
+
+  it("white-balances the light out of the water at least halfway back to midday's sun, so the shallows stay turquoise", () => {
+    const [gr, gg, gb] = linear(golden.sun.color);
+    const [nr, ng, nb] = linear(noon.sun.color);
+    const [tr, tg, tb] = golden.ocean.bodyTint;
+    // Each channel ratio to red, after the tint, reaches the geometric mean of the golden and midday suns'.
+    expect((gg * tg) / (gr * tr)).toBeGreaterThanOrEqual(Math.sqrt((gg / gr) * (ng / nr)));
+    expect((gb * tb) / (gr * tr)).toBeGreaterThanOrEqual(Math.sqrt((gb / gr) * (nb / nr)));
+  });
+
+  it("keeps the water's brightness: the tint is a white balance, about unit luminance", () => {
+    const [r, g, b] = golden.ocean.bodyTint;
+    expect(0.2126 * r + 0.7152 * g + 0.0722 * b).toBeCloseTo(1, 1);
+  });
+
+  it("narrows the glint's spread at golden hour and leaves midday's physical lobe", () => {
+    expect(golden.ocean.glintSpread).toBeGreaterThan(0.5);
+    expect(golden.ocean.glintSpread).toBeLessThan(1);
+    expect(noon.ocean.glintSpread).toBe(1);
+    expect(noon.ocean.bodyTint).toEqual([1, 1, 1]);
   });
 });
 
