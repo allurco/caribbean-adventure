@@ -90,6 +90,11 @@ function Scene({ props, target }: { props: readonly PlacedProp[]; target: [numbe
       <SunLight sun={lighting.sun} shadow={sunShadow} />
       {/* The game's fill (#63), so the kit is judged under its real lighting. */}
       <FillLight fill={lighting.fill} />
+      <hemisphereLight
+        color={lighting.ambient.skyColor}
+        groundColor={lighting.ambient.groundColor}
+        intensity={lighting.ambient.intensity}
+      />
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[12, 12]} />

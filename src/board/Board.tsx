@@ -377,6 +377,12 @@ function Scene({
       <SunLight sun={lighting.sun} shadow={sunShadow} />
       {/* Shadowless fill from behind the camera: stands in for the sand and whitewash bounce the sky map lacks (#63) */}
       <FillLight fill={lighting.fill} />
+      {/* Warm ambient so faces turned from the low sun stay readable (#169); main layer only, off the seabed prepass */}
+      <hemisphereLight
+        color={lighting.ambient.skyColor}
+        groundColor={lighting.ambient.groundColor}
+        intensity={lighting.ambient.intensity}
+      />
 
       {/* Ocean, coloured by depth from the same terrain height field: a grid
           of level-of-detail rings under the camera focus (oceanGrid.ts),
@@ -389,6 +395,7 @@ function Scene({
           sun={lighting.sun.direction}
           sunColor={lighting.sun.color}
           sunIntensity={lighting.sun.intensity}
+          light={lighting.ocean}
           sky={skyEnvironment.texture}
           skyHeight={skyEnvironment.textureHeight}
           skyIntensity={skyEnvironment.intensity}

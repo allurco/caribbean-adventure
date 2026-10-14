@@ -19,6 +19,7 @@ import { wrapWorldWidth } from "../../game/hex";
 import { controlsTarget } from "../controlsTarget";
 import { cubeUvDefines } from "./skyEnvironment";
 import type { Vec3 } from "./sunDirection";
+import type { OceanLighting } from "./lighting";
 import { TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
 import { advanceSurfTime, SURF_TIMING_GLSL, surfTimeUniform } from "./surfMotion";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
@@ -76,6 +77,8 @@ const fragmentShader = `
   // The scene's sky environment (a PMREM; see useSkyEnvironment.ts).
   uniform sampler2D skyEnv;
   uniform float skyIntensity;
+  uniform vec3 waterBodyTint; // the sea's white balance (Lighting.ocean.bodyTint)
+  uniform float glintSpread; // share of unresolved slope that widens the glint (Lighting.ocean.glintSpread)
   #include <cube_uv_reflection_fragment>
   // Floor of the sky lookup's roughness; the wave roughness raises it.
   const float SKY_REFLECTION_ROUGHNESS = 0.05;
@@ -391,6 +394,9 @@ const fragmentShader = `
     // the seabed by (1 − t) instead, so it never adds to a seabed that still
     // shows (waterOptics.ts).
     body += lift * facetDownwelling * recededLiftShare(t, recede);
+    // The sea's white balance (#169): a warm low sun lights the sand orange,
+    // which the water's absorption turns olive; this pulls it back to turquoise.
+    body *= waterBodyTint;
     // Stylistic, not physics: a mild saturation boost in the shallows only
     // (by the effective depth, so it goes as the shelf recedes, #77).
     float luma = dot(body, vec3(0.2126, 0.7152, 0.0722));
@@ -418,7 +424,7 @@ const fragmentShader = `
     float whitecapCoverage = sumCascadeWhitecaps(vRestXZ, footprintMetres, distanceFade, cascadeWeights);
     // The glint sees the drawn slopes, so the sun path stays narrow ...
     vec3 n = normalize(vec3(-slope.x, 1.0, -slope.y));
-    float alpha2 = GLINT_BASE_ROUGHNESS2 + slopeVariance;
+    float alpha2 = GLINT_BASE_ROUGHNESS2 + slopeVariance * glintSpread;
     // ... the sky reflection and the refracted seabed see them scaled to the
     // measured slope of the real sea (WAVE_SHADING_GAIN, oceanWaves.ts).
     vec2 shadeSlope = slope * WAVE_SHADING_GAIN;
@@ -497,6 +503,8 @@ interface OceanProps {
   /** The directional sun's colour (sRGB) and intensity, so the glint matches it. */
   sunColor: string;
   sunIntensity: number;
+  /** The sea's white balance and glint spread from the scene's `Lighting` (#169). */
+  light: Pick<OceanLighting, "bodyTint" | "glintSpread">;
   /** The sky environment PMREM the sea reflects. */
   sky: Texture;
   /** Height in texels of the `sky` PMREM atlas. */
@@ -535,6 +543,7 @@ export function Ocean({
   sun,
   sunColor,
   sunIntensity,
+  light: seaLight,
   sky,
   skyHeight,
   skyIntensity,
@@ -564,6 +573,8 @@ export function Ocean({
           light: { value: new Vector3(...sun) },
           sunIrradiance: { value: new Color(sunColor).multiplyScalar(sunIntensity) },
           skyIntensity: { value: skyIntensity },
+          waterBodyTint: { value: new Vector3(...seaLight.bodyTint) },
+          glintSpread: { value: seaLight.glintSpread },
           mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
           shipFoamCount: { value: 0 },
           shipFoamWrap: { value: wrap ? wrapWorldWidth(wrap) : 0 },
@@ -595,7 +606,7 @@ export function Ocean({
     bindWhitecapTextures(mat.uniforms, waveWhitecaps);
     bindWaveDisplacementTextures(mat.uniforms, waveDisplacements);
     return mat;
-  }, [sun, sunColor, sunIntensity, sky, skyHeight, skyIntensity, terrainField, seabed, waveSlopes, waveWhitecaps, waveDisplacements]);
+  }, [sun, sunColor, sunIntensity, seaLight, sky, skyHeight, skyIntensity, terrainField, seabed, waveSlopes, waveWhitecaps, waveDisplacements]);
   useEffect(() => () => material.dispose(), [material]);
 
   // The whitecap accumulators ping-pong, so the current one is rebound after
