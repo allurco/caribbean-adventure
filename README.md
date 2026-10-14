@@ -1,6 +1,6 @@
 # Project Caribbean
 
-A turn-based naval strategy game for up to six players, set in the age of sail. Captain a ship, trade between ports, take on missions, and fight rival captains and NPC flotillas on a procedurally generated archipelago.
+A turn-based naval strategy game for up to four players, set in the age of sail. Captain a ship, trade between ports, take on missions, and fight rival captains and NPC flotillas on a procedurally generated archipelago.
 
 Inspired by classic age-of-sail board games, rebuilt as a 3D browser game.
 

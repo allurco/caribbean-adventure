@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Project Caribbean is a turn-based multiplayer naval strategy game (spiritual successor to Merchants & Marauders) for 6 players. Built with React + Vite + boardgame.io + React Three Fiber.
+Project Caribbean is a turn-based multiplayer naval strategy game (spiritual successor to Merchants & Marauders) for 2 to 4 players. Built with React + Vite + boardgame.io + React Three Fiber.
 
 ## Commands
 
