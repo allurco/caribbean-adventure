@@ -167,9 +167,11 @@ describe("terrainHeightField", () => {
             field,
             centre(cell.hex.q, cell.hex.r),
             centre(n.q, n.r),
-            100
+            1000
           );
-          expect(maxJump).toBeLessThan(0.06);
+          // Steps of a thousandth of the way: the steepest slopes (jungle up
+          // to a peak) climb ~0.0065 a step, so a seam would show above 0.01.
+          expect(maxJump).toBeLessThan(0.01);
           expect(minHeight).toBeGreaterThan(0);
           pairs++;
         }

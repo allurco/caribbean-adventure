@@ -23,6 +23,8 @@ export type { MapCell } from "./types";
 const MIN_ISLAND_DISTANCE = 3; // Minimum distance between islands
 const MIN_ISLAND_SIZE = 3; // Minimum island size
 const MAX_ISLAND_SIZE = 10; // Maximum island size
+/** Ports keep at least this many hexes apart where their islands allow, so towns don't crowd (#239). */
+const PORT_SPACING = 5;
 const ISLET_MAX_SIZE = 5; // Islands without a port are islets: the ports' islands carry the big land
 const MIN_PORT_ISLAND_SIZE = 3; // Minimum island size to have a port
 const SHIPYARD_CHANCE = 0.5;
@@ -109,6 +111,12 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 
 /** Key of a (canonical) hex for the generator's lookup sets. */
 const hexKey = (h: Hex): string => `${h.q},${h.r}`;
+
+/** The hex a `hexKey` names. */
+function keyToHex(key: string): Hex {
+  const [q, r] = key.split(",").map(Number);
+  return { q, r, s: -q - r };
+}
 
 /** Find the docking water hex for a port (where ships dock) */
 function findDockingHex(
@@ -636,7 +644,13 @@ export function generateWorld(dimensions: MapDimensions, seed: number, wrap: Map
     // Pick a random beach hex for the port (fallback to a coastal slope, so a
     // small island keeps its peak, then any coastal hex, then any hex)
     const slopeHexes = coastalHexes.filter((h) => islandElevations.get(hexKey(h)) !== 3);
-    const portCandidates = [beachHexes, slopeHexes, coastalHexes, island].find((hexes) => hexes.length > 0)!;
+    const shoreCandidates = [beachHexes, slopeHexes, coastalHexes, island].find((hexes) => hexes.length > 0)!;
+    // Keep the towns apart where the island allows: the hexes farthest from
+    // the ports already founded, up to PORT_SPACING
+    const roomFor = (h: Hex) =>
+      Math.min(PORT_SPACING, ...portKeys.map((k) => wrappedDistance(h, keyToHex(k), wrap)));
+    const most = Math.max(...shoreCandidates.map(roomFor));
+    const portCandidates = shoreCandidates.filter((h) => roomFor(h) === most);
     const portHex = portCandidates[Math.floor(rng() * portCandidates.length)];
     const key = hexKey(portHex);
     portHexes.add(key);
@@ -664,8 +678,7 @@ export function generateWorld(dimensions: MapDimensions, seed: number, wrap: Map
   // Build set of hexes adjacent to ports (these must stay as water for ship exit)
   const portAdjacentHexes = new Set<string>();
   for (const portKey of portKeys) {
-    const [q, r] = portKey.split(",").map(Number);
-    const portHex = { q, r, s: -q - r };
+    const portHex = keyToHex(portKey);
     for (const neighbor of wrappedNeighbors(portHex, wrap)) {
       const neighborKey = hexKey(neighbor);
       // Only mark non-island neighbors as port-adjacent
@@ -701,8 +714,7 @@ export function generateWorld(dimensions: MapDimensions, seed: number, wrap: Map
   // Calculate docking hex for each port
   const portDockingHexes = new Map<string, Hex>();
   for (const portKey of portKeys) {
-    const [q, r] = portKey.split(",").map(Number);
-    const portHex = { q, r, s: -q - r };
+    const portHex = keyToHex(portKey);
     const dockingHex = findDockingHex(portHex, waterHexes, reefHexes, wrap);
     if (dockingHex) {
       portDockingHexes.set(portKey, dockingHex);
