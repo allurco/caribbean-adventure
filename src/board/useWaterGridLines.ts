@@ -15,7 +15,7 @@ import {
   GRID_LINE_COLOR,
   gridFadeForCameraDistance,
 } from "./hexOutlineGrid";
-import { SUN_DIRECTION } from "./visuals/atmosphere";
+import { SCENE_LIGHTING } from "./visuals/sceneLighting";
 import {
   buildEdgeEmphasis,
   buildEdgeLinePositions,
@@ -94,7 +94,7 @@ export function useWaterGridLines({ data, emphasis, surface }: WaterGridLinesOpt
         GRID_LINE_COLOR,
         GRID_EMPHASIS_COLOR,
         GRID_FADE,
-        { ...GRID_GLARE, color: GRID_GLARE_COLOR, sun: SUN_DIRECTION },
+        { ...GRID_GLARE, color: GRID_GLARE_COLOR, sun: SCENE_LIGHTING.sun.direction },
         surface
       ),
     [surface]

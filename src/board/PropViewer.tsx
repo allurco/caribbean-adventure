@@ -1,31 +1,13 @@
 import { useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Text } from "@react-three/drei";
-import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
-import { ToneMappingMode } from "postprocessing";
 import { BufferAttribute, BufferGeometry, MeshStandardMaterial } from "three";
 import { SunLight } from "./visuals/SunLight";
 import { FillLight } from "./visuals/FillLight";
+import { PostEffects } from "./visuals/PostEffects";
 import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
-import {
-  BLOOM_INTENSITY,
-  BLOOM_SMOOTHING,
-  BLOOM_THRESHOLD,
-  FILL_COLOR,
-  FILL_INTENSITY,
-  FILL_OFFSET,
-  HAZE_COLOR,
-  HAZE_FAR,
-  HAZE_NEAR,
-  SHADOW_MAP_TYPE,
-  SUN_COLOR,
-  SUN_DIRECTION,
-  SUN_INTENSITY,
-  SUN_OFFSET,
-  SUN_SHADOW,
-  VIGNETTE_DARKNESS,
-  VIGNETTE_OFFSET,
-} from "./visuals/atmosphere";
+import { SHADOW_MAP_TYPE, sunShadowFor } from "./visuals/atmosphere";
+import { SCENE_LIGHTING } from "./visuals/sceneLighting";
 import { CAMERA_DIRECTION, CAMERA_FOV } from "./cameraBounds";
 import { paletteColor } from "./visuals/palette";
 import { PROP_ENTRIES, type PropEntry, type PropGeometryData } from "./propEntries";
@@ -95,16 +77,19 @@ function Prop({ entry, data, x }: PlacedProp) {
 }
 
 function Scene({ props, target }: { props: readonly PlacedProp[]; target: [number, number, number] }) {
+  // The game's light (#169), so the kit is judged under it.
+  const lighting = SCENE_LIGHTING;
+  const sunShadow = useMemo(() => sunShadowFor(lighting.sun), [lighting.sun]);
   // The game's sky as image-based lighting (sets scene.environment).
-  useSkyEnvironment(SUN_DIRECTION);
+  useSkyEnvironment(lighting);
   const sand = useMemo(() => paletteColor("drySand"), []);
   return (
     <>
-      <color attach="background" args={[HAZE_COLOR]} />
-      <fog attach="fog" args={[HAZE_COLOR, HAZE_NEAR, HAZE_FAR]} />
-      <SunLight color={SUN_COLOR} intensity={SUN_INTENSITY} offset={SUN_OFFSET} shadow={SUN_SHADOW} />
+      <color attach="background" args={[lighting.haze.color]} />
+      <fog attach="fog" args={[lighting.haze.color, lighting.haze.near, lighting.haze.far]} />
+      <SunLight sun={lighting.sun} shadow={sunShadow} />
       {/* The game's fill (#63), so the kit is judged under its real lighting. */}
-      <FillLight color={FILL_COLOR} intensity={FILL_INTENSITY} offset={FILL_OFFSET} />
+      <FillLight fill={lighting.fill} />
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[12, 12]} />
@@ -117,11 +102,7 @@ function Scene({ props, target }: { props: readonly PlacedProp[]; target: [numbe
 
       <OrbitControls makeDefault target={target} minDistance={0.3} maxDistance={30} />
 
-      <EffectComposer>
-        <Bloom intensity={BLOOM_INTENSITY} luminanceThreshold={BLOOM_THRESHOLD} luminanceSmoothing={BLOOM_SMOOTHING} />
-        <Vignette darkness={VIGNETTE_DARKNESS} offset={VIGNETTE_OFFSET} />
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      </EffectComposer>
+      <PostEffects lighting={lighting} />
     </>
   );
 }

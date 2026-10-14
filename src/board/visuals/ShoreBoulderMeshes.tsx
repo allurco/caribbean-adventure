@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { MeshStandardMaterial, type Texture } from "three";
-import { SUN_DIRECTION } from "./atmosphere";
+import { SCENE_LIGHTING } from "./sceneLighting";
 import { ROCK_VARIANT_COUNT } from "./rockGeometry";
 import { ROCK_GEOMETRIES, ROCK_MATERIAL } from "./Rocks";
 import { RockVariantMesh, type RockInstance } from "./RockVariantMesh";
@@ -31,7 +31,7 @@ function boulderMaterialFor(waveSlopes: readonly Texture[]): MeshStandardMateria
   const cached = boulderMaterials.get(waveSlopes);
   if (cached) return cached;
   const material = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
-  material.onBeforeCompile = (shader) => injectSeabedCaustics(shader, { sun: SUN_DIRECTION, waveSlopes });
+  material.onBeforeCompile = (shader) => injectSeabedCaustics(shader, { sun: SCENE_LIGHTING.sun.direction, waveSlopes });
   material.customProgramCacheKey = () => "shore-boulders-caustics";
   boulderMaterials.set(waveSlopes, material);
   return material;
