@@ -61,6 +61,12 @@ export interface ShipVoyage {
   elapsed: number;
   /** Speed along the path when the voyage began (world units per second). */
   startSpeed: number;
+  /**
+   * The come-about's turning point and its distance along the path, if the
+   * voyage has one: a new course set before the ship reaches it keeps it,
+   * so hexes sent one after another while coming about make one turn (#213).
+   */
+  turn?: { readonly point: Point; readonly distance: number } | null;
 }
 
 export interface ShipMotion {
@@ -415,8 +421,14 @@ export function setCourse(
   if (waypoints.length === 0) return motion;
   const pending: Point[] = [];
   const voyage = motion.voyage;
+  // A come-about under way and not yet past its turning point goes on through it
+  let keptTurn = false;
   if (voyage) {
     const sailed = voyageProgress(voyage.path.length, voyage.duration, voyage.startSpeed, voyage.elapsed).distance;
+    if (voyage.turn && voyage.turn.distance > sailed + WAYPOINT_PASSED) {
+      pending.push(voyage.turn.point);
+      keptTurn = true;
+    }
     voyage.waypoints.forEach((w, i) => {
       if (voyage.waypointDistances[i] > sailed + WAYPOINT_PASSED) pending.push(w);
     });
@@ -435,7 +447,7 @@ export function setCourse(
   const shifted = route.map((p): Point => [p[0] + shift, p[1]]);
   // Leave along the course it is making, or at rest along its bow.
   const startHeading = voyage && motion.speed > EPSILON ? motion.course : motion.heading;
-  const { knots, turning } = pathKnots(start, startHeading, shifted, openWater);
+  const { knots, turning } = keptTurn ? { knots: [start, ...shifted], turning: true } : pathKnots(start, startHeading, shifted, openWater);
   if (knots.length < 2) return { ...motion, x: start[0], voyage: null };
   const path = buildPathFromKnots(knots, startHeading, turning);
   // Distances of the asked-for waypoints: every knot after the start, less the turning point.
@@ -452,6 +464,7 @@ export function setCourse(
       duration: voyageDurationFrom(path.length, startSpeed),
       elapsed: 0,
       startSpeed,
+      turn: turning ? { point: knots[1], distance: path.distances[Math.min(SAMPLES_PER_SEGMENT, path.distances.length - 1)] } : null,
     },
   };
 }

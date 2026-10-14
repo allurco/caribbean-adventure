@@ -321,3 +321,34 @@ describe("coming about near land", () => {
     expect(asked).toBe(0);
   });
 });
+
+describe("a route sent hex by hex while coming about (#213)", () => {
+  /** Sends the ship back the way it faces one hex at a time, two frames apart, and sails it out. */
+  function reverseRoute(openWater?: OpenWater): ShipMotion[] {
+    let m = setCourse(restingMotion(0, 0, EAST), [[-HEX_STEP, 0]], Infinity, openWater);
+    const frames: ShipMotion[] = [m];
+    for (const k of [2, 3, 4]) {
+      for (let f = 0; f < 2; f++) frames.push((m = stepMotion(m, FRAME, false)));
+      m = setCourse(m, [[-k * HEX_STEP, 0]], Infinity, openWater);
+    }
+    return [...frames, ...sail(m, false, 8)];
+  }
+
+  /** The total turn of the course over the frames, radians. */
+  const totalTurn = (frames: ShipMotion[]) =>
+    frames.slice(1).reduce((sum, m, i) => sum + Math.abs(angleDelta(m.course, frames[i].course)), 0);
+
+  it("comes about once, keeping its turning point, rather than looping at each new hex", () => {
+    const frames = reverseRoute();
+    const end = frames[frames.length - 1];
+    expect(end.x).toBeCloseTo(-4 * HEX_STEP, 6);
+    // One reversal is half a turn; a fresh come-about at every hex would wind it round and round
+    expect(totalTurn(frames)).toBeLessThan(1.4 * Math.PI);
+  });
+
+  it("does the same where the open water steers the come-about", () => {
+    const southOnly: OpenWater = (_x, z) => z <= 0.05;
+    const frames = reverseRoute(southOnly);
+    expect(totalTurn(frames)).toBeLessThan(1.4 * Math.PI);
+  });
+});
