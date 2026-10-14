@@ -24,7 +24,7 @@ import {
   DEFAULT_MAX_CARGO,
 } from "./economy";
 import { SHIP_SPECS, UPGRADES, REPAIR_COST_PER_POINT } from "./constants";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { GOOD_TYPES } from "./types";
 import type { ShipState, PortMarket, MapCell } from "./types";
@@ -595,7 +595,7 @@ function setupAtPort() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: TradeGame });
+  const client = Client<CaribbeanState>({ game: withHotseatView(TradeGame) });
   client.start();
   return client;
 }
@@ -629,7 +629,7 @@ function setupNoPort() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: NoPortGame });
+  const client = Client<CaribbeanState>({ game: withHotseatView(NoPortGame) });
   client.start();
   return client;
 }
@@ -798,7 +798,7 @@ describe("trade move", () => {
         }),
       };
 
-      const client = Client({ game: testGame, numPlayers: 2 });
+      const client = Client({ game: withHotseatView(testGame), numPlayers: 2 });
       client.start();
       return client;
     }
@@ -869,7 +869,7 @@ describe("trade move", () => {
         }),
       };
 
-      const client = Client({ game: testGame, numPlayers: 2 });
+      const client = Client({ game: withHotseatView(testGame), numPlayers: 2 });
       client.start();
 
       client.moves.trade("Sugar", 3, "SELL");

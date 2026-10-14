@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
 import { hex, hexEquals, hexGrid } from "./hex";
 import type { Hex } from "./hex";
@@ -77,7 +77,7 @@ function mainPhase(
     },
     phases: { ...phases, draft: { ...phases.draft, start: false }, main: { ...phases.main, start: true } },
   };
-  const client = Client<CaribbeanState>({ game, numPlayers: 2 });
+  const client = Client<CaribbeanState>({ game: withHotseatView(game), numPlayers: 2 });
   client.start();
   return client;
 }

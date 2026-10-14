@@ -1,5 +1,5 @@
 import { Client } from "boardgame.io/react";
-import { Caribbean, withGeneratedMap } from "./game/Game";
+import { Caribbean, withGeneratedMap, withHotseatView } from "./game/Game";
 import type { CaribbeanSetupData } from "./game/Game";
 import { resolveMapRequest } from "./game/mapRequest";
 import { CaribbeanBoard } from "./board/Board";
@@ -16,7 +16,8 @@ export async function loadGameClient(setupData: CaribbeanSetupData | undefined) 
   // Seed picking (ADR 0007): with no pinned size or seed, this is where a new world's seed is drawn.
   // eslint-disable-next-line no-restricted-properties -- the one allowed seed-picking call site
   const map = await generateMapOffThread(resolveMapRequest(setupData, Math.random), createMapWorkerRunner());
-  return Client({ game: withGeneratedMap(Caribbean, map), board: CaribbeanBoard });
+  // One screen shared by every seat sees the whole table, not a spectator's view (#109).
+  return Client({ game: withHotseatView(withGeneratedMap(Caribbean, map)), board: CaribbeanBoard });
 }
 
 export type GameClient = Awaited<ReturnType<typeof loadGameClient>>;

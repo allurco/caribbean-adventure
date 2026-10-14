@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState, NPCShip, ShipState } from "./types";
 import { WIN_SCORE } from "./types";
 import { hex } from "./hex";
@@ -317,7 +317,7 @@ describe("scoring utility functions", () => {
 describe("stashGold move", () => {
   function setupGameAtHomePort() {
     const client = Client({
-      game: Caribbean,
+      game: withHotseatView(Caribbean),
       numPlayers: 2,
     });
     client.start();

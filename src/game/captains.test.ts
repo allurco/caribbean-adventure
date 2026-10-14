@@ -7,7 +7,7 @@ import {
   dealHands,
   findHomePort,
 } from "./captains";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { NATIONS } from "./types";
 import type { MapCell, Captain } from "./types";
@@ -282,7 +282,7 @@ function setupDraft() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: DraftGame, numPlayers: 2 });
+  const client = Client<CaribbeanState>({ game: withHotseatView(DraftGame), numPlayers: 2 });
   client.start();
   return client;
 }

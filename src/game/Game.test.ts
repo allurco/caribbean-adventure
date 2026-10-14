@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
-import { Caribbean, MOVES_PER_TURN, getMaxMoves, withGeneratedMap, withSetupData } from "./Game";
+import { Caribbean, MOVES_PER_TURN, getMaxMoves, withGeneratedMap, withHotseatView, withSetupData } from "./Game";
 import { generateMapFor } from "./mapRequest";
 import type { CaribbeanState, CaribbeanSetupData } from "./Game";
 import type { Game } from "boardgame.io";
@@ -43,7 +43,7 @@ function setup() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: TestGame });
+  const client = Client<CaribbeanState>({ game: withHotseatView(TestGame) });
   client.start();
   return client;
 }
@@ -68,7 +68,7 @@ function setupAtEdge() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: EdgeGame });
+  const client = Client<CaribbeanState>({ game: withHotseatView(EdgeGame) });
   client.start();
   return client;
 }
@@ -146,7 +146,7 @@ describe("moveShip across the east–west seam", () => {
         wrap: wrapped ? wrap : null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: WrapGame });
+    const client = Client<CaribbeanState>({ game: withHotseatView(WrapGame) });
     client.start();
     return client;
   }
@@ -191,7 +191,7 @@ describe("moveShip across the east–west seam", () => {
 
 describe("Caribbean.setup", () => {
   it("wraps the map east–west, as wide as it has columns", () => {
-    const client = Client<CaribbeanState>({ game: Caribbean, numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(Caribbean), numPlayers: 2 });
     client.start();
     const { G } = client.getState()!;
     expect(G.wrap).toEqual({ columns: getMapPreset(G.mapSize).columns });
@@ -199,7 +199,7 @@ describe("Caribbean.setup", () => {
 
   it("generates a map whose islands and ports are the same seen across the seam", () => {
     for (const mapSize of ["small", "medium", "large"] as const) {
-      const client = Client<CaribbeanState>({ game: { ...Caribbean, setup: (ctx) => Caribbean.setup!(ctx, { mapSize }) }, numPlayers: 2 });
+      const client = Client<CaribbeanState>({ game: withHotseatView({ ...Caribbean, setup: (ctx) => Caribbean.setup!(ctx, { mapSize }) }), numPlayers: 2 });
       client.start();
       const { G } = client.getState()!;
       // Every position the game stores is canonical under the wrap.
@@ -211,7 +211,7 @@ describe("Caribbean.setup", () => {
   });
 
   it("generates the rectangle of the chosen map size", () => {
-    const client = Client<CaribbeanState>({ game: Caribbean, numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(Caribbean), numPlayers: 2 });
     client.start();
     const { G } = client.getState()!;
     const { columns, rows } = getMapPreset(G.mapSize);
@@ -222,7 +222,7 @@ describe("Caribbean.setup", () => {
 
   it("generates the same map again for the same size and seed in setupData", () => {
     const start = () => {
-      const client = Client<CaribbeanState>({ game: withSetupData(Caribbean, { mapSize: "small", mapSeed: 1 }), numPlayers: 2 });
+      const client = Client<CaribbeanState>({ game: withHotseatView(withSetupData(Caribbean, { mapSize: "small", mapSeed: 1 })), numPlayers: 2 });
       client.start();
       return client.getState()!.G;
     };
@@ -235,7 +235,7 @@ describe("Caribbean.setup", () => {
 
   it("keeps a different seed to a different map", () => {
     const start = (mapSeed: number) => {
-      const client = Client<CaribbeanState>({ game: withSetupData(Caribbean, { mapSize: "small", mapSeed }), numPlayers: 2 });
+      const client = Client<CaribbeanState>({ game: withHotseatView(withSetupData(Caribbean, { mapSize: "small", mapSeed })), numPlayers: 2 });
       client.start();
       return client.getState()!.G;
     };
@@ -245,7 +245,7 @@ describe("Caribbean.setup", () => {
   describe("captain draft from boardgame.io's seed (#160)", () => {
     const request = { mapSize: "small", mapSeed: 1 } as const;
     const draftOf = (game: Game<CaribbeanState>, seed: string) => {
-      const client = Client<CaribbeanState>({ game: { ...game, seed }, numPlayers: 2 });
+      const client = Client<CaribbeanState>({ game: withHotseatView({ ...game, seed }), numPlayers: 2 });
       client.start();
       const { draftHands, captainDeck } = client.getState()!.G;
       return { draftHands, captainDeck };
@@ -269,7 +269,7 @@ describe("Caribbean.setup", () => {
 
   it("starts a match on a map generated ahead of setup, the same as setup would generate (#124)", () => {
     const start = (game: Game<CaribbeanState>) => {
-      const client = Client<CaribbeanState>({ game, numPlayers: 2 });
+      const client = Client<CaribbeanState>({ game: withHotseatView(game), numPlayers: 2 });
       client.start();
       return client.getState()!.G;
     };
@@ -296,7 +296,7 @@ describe("Caribbean.setup", () => {
     // A server passes the match's own setupData to setup(); the pin only
     // sets the size here, so the match's seed must survive.
     const start = (game: Game<CaribbeanState>, matchSetupData: CaribbeanSetupData) => {
-      const client = Client<CaribbeanState>({ game: { ...game, setup: (ctx) => game.setup!(ctx, matchSetupData) }, numPlayers: 2 });
+      const client = Client<CaribbeanState>({ game: withHotseatView({ ...game, setup: (ctx) => game.setup!(ctx, matchSetupData) }), numPlayers: 2 });
       client.start();
       return client.getState()!.G;
     };
@@ -318,7 +318,7 @@ describe("Caribbean.setup", () => {
         seed: "seed-82",
         setup: (ctx) => Caribbean.setup!(ctx, setupData as CaribbeanSetupData),
       };
-      const client = Client<CaribbeanState>({ game, numPlayers: 2 });
+      const client = Client<CaribbeanState>({ game: withHotseatView(game), numPlayers: 2 });
       client.start();
       return client.getState()!.G;
     };
@@ -392,7 +392,7 @@ describe("moveShip port logic", () => {
       wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: IslandGame });
+    const client = Client<CaribbeanState>({ game: withHotseatView(IslandGame) });
     client.start();
     return client;
   }
@@ -468,7 +468,7 @@ function setupTwoPlayer() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
+  const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
   client.start();
   return client;
 }
