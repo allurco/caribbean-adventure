@@ -16,7 +16,7 @@
  * sea): a tile-space ping-pong pair of the cascade's size that integrates
  * the fold of its Jacobian (whitecapFoam.ts). The pair swaps every frame, so
  * `whitecaps[i]` is replaced in place each update: read it in a frame
- * callback after CASCADE_PRIORITY, not once at material creation.
+ * callback after CASCADE_PRIORITY (frameOrder.ts), not once at material creation.
  *
  * The displacement (#38 step 8) adds one block of the working atlas per
  * displacing cascade, transformed by the same FFT draws (the working targets
@@ -51,10 +51,11 @@ import {
   WebGLRenderTarget,
 } from "three";
 import type { Texture, TextureDataType, WebGLRenderer } from "three";
+import { CASCADE_PRIORITY } from "./frameOrder";
 import { butterflyTable, fftStageCount } from "./fftButterfly";
 import { initialSpectrum, type WaveCascade } from "./waveCascade";
 import { atlasBlockCount, displacementBlockColumn, packCascadeAtlas } from "./waveCascadeAtlas";
-import { WAVE_LOOP_SECONDS, advanceWaveTime, waveTimeStep } from "./waveClock";
+import { WAVE_LOOP_SECONDS, waveTimeStep, type WaveClock } from "./waveClock";
 import {
   DISPLACEMENT_OUTPUT_FRAGMENT,
   FFT_STAGE_FRAGMENT,
@@ -65,9 +66,6 @@ import {
 } from "./waveCascadeShaders";
 import { cascadeTargetTypes, type CascadeTargetTypes } from "./waveCascadeSupport";
 import { whitecapDecay, whitecapInjection } from "./whitecapFoam";
-
-/** Before the seabed prepass (0.5) and the composer (1), after the controls. */
-export const CASCADE_PRIORITY = 0.25;
 
 function floatTexture(data: Float32Array, width: number, height: number): DataTexture {
   const t = new DataTexture(data, width, height, RGBAFormat, FloatType);
@@ -112,6 +110,8 @@ export interface WaveCascadeTextures {
   whitecaps: Texture[];
   /** One (h, Dx, Dz) displacement texture per displaced cascade, in the order given; stable objects. */
   displacements: Texture[];
+  /** False where this GPU cannot run the cascades and every texture is flat: the sea is drawn calm. */
+  enabled: boolean;
 }
 
 interface CascadesGpu extends WaveCascadeTextures {
@@ -140,6 +140,7 @@ function flatSlopes(count: number, whitecapCount: number, displacedCount: number
     slopes,
     whitecaps,
     displacements,
+    enabled: false,
     update: () => {},
     dispose: () => [...slopes, ...whitecaps, ...displacements].forEach((t) => t.dispose()),
   };
@@ -298,6 +299,7 @@ function createRenderingCascades(
     slopes: outputs.map((o) => o.texture),
     whitecaps,
     displacements: displacementOutputs.map((o) => o.texture),
+    enabled: true,
     update,
     dispose,
   };
@@ -306,17 +308,17 @@ function createRenderingCascades(
 /**
  * Each cascade's slope texture, in the order given, the whitecap foam of the
  * cascades at indices `whitecapCascades` and the displacement of those at
- * `displacementCascades`, updated once per frame on one shared clock; frozen
- * under reduced motion (the foam neither grows nor decays then, and the
- * surface holds still). `cascades`, `whitecapCascades` and
- * `displacementCascades` should be stable arrays of one grid size: a new
- * array rebuilds every cascade.
+ * `displacementCascades`, updated once per frame at the time of the shared
+ * wave `clock` (useWaveClock); while the clock is frozen (reduced motion) the
+ * foam neither grows nor decays and the surface holds still. `cascades`,
+ * `whitecapCascades` and `displacementCascades` should be stable arrays of
+ * one grid size: a new array rebuilds every cascade.
  */
 export function useWaveCascades(
   cascades: readonly WaveCascade[],
   whitecapCascades: readonly number[],
   displacementCascades: readonly number[],
-  reducedMotion: boolean
+  clock: WaveClock
 ): WaveCascadeTextures {
   const gl = useThree((s) => s.gl);
   const gpu = useMemo(
@@ -325,11 +327,12 @@ export function useWaveCascades(
   );
   useEffect(() => () => gpu.dispose(), [gpu]);
 
+  // The wave time last drawn.
   const time = useRef(0);
   const drawn = useRef(false);
 
-  useFrame((_, delta) => {
-    const next = advanceWaveTime(time.current, delta, reducedMotion);
+  useFrame(() => {
+    const next = clock.waveTimeAt();
     if (drawn.current && next === time.current) return; // frozen: the textures are still current
     const step = drawn.current ? waveTimeStep(time.current, next) : 0;
     time.current = next;

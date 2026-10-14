@@ -20,8 +20,10 @@
  * (WAVE_CREST_BOUND_UNITS) is a one-in-thousands wave, so it bounds the
  * geometry for culling and the shadow range. At the closest ship zoom
  * (~0.003 units per pixel) typical crests move the surface 2–4 pixels: the
- * water laps a static hull, as it would round a ship that is not yet heaving
- * (step 11). No stylistic gain was needed.
+ * water laps a static hull, as it would round a ship that is not yet heaving.
+ * Ships heave on the CPU sea surface (ADR 0004, `seaSurface.ts`:
+ * `createSeaSurface(...).heightAt`), which evaluates this swell band with the
+ * same spectrum, clock and damping. No stylistic gain was needed.
  *
  * Sampling. A vertex reads each texture with an explicit mip level
  * (`displacementLod`) chosen from its grid cell so waves shorter than about
@@ -60,6 +62,9 @@ export const WAVE_HEIGHT_GAIN = 1;
 /** Depth at which the displacement is full, as a multiple of the sea's breaking depth. */
 export const DISPLACEMENT_FULL_DEPTH_FACTOR = 2;
 export const DISPLACEMENT_FULL_DEPTH_METRES = DISPLACEMENT_FULL_DEPTH_FACTOR * BREAKING_DEPTH_METRES;
+
+/** The seabed's depth off the terrain field, metres: no seabed within reach, open sea. */
+export const DISPLACEMENT_DEEP_METRES = 1000;
 
 /**
  * Mip levels added to log2(cell / texel) when a vertex reads a displacement
@@ -151,7 +156,7 @@ export const WAVE_DISPLACEMENT_GLSL = `
   const float DISPLACEMENT_FULL_DEPTH_METRES = ${DISPLACEMENT_FULL_DEPTH_METRES.toFixed(4)};
   const float DISPLACEMENT_LOD_BIAS = ${DISPLACEMENT_LOD_BIAS.toFixed(4)};
   // Off the field there is no seabed within reach: open sea.
-  const float DISPLACEMENT_DEEP_METRES = 1000.0;
+  const float DISPLACEMENT_DEEP_METRES = ${DISPLACEMENT_DEEP_METRES.toFixed(1)};
   ${DISPLACEMENT_DECLARATIONS}
 
   float shallowDisplacementDamping(float depthMetres) {

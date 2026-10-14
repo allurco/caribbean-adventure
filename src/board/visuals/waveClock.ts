@@ -27,3 +27,26 @@ export function waveTimeStep(from: number, to: number): number {
   const step = to - from;
   return step >= 0 ? step : step + WAVE_LOOP_SECONDS;
 }
+
+/**
+ * The one wave clock of a client (#141, ADR 0004): advanced once per frame,
+ * before the cascades and every CPU reader, so all of them read the same
+ * time in a frame. Each client runs its own from its frame deltas; reading it
+ * through `waveTimeAt` keeps a later shared time source a one-place change.
+ */
+export interface WaveClock {
+  /** Advance by a frame of `deltaSeconds` (advanceWaveTime); frozen under reduced motion. */
+  advance: (deltaSeconds: number, reducedMotion: boolean) => void;
+  /** The wave time this frame, s, in [0, WAVE_LOOP_SECONDS). */
+  waveTimeAt: () => number;
+}
+
+export function createWaveClock(): WaveClock {
+  let seconds = 0;
+  return {
+    advance: (deltaSeconds, reducedMotion) => {
+      seconds = advanceWaveTime(seconds, deltaSeconds, reducedMotion);
+    },
+    waveTimeAt: () => seconds,
+  };
+}

@@ -28,7 +28,7 @@ import { METRES_PER_UNIT } from "./worldScale";
 import { GLINT_BASE_ROUGHNESS2 } from "./oceanWaves";
 import { SUN_GLINT_GLSL } from "./sunGlint";
 import { bindWaveSlopeTextures, bindWhitecapTextures, WAVE_SLOPE_GLSL } from "./waveSlopeGlsl";
-import { CASCADE_PRIORITY } from "./useWaveCascades";
+import { CASCADE_PRIORITY } from "./frameOrder";
 import type { TerrainFieldTexture } from "./useTerrainFieldTexture";
 import { FOAM_MOTION_GLSL, FOAM_SHADING_GLSL } from "./foamShading";
 import { SHORE_FOAM_GLSL } from "./shoreFoam";

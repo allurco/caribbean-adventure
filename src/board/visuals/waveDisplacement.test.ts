@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DISPLACED_SIGNIFICANT_HEIGHT_METRES,
   DISPLACEMENT_CASCADES,
+  DISPLACEMENT_DEEP_METRES,
   DISPLACEMENT_FULL_DEPTH_METRES,
   DISPLACEMENT_LOD_BIAS,
   WAVE_CREST_BOUND_UNITS,
@@ -120,6 +121,7 @@ describe("WAVE_DISPLACEMENT_GLSL", () => {
   it("carries the constants and the damping and lod functions", () => {
     expect(WAVE_DISPLACEMENT_GLSL).toContain(`const float WAVE_HEIGHT_GAIN = ${WAVE_HEIGHT_GAIN.toFixed(4)};`);
     expect(WAVE_DISPLACEMENT_GLSL).toContain(`const float DISPLACEMENT_FULL_DEPTH_METRES = ${DISPLACEMENT_FULL_DEPTH_METRES.toFixed(4)};`);
+    expect(WAVE_DISPLACEMENT_GLSL).toContain(`const float DISPLACEMENT_DEEP_METRES = ${DISPLACEMENT_DEEP_METRES.toFixed(1)};`);
     expect(WAVE_DISPLACEMENT_GLSL).toContain(`const float DISPLACEMENT_LOD_BIAS = ${DISPLACEMENT_LOD_BIAS.toFixed(4)};`);
     expect(WAVE_DISPLACEMENT_GLSL).toContain("float shallowDisplacementDamping(float depthMetres)");
     expect(WAVE_DISPLACEMENT_GLSL).toContain("vec3 waveSurfaceDisplacement(vec2 restXZ, float cellUnits)");
