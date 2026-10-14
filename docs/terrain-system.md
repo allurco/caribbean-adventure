@@ -775,9 +775,18 @@ landward of the square is the church's (under the Laws of the Indies
 the church fronts the plaza); it is placed second, after the tower and
 before the shuffled others, looks round the whole hex if the landward
 arc has no room, and is dropped only where no ground takes its walls'
-plan. The slots either side of it moved from ±0.45 to ±0.8 so a house
-beside the church clears it on flat ground; the ring search makes the
-exact value immaterial to how many buildings fit.
+plan. Where the tower would stand in front of it from the board's
+camera (due north at `CAMERA_PITCH`, `hiddenBehind`: further away, the
+plans overlapping across the view, and within the stretch of ground the
+tower's height covers on screen), the church takes the first slot round
+where it shows instead (`churchSlotOrder`: the inner slot away from the
+tower, then the one beside it, then the far end), and the others take
+the slots left (#69). On ports whose water lies to the south-east or
+south-west, most ports on a sampled map, the tower had taken the end
+slot nearest the camera, straight in front of the nave. The slots either
+side of the church's moved from ±0.45 to ±0.8 so a house beside the
+church clears it on flat ground; the ring search makes the exact value
+immaterial to how many buildings fit.
 
 The church is also why the ground is probed under the walls and not
 over the plan circle. Under the stand-on-top rule a spot is taken only
@@ -881,8 +890,7 @@ port from the port's `quay` sub-seed of the world seed, as instance
 scale. `Quays.tsx` draws one `InstancedMesh` per world copy, on the seabed
 prepass layer too. `quayTopAt(quay, point)` is the seam for the
 settlement: the deck or step height under a world point over a placed
-quay, or undefined off it; `quayTopY(cell, field, worldSeed, point)` is the
-same for a cell, placing the quay first.
+quay, or undefined off it.
 
 **Standing on the ground (#59).** A building stands ON the ground, never
 cut into it. Two things make that true. First, what it stands on is the
