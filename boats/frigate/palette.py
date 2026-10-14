@@ -205,6 +205,36 @@ _PREFIX = {
 }
 
 
+# --- the owner's colours: plain, white, and each a material of its own --------
+#
+# The pennant and the hull stripe (`frigate.owner`) belong to NO baked family.
+# The game tints a part by multiplying its material's base colour after it has
+# merged the file by material, so each wears a plain white material nothing
+# else shares, with no atlas: white times the owner's colour is that colour.
+
+TINT_BASE = (255, 255, 255)
+_TINTED_SUFFIX = {"Pennant": "Pennant", "Hull_Stripe": "HullStripe"}
+
+
+def is_tinted(name: str) -> bool:
+    """Is this object one of the owner's tinted parts, with no family?"""
+    return name in _TINTED_SUFFIX
+
+
+def tinted_material_names(p) -> dict:
+    """{tinted part: the material name THIS ship's part carries}."""
+    return {part: f"{p.collection}_{suffix}"
+            for part, suffix in _TINTED_SUFFIX.items()}
+
+
+def material_of(p, name: str) -> str:
+    """The material name an object of this ship wears: its family's, or
+    its own if it is a tinted part."""
+    if is_tinted(name):
+        return tinted_material_names(p)[name]
+    return material_names(p)[family_of(name)]
+
+
 def family_of(name: str) -> str:
     """Which material family an object belongs to. Raises on anything unknown.
 

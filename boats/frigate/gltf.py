@@ -349,12 +349,16 @@ def origin_faults(hull_bounds, asset_bounds, draft: float, loa: float,
     return out
 
 
-def texture_faults(doc: dict) -> list[str]:
+def texture_faults(doc: dict, plain: tuple = ()) -> list[str]:
     """Does the document actually carry its textures, or just name them?
 
     The failure named in the project's Review Focus has a second half: even with
     a good bake on disk, a `.glb` can be written whose materials reference
     nothing. This reads the exported document rather than the Blender scene.
+
+    `plain` names the materials that must carry NO texture and a WHITE base
+    colour: the owner's tinted parts, which the game tints by multiplying
+    that base colour (`frigate.owner`). Either way round is a fault.
     """
     out = []
     materials = doc.get("materials", [])
@@ -366,6 +370,17 @@ def texture_faults(doc: dict) -> list[str]:
     for i, mat in enumerate(materials):
         name = mat.get("name", f"#{i}")
         pbr = mat.get("pbrMetallicRoughness", {})
+        if name in plain:
+            textures = [k for k in ("baseColorTexture",
+                                    "metallicRoughnessTexture") if k in pbr]
+            textures += [k for k in ("normalTexture", "emissiveTexture",
+                                     "occlusionTexture") if k in mat]
+            if textures:
+                out.append(f"tinted material {name} carries {textures}")
+            base = pbr.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0])
+            if any(abs(c - 1.0) > 1e-6 for c in base[:3]):
+                out.append(f"tinted material {name} is not white: {base}")
+            continue
         if "baseColorTexture" not in pbr:
             out.append(f"material {name} has no base colour texture")
         if "metallicRoughnessTexture" not in pbr:

@@ -53,4 +53,9 @@ def test_one_sheet_a_headsail_led_to_leeward():
 def test_her_colours_fly_from_her_one_mast():
     assert wind.flag_mast(S) == "main"
     staff = wind.flag_staff(S)
-    assert staff[2] == pytest.approx(profiles.mast_truck_z(S, "main"))
+    # under the owner's pennant, which takes her one truck
+    # (`tests/test_owner_colours.py`)
+    from frigate import owner
+    assert staff[2] == pytest.approx(
+        profiles.mast_truck_z(S, "main") - owner.flag_drop(S))
+    assert owner.flag_drop(S) > 0.0

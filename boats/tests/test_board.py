@@ -136,14 +136,16 @@ def test_every_image_in_a_document_is_measured_off_its_buffer_view():
 def test_a_file_inside_the_contract_has_no_faults():
     assert board.contract_faults(
         3_900_000, 19_000, [("a", 512, 512)],
-        ["Hull", "Sails", "Jolly_Roger", "Masts"]) == []
+        ["Hull", "Sails", "Jolly_Roger", "Pennant", "Hull_Stripe",
+         "Masts"]) == []
 
 
 def test_each_breach_of_the_contract_is_named():
     faults = board.contract_faults(
         4_100_000, 21_000, [("a", 2048, 512)], ["Hull", "Masts"])
     text = " ".join(faults)
-    for word in ("bytes", "triangles", "2048", "Sails", "Jolly_Roger"):
+    for word in ("bytes", "triangles", "2048", "Sails", "Jolly_Roger",
+                 "Pennant", "Hull_Stripe"):
         assert word in text
 
 

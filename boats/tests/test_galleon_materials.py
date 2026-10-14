@@ -152,8 +152,8 @@ def test_the_declared_window_count_is_one_band_s_and_not_the_whole_stern_s():
     assert len(profiles.all_gallery_window_rects(F)) == F.gallery_windows == 5
 
     assert len(profiles.gallery_tiers(G)) == 2
-    assert len(profiles.all_gallery_window_rects(G)) == 11
-    assert G.gallery_windows == 7
+    assert len(profiles.all_gallery_window_rects(G)) == 13   # 9 + 4 at 42 m
+    assert G.gallery_windows == 9
     assert len(profiles.all_gallery_window_rects(G)) != G.gallery_windows
 
 
@@ -168,4 +168,4 @@ def test_every_band_of_a_galleon_s_stern_carries_its_own_lights():
         per_band[tier] = per_band.get(tier, 0) + 1
     assert sorted(per_band) == [0, 1]
     assert all(n >= 1 for n in per_band.values())
-    assert per_band[0] == 7 and per_band[1] == 4
+    assert per_band[0] == 9 and per_band[1] == 4

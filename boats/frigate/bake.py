@@ -39,7 +39,7 @@ import os
 
 import bpy
 
-from . import env, palette, texbudget, texstats
+from . import colours, env, palette, texbudget, texstats
 from .params import FrigateParams
 
 UV_LAYER = palette.BAKE_UV
@@ -193,9 +193,21 @@ def representatives(p=None) -> dict:
         # faces, so neither list moves.
         if not obj.data.polygons:
             continue
+        # The owner's tinted parts belong to no family and bake into no
+        # atlas: their plain white material is the whole of their look.
+        if palette.is_tinted(obj.name):
+            continue
         seen.add(obj.data.name)
         out[palette.family_of(obj.name)].append(obj)
     return out
+
+
+def tinted_objects() -> list:
+    """The owner's tinted parts this ship built, by name."""
+    coll = bpy.data.collections[env.collection_name()]
+    return sorted((o for o in coll.objects
+                   if o.type == "MESH" and palette.is_tinted(o.name)
+                   and o.data.polygons), key=lambda o: o.name)
 
 
 # --- unwrap ------------------------------------------------------------------
@@ -227,10 +239,15 @@ def unwrap_all(p: FrigateParams) -> dict:
     for objs in reps.values():
         for obj in objs:
             _ensure_uv_layer(obj.data)
+    # Each tinted part is unwrapped ALONE into its own 0..1 square: no
+    # texture samples it, but every mesh carries the bake layer.
+    tinted = tinted_objects()
+    for obj in tinted:
+        _ensure_uv_layer(obj.data)
     view = bpy.context.view_layer
     if bpy.context.object is not None and bpy.context.object.mode != "OBJECT":
         bpy.ops.object.mode_set(mode="OBJECT")
-    for _family, objs in reps.items():
+    for _family, objs in [*reps.items(), *((o.name, [o]) for o in tinted)]:
         if not objs:
             continue
         bpy.ops.object.select_all(action="DESELECT")
@@ -362,6 +379,10 @@ def bake_all(p: FrigateParams, samples: int = 8) -> dict:
     order = {}
     _record(SAVE_ORDER_KEY, order)
     _record(ALPHA_CUT_KEY, {})
+    # The colours' records start empty every bake, so a ship with no ensign
+    # cannot be judged on the place an earlier bake parked one at.
+    _record(COLOURS_PLACE_KEY, {})
+    _record(COLOURS_REGIME_KEY, {})
     # Worked out once, on the hull's evaluated mesh, and used by both the
     # albedo pass and the normal pass — they must paint the same texels or the
     # dent and the splinters would sit in different places.
@@ -436,13 +457,17 @@ def bake_all(p: FrigateParams, samples: int = 8) -> dict:
                         written[f"{family}_alpha_texels_cut"] = cut
                 if family == COLOURS_FAMILY:
                     # See the colours section: place, copy, THEN paint, all
-                    # after the sentinel verdict and before the encode.
-                    if not place:
+                    # after the sentinel verdict and before the encode. A
+                    # ship with no national ensign (`p.ensign` None) has no
+                    # second state, so nothing is parked or copied.
+                    ensign = colours.carries_ensign(p)
+                    if ensign and not place:
                         place.update(place_alt_island(background))
                         ensure_alt_uv(place)
                         _record(COLOURS_PLACE_KEY, place)
-                    copy_island(img, place)
-                    order[img.name].append("colours_copied")
+                    if ensign:
+                        copy_island(img, place)
+                        order[img.name].append("colours_copied")
                     if colours_plan is None:
                         colours_plan = colours_footprint(p)
                     if kind in ("albedo", "normal"):
@@ -451,7 +476,8 @@ def bake_all(p: FrigateParams, samples: int = 8) -> dict:
                         # is the noise floor both relief figures divide by, so
                         # it has to be the bare cloth's and not the grain of
                         # something painted on top of it.
-                        grain = cloth_grain(img, kind, place, colours_plan)
+                        grain = (cloth_grain(img, kind, place, colours_plan)
+                                 if ensign else None)
                         # STRICTLY AFTER THE COPY, BOTH OF THEM. The copy is
                         # what the flag baked to; painting the device first
                         # would put the skull in both states and the flag
@@ -460,10 +486,11 @@ def bake_all(p: FrigateParams, samples: int = 8) -> dict:
                         # the ensign on the PARKED copy, and never the other
                         # way round.
                         flown[kind] = paint_device(p, img, kind, colours_plan)
-                        sewn[kind] = paint_ensign(p, img, kind, place,
-                                                  colours_plan)
-                        colour_regimes[kind] = colours_change(
-                            img, kind, place, colours_plan, grain)
+                        if ensign:
+                            sewn[kind] = paint_ensign(p, img, kind, place,
+                                                      colours_plan)
+                            colour_regimes[kind] = colours_change(
+                                img, kind, place, colours_plan, grain)
                         _record(COLOURS_REGIME_KEY, colour_regimes)
                         order[img.name].append("colours_painted")
                     _record(SAVE_ORDER_KEY, order)
@@ -1275,7 +1302,10 @@ def colours_footprint(p: FrigateParams) -> dict:
             # The ensign dyes the WHOLE flag, so unlike the device it has no
             # "uncovered" case: every island texel gets a colour and a layer
             # count. Last writer wins where two triangles share a texel,
-            # which is the same texel either way at this resolution.
+            # which is the same texel either way at this resolution. A ship
+            # with no ensign has nothing to dye.
+            if flag is None:
+                continue
             ensign[(x, y)] = (colours.ensign_colour(fu, fv, aspect, flag),
                               colours.ensign_layer(fu, fv, aspect, flag),
                               colours.ensign_seam(fu, fv, aspect, flag))

@@ -36,11 +36,11 @@ def test_the_split_flight_is_task_sevens_figure_for_figure():
     484 triangles; 7 knee rings (the level-topped knee)."""
     assert len(PLATS) == 5
     assert [pl["top"] for pl in PLATS] == pytest.approx(
-        [4.6400, 4.4807, 4.1457, 3.8899, 3.7553], abs=5e-5)
+        [4.6400, 4.3419, 4.0400, 3.8244, 3.7090], abs=5e-5)   # 42 m hull
     assert PLATS[0]["x_in"] is None
     assert [pl["x_in"] for pl in PLATS[1:]] == pytest.approx(
         [0.180, 0.180, 0.216, 0.180], abs=5e-4)
-    assert PLATS[-1]["y_fwd"] == pytest.approx(18.3357, abs=5e-5)
+    assert PLATS[-1]["y_fwd"] == pytest.approx(22.3357, abs=5e-5)
     assert PLATS[-1]["y_fwd"] == pytest.approx(
         head.beakhead_deck_limit_y(S), abs=1e-12)
     assert PLATS[-1]["y_fwd"] - PLATS[0]["y_aft"] == pytest.approx(

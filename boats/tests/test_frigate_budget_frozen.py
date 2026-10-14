@@ -23,7 +23,12 @@ P = FrigateParams()
 # carries every field -- key, title, budget, names, prefixes, floor,
 # floor_why, spec_budget, budget_why -- so one changed character anywhere in
 # the table moves it.
-FRIGATE_LINES_SHA1 = "20026aa2925648eff27f92e87ba2e17ba608a10a"
+#
+# MOVED ON PURPOSE, ONCE: the maintainer's ruling on the owner's colours
+# (issue #134) puts a `Pennant` on her sails line and a `Hull_Stripe` on her
+# hull line, and nothing else in the table changed. It was
+# 20026aa2925648eff27f92e87ba2e17ba608a10a at ab0168b.
+FRIGATE_LINES_SHA1 = "0ba4f3024120e3d866dbc17f2a72e799fed0a0b5"
 
 # The scene at commit 4088f8c (the one tests/test_budget.py indicts), copied
 # here so an edit to that file's fixture cannot move this capture.

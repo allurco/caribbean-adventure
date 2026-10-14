@@ -76,6 +76,19 @@ describe("mergeShipModel", () => {
     expect(meshes.filter((mesh) => mesh.material === canvas && !mesh.userData.tinted)).toHaveLength(1);
   });
 
+  it("keeps tinted parts with their own materials in one tinted mesh per material", () => {
+    // The pennant and the hull stripe each carry their own white material (#163).
+    const { scene, canvas } = toyShip();
+    const pennantWhite = new MeshStandardMaterial({ name: "Pennant" });
+    const stripeWhite = new MeshStandardMaterial({ name: "HullStripe" });
+    scene.add(part("Pennant", pennantWhite, [0, 7, 0], 0.5), part("Hull_Stripe", stripeWhite, [0, 1, 0]));
+    const tinted = meshesOf(mergeShipModel(scene, ["Sails", "Pennant", "Hull_Stripe"])).filter(
+      (mesh) => mesh.userData.tinted,
+    );
+    expect(new Set(tinted.map((mesh) => mesh.material))).toEqual(new Set([canvas, pennantWhite, stripeWhite]));
+    expect(tinted).toHaveLength(3);
+  });
+
   it("tints a part whose primitives sit under the named node", () => {
     // GLTFLoader puts a node with several primitives in a group of meshes under the node's name.
     const { scene, canvas } = toyShip();

@@ -145,8 +145,8 @@ def test_the_chainplate_foot_lands_under_the_bulwark_row_above_hull_ports():
             t = profiles.t_of_y(G, foot[1])
             above.append(foot[2] - (profiles.row_floor_z(G, t, 0)
                                     + hull_row.head))
-    assert min(above) == pytest.approx(0.0458, abs=5e-4)
-    assert max(above) == pytest.approx(0.0656, abs=5e-4)
+    assert min(above) == pytest.approx(0.0476, abs=5e-4)
+    assert max(above) == pytest.approx(0.0629, abs=5e-4)
 
 def test_every_emitted_chainplate_foot_is_below_every_sill_there_is():
     for p in (F, G):
@@ -231,7 +231,7 @@ def test_the_channel_bite_is_COMPUTED_and_not_chosen():
     quarter thicker.
     """
     assert profiles.channel_bite(F) == pytest.approx(0.0429, abs=0.0005)
-    assert profiles.channel_bite(G) == pytest.approx(0.0853, abs=0.0005)
+    assert profiles.channel_bite(G) == pytest.approx(0.1053, abs=0.0005)
     assert profiles.channel_bite(F) < 0.050   # a tightening, not a widening
 
 

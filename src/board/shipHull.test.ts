@@ -14,8 +14,8 @@ describe("shipHullBox", () => {
     expectBox(shipHullBox("Frigate"), [toWorld(10.2), toWorld(8.4), toWorld(38)]);
   });
 
-  it("sizes the Galleon's box from its model: 11 m beam, 10.1 m deep, 34 m long, at ship scale", () => {
-    expectBox(shipHullBox("Galleon"), [toWorld(11), toWorld(10.1), toWorld(34)]);
+  it("sizes the Galleon's box from its model: 13.6 m beam, 11.1 m deep, 42 m long, at ship scale", () => {
+    expectBox(shipHullBox("Galleon"), [toWorld(13.6), toWorld(11.1), toWorld(42)]);
   });
 
   it("sizes the Sloop's box from its model: 5.6 m beam, 4.15 m deep, 18 m long, at ship scale", () => {

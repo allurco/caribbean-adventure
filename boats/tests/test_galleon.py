@@ -45,12 +45,16 @@ F = FrigateParams()
 # --- plan: length and beam --------------------------------------------------
 
 
-def test_stem_at_rail_to_taffrail_is_34_metres():
-    assert G.loa == 34.0
+def test_stem_at_rail_to_taffrail_is_42_metres():
+    """The maintainer's ruling: she is lengthened and bulked IN THE
+    GENERATOR, not scaled as a class, so she clearly exceeds the frigate's
+    38 m while her rails, ports and fittings stay true size. 34 m before."""
+    assert G.loa == 42.0
 
 
-def test_maximum_beam_at_the_wales_amidships_is_11_metres():
-    assert G.beam == 11.0
+def test_maximum_beam_at_the_wales_amidships_is_13_6_metres():
+    """Carried with her length, 42 / 34 of the 11.0 m she had."""
+    assert G.beam == 13.6
 
 
 def test_stem_to_taffrail_over_maximum_beam_sits_on_the_textbook_3_to_1():
@@ -59,8 +63,11 @@ def test_stem_to_taffrail_over_maximum_beam_sits_on_the_textbook_3_to_1():
     assert 3.0 <= ratio <= 3.3
 
 
-def test_the_galleon_is_shorter_and_beamier_than_the_frigate_it_inherits_from():
-    assert G.loa < F.loa
+def test_the_galleon_is_longer_and_beamier_than_the_frigate_yet_stubbier():
+    """LONGER than the frigate now (the maintainer's ruling: told apart at
+    a glance and clearly the bigger ship), and still the beamier and the
+    stubbier for her length."""
+    assert G.loa > F.loa
     assert G.beam > F.beam
     assert G.loa / G.beam < F.loa / F.beam
 
@@ -73,7 +80,7 @@ def test_more_of_the_galleons_length_is_overhang_than_the_frigates():
 
 
 def test_keel_underside_to_waterline_against_vasas_draft_over_beam():
-    assert G.draft == 4.3
+    assert G.draft == 5.3
     assert G.draft / G.beam == pytest.approx(0.391, abs=0.005)   # Vasa 0.410
 
 
@@ -95,15 +102,17 @@ def test_waterline_to_waist_rail_cap_amidships_is_5_00_metres():
 
 
 def test_the_waist_rail_stands_higher_over_its_own_length_than_the_frigates():
-    """WATERLINE-to-WAIST-RAIL-CAP at t 0.5 over STEM-to-TAFFRAIL: 5.00 / 34.0
-    = 0.147. It was 0.163; the cap dropped 0.55 m because the lower battery
-    left the bulwark (the maintainer's ruling 2026-10-05, R4). Still 1.3 times the
-    frigate's 0.113."""
+    """WATERLINE-to-WAIST-RAIL-CAP at t 0.5 over STEM-to-TAFFRAIL: 5.00 / 42.0
+    = 0.119 (0.147 on the 34 m hull; her heights stay TRUE SIZE as she is
+    lengthened, so the ratio falls). Still over the frigate's 0.113, and
+    0.69 m higher in metres than her 4.31."""
     galleon = (profiles.sheer(G, 0.5) + G.bulwark_h) / G.loa
     frigate = (profiles.sheer(F, 0.5) + F.bulwark_h) / F.loa
-    assert galleon == pytest.approx(0.147, abs=0.002)
+    assert galleon == pytest.approx(0.119, abs=0.002)
     assert frigate == pytest.approx(0.113, abs=0.002)
-    assert galleon > 1.25 * frigate
+    assert galleon > frigate
+    assert (profiles.sheer(G, 0.5) + G.bulwark_h) \
+        - (profiles.sheer(F, 0.5) + F.bulwark_h) > 0.6
 
 
 def test_waterline_to_rail_cap_at_the_stem_is_6_45_metres():
@@ -160,8 +169,9 @@ def test_waterline_to_poop_rail_cap_is_the_towering_stern_castle():
     poop = G.tier("Deck_Poop")
     cap = profiles.sheer(G, 1.0) + poop.rise + poop.bulwark_h
     assert cap == pytest.approx(11.80, abs=0.001)
-    # A third of stem-to-taffrail stands above the water at the stern.
-    assert cap / G.loa == pytest.approx(0.347, abs=0.005)
+    # 0.281 of stem-to-taffrail stands above the water at the stern (0.347
+    # on the 34 m hull: her heights stay true size as she is lengthened).
+    assert cap / G.loa == pytest.approx(0.281, abs=0.005)
 
 
 def _highest_rail_cap_at_the_taffrail(p) -> float:
@@ -185,7 +195,7 @@ def test_the_frigates_own_topmost_rail_at_the_taffrail_is_its_main_bulwark_cap()
 def test_the_poop_rail_stands_more_than_twice_as_high_over_its_own_length():
     g = _highest_rail_cap_at_the_taffrail(G) / G.loa
     f = _highest_rail_cap_at_the_taffrail(F) / F.loa
-    assert g == pytest.approx(0.347, abs=0.002)
+    assert g == pytest.approx(0.281, abs=0.002)   # 0.347 at 34 m
     assert f == pytest.approx(0.137, abs=0.002)
     assert g > 2.0 * f
 

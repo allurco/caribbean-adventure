@@ -36,13 +36,16 @@ export interface ShipModel {
   readonly tintedParts: readonly string[];
 }
 
+/** The parts every class's generator names for the owner's colour (#134, #163): each its own node and material. */
+const OWNER_PARTS: readonly string[] = ["Sails", "Pennant", "Hull_Stripe"];
+
 const SLOOP: ShipModel = {
   file: "sloop.glb",
   lengthMetres: 18,
   beamMetres: 5.6,
   depthMetres: 4.15,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
-  tintedParts: ["Sails"],
+  tintedParts: OWNER_PARTS,
 };
 
 const FLUTE: ShipModel = {
@@ -51,7 +54,7 @@ const FLUTE: ShipModel = {
   beamMetres: 7.4,
   depthMetres: 7.2,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
-  tintedParts: ["Sails"],
+  tintedParts: OWNER_PARTS,
 };
 
 const FRIGATE: ShipModel = {
@@ -61,16 +64,16 @@ const FRIGATE: ShipModel = {
   depthMetres: 8.4,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
   // Whether the sail patches take the colour too is #134's call.
-  tintedParts: ["Sails"],
+  tintedParts: OWNER_PARTS,
 };
 
 const GALLEON: ShipModel = {
   file: "galleon.glb",
-  lengthMetres: 34,
-  beamMetres: 11,
-  depthMetres: 10.1,
+  lengthMetres: 42,
+  beamMetres: 13.6,
+  depthMetres: 11.1,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
-  tintedParts: ["Sails"],
+  tintedParts: OWNER_PARTS,
 };
 
 /** Every class's model, or `null` for a class still drawn as a box. */

@@ -100,9 +100,10 @@ def test_stem_at_the_rail_to_the_carvings_nose_is_a_tenth_of_the_whole_ship():
     f_reach = carving.bounds(F)[1][1] - _stem_y(F)
     assert g_reach == pytest.approx(3.607, abs=0.02)
     assert f_reach == pytest.approx(1.473, abs=0.02)
-    assert g_reach / G.loa == pytest.approx(0.106, abs=0.003)
+    assert g_reach / G.loa == pytest.approx(0.086, abs=0.003)
     assert f_reach / F.loa == pytest.approx(0.039, abs=0.003)
-    assert (g_reach / G.loa) / (f_reach / F.loa) > 2.5
+    # 2.2 times on the 42 m hull, where the lion stays true size (2.7 at 34)
+    assert (g_reach / G.loa) / (f_reach / F.loa) > 2.0
 
 
 def test_the_whole_head_line_is_a_longer_run_than_the_frigates_over_its_own_ship():
@@ -135,7 +136,7 @@ def test_the_knee_reaches_further_ahead_of_the_stem_than_the_frigates():
     THE-RAIL to the KNEE'S TIP, where its top meets the cutwater's forward
     edge. Still nearly three times the frigate's.
     """
-    for p, reach, built in ((G, 2.667, 2.294), (F, 0.840, 0.840)):
+    for p, reach, built in ((G, 2.667, 2.313), (F, 0.840, 0.840)):
         span = profiles.sheer(p, 0.0) - profiles.keel_z(p, 0.0)
         assert p.head_form.knee_reach_frac * span == pytest.approx(reach, abs=0.01)
         forward = max(pt[1] for ring in head.knee_rings(p) for pt in ring)
@@ -182,11 +183,11 @@ def test_the_two_galleon_rails_converge_all_the_way_forward():
     springs from dropped 0.55 m, and the forecastle castle did not move.
     """
     gaps = head.rail_gaps(G, 1.0)
-    assert gaps[0] == pytest.approx(2.134, abs=0.02)
+    assert gaps[0] == pytest.approx(1.490, abs=0.02)
     assert gaps[-1] == pytest.approx(0.402, abs=0.02)
     for a, b in zip(gaps, gaps[1:]):
         assert b < a
-    assert gaps[0] / head.rail_gaps(F, 1.0)[0] == pytest.approx(2.34, abs=0.05)
+    assert gaps[0] / head.rail_gaps(F, 1.0)[0] == pytest.approx(1.64, abs=0.05)
 
 
 def test_the_upper_head_rail_springs_off_the_forecastle_CASTLES_own_rail_cap():
@@ -255,7 +256,7 @@ def test_the_bulkhead_is_a_box_and_not_an_inside_out_one():
     t = head.beakhead_t(G)
     deck = profiles.deck_z_at(G, t, 0.0, G.fcastle_rise)
     waist_cap = profiles.sheer(G, t) + G.bulwark_h
-    assert deck - waist_cap == pytest.approx(1.24, abs=0.02)   # the trap
+    assert deck - waist_cap == pytest.approx(1.29, abs=0.02)   # the trap
     # FORECASTLE-DECK-AT-THE-CENTRELINE to WAIST-RAIL-CAP on the frigate, for
     # contrast: the platform is 0.38 m BELOW the cap, so the wall is a wall.
     tf = head.beakhead_t(F)
@@ -467,7 +468,7 @@ def test_the_lion_straddles_the_centreline_without_standing_outside_the_hull():
     ships is that nothing of the head stands outside the ship's own maximum
     half-beam, and that is asserted instead of a hard-coded 0.6.
     """
-    for p, frac in ((F, 0.0481), (G, 0.0887)):
+    for p, frac in ((F, 0.0481), (G, 0.0829)):   # G 0.0887 at 34 m
         lo, hi = carving.bounds(p)
         assert lo[0] < 0.0 < hi[0]
         assert hi[0] == pytest.approx(-lo[0], abs=1e-12)
@@ -533,8 +534,8 @@ def test_the_frigates_bowsprit_numbers_did_not_move_when_they_became_data():
     assert (b.projection, b.steeve_deg, b.heel_in, b.radius) == \
         (12.0, 24.0, 3.0, (0.38, 0.11))
     g = G.rig.bowsprit
-    assert (g.projection, g.steeve_deg, g.heel_in) == (11.6, 32.0, 4.6)
+    assert (g.projection, g.steeve_deg, g.heel_in) == (14.4, 32.0, 4.6)
     # The Galeon Andalucia is 38 m of hull and 51 m overall: 0.342 of her own
-    # length projects forward of her stem. This galleon's 11.6 m on 34.0 m is
+    # length projects forward of her stem. This galleon's 14.4 m on 42.0 m is
     # the same fraction.
     assert g.projection / G.loa == pytest.approx(13.0 / 38.0, abs=0.005)

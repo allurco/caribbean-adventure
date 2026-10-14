@@ -34,6 +34,14 @@ SPLINTERS_PER_GAP = 4
 SPLINTER_LEN = 0.42
 
 
+def scar_size(p: FrigateParams) -> tuple[float, float, float, float]:
+    """(radius, rim, shelf, depth) of HER craters: the frigate's figures
+    times `damage_form.scar_scale`, bar the 2 mm rim, which is the joint
+    tolerance that keeps a crater touching the skin and not a size."""
+    k = p.damage_form.scar_scale
+    return (SCAR_R * k, SCAR_RIM, SCAR_SHELF * k, SCAR_DEPTH * k)
+
+
 def _rng() -> random.Random:
     return random.Random(DAMAGE_SEED)
 
@@ -183,18 +191,22 @@ def _place_scars(p: FrigateParams) -> tuple[list[dict], int]:
         guard += 1
         if windows and guard % 2 == 0:
             t, z = _draw_between_ports(p, rng, windows)
+            band = "between_ports"
             sheer_z = profiles.sheer(p, t)
         else:
             t = rng.uniform(0.12, 0.90)
+            band = "topside"
             sheer_z = profiles.sheer(p, t)
-            z = rng.uniform(1.2, sheer_z - 0.35)
+            z = rng.uniform(p.damage_form.band_floor,
+                            sheer_z - p.damage_form.band_head)
         if _fouls_a_port(p, t, z, sheer_z):
             continue
         scar = {
+            "band": band,
             "t": t,
             "z": z,
             "sign": rng.choice((-1.0, 1.0)),
-            "radius": SCAR_R * rng.uniform(*SCAR_JITTER),
+            "radius": scar_size(p)[0] * rng.uniform(*SCAR_JITTER),
         }
         if _overlaps(p, scar, out):
             continue
@@ -208,7 +220,7 @@ def scar_reach(p: FrigateParams) -> float:
     """SCAR CENTRE to the NEAREST POINT of an aperture, at least, on the
     "aperture" rule: the LARGEST radius a scar is drawn at plus the ship's
     `scar_margin`."""
-    return SCAR_R * SCAR_JITTER[1] + p.damage_form.scar_margin
+    return scar_size(p)[0] * SCAR_JITTER[1] + p.damage_form.scar_margin
 
 
 def scar_strips(p: FrigateParams) -> list[dict]:
@@ -403,8 +415,9 @@ def splinter_spikes(p: FrigateParams) -> list[tuple[tuple, tuple, float]]:
             t = profiles.t_of_y(p, y)
             cap = profiles.sheer(p, t) + p.bulwark_h
             x = sign * (profiles.bulwark_half_width(p, t, cap) - p.bulwark_thick / 2)
-            height = SPLINTER_LEN * rng.uniform(0.35, 1.0)
-            lean = SPLINTER_LEN * rng.uniform(-0.35, 0.35)
+            length = SPLINTER_LEN * p.damage_form.scar_scale
+            height = length * rng.uniform(0.35, 1.0)
+            lean = length * rng.uniform(-0.35, 0.35)
             out.append(((x, y, cap), (x + lean * 0.4, y + lean, cap + height), 0.035))
     return out
 
@@ -539,6 +552,7 @@ def scar_craters(p: FrigateParams) -> list[dict]:
     from mathutils import Vector
 
     tree = _hull_bvh()
+    _r, rim, shelf, deep = scar_size(p)
 
     def sink(point, depth):
         """The hull surface nearest `point`, `depth` metres in along its normal."""
@@ -551,12 +565,12 @@ def scar_craters(p: FrigateParams) -> list[dict]:
     for scar in scar_anchors(p):
         x, y, z, r = scar["x"], scar["y"], scar["z"], scar["radius"]
         rings = []
-        for radius, depth in ((r, -SCAR_RIM), (r * 0.55, SCAR_SHELF)):
+        for radius, depth in ((r, -rim), (r * 0.55, shelf)):
             rings.append([
                 sink((x, y + radius * _m.cos(a), z + radius * _m.sin(a)), depth)
                 for a in (2 * _m.pi * i / 6 for i in range(6))
             ])
-        out.append({**scar, "rings": rings, "centre": sink((x, y, z), SCAR_DEPTH)})
+        out.append({**scar, "rings": rings, "centre": sink((x, y, z), deep)})
     return out
 
 

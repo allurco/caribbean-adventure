@@ -1450,8 +1450,17 @@ def check_sails(p) -> dict:
         grid = wind.sail_grid(p, mast, tier, sails.SAIL_NU, sails.SAIL_NV)
         flat = [pt for row in grid for pt in row]
         back += [pt for pt in flat if pt[1] - panel["y"] < -1e-9]
-        if tier > 0:
-            below = profiles.yard_specs(p, mast)[tier - 1][0]
+        index = profiles.yard_index(p, mast, tier)
+        plan = profiles.yard_plan_of(p, mast, tier)
+        if plan is not None:
+            # A FLYING topsail: its foot over the lower masthead it is
+            # sheeted home to, and its head under its own lifts.
+            truck = profiles.mast_truck_z(p, mast)
+            if not (panel["foot_z"] >= plan.foot_frac * truck - 1e-9
+                    and panel["head_z"] < plan.lift_frac * truck):
+                foul.append((mast, tier))
+        elif index > 0:
+            below = profiles.yard_specs(p, mast)[index - 1][0]
             if panel["foot_z"] <= below + 0.3:
                 foul.append((mast, tier))
         else:
@@ -2191,7 +2200,54 @@ def check_dressing(p) -> dict:
 
     results["no loose vertices in the dressing"] = not loose
     results["no wire edges in the dressing"] = not wire
+    results.update(_owner_results(p))
     return results
+
+
+def _owner_results(p) -> dict:
+    """The owner's colours (`frigate.owner`): the pennant at its staff on
+    its own grid, and the stripe standing off the RENDERED hull by its
+    proud, never into it, with every planned quad drawn."""
+    import math
+
+    from mathutils import Vector
+
+    from . import damage, owner
+
+    out = {}
+    if p.builds("sails"):
+        pen = env.find(owner.PENNANT)
+        want = [pt for row in owner.pennant_grid(p) for pt in row]
+        got = [tuple(pen.matrix_world @ v.co) for v in pen.data.vertices] \
+            if pen else []
+        off = max((min(math.dist(w, g) for g in got) for w in want),
+                  default=math.inf) if got else math.inf
+        out[f"the owner's pennant flies from the {owner.pennant_mast(p)} "
+            f"truck, every node on its own grid (worst {off:.2e} m)"] = \
+            pen is not None and off < 1e-4 \
+            and len(pen.data.polygons) == (owner.PENNANT_NU - 1) \
+            * (owner.PENNANT_NV - 1)
+    stripe = env.find(owner.STRIPE)
+    if stripe is None:
+        out["the owner's hull stripe exists"] = False
+        return out
+    tree = damage._hull_bvh()
+    gaps = []
+    for v in stripe.data.vertices:
+        co = stripe.matrix_world @ v.co
+        loc, _n, _i, dist = tree.find_nearest(Vector(co), 50.0)
+        gaps.append(dist if loc is not None else math.inf)
+    ts, rows = owner.stripe_ts(p), owner.stripe_rows(p)
+    quads = 2 * (len(ts) - 1) * (len(rows) - 1) - len(owner.stripe_holes(p))
+    lo, hi = (min(gaps, default=0.0), max(gaps, default=0.0))
+    out[f"the owner's hull stripe stands {lo * 1000:.1f}-{hi * 1000:.1f} mm "
+        f"off the rendered hull, against {owner.STRIPE_PROUD * 1000:.0f} mm"] = \
+        bool(gaps) and abs(lo - owner.STRIPE_PROUD) < 0.005 \
+        and abs(hi - owner.STRIPE_PROUD) < 0.005
+    out[f"the stripe draws its {quads} planned quads, a shot hole left "
+        f"open under each of its {len(owner.stripe_holes(p))} scarred ones"] = \
+        len(stripe.data.polygons) == quads
+    return out
 
 
 def check_damage(p) -> dict:
@@ -2888,8 +2944,31 @@ def check_materials(p) -> dict:
     misfiled = [
         o.name for o in meshes
         if len(o.data.materials) == 1
-        and o.data.materials[0].name != palette.material_names(p)[palette.family_of(o.name)]
+        and o.data.materials[0].name != palette.material_of(p, o.name)
     ]
+    # THE OWNER'S TINTED PARTS: each its own plain material, white, with no
+    # texture and shared with nothing, so the game can tint it alone.
+    tinted = [o for o in meshes if palette.is_tinted(o.name)]
+    tint_faults = []
+    for o in tinted:
+        mat = o.data.materials[0] if len(o.data.materials) == 1 else None
+        if mat is None:
+            tint_faults.append(f"{o.name}: no material")
+            continue
+        users = [m.name for m in meshes if m is not o
+                 and any(s is mat for s in m.data.materials)]
+        bsdf = next((n for n in mat.node_tree.nodes
+                     if n.type == "BSDF_PRINCIPLED"), None) if mat.use_nodes \
+            else None
+        textured = mat.use_nodes and any(n.type == "TEX_IMAGE"
+                                         for n in mat.node_tree.nodes)
+        base = tuple(bsdf.inputs["Base Color"].default_value)[:3] \
+            if bsdf is not None else None
+        white = base is not None and all(abs(c - 1.0) < 1e-6 for c in base)
+        if users or textured or not white or (bsdf and bsdf.inputs[
+                "Base Color"].is_linked):
+            tint_faults.append(f"{o.name}: shared by {users}, textured "
+                               f"{textured}, base {base}")
     mats = [bpy.data.materials.get(n) for n in palette.material_names(p).values()]
     missing = [n for n, m in zip(palette.material_names(p).values(), mats) if m is None]
     no_nodes = [m.name for m in mats if m is not None and not m.use_nodes]
@@ -2913,6 +2992,9 @@ def check_materials(p) -> dict:
         f"all {len(palette.families(p))} family materials exist": not missing,
         "every family material is a node graph": not no_nodes and not thin,
         "every family drives Base Color from its graph": not unlit,
+        f"the owner's {len(tinted)} tinted parts each wear a plain white "
+        f"material of their own, untextured ({tint_faults})":
+            len(tinted) >= 1 and not tint_faults,
     }
 
     # The paint scheme the reference shows, read back off the graph rather than
@@ -3299,11 +3381,26 @@ def check_bake(p) -> dict:
             f"all {damage.SHOT_SCARS} shot scars are painted into the "
             f"{bake.SCAR_FAMILY} atlases ({len(paint)} found)"
         ] = len(paint) == damage.SHOT_SCARS
+        # SCAR_TEXEL_FLOOR's own derivation, carried to each scar: the
+        # smallest crater THIS ship draws, painted, over the texel size of
+        # the hull under THIS scar (`scarpaint.scar_texel_floor`). On the
+        # frigate it is the 120; the 42 m galleon's hull spreads over the
+        # same atlas and her texels are coarser, the sloop's craters smaller.
+        from . import scarpaint
+        least_crater = damage.scar_size(p)[0] * damage.SCAR_JITTER[0]
+        short = []
+        for v in paint.values():
+            floor = scarpaint.scar_texel_floor(
+                scarpaint.paint_radius(least_crater), v["metres_per_texel"])
+            if v["texels"] < floor:
+                short.append((v["texels"], round(floor)))
         smallest = min((v["texels"] for v in paint.values()), default=0)
         results[
-            f"every painted scar covers at least {SCAR_TEXEL_FLOOR} texels "
-            f"(smallest {smallest})"
-        ] = smallest >= SCAR_TEXEL_FLOOR
+            f"every painted scar covers at least its own floor, the ship's "
+            f"smallest crater painted over its hull's texels less a quarter "
+            f"(frigate {SCAR_TEXEL_FLOOR}; smallest {smallest}, short "
+            f"{short})"
+        ] = bool(paint) and not short
 
         # THE PAINT RUNS BETWEEN THE BLANKNESS MEASURE AND THE ENCODE, and
         # both ends of that sandwich matter. Painted BEFORE the measure, nine
@@ -3352,13 +3449,24 @@ def check_bake(p) -> dict:
     place = bake.colours_place()
     flag = bpy.data.objects.get(bake.COLOURS_OBJECT)
     layers = [l.name for l in flag.data.uv_layers] if flag else []
-    results[
-        f"the colours carry both states' UV sets, bake layer first ({layers})"
-    ] = layers[:2] == [bake.UV_LAYER, colours_rules.ALT_UV]
-    results[
-        f"the ensign state is parked in free atlas space (src {place.get('src')}, "
-        f"dst {place.get('dst')})"
-    ] = bool(place) and place.get("offset") not in (None, [0, 0])
+    if colours_rules.carries_ensign(p):
+        results[
+            f"the colours carry both states' UV sets, bake layer first "
+            f"({layers})"
+        ] = layers[:2] == [bake.UV_LAYER, colours_rules.ALT_UV]
+        results[
+            f"the ensign state is parked in free atlas space (src "
+            f"{place.get('src')}, dst {place.get('dst')})"
+        ] = bool(place) and place.get("offset") not in (None, [0, 0])
+    else:
+        # NO NATIONAL ENSIGN (`p.ensign` None): one state, the device, and
+        # nothing parked or switchable.
+        results[
+            f"the colours carry the device state alone, no ensign UV set "
+            f"({layers})"
+        ] = layers[:1] == [bake.UV_LAYER] \
+            and colours_rules.ALT_UV not in layers
+        results["no ensign state is parked in the atlas"] = not place
 
     # THE VERTEX ORDER THE DEVICE IS PAINTED FROM. `colours.flag_local` reads
     # a vertex's place on the flag straight out of its index, which is only
@@ -3420,11 +3528,7 @@ def check_bake(p) -> dict:
     # skull in both states, which no other assertion here would notice.
     colour_order = {n: order.get(f"{bake.COLOURS_FAMILY}_{n}")
                     for n in ("albedo", "normal", "roughness")}
-    want_colours = {
-        "albedo": ["measured", "colours_copied", "colours_painted", "saved"],
-        "normal": ["measured", "colours_copied", "colours_painted", "saved"],
-        "roughness": ["measured", "colours_copied", "saved"],
-    }
+    want_colours = colours_rules.colour_bake_order(p)
     results[
         f"the cloth was copied before either state was painted, and all of it "
         f"between the blankness verdict and the encode ({colour_order})"
@@ -3475,10 +3579,15 @@ def check_export(p) -> dict:
         f"every exported material carries base colour, metallic-roughness and "
         f"normal textures ({found['images']} images)":
             not found["texture_faults"],
-        f"the glb has exactly {len(palette.families(p))} materials, "
-        "one per family "
+        # One per family, and one per tinted part of the owner's colours
+        # that she built (`bake.tinted_objects`): each its own, untextured.
+        f"the glb has exactly {len(palette.families(p))} family materials "
+        f"and {len(bake.tinted_objects())} tinted "
         f"({', '.join(sorted(set(found['materials'])))})":
-            len(found["materials"]) == len(palette.families(p)),
+            sorted(found["materials"]) == sorted(
+                [palette.material_names(p)[f] for f in palette.families(p)]
+                + [palette.tinted_material_names(p)[o.name]
+                   for o in bake.tinted_objects()]),
         f"the ship draws {found['triangles']} triangles, under the "
         f"{budget.budget_of(p).ceiling} ceiling":
             0 < found["triangles"] <= budget.budget_of(p).ceiling,

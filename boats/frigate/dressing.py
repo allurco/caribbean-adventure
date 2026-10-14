@@ -100,4 +100,8 @@ def build_dressing(p: FrigateParams) -> list[bpy.types.Object]:
         bm = bmesh.new()
         fn(bm, p)
         built.append(prims.finish(bm, name, smooth=smooth))
+    # The owner's colours: the pennant with the canvas, the hull stripe on
+    # the hull (`frigate.owner`).
+    from . import owner
+    built += owner.build_owner_colours(p)
     return built

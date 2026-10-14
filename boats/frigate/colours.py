@@ -100,17 +100,46 @@ def ensign_state() -> ColourState:
     return next(s for s in STATES if not s.device)
 
 
-def switchable_uv_sets(colours_object: str) -> dict:
+def carries_ensign(p) -> bool:
+    """Does this ship's flag carry a national ensign as its second state?
+    Not on a ship whose `ensign` is None: the flute, whose flags are her
+    owner's colours and nothing else."""
+    return p.ensign is not None
+
+
+def states_of(p) -> tuple:
+    """The colours states THIS ship's flag ships with: both, or the device
+    alone on a ship that wears no national ensign."""
+    if carries_ensign(p):
+        return STATES
+    return tuple(s for s in STATES if s.device)
+
+
+def colour_bake_order(p) -> dict:
+    """{bake kind: the steps the canvas atlas goes through, in order}. The
+    copy of the flag's island is the ensign's second state, so a ship with
+    none takes no copy."""
+    copied = ["colours_copied"] if carries_ensign(p) else []
+    return {
+        "albedo": ["measured", *copied, "colours_painted", "saved"],
+        "normal": ["measured", *copied, "colours_painted", "saved"],
+        "roughness": ["measured", *copied, "saved"],
+    }
+
+
+def switchable_uv_sets(colours_object: str, p=None) -> dict:
     """{glTF TEXCOORD name: [the meshes allowed to carry it]}.
 
     `check_export` refuses any UV set the file carries that no texture
     samples. The ensign state's set is exactly that by construction — nothing
     in the file samples it, because the point is that the ENGINE chooses to.
     So it is declared here, by name and by mesh, rather than the check being
-    widened to let any stray coordinate through.
+    widened to let any stray coordinate through. A ship with no ensign
+    (`p.ensign` None) declares none.
     """
+    states = STATES if p is None else states_of(p)
     return {f"TEXCOORD_{s.texcoord}": [colours_object]
-            for s in STATES if s.texcoord != 0}
+            for s in states if s.texcoord != 0}
 
 
 # --- where a point of the flag is, in flag-local coordinates -----------------

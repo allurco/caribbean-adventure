@@ -881,6 +881,31 @@ GALLEON_LIVERY = LiveryForm(wales_between_rows=True)
 
 
 @dataclass(frozen=True)
+class StripeForm:
+    """Where her HULL STRIPE runs: the band the owner's colour is painted in.
+
+    `wale` names the black wale it is laid on (`palette.wale_bands`), taken
+    in by `inset` at top and bottom; `band`, if given, is a SHEER-RELATIVE
+    (lo, hi) of her own instead. `span` is the (fore, aft) station range it
+    runs, clear of the anchor catted at the bow and of the quarter galleries
+    and the rudder aft.
+    """
+
+    wale: str = "main_wale"
+    inset: float = 0.05
+    band: tuple[float, float] | None = None
+    span: tuple[float, float] = (0.17, 0.86)
+
+    def validate(self) -> None:
+        if not 0.0 < self.span[0] < self.span[1] < 1.0:
+            raise ValueError(f"the stripe runs inside the hull, got {self.span}")
+        if self.band is not None and not self.band[0] < self.band[1]:
+            raise ValueError(f"a stripe band runs low to high, got {self.band}")
+        if self.inset < 0.0:
+            raise ValueError("a stripe's inset must not be negative")
+
+
+@dataclass(frozen=True)
 class DamageForm:
     """How the damage pass keeps its shot scars off the gunports.
 
@@ -917,8 +942,28 @@ class DamageForm:
     # draws alternate between the bands, the topside first, so a ship with
     # none draws exactly as she always did.
     between_ports: str | None = None
+    # HOW BIG HER SCARS ARE, against the frigate's. Every LENGTH of a crater
+    # (`damage.SCAR_R`, its shelf and its depth) and of a rail splinter is
+    # this times the frigate's; the 2 mm rim is a joint tolerance and is
+    # kept. 1.0 is the frigate's and the galleon's, verbatim. A smaller hull
+    # takes a smaller crater: a frigate's 0.50 m scar on the sloop has no
+    # room under a sheer 1.00 m over the water.
+    scar_scale: float = 1.0
+    # THE TOPSIDE BAND the first draw takes a scar CENTRE from: WATERLINE
+    # to `band_floor` at the bottom, SHEER less `band_head` at the top. The
+    # frigate's 1.20 and 0.35, verbatim; a hull with a lower sheer states
+    # her own.
+    band_floor: float = 1.2
+    band_head: float = 0.35
 
     def validate(self) -> None:
+        if not self.scar_scale > 0.0:
+            raise ValueError(
+                f"scar_scale must be positive, got {self.scar_scale}")
+        if self.band_floor <= 0.0 or self.band_head < 0.0:
+            raise ValueError(
+                "the scar band stands over the water and under the sheer, "
+                f"got floor {self.band_floor}, head {self.band_head}")
         if self.scar_clear not in ("port_column", "aperture"):
             raise ValueError(f"unknown scar rule {self.scar_clear!r}")
         if self.between_ports is not None and (
@@ -978,9 +1023,10 @@ GALLEON_RAILS = RailForm(
     # THROUGH Deck_Quarter's planking under the poop. On the castle wall it
     # is SHEER + 4.28 at its top (QUARTERDECK EDGE 3.40 + castle bulwark
     # 1.00 - channel_drop 0.12), 0.68 above that deck's edge at its
-    # underside, and its straps fall 4.62 m from its edge to the hull:
-    # A's rule, derived, `profiles.largest_chainplate_drop(p, "mizzen")`.
-    castle_channels=(("mizzen", "Deck_Quarter", 4.62),),
+    # underside, and its straps fall 4.55 m from its edge to the hull (4.62 on
+    # the 34 m hull): A's rule, derived,
+    # `profiles.largest_chainplate_drop(p, "mizzen")`.
+    castle_channels=(("mizzen", "Deck_Quarter", 4.55),),
     chainplate_drop=2.20,
     # 0.08, not the frigate's 0.12. A strap sweeps `rake * drop` of fore-and-
     # aft while it falls, and that sweep is added to the span of side it may
@@ -1150,7 +1196,9 @@ GALLEON_HEAD = HeadForm(
     # forward and the galleon's start 1.58 m apart at the heel against the
     # frigate's 0.91 m; at 2.2 the upper rail flattened early and the gap went
     # back UP over the last two stations, which is a pair of rails crossing.
-    upper_exp=1.8,
+    # 2.0, not the 1.8 of the 34 m hull: over her longer, flatter bow
+    # sheer the gap between the rails opened 0.027 m before it closed
+    upper_exp=2.0,
     upper_thick=0.090,
     upper_heel_thick=0.130,
     upper_depth=0.220,
@@ -1174,7 +1222,7 @@ GALLEON_HEAD = HeadForm(
     knee_outline=GALLEON_KNEE,
     knee_under_rail=True,
     beakhead_thick=0.180,
-    beakhead_into_side=0.080,
+    beakhead_into_side=0.085,   # 0.080 at 34 m: her wall tumbles 0.081
     beakhead_sink=0.110,
     beakhead_cap_t=0.160,
     beakhead_cap_out=0.070,
@@ -1427,6 +1475,42 @@ class Sail:
 
 
 @dataclass(frozen=True)
+class YardPlan:
+    """One square sail's yard and canvas, stated by the mast rather than
+    read off the square rig's tier tables.
+
+    The frigate's square sails stand in a stack from the course up, and
+    their yards' heights and lengths are tables by tier
+    (`profiles.YARD_HEIGHT_FRAC`, `YARD_TIER_SCALE`): a topsail's foot is
+    sheeted to the yard below. A FLYING square topsail over a fore-and-aft
+    rig has no yard below it, so the mast states it:
+
+      `height_frac`  the yard, as a fraction of the mast's truck height
+      `scale`        its length, of the main course yard the beam gives
+                     (`profiles.MAIN_YARD_BEAM_RATIO` of the beam)
+      `foot_frac`    the canvas's foot, of the truck height: the lower
+                     masthead it is sheeted home to
+      `foot_scale`   the foot's width over the head's: a topsail spreads
+      `lift_frac`    where its lifts lead to, of the truck height
+    """
+
+    height_frac: float
+    scale: float
+    foot_frac: float
+    foot_scale: float = 1.0
+    lift_frac: float = 0.93
+
+    def validate(self) -> None:
+        if not 0.0 < self.foot_frac < self.height_frac < self.lift_frac <= 1.0:
+            raise ValueError(
+                "a flying yard's foot, yard and lift climb its mast in that "
+                f"order: {self.foot_frac}, {self.height_frac}, "
+                f"{self.lift_frac}")
+        if self.scale <= 0.0 or self.foot_scale <= 0.0:
+            raise ValueError("a yard and its canvas have a positive width")
+
+
+@dataclass(frozen=True)
 class Mast:
     """One mast, and what it carries.
 
@@ -1451,6 +1535,9 @@ class Mast:
     # gaff's jaws ride up it to the hounds, which on a square mast's
     # proportions would stand on the topmast.
     caps: tuple[float, float] | None = None
+    # ONE `YardPlan` PER SQUARE SAIL, lowest first, or None for the square
+    # rig's own tier tables (the frigate's, the galleon's, the flute's).
+    yard_plan: tuple[YardPlan, ...] | None = None
 
     def validate(self) -> None:
         if not 0.0 < self.t < 1.0:
@@ -1472,6 +1559,13 @@ class Mast:
                 f"mast {self.name!r} caps must climb inside its truck, "
                 f"0 < lower < topmast < 1, got {self.caps}")
         kinds = [s.kind for s in sorted(self.sails, key=lambda s: s.tier)]
+        if self.yard_plan is not None:
+            if len(self.yard_plan) != kinds.count(SailKind.SQUARE):
+                raise ValueError(
+                    f"mast {self.name!r} plans {len(self.yard_plan)} yards "
+                    f"for {kinds.count(SailKind.SQUARE)} square sails")
+            for plan in self.yard_plan:
+                plan.validate()
         if SailKind.GAFF_TOPSAIL in kinds:
             i = kinds.index(SailKind.GAFF_TOPSAIL)
             if i == 0 or kinds[i - 1] is not SailKind.GAFF:
@@ -1699,13 +1793,15 @@ GALLEON_RIG = RigPlan(masts=(
 ),
     # The Galeon Andalucia is 38 m of hull and 51 m overall, so her bowsprit
     # projects 13 m forward of a 38 m hull — 0.342 of her own length. On this
-    # 34 m hull that is 11.6 m, and 11.6 is what is used. A galleon's bowsprit
-    # also STEEVES far more steeply than a frigate's, because it has to clear
+    # 42 m hull that is 14.4 m (11.6 on the 34 m hull she had), and 14.4 is
+    # what is used. A galleon's bowsprit also STEEVES far more steeply than a
+    # frigate's, because it has to clear
     # a beakhead and a forecastle instead of a low rail: 32 degrees above the
     # horizontal against the frigate's 24. Its heel is stepped 4.6 m abaft the
-    # stem at the rail — 13.5% of length, where the frigate's is 7.9% — which
+    # stem at the rail (13.5% of the 34 m length; kept in METRES at 42, 11.0%,
+    # where the frigate's is 7.9%, so her head is the size it was), which
     # puts the beakhead bulkhead that far aft with it, clear of the head.
-    bowsprit=Bowsprit(projection=11.6, steeve_deg=32.0, heel_in=4.6,
+    bowsprit=Bowsprit(projection=14.4, steeve_deg=32.0, heel_in=4.6,
                       radius=(0.44, 0.13)),
     # Ruled by the maintainer 2026-10-05: her courses clear the rail ACTUALLY there,
     # forecastle wall head included. Fore course foot rises 1.3000 m to
@@ -1777,7 +1873,8 @@ SCHOONER_RIG = RigPlan(
 
 # THE SLOOP. One mast, the Jamaica sloop's: a long lower mast raking aft
 # with a short topmast over it (`caps`), a GAFF MAINSAIL on a boom that
-# overhangs the taffrail, a GAFF TOPSAIL over the gaff, and two headsails on
+# overhangs the taffrail, a GAFF TOPSAIL over the gaff, a flying SQUARE
+# TOPSAIL forward of her topmast (`YardPlan`), and two headsails on
 # a bowsprit nearly as long as the hull is half. WATERLINE to TRUCK is 1.05
 # of her 18.00 m length, 18.90 m: a sloop carried a mast taller than her
 # hull was long, which is what made her fast.
@@ -1785,8 +1882,18 @@ SLOOP_RIG = RigPlan(
     masts=(
         Mast("main", 0.360, 1.050, 4.0, 0.26, 0.0, 0.0, 2.2, 4,
              (Sail(SailKind.GAFF, 0, "mainsail"),
-              Sail(SailKind.GAFF_TOPSAIL, 1, "gaff_topsail")),
-             caps=(0.72, 0.93)),
+              Sail(SailKind.GAFF_TOPSAIL, 1, "gaff_topsail"),
+              Sail(SailKind.SQUARE, 2, "topsail")),
+             caps=(0.72, 0.93),
+             # HER SQUARE TOPSAIL (the maintainer's ruling: a stronger
+             # silhouette at ship zoom). A yard 5.03 m long slung at 0.82
+             # of the truck, 15.50 m, on the topmast; its foot sheeted home
+             # at 0.74, 13.99 m, just over the lower cap and the
+             # forestaysail's head (13.82), spread 1.25 times the head;
+             # lifts to the topmast cap. Not higher: at 0.84 its head stood
+             # INSIDE the jib's triangle seen from abeam, the jib's leech
+             # running up to the mast at 16.25 (`test_sloop_topsail`).
+             yard_plan=(YardPlan(0.82, 0.62, 0.74, 1.25, 0.93),)),
     ),
     headsails=(
         Sail(SailKind.STAYSAIL, 0, "forestaysail"),

@@ -60,10 +60,10 @@ def test_the_strips_between_her_hull_ports_fit_a_crater_and_its_reach():
     gaps = _strips("between_ports")
     assert len(gaps) == profiles.gun_deck(G, 0).n_ports - 1 == 11
     for s in gaps:
-        assert s["width"] == pytest.approx(1.118, abs=5e-4)
+        assert s["width"] == pytest.approx(1.584, abs=5e-4)
         assert s["need"] == pytest.approx(2.0 * REACH) == pytest.approx(1.10)
         assert s["window"] == pytest.approx(s["width"] - s["need"])
-        assert s["window"] == pytest.approx(0.018, abs=5e-4)
+        assert s["window"] == pytest.approx(0.484, abs=5e-4)   # 0.018 at 34 m
         assert s["on_hull"] and s["drawn"]
         y0, y1 = s["centre_y"]
         assert y1 - y0 == pytest.approx(s["window"])
@@ -101,9 +101,13 @@ def test_a_third_of_her_scars_land_amidships_and_the_band_puts_them_there():
     what is pinned."""
     without = G.with_(damage_form=dataclasses.replace(G.damage_form,
                                                       between_ports=None))
-    assert len(_amidships(without)) == 3
+    assert len(_amidships(without)) == 6
     assert len(_amidships(G)) >= damage.SHOT_SCARS / 3
-    assert len(_amidships(G)) > len(_amidships(without))
+    # ON THE 42 m HULL the topside draw alone already puts six there, so the
+    # band no longer ADDS to the share: what it adds is scars between her
+    # hull ports, five of her nine (`band`).
+    assert sum(s["band"] == "between_ports"
+               for s in damage.shot_scars(G)) == 5
 
 
 def test_her_band_scars_stand_between_her_hull_ports_at_the_rows_height():
@@ -113,12 +117,15 @@ def test_her_band_scars_stand_between_her_hull_ports_at_the_rows_height():
     windows = [s for s in _strips("between_ports") if s["drawn"]]
     deck = profiles.gun_deck(G, 0)
     banded = []
+    # Each scar says which band it was drawn from: on the 42 m hull a
+    # TOPSIDE scar can stand inside a gap's window too, under the row.
     for s in damage.shot_scars(G):
+        if s["band"] != "between_ports":
+            continue
         y = profiles.station_y(G, s["t"])
         hit = [w for w in windows
                if w["centre_y"][0] - 1e-9 <= y <= w["centre_y"][1] + 1e-9]
-        if not hit:
-            continue
+        assert hit, s
         floor = profiles.row_floor_z(G, s["t"], 0)
         assert floor + deck.sill <= s["z"] <= floor + deck.head
         banded.append(s)

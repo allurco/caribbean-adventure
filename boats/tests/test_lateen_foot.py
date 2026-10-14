@@ -59,9 +59,9 @@ def _foot_z(y: float) -> float:
 def test_the_three_corners_are_where_the_ruled_spar_puts_them():
     """Re-pinned to the ruled spar. Before it: tack (0, -7.5875, 7.3823),
     clew (0, -15.3542, 12.3720), peak (0, -17.5449, 20.1271)."""
-    assert TACK == pytest.approx((0.0, -7.6692, 10.3394), abs=1e-4)
-    assert CLEW == pytest.approx((0.0, -15.5020, 12.4242), abs=1e-4)
-    assert PEAK == pytest.approx((0.0, -17.7113, 20.0370), abs=1e-4)
+    assert TACK == pytest.approx((0.0, -9.3393, 12.2018), abs=1e-4)
+    assert CLEW == pytest.approx((0.0, -19.4311, 12.5064), abs=1e-4)
+    assert PEAK == pytest.approx((0.0, -22.2776, 24.6962), abs=1e-4)
 
 
 # --- THE REFUTATION, still true --------------------------------------------
@@ -75,10 +75,10 @@ def test_the_rail_cap_rises_monotonically_from_the_tack_to_the_clew():
     (Before the ruled spar: 7.8315 at t 0.7232 to 11.1720 at t 0.9516.)
     """
     caps = [_cap(TACK[1] + (CLEW[1] - TACK[1]) * i / 128.0) for i in range(129)]
-    assert profiles.t_of_y(G, TACK[1]) == pytest.approx(0.7256, abs=1e-4)
-    assert profiles.t_of_y(G, CLEW[1]) == pytest.approx(0.9559, abs=1e-4)
-    assert caps[0] == pytest.approx(7.8408, abs=1e-4)
-    assert caps[-1] == pytest.approx(11.2242, abs=1e-4)
+    assert profiles.t_of_y(G, TACK[1]) == pytest.approx(0.7224, abs=1e-4)
+    assert profiles.t_of_y(G, CLEW[1]) == pytest.approx(0.9626, abs=1e-4)
+    assert caps[0] == pytest.approx(7.8284, abs=1e-4)
+    assert caps[-1] == pytest.approx(11.3064, abs=1e-4)
     assert all(b >= a - 1e-9 for a, b in zip(caps, caps[1:]))
 
 
@@ -112,11 +112,11 @@ def test_the_poop_break_is_a_STEP_and_the_foot_now_clears_it():
     assert after - before == pytest.approx(1.6000, abs=1e-3)
     dy = abs(profiles.station_y(G, 0.81001) - profiles.station_y(G, 0.80999))
     assert dy < 0.01
-    assert profiles.station_y(G, 0.81) == pytest.approx(-10.5400, abs=1e-3)
+    assert profiles.station_y(G, 0.81) == pytest.approx(-13.0200, abs=1e-3)
     # the foot over the POOP's cap and over the QUARTERDECK's, at the break
-    assert _foot_z(-10.5400) == pytest.approx(11.1035, abs=1e-3)
-    assert _foot_z(-10.5400) - after == pytest.approx(1.2244, abs=1e-3)
-    assert _foot_z(-10.5400) - before == pytest.approx(2.8245, abs=1e-3)
+    assert _foot_z(-10.5400) == pytest.approx(12.2380, abs=1e-3)
+    assert _foot_z(-10.5400) - after == pytest.approx(2.3589, abs=1e-3)
+    assert _foot_z(-10.5400) - before == pytest.approx(3.9590, abs=1e-3)
     # the worst clearance along the whole foot is at the CLEW, not the break
     worst = min(((_foot_z(y) - _cap(y)), y)
                 for y in (TACK[1] + (CLEW[1] - TACK[1]) * i / 20000.0
@@ -150,10 +150,10 @@ def test_the_sail_is_a_real_triangle():
     foot = math.dist(TACK, CLEW)
     leech = math.dist(PEAK, CLEW)
     head = math.dist(TACK, PEAK)
-    assert foot == pytest.approx(8.1055, abs=1e-3)
-    assert leech == pytest.approx(7.9268, abs=1e-3)
-    assert head == pytest.approx(13.9602, abs=1e-3)
-    assert foot + leech - head == pytest.approx(2.0722, abs=1e-3)
+    assert foot == pytest.approx(10.0965, abs=1e-3)
+    assert leech == pytest.approx(12.5177, abs=1e-3)
+    assert head == pytest.approx(17.9864, abs=1e-3)
+    assert foot + leech - head == pytest.approx(4.6278, abs=1e-3)
 
 
 # --- DEFECT 10: the gaff and staysail reader is blind to the castles ---------
@@ -179,8 +179,8 @@ def test_the_rail_reader_the_boom_and_the_staysail_use_sees_a_castle():
     """
     t = profiles.t_of_y(G, CLEW[1])
     assert profiles.sheer(G, t) + G.bulwark_h == pytest.approx(
-        7.1242, abs=1e-3)
-    assert profiles.rail_top_z(G, t) == pytest.approx(11.2242, abs=1e-3)
+        7.2064, abs=1e-3)   # 42 m hull
+    assert profiles.rail_top_z(G, t) == pytest.approx(11.3064, abs=1e-3)
     assert _rail_z(G, t) == pytest.approx(profiles.rail_top_z(G, t), abs=1e-9)
 
 
@@ -226,4 +226,4 @@ def test_the_boom_reader_now_answers_with_the_rail_that_is_really_there():
     rail anywhere under that span is the poop's, 3.55 m higher: 11.2242 at
     the clew's t 0.9559 on the ruled spar (11.1720 at t 0.9516 before it)."""
     assert _highest_rail_between(G, TACK[1], CLEW[1]) == pytest.approx(
-        11.2242, abs=1e-3)
+        11.3064, abs=1e-3)   # 42 m hull

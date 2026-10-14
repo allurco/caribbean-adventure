@@ -140,7 +140,7 @@ describe("the ships at the 350 m hex", () => {
     expect(SHIP_HULL_BOXES.Sloop[2]).toBeCloseTo((18 / 65) * SHIP_SCALE, 12);
     expect(SHIP_HULL_BOXES.Flute[2]).toBeCloseTo((30 / 65) * SHIP_SCALE, 12);
     expect(SHIP_HULL_BOXES.Frigate[2]).toBeCloseTo((38 / 65) * SHIP_SCALE, 12);
-    expect(SHIP_HULL_BOXES.Galleon[2]).toBeCloseTo((34 / 65) * SHIP_SCALE, 12);
+    expect(SHIP_HULL_BOXES.Galleon[2]).toBeCloseTo((42 / 65) * SHIP_SCALE, 12);
     expect(shipHullBox(undefined)).toEqual([0.3, 0.25, 0.7].map((v) => v * SHIP_SCALE));
     expect(shipHullBox("Galleon")).toBe(SHIP_HULL_BOXES.Galleon);
     expect(SHIP_RIDE_HEIGHT).toBe(0.12 * SHIP_SCALE);

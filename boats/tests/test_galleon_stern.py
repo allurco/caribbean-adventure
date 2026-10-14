@@ -67,10 +67,11 @@ def test_the_galleons_three_panels_stack_without_a_gap_or_an_overlap():
 
 def test_waterline_to_poop_rail_cap_at_the_taffrail_is_the_whole_point():
     assert profiles.taffrail_z(G) == pytest.approx(11.80, abs=1e-9)
-    assert profiles.taffrail_z(G) / G.loa == pytest.approx(0.347, abs=0.002)
+    assert profiles.taffrail_z(G) / G.loa == pytest.approx(0.281, abs=0.002)
     assert profiles.taffrail_z(F) / F.loa == pytest.approx(0.137, abs=0.002)
+    # 2.05 on the 42 m hull (2.5 at 34 m): her castle stays true size
     assert (profiles.taffrail_z(G) / G.loa) / (profiles.taffrail_z(F) / F.loa) \
-        > 2.5
+        > 2.0
 
 
 def test_stern_sheer_to_poop_rail_cap_is_six_metres_of_transom():
@@ -96,8 +97,8 @@ def test_the_topsides_may_not_tumble_past_half_their_width_at_the_sheer():
     sz = profiles.sheer(G, 1.0)
     at_sheer = 2.0 * profiles.stern_half_width(G, sz)
     at_taffrail = 2.0 * profiles.stern_half_width(G, profiles.taffrail_z(G))
-    assert at_sheer == pytest.approx(4.976, abs=0.01)
-    assert at_taffrail == pytest.approx(2.588, abs=0.01)
+    assert at_sheer == pytest.approx(6.153, abs=0.01)
+    assert at_taffrail == pytest.approx(3.199, abs=0.01)
     assert at_taffrail / at_sheer == pytest.approx(G.hull_form.tumble_floor,
                                                    abs=0.005)
     # Vasa's taffrail is about 0.21 of her own 11.7 m beam.
@@ -142,7 +143,7 @@ def test_the_frigate_has_one_band_of_lights_and_the_galleon_two():
     assert len(profiles.gallery_tiers(F)) == 1
     assert len(profiles.gallery_tiers(G)) == 2
     assert [n for _lo, _hi, n in profiles.gallery_tiers(F)] == [5]
-    assert [n for _lo, _hi, n in profiles.gallery_tiers(G)] == [7, 4]
+    assert [n for _lo, _hi, n in profiles.gallery_tiers(G)] == [9, 4]
 
 
 def test_the_frigates_band_is_exactly_where_it_always_was():
@@ -175,10 +176,10 @@ def test_the_great_cabins_lights_are_tall_and_narrow_and_the_coachs_square():
 
     low = profiles.gallery_window_rects(G, 0)
     up = profiles.gallery_window_rects(G, 1)
-    assert len(low) == 7 and len(up) == 4
-    assert low[0][1] - low[0][0] == pytest.approx(0.541, abs=0.003)
+    assert len(low) == 9 and len(up) == 4   # 7 low lights at 34 m
+    assert low[0][1] - low[0][0] == pytest.approx(0.531, abs=0.003)
     assert low[0][3] - low[0][2] == pytest.approx(1.170, abs=0.003)
-    assert up[0][1] - up[0][0] == pytest.approx(0.549, abs=0.003)
+    assert up[0][1] - up[0][0] == pytest.approx(0.737, abs=0.003)
     assert up[0][3] - up[0][2] == pytest.approx(0.670, abs=0.003)
     # Tall and narrow below, nearly square above.
     assert (low[0][3] - low[0][2]) / (low[0][1] - low[0][0]) > 2.0

@@ -110,6 +110,20 @@ def paint_radius(crater_radius: float) -> float:
     return crater_radius * PAINT_RADIUS_FACTOR
 
 
+SEAM_LOSS = 0.25    # of a painted disc a UV island seam may take
+
+
+def scar_texel_floor(paint_radius: float, metres_per_texel: float) -> float:
+    """The least a painted scar may cover, in texels: the disc its paint
+    reaches, at the texel size of the hull it lands on, less `SEAM_LOSS`.
+    On the frigate's smallest scar this is `checks.SCAR_TEXEL_FLOOR`'s
+    120; a scar on a coarser atlas, or a smaller crater, asks for fewer."""
+    import math
+
+    disc = math.pi * (paint_radius / metres_per_texel) ** 2
+    return (1.0 - SEAM_LOSS) * disc
+
+
 def paint_diameter_texels(crater_radius: float, texels_per_metre: float) -> float:
     """How many texels the whole painted scar spans. The honest limit."""
     return 2.0 * paint_radius(crater_radius) * texels_per_metre

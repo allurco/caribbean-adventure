@@ -1323,6 +1323,27 @@ def square_sails_on(p: FrigateParams, name: str) -> tuple:
         key=lambda sl: sl.tier))
 
 
+def yard_index(p: FrigateParams, name: str, tier: int) -> int:
+    """Which of the mast's YARDS (`yard_specs`, one per square sail, lowest
+    first) the square sail at `tier` is bent to.
+
+    On a square-rigged mast the square sails ARE tiers 0, 1, 2, so this is
+    the tier itself and nothing on the frigate moves. The sloop's flying
+    topsail is tier 2 of her mast, over the gaff and the gaff topsail, and
+    her one yard: index 0."""
+    for i, sail in enumerate(square_sails_on(p, name)):
+        if sail.tier == tier:
+            return i
+    raise ValueError(f"mast {name!r} sets no square sail at tier {tier}")
+
+
+def yard_plan_of(p: FrigateParams, name: str, tier: int):
+    """The `shiptype.YardPlan` the square sail at `tier` is set by, or None
+    on a mast that takes its yards from the square rig's tier tables."""
+    plan = mast_spec(p, name).yard_plan
+    return None if plan is None else plan[yard_index(p, name, tier)]
+
+
 def channel_host(p: FrigateParams, name: str | None):
     """The CASTLE tier whose wall mast `name`'s channel hangs on, or None
     for the waist bulwark.
@@ -2048,6 +2069,13 @@ def yard_specs(p: FrigateParams, name: str) -> list[tuple[float, float, float]]:
     the maximum beam.
     """
     truck = mast_truck_z(p, name)
+    plan = mast_spec(p, name).yard_plan
+    if plan is not None:
+        # A mast that STATES its yards (`shiptype.YardPlan`): the sloop's
+        # flying topsail, which has no course under it to take a tier from.
+        base = MAIN_YARD_BEAM_RATIO * p.beam
+        return [(y.height_frac * truck, base * y.scale,
+                 _YARD_RADIUS * base * y.scale) for y in plan]
     base = MAIN_YARD_BEAM_RATIO * p.beam * mast_spec(p, name).yard_scale
     out = []
     for sail in square_sails_on(p, name):

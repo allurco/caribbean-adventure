@@ -11,14 +11,13 @@ import math
 import pytest
 
 from frigate import colours, shiptype as st
-from frigate.params import FrigateParams
 
-# THE FRIGATE'S OWN ENSIGN, named at every call below rather than defaulted.
+# THE RED ENSIGN, named at every call below rather than defaulted.
 # `colours.ensign_*` used to take no ensign at all because there was only one,
 # which is how the British Red Ensign became a fact about ships; the kind is
-# now a required argument and this is the frigate asking for hers.
-RED = FrigateParams().ensign
-assert RED is st.EnsignKind.RED_ENSIGN
+# now a required argument. No ship flies it any more (#163: every flag is the
+# owner's colours), but the drawing stays a library and is pinned here.
+RED = st.EnsignKind.RED_ENSIGN
 
 
 @pytest.fixture

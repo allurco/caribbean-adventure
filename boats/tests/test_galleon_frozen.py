@@ -22,9 +22,17 @@ from test_frigate_frozen import _f
 
 P = GalleonParams()
 
-# SHA-1 over `galleon_digest_source(GalleonParams())` at boats 4dc3899, the
-# galleon as baked and exported (build/galleon.glb, 14,722,508 B).
-GALLEON_PLAN_SHA1 = "8449eb43331e213b3b1aab15471ee413fb72b385"
+# SHA-1 over `galleon_digest_source(GalleonParams())`.
+#
+# MOVED ON PURPOSE, ONCE: the maintainer's ruling (2026-10) lengthens and
+# bulks her in the generator, 34 m to 42 m with her beam, draft and deck
+# crown carried in proportion, her bowsprit, gallery lights, mizzen
+# channel drop, upper head rail, launch and hatches re-laid for it, and
+# her shot scars recorded by band. Re-taken on that hull, which was built,
+# checked, baked and exported clean in Blender. It was
+# 8449eb43331e213b3b1aab15471ee413fb72b385 at boats 4dc3899 (the 34 m
+# galleon, build/galleon.glb 14,722,508 B).
+GALLEON_PLAN_SHA1 = "6ff22fe3df1c26c58a34ab41b724737e2ba521b6"
 
 
 def galleon_digest_source(p) -> list[str]:

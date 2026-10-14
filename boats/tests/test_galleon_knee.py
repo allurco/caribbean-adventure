@@ -119,8 +119,8 @@ def test_the_offset_is_the_flights_rise_depth_clearance_and_steepest_step():
     steps = [a["top"] - b["top"] for a, b in zip(PLATS, PLATS[1:])]
     want = H.deck_rail_rise + H.deck_thick + C + max(steps)
     assert head.knee_rail_offset(G) == pytest.approx(want, abs=1e-12)
-    assert max(steps) == pytest.approx(0.3350, abs=5e-5)
-    assert head.knee_rail_offset(G) == pytest.approx(0.5450, abs=5e-5)
+    assert max(steps) == pytest.approx(0.3019, abs=5e-5)
+    assert head.knee_rail_offset(G) == pytest.approx(0.5119, abs=5e-5)
 
 
 def test_its_top_is_the_stem_head_until_the_rail_comes_down_to_it():
@@ -221,9 +221,9 @@ def test_it_meets_the_lions_rump_at_the_rumps_own_height():
     zs = [pt[2] for pt in rump if abs(pt[0]) <= H.knee_half]
     z = _knee_top(heel[1])
     assert z - min(zs) >= C and max(zs) - z >= C
-    assert z == pytest.approx(3.2802, abs=5e-5)
-    assert z - min(zs) == pytest.approx(0.1576, abs=5e-5)
-    assert max(zs) - z == pytest.approx(0.1971, abs=5e-5)
+    assert z == pytest.approx(3.2909, abs=5e-5)
+    assert z - min(zs) == pytest.approx(0.1682, abs=5e-5)
+    assert max(zs) - z == pytest.approx(0.1864, abs=5e-5)
 
 
 def test_nowhere_does_it_stand_over_the_lions_back():
@@ -244,7 +244,7 @@ def test_nowhere_does_it_stand_over_the_lions_back():
             clears.append(max(zs) - _knee_top(y))
     assert len(clears) > 200
     assert min(clears) >= C
-    assert min(clears) == pytest.approx(0.1582, abs=5e-5)
+    assert min(clears) == pytest.approx(0.1654, abs=5e-5)
 
 
 # --- what it costs -----------------------------------------------------------

@@ -312,3 +312,23 @@ def test_the_grain_counts_only_steps_inside_one_livery_band():
 def test_a_ring_with_no_step_inside_one_band_has_no_grain():
     assert scarpaint.planking_grain([(0.5, "a", "b")]) == 0.0
     assert scarpaint.planking_grain([]) == 0.0
+
+
+# --- the least a painted scar may cover, per scar ---------------------------
+
+
+def test_the_texel_floor_is_the_frigates_derived_120_on_her_smallest_scar():
+    """`checks.SCAR_TEXEL_FLOOR` was derived on the frigate: her smallest
+    crater 0.280 m, painted 0.504 m, over her 0.0707 m hull texels, is a
+    disc of 160 texels, and a quarter may be lost to a seam: 120."""
+    paint = scarpaint.paint_radius(0.28)
+    assert scarpaint.scar_texel_floor(paint, 0.0707) == pytest.approx(
+        120.0, abs=0.5)
+
+
+def test_a_coarser_atlas_or_a_smaller_scar_asks_for_fewer_texels():
+    """The 42 m galleon spreads her hull over the same 1024 atlas, so a
+    scar of hers covers fewer texels; the sloop's are smaller craters."""
+    big = scarpaint.scar_texel_floor(0.504, 0.0707)
+    assert scarpaint.scar_texel_floor(0.504, 0.0873) < big
+    assert scarpaint.scar_texel_floor(0.25, 0.0707) < big
