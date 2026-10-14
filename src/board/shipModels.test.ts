@@ -44,6 +44,12 @@ describe("ship model catalogue", () => {
     expect(shipModel("Frigate")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
   });
 
+  it("tints the Frigate's sails by part name, not the flag that shares their canvas", () => {
+    const frigate = shipModel("Frigate")!;
+    expect(frigate.tintedParts).toContain("Sails");
+    expect(frigate.tintedParts).not.toContain("Jolly_Roger");
+  });
+
   it("serves the model under the app's base path", () => {
     const frigate = shipModel("Frigate")!;
     expect(shipModelUrl(frigate, "/")).toBe("/ships/frigate.glb");

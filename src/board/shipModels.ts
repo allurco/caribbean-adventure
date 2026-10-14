@@ -28,6 +28,12 @@ export interface ShipModel {
   /** The hull's depth in metres, keel to sheer. */
   readonly depthMetres: number;
   readonly parts: ShipModelParts;
+  /**
+   * The parts that take the owner's colour, by node name (#134). Named by
+   * part, not by material: the Frigate's flag and sail patches share the
+   * sails' canvas. Each is merged apart from the rest (#136).
+   */
+  readonly tintedParts: readonly string[];
 }
 
 const FRIGATE: ShipModel = {
@@ -36,6 +42,8 @@ const FRIGATE: ShipModel = {
   beamMetres: 10.2,
   depthMetres: 8.4,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  // Whether the sail patches take the colour too is #134's call.
+  tintedParts: ["Sails"],
 };
 
 /** Every class's model, or `null` for a class still drawn as a box. */
