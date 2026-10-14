@@ -139,15 +139,21 @@ depths.
 levels a terraced town plateau (`townPlateau.ts`), so the village stands on
 terraces rather than plinths and its streets are ground, not decals (ADR
 0002). It is planned per port on the natural land (the plans never see
-each other) and authored at the 115 m hex, drawn at `PROP_SCALE`: a square
-by the pier root where the port kit's square stands (`settlementCentre`),
+each other) and authored at the 115 m hex, drawn at `BUILDING_SCALE`
+(#170, ADR 0006: the town grows with its houses; at the prototype's ×2.5
+houses a plateau left at `PROP_SCALE` held about four of them), so
+doubling the building scale doubles the square, the terraces, the risers'
+runs and the streets (pinned): a square
+by the pier root where the port kit's square stands (`settlementCentre`,
+which stays at `PROP_SCALE`, the pier's scale),
 at the natural height kept between `SHORE_KEEP_TOP` and one riser above
 it, and kept on that one level inland to `SQUARE_END`, past the kit's
 buildings (the church, straight inland, reaches furthest), so none of the
 kit straddles the first riser and the kit's riser check costs it nothing
 (over 30 small maps the same 62 taverns, 41 warehouses and 47 houses as
-with no check, pinned in `portSettlement.test.ts`); one to three flat
-terraces inland along the pier's line to `LENGTH`, stepping up
+with no check, pinned in `portSettlement.test.ts`); one to four flat
+terraces inland along the pier's line to `LENGTH`, each at least
+`MIN_TERRACE` long, stepping up
 by at most `RISER` (about 4 m); risers that are a steep `RISER_FACE` (about
 2 m wide) for the retaining walls, widening to the full `RAMP` where the
 main street or a back lane climbs; and the streets (a main street up the
@@ -158,6 +164,19 @@ starts; the main street runs out of the square's paved disc
 (`SQUARE_PAVED`), so the port kit, placed later and kept off the streets,
 stands round its mouth instead of across it (#91: the church used to
 stand straight inland of the square with its back to the street's start).
+The terraces run on the port's **town cells** (`townCells.ts`, #170): the
+port cell and up to `MAX_TOWN_SPILL` (3) neighbours, chosen per port from
+`subSeed(G.mapSeed, "townSpill", portId)` among the land neighbours of
+elevation 2 or less that are not a port and touch no other port (so no
+cell is in two towns), the ones inland of the pier preferred. The terraces
+end where their axis would leave the town cells, and a blend short of
+where the land along the axis or either side of the terraces falls back
+to a far shore (a narrow island's other beach); where turning the axis
+towards the spill by up to `MAX_AXIS_TURN` (60°) runs further, it turns.
+The town cells are kept on the plan (`plateau.town`) for the village, the
+kit and the clutter, which never stand outside them, and never in the
+shore band of a spilled cell (`townBound.ts`), so the spill keeps off the
+neighbours' beaches and the docking hexes they face.
 Outside the plan the plateau fades into the slope over `BLEND`, and it is
 weighted by the natural height from 0 at `SHORE_KEEP_BOTTOM` to 1 at
 `SHORE_KEEP_TOP`, so below the shore band the field, the coastline, the
@@ -169,7 +188,11 @@ grid (`plateauLookup`), so land away from a town pays one map look-up.
 `townPlateau.test.ts` pins: flat terraces and square to the bit but for
 the street carve, risers a face off the streets and a ramp on them, no
 step at the blend, the untouched field past it and under the shore band,
-and plans independent of the other ports.
+plans independent of the other ports' plans, lengths proportional to the
+building scale, and terraces that end on the town cells. The spill's
+sub-seed moves the land only round the ports, never the coast or the
+seabed (`seededWorld.test.ts`); the field texture and the shore foam bake
+from this one field, so they follow it.
 
 **Invariants the tests pin (`terrainHeightField.test.ts`).**
 
@@ -927,7 +950,21 @@ stands on the lowest drawn ground under its walls unless that would bury
 the uphill side by more than `VILLAGE_MAX_BURY` (0.05 at scale 1), and is
 refused where it would show more than `VILLAGE_MAX_FOOTING_SHOWN` (0.03; on
 the beach 60 % of it), on wet ground, across a riser or its wall, on a
-street, over the kit, the quay or the pier deck, or past the hex.
+street, over the kit, the quay or the pier deck, outside the port's town
+cells, or in a spilled cell's shore band (#170: the hex edge is no longer
+a bound; the town cells are, ADR 0006). Every candidate the layout drops
+is counted under its reason (`DROP_REASONS`: outside town, shore band,
+taken, street, riser, wet, uneven), and every candidate is either built or
+dropped (pinned). Every village length follows the building scale, which
+`planPortTowns` takes as an option: with the field's plateaus planned at
+the same scale, the village holds about 46 buildings a port at today's
+scale and about 17 at ×2.5 on five small maps (the prototype's plateau,
+left at `PROP_SCALE` and bound by the hex, fell to about 4), pinned in
+`villageLayout.test.ts`; the ~24-house target at ×2.5 is the next village
+slice's (#176). The kit's rings and the clutter are bound by the same town
+cells (`townBound.ts`). The walls' edges are probed eight times finer than
+the grid under them, so a building on the coarse lattice outside the
+refined town ground (where a town spills) is not buried past its rule.
 `townDetailLayout.ts` adds the works (dry-stone retaining walls on the
 riser faces, kerbs on the main street, edge stones on the lanes, none in a
 building's walls, `streetEdgeStones`) and the
@@ -1386,6 +1423,8 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | `src/board/visuals/terrainHeightField.ts` | The height field: coast distance, seabed, blended elevation, relief; `sampleHeight` |
 | `src/board/visuals/sharedTerrainField.ts` | The map's one field, built once per `cells` array and wrap |
 | `src/board/visuals/townPlateau.ts` | Town plateaus in the field: terraces, risers, carved streets (#87) |
+| `src/board/visuals/townCells.ts` | A port's town cells: the port cell and the neighbours its town spills onto, seeded per port (#170) |
+| `src/board/visuals/townBound.ts` | The town-cells rule the village, the kit and the clutter keep to (#170) |
 | `src/board/visuals/townGround.ts` | Which lattice corners are refined round a town, and its setts and earth |
 | `src/board/visuals/villageLayout.ts` | The port village's houses on the plateau (#87) |
 | `src/board/visuals/townDetailLayout.ts` | The town's retaining walls, kerbs and clutter; props kept out of it |

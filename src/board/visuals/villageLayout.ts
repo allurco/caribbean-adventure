@@ -22,12 +22,15 @@
  * `VILLAGE_MAX_FOOTING_SHOWN` of footing downhill is refused (on the beach
  * only near-level ground, `BEACH_MAX_SPREAD`, so no waterfront building
  * sits askew).
- * Nothing stands outside the hex, on wet ground, across a terrace riser or
+ * Nothing stands outside the port's town cells (`townCells.ts`, #170: the
+ * port cell and the neighbours its town spilled onto, ADR 0006), in the
+ * shore band of a spilled cell, on wet ground, across a terrace riser or
  * its retaining wall, on a street, on the quay or the pier, or over another
- * building.
+ * building; every candidate dropped is counted under its reason
+ * (`DROP_REASONS`). Every length follows the building scale.
  */
 import type { MapCell } from "../../game/types";
-import { hexToWorld, neighbors } from "../../game/hex";
+import { hexToWorld } from "../../game/hex";
 import { AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import type { GroundField } from "./groundPlacement";
 import { PORT_BUILDING_SCALE_RANGE, PORT_BUILDING_TINT_SPREAD, plateauOfPort, type PortBuilding } from "./portSettlement";
@@ -44,11 +47,12 @@ import { stream, subSeed } from "./subSeed";
 import { lerpRange } from "./variationStream";
 import { crossesRiser, KERB_WIDTH, plateauPlanDistance, RETAINING_WALL_DEPTH, SHORE_KEEP_TOP, type TownPlateau, type TownStreet } from "./townPlateau";
 import { VILLAGE_EAVE, VILLAGE_PLAN, type VillageVariant } from "./villageBuildingGeometry";
+import type { TownCells } from "./townCells";
+import { townCellsRule } from "./townBound";
 
-/** Every village length follows the buildings' scale. */
+/** Every village length follows the buildings' scale; this is the drawn one (`planPortTowns` takes another for tests). */
 const K = BUILDING_SCALE;
 const TAU = Math.PI * 2;
-const SQRT3 = Math.sqrt(3);
 /** At scale 1: how far a building's uphill side may sink into the ground, and how much footing may show downhill. */
 export const VILLAGE_MAX_BURY = 0.05;
 export const VILLAGE_MAX_FOOTING_SHOWN = 0.03;
@@ -62,30 +66,34 @@ export const VILLAGE_MAX_FOOTING_SHOWN = 0.03;
  */
 export const BEACH_TOP = SHORE_KEEP_TOP + 0.01;
 export const BEACH_MAX_SPREAD = 0.015;
-/** Lowest ground a building's walls may stand on. */
-export const VILLAGE_DRY_HEIGHT = SEA_LEVEL + 0.02 * K;
-/** Clear margin round the port kit's buildings: wide round the civic ones, narrower round its house and warehouse. */
-const CIVIC_MARGIN = 0.1 * K;
-const KIT_MARGIN = 0.04 * K;
+/** At scale 1: the lowest ground a building's walls may stand on, above the sea. */
+const DRY = 0.02;
+/** Lowest ground a building's walls may stand on, at the drawn building scale. */
+export const VILLAGE_DRY_HEIGHT = SEA_LEVEL + DRY * K;
+/** At scale 1: the clear margin round the port kit's buildings, wide round the civic ones, narrower round its house and warehouse. */
+const CIVIC_MARGIN = 0.1;
+const KIT_MARGIN = 0.04;
 /** How far past its walls a kit building's eaves reach, at scale 1. */
 const KIT_EAVE = 0.035;
-/** Least gap between two buildings' eaves. */
-export const EAVE_GAP = 0.006 * K;
-/** Clear margin round the quay and the pier deck. */
-const QUAY_MARGIN = 0.01 * K;
+/** At scale 1: the least gap between two buildings' eaves. */
+const EAVE_GAP_1 = 0.006;
+/** Least gap between two buildings' eaves, at the drawn building scale. */
+export const EAVE_GAP = EAVE_GAP_1 * K;
+/** At scale 1: the clear margin round the quay and the pier deck. */
+const QUAY_MARGIN = 0.01;
 
-/** Waterfront warehouses: how many a port aims for, their spacing along the front, and how far inland they may set back. */
+/** Waterfront warehouses: how many a port aims for; at scale 1, their spacing along the front, and how far inland they may set back. */
 const WAREHOUSE_TARGET: readonly [number, number] = [3, 6];
-const WAREHOUSE_SPACING = 0.02 * K;
-const WAREHOUSE_SETBACK_MAX = 1.0 * K;
-const WAREHOUSE_SETBACK_STEP = 0.02 * K;
+const WAREHOUSE_SPACING = 0.02;
+const WAREHOUSE_SETBACK_MAX = 1.0;
+const WAREHOUSE_SETBACK_STEP = 0.02;
 /** Most houses in one port. */
 const MAX_HOUSES = 55;
 const YAW_JITTER = 0.06;
-/** The gaps along a frontage, the odd yard, and how far a frontage may sit back. */
-const FRONTAGE_GAP: readonly [number, number] = [0.003 * K, 0.015 * K];
+/** At scale 1: the gaps along a frontage and how far a frontage may sit back; and how often a plot is left as a yard. */
+const FRONTAGE_GAP: readonly [number, number] = [0.003, 0.015];
 const YARD_CHANCE = 0.08;
-const SETBACK: readonly [number, number] = [0, 0.012 * K];
+const SETBACK: readonly [number, number] = [0, 0.012];
 /** Edge houses: how many a plateau aims for, tries, and how far into the blend they may stand (fraction of it). */
 const EDGE_TARGET: readonly [number, number] = [4, 8];
 const EDGE_TRIES = 200;
@@ -93,9 +101,35 @@ const EDGE_REACH = 0.6;
 /** Houses round the square: the ring's sweep either side of inland (radians), and how many of the first are merchants' houses. */
 const SQUARE_SWEEP = 2.4;
 const SQUARE_MERCHANTS = 2;
-/** A lean-to against a cottage or stone house: how often, and the gap between them. */
+/** A lean-to against a cottage or stone house: how often, and the gap between them at scale 1. */
 const LEAN_TO_CHANCE = 0.3;
-const LEAN_TO_GAP = 0.002 * K;
+const LEAN_TO_GAP = 0.002;
+
+/** A pair of lengths at scale 1, at building scale `k`. */
+const scaled = ([lo, hi]: readonly [number, number], k: number): readonly [number, number] => [lo * k, hi * k];
+
+/**
+ * Why a village candidate was not built (#170): every candidate a layout
+ * tries is either built or dropped for one of these. The port's hex edge is
+ * no longer one; the town's cells are.
+ */
+export const DROP_REASONS = [
+  /** It would reach past the port's town cells (`townCells.ts`). */
+  "outside town",
+  /** On a cell the town spilled onto, it would stand in the shore band: the spill never takes the beach. */
+  "shore band",
+  /** Its eaves would meet the kit, the quay, the pier or another building. */
+  "taken",
+  /** Its walls would stand on a street or its kerbs. */
+  "street",
+  /** Its walls would cross a terrace riser or its retaining wall. */
+  "riser",
+  /** The ground under its walls dips to the water's edge. */
+  "wet",
+  /** The ground is too uneven: it would bury its uphill side or show too much footing. */
+  "uneven",
+] as const;
+export type DropReason = (typeof DROP_REASONS)[number];
 
 /** What the village keeps clear of and gathers round: the kit as `decorationLayout` placed it, and the field's towns. */
 export interface PortKit {
@@ -145,6 +179,11 @@ export interface PortTownPlan {
   walls: readonly PlanRect[];
   streets: readonly TownLane[];
   buildings: readonly VillageBuilding[];
+  /** The port's town cells (#170): nothing of the village, the kit or the clutter stands outside them. */
+  town: TownCells;
+  /** How many candidates the layout tried, and how many it dropped for each reason; the rest were built. */
+  tried: number;
+  dropped: Readonly<Record<DropReason, number>>;
 }
 
 /** Whether two rectangles, each grown by half the gap, overlap (separating axes). */
@@ -237,8 +276,10 @@ const pickLane: Pick = (next) => {
  * its middle (merchants' houses first), then houses shoulder to shoulder
  * along both sides of every street, facing it, and a few at the edge.
  */
-function plateauVillage(p: TownPlateau, tryPlace: TryPlace, next: () => number, scaleRoll: () => number, tintRoll: () => number, jitter: () => number): void {
+function plateauVillage(p: TownPlateau, k: number, tryPlace: TryPlace, next: () => number, scaleRoll: () => number, tintRoll: () => number, jitter: () => number): void {
   let houses = 0;
+  const frontageGap = scaled(FRONTAGE_GAP, k);
+  const setbackRange = scaled(SETBACK, k);
   const heading = Math.atan2(p.ux, p.uz);
 
   /** A lean-to against `house`'s side wall, flush with its back, sometimes. */
@@ -247,7 +288,7 @@ function plateauVillage(p: TownPlateau, tryPlace: TryPlace, next: () => number, 
     const side = next() < 0.5 ? 1 : -1;
     const wall = VILLAGE_PLAN[variant];
     const lean = VILLAGE_PLAN.leanTo;
-    const across = (wall.halfW + lean.halfW) * scale + LEAN_TO_GAP;
+    const across = (wall.halfW + lean.halfW) * scale + LEAN_TO_GAP * k;
     const back = (wall.halfD - lean.halfD) * scale;
     const rx = Math.cos(yaw);
     const rz = -Math.sin(yaw);
@@ -265,7 +306,7 @@ function plateauVillage(p: TownPlateau, tryPlace: TryPlace, next: () => number, 
     const tz = (z1 - z0) / len;
     const nx = tz * side;
     const nz = -tx * side;
-    let along = lerpRange(FRONTAGE_GAP, next());
+    let along = lerpRange(frontageGap, next());
     while (along < len && houses < MAX_HOUSES) {
       const first = pick(next, along / len);
       // A merchant's house that will not fit gives way to a stone house in the same plot.
@@ -273,7 +314,7 @@ function plateauVillage(p: TownPlateau, tryPlace: TryPlace, next: () => number, 
       const scale = scaleRoll();
       const tint = tintRoll();
       const yaw = Math.atan2(-nx, -nz) + jitter();
-      const setback = lerpRange(SETBACK, next());
+      const setback = lerpRange(setbackRange, next());
       const yard = next() < YARD_CHANCE;
       const gapRoll = next();
       let advance = Infinity;
@@ -282,12 +323,12 @@ function plateauVillage(p: TownPlateau, tryPlace: TryPlace, next: () => number, 
         const halfD = (VILLAGE_PLAN[variant].halfD + VILLAGE_EAVE[variant]) * scale;
         const px = x0 + tx * (along + halfW);
         const pz = z0 + tz * (along + halfW);
-        const off = s.halfWidth + KERB_WIDTH * K + halfD + setback;
+        const off = s.halfWidth + KERB_WIDTH * k + halfD + setback;
         const placed = tryPlace(variant, px + nx * off, pz + nz * off, yaw, scale, tint);
         if (placed) {
           houses++;
           maybeLeanTo(variant, placed, yaw, scale);
-          advance = 2 * halfW + (yard ? 2 * halfW : lerpRange(FRONTAGE_GAP, gapRoll));
+          advance = 2 * halfW + (yard ? 2 * halfW : lerpRange(frontageGap, gapRoll));
           break;
         }
         advance = Math.min(advance, halfW * 0.5);
@@ -314,7 +355,7 @@ function plateauVillage(p: TownPlateau, tryPlace: TryPlace, next: () => number, 
       if (tryPlace(variant, p.x + Math.sin(dir) * r, p.z + Math.cos(dir) * r, dir + Math.PI + yawJitter, scale, tint)) {
         houses++;
         if (variant === "merchant") merchants++;
-        step = (2 * halfW + lerpRange(FRONTAGE_GAP, next())) / r;
+        step = (2 * halfW + lerpRange(frontageGap, next())) / r;
         break;
       }
       step = Math.min(step, halfW / r);
@@ -346,6 +387,8 @@ function plateauVillage(p: TownPlateau, tryPlace: TryPlace, next: () => number, 
 
 /** Most room between probes under a building's walls: under the refined town ground's pitch (`LAND_MESH_SPACING / TOWN_REFINE`). */
 const WALL_PROBE_STEP = LAND_MESH_SPACING / TOWN_REFINE / 1.5;
+/** How many times finer the walls' edges are probed than the grid inside them. */
+const WALL_EDGE_REFINE = 8;
 
 /** The ground under a building's walls (a grid over its rectangle at `WALL_PROBE_STEP` and the drawn surface's creases within it): lowest and highest. */
 export function wallGround(ground: GroundField, walls: PlanRect): { bottom: number; top: number } {
@@ -364,6 +407,18 @@ export function wallGround(ground: GroundField, walls: PlanRect): { bottom: numb
       const v = (j / (along - 1)) * 2 - 1;
       probe(walls.x + walls.fz * u * walls.halfW + walls.fx * v * walls.halfD, walls.z - walls.fx * u * walls.halfW + walls.fz * v * walls.halfD);
     }
+  }
+  // The walls' foot, finer: a piecewise-flat surface peaks inside the rectangle only at a crease, and on its edge
+  // where a facet's edge crosses it, which a coarse lattice (off the refined town ground, where a town spills) leaves wide apart.
+  const edgeAcross = (across - 1) * WALL_EDGE_REFINE + 1;
+  const edgeAlong = (along - 1) * WALL_EDGE_REFINE + 1;
+  for (let i = 0; i < edgeAcross; i++) {
+    const u = (i / (edgeAcross - 1)) * 2 - 1;
+    for (const v of [-1, 1]) probe(walls.x + walls.fz * u * walls.halfW + walls.fx * v * walls.halfD, walls.z - walls.fx * u * walls.halfW + walls.fz * v * walls.halfD);
+  }
+  for (let j = 0; j < edgeAlong; j++) {
+    const v = (j / (edgeAlong - 1)) * 2 - 1;
+    for (const u of [-1, 1]) probe(walls.x + walls.fz * u * walls.halfW + walls.fx * v * walls.halfD, walls.z - walls.fx * u * walls.halfW + walls.fz * v * walls.halfD);
   }
   const reach = Math.hypot(walls.halfW, walls.halfD);
   for (const c of ground.creasesWithin?.(walls.x, walls.z, reach) ?? []) {
@@ -388,8 +443,30 @@ export function villageStance(bottom: number, top: number, scale: number): numbe
   return y - bottom > VILLAGE_MAX_FOOTING_SHOWN * scale ? undefined : y;
 }
 
-/** The village on every port hex with a town plateau, standing on `ground` (the drawn land), and each port's plan; `worldSeed` is `G.mapSeed`. */
-export function planPortTowns(cells: readonly MapCell[], ground: GroundField, kit: PortKit, worldSeed: number): { buildings: VillageBuilding[]; ports: PortTownPlan[] } {
+/** How `planPortTowns` lays the villages out besides the drawn defaults. */
+export interface PortTownOptions {
+  /** The building scale (`BUILDING_SCALE` by default): every village length follows it. Tests vary it, with a field planned at the same scale. */
+  buildingScale?: number;
+}
+
+/**
+ * The village on every port with a town plateau, standing on `ground` (the
+ * drawn land), and each port's plan; `worldSeed` is `G.mapSeed`. Nothing
+ * stands outside the port's town cells (the plateau's, else the port cell
+ * alone), and on a cell the town spilled onto nothing stands in the shore
+ * band.
+ */
+export function planPortTowns(
+  cells: readonly MapCell[],
+  ground: GroundField,
+  kit: PortKit,
+  worldSeed: number,
+  options: PortTownOptions = {}
+): { buildings: VillageBuilding[]; ports: PortTownPlan[] } {
+  const k = options.buildingScale ?? K;
+  const dry = SEA_LEVEL + DRY * k;
+  const eaveGap = EAVE_GAP_1 * k;
+  const quayMargin = QUAY_MARGIN * k;
   const town: VillageBuilding[] = [];
   const ports: PortTownPlan[] = [];
   for (const cell of cells) {
@@ -405,24 +482,43 @@ export function planPortTowns(cells: readonly MapCell[], ground: GroundField, ki
     const dz = Math.cos(pier.rotation);
     const ax = -dz;
     const az = dx;
-    const edgeNormals = neighbors(cell.hex).map((n): [number, number] => {
-      const [nx, , nz] = hexToWorld(n);
-      return [(nx - cx) / SQRT3, (nz - cz) / SQRT3];
-    });
     const portId = mapCellId(cell);
+    const cellsOfTown: TownCells = plateau.town ?? { portId, cells: [cell.hex] };
+    const onTown = townCellsRule(cellsOfTown);
     const next = stream(subSeed(worldSeed, SEED_FEATURES.village, portId));
     const here: VillageBuilding[] = [];
+    const dropped = Object.fromEntries(DROP_REASONS.map((r) => [r, 0])) as Record<DropReason, number>;
+    let tried = 0;
 
     // Taken already: the kit's buildings with their margins, the quay and the pier deck.
     const placed: PlanRect[] = kitHere.map((b) => {
       const plan = AGED_BUILDING_PLAN[b.kind];
-      const margin = b.kind === "house" || b.kind === "warehouse" ? KIT_MARGIN : CIVIC_MARGIN;
+      const margin = (b.kind === "house" || b.kind === "warehouse" ? KIT_MARGIN : CIVIC_MARGIN) * k;
       return { x: b.worldX, z: b.worldZ, fx: Math.sin(b.yaw), fz: Math.cos(b.yaw), halfW: (plan.halfW + KIT_EAVE) * b.scale + margin, halfD: (plan.halfD + KIT_EAVE) * b.scale + margin };
     });
     const grow = (r: PlanRect, m: number): PlanRect => ({ ...r, halfW: r.halfW + m, halfD: r.halfD + m });
-    for (const q of quays) placed.push(grow(quayRect(q), QUAY_MARGIN));
-    placed.push(grow(pierRect(pier), QUAY_MARGIN));
-    const streets: TownLane[] = plateau.streets.map((s) => ({ line: [s.from, s.to], halfWidth: s.halfWidth + KERB_WIDTH * K }));
+    for (const q of quays) placed.push(grow(quayRect(q), quayMargin));
+    placed.push(grow(pierRect(pier), quayMargin));
+    const streets: TownLane[] = plateau.streets.map((s) => ({ line: [s.from, s.to], halfWidth: s.halfWidth + KERB_WIDTH * k }));
+
+    /** Why a building may not stand here, or undefined (with its stance) if it may. */
+    const refuse = (foot: PlanRect, walls: PlanRect, scale: number, attachedTo?: PlanRect): DropReason | { y: number } => {
+      const reach = Math.hypot(foot.halfW, foot.halfD);
+      if (onTown(foot.x, foot.z, reach, Infinity)) return "outside town";
+      if (placed.some((p) => p !== attachedTo && overlaps(p, foot, eaveGap))) return "taken";
+      // The walls keep off the streets' running surface and kerbs (the eaves may overhang them).
+      if (streets.some((s) => rectCorners(walls).some(([px, pz]) => polylineDistance(px, pz, s.line) < s.halfWidth) || polylineDistance(walls.x, walls.z, s.line) < s.halfWidth + Math.min(walls.halfW, walls.halfD)))
+        return "street";
+      // The walls, not the eaves (which may overhang a retaining wall), keep off a riser.
+      if (crossesRiser(plateau, rectCorners(walls), RETAINING_WALL_DEPTH * k)) return "riser";
+      const { bottom, top } = wallGround(ground, walls);
+      if (bottom <= dry) return "wet";
+      // Off the port's own cell, never on the beach: the spill keeps the shore band clear.
+      const shore = onTown(foot.x, foot.z, reach, bottom);
+      if (shore) return shore;
+      const y = villageStance(bottom, top, scale);
+      return y === undefined ? "uneven" : { y };
+    };
 
     const tryPlace: TryPlace = (variant, x, z, yaw, scale, tint, attachedTo) => {
       const plan = VILLAGE_PLAN[variant];
@@ -430,39 +526,33 @@ export function planPortTowns(cells: readonly MapCell[], ground: GroundField, ki
       const fx = Math.sin(yaw);
       const fz = Math.cos(yaw);
       const foot: PlanRect = { x, z, fx, fz, halfW: (plan.halfW + eave) * scale, halfD: (plan.halfD + eave) * scale };
-      const reach = Math.hypot(foot.halfW, foot.halfD);
-      if (!edgeNormals.every(([ux, uz]) => (x - cx) * ux + (z - cz) * uz <= SQRT3 / 2 - reach)) return undefined;
-      if (placed.some((p) => p !== attachedTo && overlaps(p, foot, EAVE_GAP))) return undefined;
       const walls: PlanRect = { x, z, fx, fz, halfW: plan.halfW * scale, halfD: plan.halfD * scale };
-      // The walls keep off the streets' running surface and kerbs (the eaves may overhang them).
-      if (streets.some((s) => rectCorners(walls).some(([px, pz]) => polylineDistance(px, pz, s.line) < s.halfWidth) || polylineDistance(x, z, s.line) < s.halfWidth + Math.min(walls.halfW, walls.halfD)))
+      tried++;
+      const verdict = refuse(foot, walls, scale, attachedTo);
+      if (typeof verdict === "string") {
+        dropped[verdict]++;
         return undefined;
-      // The walls, not the eaves (which may overhang a retaining wall), keep off a riser.
-      if (crossesRiser(plateau, rectCorners(walls), RETAINING_WALL_DEPTH * K)) return undefined;
-      const { bottom, top } = wallGround(ground, walls);
-      if (bottom <= VILLAGE_DRY_HEIGHT) return undefined;
-      const y = villageStance(bottom, top, scale);
-      if (y === undefined) return undefined;
+      }
       placed.push(foot);
-      here.push({ kind: variant === "warehouse" ? "warehouse" : "house", variant, worldX: x, worldY: y, worldZ: z, yaw, scale, tint, roofTone: next() });
+      here.push({ kind: variant === "warehouse" ? "warehouse" : "house", variant, worldX: x, worldY: verdict.y, worldZ: z, yaw, scale, tint, roofTone: next() });
       return foot;
     };
-    const scaleRoll = () => lerpRange(PORT_BUILDING_SCALE_RANGE, next()) * K;
+    const scaleRoll = () => lerpRange(PORT_BUILDING_SCALE_RANGE, next()) * k;
     const tintRoll = () => 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
     const jitter = () => (next() * 2 - 1) * YAW_JITTER;
 
     // 1. The waterfront warehouses, either side of the pier root, facing the water.
     const warehouseTarget = Math.round(lerpRange(WAREHOUSE_TARGET, next()));
     let warehouses = 0;
-    const warehouseWidth = (VILLAGE_PLAN.warehouse.halfW + VILLAGE_EAVE.warehouse) * 2 * K;
+    const warehouseWidth = (VILLAGE_PLAN.warehouse.halfW + VILLAGE_EAVE.warehouse) * 2 * k;
     for (let slot = 0; slot < 12 && warehouses < warehouseTarget; slot++) {
       const side = slot % 2 === 0 ? 1 : -1;
-      const along = side * (PIER_WIDTH * pier.scale + warehouseWidth * (0.6 + Math.floor(slot / 2)) + WAREHOUSE_SPACING * Math.floor(slot / 2));
+      const along = side * (PIER_WIDTH * pier.scale + warehouseWidth * (0.6 + Math.floor(slot / 2)) + WAREHOUSE_SPACING * k * Math.floor(slot / 2));
       const scale = scaleRoll();
       const tint = tintRoll();
       const yaw = pier.rotation + jitter();
       // Gable end to the water (the doors), or, where the ground is narrower, long side to it.
-      search: for (let back = 0; back <= WAREHOUSE_SETBACK_MAX; back += WAREHOUSE_SETBACK_STEP) {
+      search: for (let back = 0; back <= WAREHOUSE_SETBACK_MAX * k; back += WAREHOUSE_SETBACK_STEP * k) {
         const x = pier.worldX + ax * along - dx * back;
         const z = pier.worldZ + az * along - dz * back;
         for (const turn of [0, Math.PI / 2]) {
@@ -475,7 +565,7 @@ export function planPortTowns(cells: readonly MapCell[], ground: GroundField, ki
     }
 
     // 2. The square's ring, the streets' frontages and the edge.
-    plateauVillage(plateau, tryPlace, next, scaleRoll, tintRoll, jitter);
+    plateauVillage(plateau, k, tryPlace, next, scaleRoll, tintRoll, jitter);
     town.push(...here);
     const walls: PlanRect[] = kitHere.map((b) => ({
       x: b.worldX,
@@ -486,7 +576,7 @@ export function planPortTowns(cells: readonly MapCell[], ground: GroundField, ki
       halfD: AGED_BUILDING_PLAN[b.kind].halfD * b.scale,
     }));
     walls.push(...here.map(villageWalls));
-    ports.push({ portId, cx, cz, plateau, pier, quays, footprints: placed, walls, streets, buildings: here });
+    ports.push({ portId, cx, cz, plateau, pier, quays, footprints: placed, walls, streets, buildings: here, town: cellsOfTown, tried, dropped });
   }
   return { buildings: town, ports };
 }

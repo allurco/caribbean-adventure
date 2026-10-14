@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
-import { createWrap, hexToWorld } from "../../game/hex";
+import { createWrap, hexToWorld, worldToHex } from "../../game/hex";
 import { sharedTerrainField } from "./sharedTerrainField";
+import { createTerrainHeightField } from "./terrainHeightField";
+import { townCellsBound } from "./townCells";
+import { townCellsRule } from "./townBound";
 import { decorationLayout } from "./decorationLayout";
 import { landSurface } from "./landMesh";
 import { crossesRiser, plateauPlanDistance, RETAINING_WALL_DEPTH } from "./townPlateau";
@@ -12,6 +15,8 @@ import { VILLAGE_EAVE } from "./villageBuildingGeometry";
 import { BUILDING_SCALE } from "./worldScale";
 import {
   overlaps,
+  planPortTowns,
+  DROP_REASONS,
   pierRect,
   polylineDistance,
   quayRect,
@@ -161,4 +166,80 @@ describe("the port village (#87)", () => {
     const [px, , pz] = hexToWorld(cells.find((c) => c.hasPort)!.hex);
     expect(field.townPlateaus.some((p) => Math.hypot(p.x - px, p.z - pz) < 1)).toBe(true);
   });
+});
+
+const hexKey = (h: { q: number; r: number }) => `${h.q},${h.r}`;
+
+describe("the village on its town's cells (#170)", () => {
+  const { ground, layout } = town(1);
+  const { village } = layout;
+
+  it("keeps every building, its eaves included, the kit and the clutter on the port's town cells, and off a spilled cell's shore band", () => {
+    for (const port of village.ports) {
+      const rule = townCellsRule(port.town);
+      const bound = townCellsBound(port.town);
+      for (const b of port.buildings) {
+        const e = eaves(b);
+        const { bottom } = wallGround(ground, villageWalls(b));
+        expect(rule(e.x, e.z, Math.hypot(e.halfW, e.halfD), bottom)).toBeUndefined();
+      }
+      for (const k of layout.buildings.filter((k) => Math.hypot(k.worldX - port.cx, k.worldZ - port.cz) < 1)) {
+        expect(bound.contains(k.worldX, k.worldZ, 0)).toBe(true);
+      }
+      const near = village.clutter.filter((c) => Math.hypot(c.x - port.cx, c.z - port.cz) < 3);
+      for (const c of near) {
+        // Each piece is in its own port's town; another port's pieces lie in that one's.
+        if (!village.ports.some((o) => o !== port && townCellsBound(o.town).contains(c.x, c.z, 0))) {
+          expect(bound.contains(c.x, c.z, pieceClearRadius(c) * 0.99)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("builds on the cells the town spilled onto, not only the port's own", () => {
+    let spilled = 0;
+    for (const port of village.ports) {
+      const own = hexKey(port.town.cells[0]);
+      spilled += port.buildings.filter((b) => hexKey(worldToHex(b.worldX, b.worldZ)) !== own).length;
+    }
+    expect(spilled).toBeGreaterThan(0);
+  });
+
+  it("names the reason for every candidate it drops, and the hex edge is not one", () => {
+    expect(DROP_REASONS as readonly string[]).not.toContain("hex edge");
+    for (const port of village.ports) {
+      expect(Object.keys(port.dropped).sort()).toEqual([...DROP_REASONS].sort());
+      const dropped = Object.values(port.dropped).reduce((a, b) => a + b, 0);
+      // Every candidate tried is either built or dropped for a named reason.
+      expect(port.tried).toBe(port.buildings.length + dropped);
+    }
+  });
+
+  it("does not collapse as the buildings grow from ×1 to ×2.5 (#158's prototype fell from about 45 to about 4 houses a port)", () => {
+    const preset = getMapPreset("small");
+    const wrap = createWrap(preset.columns);
+    const housesPerPort = (factor: number) => {
+      let houses = 0;
+      let ports = 0;
+      for (const seed of [1, 2, 3, 4, 5]) {
+        const mapCells = generateMap(preset, seed, wrap);
+        const k = BUILDING_SCALE * factor;
+        // The field's plateaus planned at the village's building scale; no port kit in the way, as the kit keeps its own scale.
+        const field = createTerrainHeightField(mapCells, seed, { wrap, buildingScale: k });
+        const { piers, quays } = decorationLayout(mapCells, wrap, seed);
+        const plans = planPortTowns(mapCells, landSurface(field), { buildings: [], quays, piers, plateaus: field.townPlateaus }, seed, { buildingScale: k });
+        for (const p of plans.ports) {
+          houses += p.buildings.length;
+          ports++;
+        }
+      }
+      return houses / ports;
+    };
+    const at1 = housesPerPort(1);
+    const at25 = housesPerPort(2.5);
+    console.log(`village: ${at1.toFixed(1)} buildings a port at ×1, ${at25.toFixed(1)} at ×2.5`);
+    expect(at1).toBeGreaterThan(35);
+    expect(at25).toBeGreaterThan(15);
+    expect(at25 / at1).toBeGreaterThan(1 / 3);
+  }, 120_000);
 });
