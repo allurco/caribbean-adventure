@@ -10,9 +10,9 @@ import { gridLineData, useWaterGridLines, type WaterGridLines, type WaterGridLin
 import { NO_HOVER, type SharedHover } from "./sharedHover";
 import { perMapCache } from "./visuals/perMapCache";
 import { decorationLayoutOf } from "./visuals/decorationLayout";
-import { PORT_GROUND_PROBE_RADIUS, portHoverVolumeAt, type PortHoverVolume } from "./visuals/portHover";
-import { portLabelBaseY } from "./visuals/portLabel";
-import { CAMERA_PITCH } from "./cameraBounds";
+import { PORT_GROUND_PROBE_RADIUS, portHoverVolumeAt, portOwnBuildings, type PortHoverVolume } from "./visuals/portHover";
+import { portLabelAnchor } from "./visuals/portLabel";
+import type { PortBuilding } from "./visuals/portSettlement";
 
 // Minimum outline opacity for hexes the player is acting on. These ignore the
 // distance fade, so targets stay crisp anywhere on the map.
@@ -24,8 +24,10 @@ export interface PortSite {
   cell: MapCell;
   groundY: number;
   hover: PortHoverVolume;
-  /** Where the name label's baseline sits, clear of the buildings as the camera sees them (#75). */
-  labelBaseY: number;
+  /** Where the name label stands across the ground: over the middle of the town (#151). */
+  labelAnchor: { x: number; z: number };
+  /** The port's own buildings, which the label's baseline clears as the camera sees them (#75, `portLabelLiftOver`). */
+  ownBuildings: readonly PortBuilding[];
 }
 
 const portSitesOf = perMapCache((cells, wrap): PortSite[] => {
@@ -41,7 +43,8 @@ const portSitesOf = perMapCache((cells, wrap): PortSite[] => {
         cell,
         groundY,
         hover: portHoverVolumeAt(cell.hex, groundY, buildings),
-        labelBaseY: portLabelBaseY({ x, z }, groundY, buildings, CAMERA_PITCH),
+        labelAnchor: portLabelAnchor({ x, z }, buildings),
+        ownBuildings: portOwnBuildings({ x, z }, buildings),
       };
     });
 });

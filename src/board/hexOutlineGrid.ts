@@ -22,6 +22,35 @@ export const GRID_LINE_COLOR = "#9ccfd6";
  */
 export const GRID_EMPHASIS_COLOR = "#ffffff";
 
+/**
+ * Colour the calm lines turn to over the sun's glare on the water (#152): a
+ * deep sea blue. The pale `GRID_LINE_COLOR` reads on the dark sea but is
+ * nearly the glare's own colour, so there the grid vanished; a dark line
+ * reads against it instead.
+ */
+export const GRID_GLARE_COLOR = "#0c2a3a";
+
+export interface GridGlareParams {
+  /** Cosine between the view mirrored in a flat sea and the sun where the glare begins. */
+  cosStart: number;
+  /** Cosine at and above which the line is all glare colour. */
+  cosEnd: number;
+  /** Line opacity, inside the fade, at full glare (in place of `baseOpacity`). */
+  opacity: number;
+}
+
+/**
+ * Where, and how strongly, the lines take the glare look: the bright band
+ * where a flat sea mirrors the sun to the camera, a little wider than the
+ * glare the eye sees there (the waves scatter it), so the lines are dark
+ * wherever the water is bright.
+ */
+export const GRID_GLARE: GridGlareParams = {
+  cosStart: 0.91,
+  cosEnd: 0.97,
+  opacity: 0.45,
+};
+
 export interface GridFadeParams {
   /** Distance from the focus point (world units) where fading begins. */
   fadeStart: number;
@@ -96,18 +125,45 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
+type Vec3 = readonly [number, number, number];
+
+/**
+ * How much of the sun's glare lies under the line point `point` seen from
+ * `camera` (0..1): the view ray mirrored in a flat sea, against `sun` (unit,
+ * towards the sun), eased between `cosStart` and `cosEnd`. CPU mirror of
+ * `gridGlare` in the fragment shader (`hexOutlineMaterial.ts`).
+ */
+export function gridGlare(
+  camera: Vec3,
+  point: Vec3,
+  sun: Vec3,
+  { cosStart, cosEnd }: GridGlareParams = GRID_GLARE
+): number {
+  const dx = point[0] - camera[0];
+  const dy = point[1] - camera[1];
+  const dz = point[2] - camera[2];
+  const len = Math.hypot(dx, dy, dz);
+  if (!(len > 0)) return 0;
+  // The view ray bounced off a level sea: its y flips.
+  const cos = (dx * sun[0] - dy * sun[1] + dz * sun[2]) / len;
+  return smoothstep(cosStart, cosEnd, cos);
+}
+
 /**
  * Line opacity at `distance` from the focus point, with `shore` (0..1, see
- * `shoreFade` in `hexGridEdges.ts`) thinning the calm grid in the shallows.
- * Emphasis is not faded. CPU mirror of the fragment shader in
- * `hexOutlineMaterial.ts`; keep the two in sync.
+ * `shoreFade` in `hexGridEdges.ts`) thinning the calm grid in the shallows
+ * and `glare` (0..1, `gridGlare`) raising it toward `GRID_GLARE.opacity`
+ * over the sun's glare. Emphasis is not faded. CPU mirror of the fragment
+ * shader in `hexOutlineMaterial.ts`; keep the two in sync.
  */
 export function gridFadeOpacity(
   distance: number,
   emphasis: number,
   { fadeStart, fadeEnd, baseOpacity }: GridFadeParams,
-  shore = 1
+  shore = 1,
+  glare = 0
 ): number {
   const fade = 1 - smoothstep(fadeStart, fadeEnd, distance);
-  return Math.max(baseOpacity * fade * shore, emphasis);
+  const base = baseOpacity + (GRID_GLARE.opacity - baseOpacity) * glare;
+  return Math.max(base * fade * shore, emphasis);
 }

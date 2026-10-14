@@ -14,9 +14,12 @@ import { Text } from "@react-three/drei";
 import { CAMERA_FOV } from "./cameraBounds";
 import {
   PORT_LABEL_FONT_SIZE,
+  PORT_LABEL_MIN_HEIGHT,
+  portLabelLiftOver,
   portLabelOpacity,
   portLabelScale,
   portLabelScreenShift,
+  portLabelViewPitch,
 } from "./visuals/portLabel";
 import { hexEquals, hexToWorld } from "../game/hex";
 import type { MapCell } from "../game/types";
@@ -112,11 +115,12 @@ function screenY(p: Vector3, camera: Camera, viewportHeight: number): number {
   return ((1 - p.project(camera).y) / 2) * viewportHeight;
 }
 
-// Floating port name label: lifted clear of the settlement, its screen size
-// capped and faded close in, back to full on hover, and kept inside the top of
-// the screen (#75, visuals/portLabel.ts)
-function PortLabel({ site: { cell, groundY, labelBaseY }, hovered }: { site: PortSite; hovered: boolean }) {
-  const [x, , z] = hexToWorld(cell.hex);
+// Floating port name label over its town: lifted clear of the settlement as
+// the camera sees it, turned to face the camera, its screen size held between
+// a readable minimum and a cap, faded close in, back to full on hover, and
+// kept inside the top of the screen (#75, #151, visuals/portLabel.ts)
+function PortLabel({ site: { cell, groundY, labelAnchor, ownBuildings }, hovered }: { site: PortSite; hovered: boolean }) {
+  const { x, z } = labelAnchor;
   const groupRef = useRef<Group>(null);
   const textRef = useRef<LabelText>(null);
 
@@ -126,11 +130,18 @@ function PortLabel({ site: { cell, groundY, labelBaseY }, hovered }: { site: Por
     if (!group?.parent || !text) return;
     // World positions, so each world copy (#36) measures its own label
     const copy = group.parent;
+    // The lift for the pitch the camera really looks down at the town
+    const groundPitch = portLabelViewPitch(camera.position, copy.localToWorld(labelBase.set(x, groundY, z)));
+    const labelBaseY = portLabelLiftOver(labelAnchor, groundY, ownBuildings, groundPitch);
     copy.localToWorld(labelBase.set(x, labelBaseY, z));
     const distance = camera.position.distanceTo(labelBase);
     const fov = camera instanceof PerspectiveCamera ? camera.fov : CAMERA_FOV;
     const scale = portLabelScale(distance, fov, size.height);
     group.scale.setScalar(scale);
+    // Turned about the baseline to face the camera, not foreshortened by the look down
+    const pitch = portLabelViewPitch(camera.position, labelBase);
+    group.rotation.x = -pitch;
+    const glyphHeight = PORT_LABEL_FONT_SIZE * LABEL_LINE_HEIGHT * scale;
     const opacity = portLabelOpacity(distance, hovered);
     text.fillOpacity = opacity;
     text.outlineOpacity = opacity;
@@ -141,7 +152,8 @@ function PortLabel({ site: { cell, groundY, labelBaseY }, hovered }: { site: Por
     const shift = portLabelScreenShift({
       baselineY: screenY(labelPoint.copy(labelBase), camera, size.height),
       topY: screenY(
-        labelPoint.copy(labelBase).setY(labelBase.y + PORT_LABEL_FONT_SIZE * LABEL_LINE_HEIGHT * scale),
+        // The glyphs' top, up the turned label: (0, cos p, -sin p)
+        labelPoint.set(labelBase.x, labelBase.y + glyphHeight * Math.cos(pitch), labelBase.z - glyphHeight * Math.sin(pitch)),
         camera,
         size.height
       ),
@@ -161,10 +173,10 @@ function PortLabel({ site: { cell, groundY, labelBaseY }, hovered }: { site: Por
   if (!cell.portName) return null;
 
   return (
-    <group ref={groupRef} position={[x, labelBaseY, z]}>
+    <group ref={groupRef} position={[x, groundY + PORT_LABEL_MIN_HEIGHT, z]}>
       <Text
         ref={textRef}
-        // Upright and facing +z: square on to the camera, which looks due north (cameraBounds.ts)
+        // Facing +z, square on to the camera, which looks due north (cameraBounds.ts); the group tilts it back to face the camera
         rotation={[0, 0, 0]}
         fontSize={PORT_LABEL_FONT_SIZE}
         color="#fef3c7"

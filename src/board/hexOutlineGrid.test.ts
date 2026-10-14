@@ -5,8 +5,12 @@ import {
   GRID_EMPHASIS_COLOR,
   GRID_FADE,
   GRID_FADE_ZOOM_DISTANCE,
+  GRID_GLARE,
+  GRID_GLARE_COLOR,
   GRID_LINE_COLOR,
+  gridGlare,
 } from "./hexOutlineGrid";
+import { SUN_DIRECTION } from "./visuals/atmosphere";
 import {
   CAMERA_FOV,
   CAMERA_MAX_DISTANCE,
@@ -107,5 +111,63 @@ describe("gridFadeForCameraDistance", () => {
       const { fadeStart, fadeEnd } = gridFadeForCameraDistance(GRID_FADE, d);
       expect(fadeEnd / fadeStart).toBeCloseTo(ratio, 9);
     }
+  });
+});
+
+/** Relative luminance of a "#rrggbb" colour (sRGB weights, no linearising: a rough brightness). */
+function brightness(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+}
+
+describe("gridGlare (#152)", () => {
+  // The #152 overview: target (0, 0, 15.5), camera (0, 36, 33); the sun's
+  // glare lies ahead and to the left of the view, over the west seam.
+  const camera = [0, 36, 33] as const;
+
+  it("is full where the camera sees the sun mirrored in the sea", () => {
+    expect(gridGlare(camera, [-20, 0, 15.5], SUN_DIRECTION)).toBeGreaterThan(0.9);
+  });
+
+  it("is nothing over the dark sea away from the sun", () => {
+    expect(gridGlare(camera, [20, 0, 15.5], SUN_DIRECTION)).toBe(0);
+    expect(gridGlare([12.3, 3.14, 16.56], [16, 0, 14], SUN_DIRECTION)).toBe(0);
+  });
+
+  it("eases from none to full with the mirrored sun", () => {
+    let prev = -1;
+    for (let x = 25; x >= -25; x -= 1) {
+      const g = gridGlare(camera, [x, 0, 15.5], SUN_DIRECTION);
+      expect(g).toBeGreaterThanOrEqual(prev - 1e-12);
+      expect(g).toBeGreaterThanOrEqual(0);
+      expect(g).toBeLessThanOrEqual(1);
+      prev = g;
+    }
+  });
+
+  it("is nothing with the camera on the point (no direction to reflect)", () => {
+    expect(gridGlare([1, 0, 1], [1, 0, 1], SUN_DIRECTION)).toBe(0);
+  });
+});
+
+describe("the grid over the sun's glare (#152)", () => {
+  const params = { fadeStart: 4, fadeEnd: 10, baseOpacity: GRID_FADE.baseOpacity };
+
+  it("turns dark, against the bright water, where the calm line is pale", () => {
+    expect(brightness(GRID_LINE_COLOR)).toBeGreaterThan(0.6);
+    expect(brightness(GRID_GLARE_COLOR)).toBeLessThan(0.25);
+  });
+
+  it("is drawn more strongly over the glare than the calm grid", () => {
+    expect(GRID_GLARE.opacity).toBeGreaterThan(GRID_FADE.baseOpacity);
+    expect(gridFadeOpacity(0, 0, params, 1, 1)).toBeCloseTo(GRID_GLARE.opacity, 10);
+    expect(gridFadeOpacity(0, 0, params, 1, 0)).toBeCloseTo(GRID_FADE.baseOpacity, 10);
+    expect(gridFadeOpacity(0, 0, params, 1, 0.5)).toBeCloseTo((GRID_FADE.baseOpacity + GRID_GLARE.opacity) / 2, 10);
+  });
+
+  it("still fades with distance and the shallows, and never hides emphasis", () => {
+    expect(gridFadeOpacity(50, 0, params, 1, 1)).toBe(0);
+    expect(gridFadeOpacity(0, 0, params, 0, 1)).toBe(0);
+    expect(gridFadeOpacity(50, 0.6, params, 1, 1)).toBeCloseTo(0.6);
   });
 });

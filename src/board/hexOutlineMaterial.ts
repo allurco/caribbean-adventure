@@ -1,6 +1,6 @@
-import { Color, ShaderMaterial, Vector2, Vector4 } from "three";
+import { Color, ShaderMaterial, Vector2, Vector3, Vector4 } from "three";
 import type { Texture } from "three";
-import type { GridFadeParams } from "./hexOutlineGrid";
+import type { GridFadeParams, GridGlareParams } from "./hexOutlineGrid";
 import type { TerrainFieldTexture } from "./visuals/useTerrainFieldTexture";
 import { OCEAN_GRID_CELL_GLSL } from "./visuals/oceanGrid";
 import { WAVE_DISPLACEMENT_GLSL, bindWaveDisplacementTextures } from "./visuals/waveDisplacement";
@@ -10,8 +10,11 @@ import { WAVE_DISPLACEMENT_GLSL, bindWaveDisplacementTextures } from "./visuals/
  * `uFocus` (the camera focus point, updated every frame) and with the
  * per-vertex `aShore` fade across the shallows, and never drops below the
  * per-vertex `aEmphasis`, so acted-on hexes stay crisp anywhere. Emphasised
- * lines also blend from `uColor` toward `uEmphasisColor`.
- * The opacity formula mirrors `gridFadeOpacity` in `hexOutlineGrid.ts`.
+ * lines also blend from `uColor` toward `uEmphasisColor`. Over the sun's
+ * glare on the water the calm lines turn to `uGlareColor`, a little more
+ * opaque, so they read against the bright sea (#152).
+ * The opacity formula mirrors `gridFadeOpacity` and the glare `gridGlare`,
+ * both in `hexOutlineGrid.ts`.
  *
  * The lines sit a little above sea level and the sea heaves (#38 step 8),
  * so each vertex rides the same wave displacement as the water
@@ -23,6 +26,14 @@ import { WAVE_DISPLACEMENT_GLSL, bindWaveDisplacementTextures } from "./visuals/
  * it in the troughs; at the mesh's own level the line and the water move
  * together.
  */
+
+/** How the calm lines change over the sun's glare on the water (#152). */
+export interface GlareLook extends GridGlareParams {
+  /** The lines' colour at full glare. */
+  color: string;
+  /** Unit vector towards the sun. */
+  sun: readonly [number, number, number];
+}
 
 /** What the lines need to float on the displaced sea. */
 export interface WaveSurface {
@@ -38,14 +49,14 @@ const vertexShader = /* glsl */ `
   uniform vec2 uGridOrigin;
   varying float vEmphasis;
   varying float vShore;
-  varying vec2 vWorldXZ;
+  varying vec3 vWorld;
   ${WAVE_DISPLACEMENT_GLSL}
   ${OCEAN_GRID_CELL_GLSL}
 
   void main() {
     vec4 world = modelMatrix * vec4(position, 1.0);
     world.xyz += waveSurfaceDisplacement(world.xz, oceanGridCellAt(world.xz - uGridOrigin));
-    vWorldXZ = world.xz;
+    vWorld = world.xyz;
     vEmphasis = aEmphasis;
     vShore = aShore;
     gl_Position = projectionMatrix * viewMatrix * world;
@@ -59,16 +70,34 @@ const fragmentShader = /* glsl */ `
   uniform float uFadeStart;
   uniform float uFadeEnd;
   uniform float uBaseOpacity;
+  uniform vec3 uGlareColor;
+  uniform vec3 uSunDirection;
+  uniform float uGlareCosStart;
+  uniform float uGlareCosEnd;
+  uniform float uGlareOpacity;
   varying float vEmphasis;
   varying float vShore;
-  varying vec2 vWorldXZ;
+  varying vec3 vWorld;
+
+  // gridGlare (hexOutlineGrid.ts): the view mirrored in a level sea against the sun
+  float gridGlare(vec3 point) {
+    vec3 ray = point - cameraPosition;
+    float len = length(ray);
+    if (len <= 0.0) return 0.0;
+    ray /= len;
+    ray.y = -ray.y;
+    return smoothstep(uGlareCosStart, uGlareCosEnd, dot(ray, uSunDirection));
+  }
 
   void main() {
-    float d = distance(vWorldXZ, uFocus);
+    float d = distance(vWorld.xz, uFocus);
     float fade = 1.0 - smoothstep(uFadeStart, uFadeEnd, d);
-    float alpha = max(uBaseOpacity * fade * vShore, vEmphasis);
+    float glare = gridGlare(vWorld);
+    float base = mix(uBaseOpacity, uGlareOpacity, glare);
+    float alpha = max(base * fade * vShore, vEmphasis);
     if (alpha < 0.002) discard;
-    vec3 color = mix(uColor, uEmphasisColor, clamp(vEmphasis, 0.0, 1.0));
+    vec3 calm = mix(uColor, uGlareColor, glare);
+    vec3 color = mix(calm, uEmphasisColor, clamp(vEmphasis, 0.0, 1.0));
     gl_FragColor = vec4(color, alpha);
   }
 `;
@@ -80,6 +109,12 @@ export type HexOutlineUniforms = {
   uFadeStart: { value: number };
   uFadeEnd: { value: number };
   uBaseOpacity: { value: number };
+  uGlareColor: { value: Color };
+  /** Unit vector towards the sun. */
+  uSunDirection: { value: Vector3 };
+  uGlareCosStart: { value: number };
+  uGlareCosEnd: { value: number };
+  uGlareOpacity: { value: number };
   /** Where the sea mesh's rings are centred (Ocean.tsx: the focus snapped to the coarsest cell). */
   uGridOrigin: { value: Vector2 };
 };
@@ -97,6 +132,7 @@ export function createHexOutlineMaterial(
   color: string,
   emphasisColor: string,
   { fadeStart, fadeEnd, baseOpacity }: GridFadeParams,
+  glare: GlareLook,
   surface: WaveSurface
 ): ShaderMaterial & { uniforms: HexOutlineUniforms } {
   const { minX, maxX, minZ, maxZ } = surface.terrainField.bounds;
@@ -107,6 +143,11 @@ export function createHexOutlineMaterial(
     uFadeStart: { value: fadeStart },
     uFadeEnd: { value: fadeEnd },
     uBaseOpacity: { value: baseOpacity },
+    uGlareColor: { value: new Color(glare.color) },
+    uSunDirection: { value: new Vector3(...glare.sun).normalize() },
+    uGlareCosStart: { value: glare.cosStart },
+    uGlareCosEnd: { value: glare.cosEnd },
+    uGlareOpacity: { value: glare.opacity },
     uGridOrigin: { value: new Vector2() },
     terrainField: { value: surface.terrainField.texture },
     mapBounds: { value: new Vector4(minX, maxX, minZ, maxZ) },
