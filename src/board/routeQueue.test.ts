@@ -13,7 +13,7 @@ function seen(position: Hex, over: Partial<RouteObservation> = {}): RouteObserva
     inCombat: false,
     gameOver: false,
     position,
-    numMoves: 0,
+    movesUsed: 0,
     movesLeft: 3,
     openSteps: neighbors(position),
     atDockingHex: false,
@@ -25,7 +25,7 @@ function seen(position: Hex, over: Partial<RouteObservation> = {}): RouteObserva
 function sendAndArrive(queue: RouteQueue, obs: RouteObservation) {
   const sent = advanceRoute(queue, obs, NO_WRAP);
   if (sent.kind !== "send") throw new Error(`expected a send, got ${sent.kind}`);
-  return { sent, arrived: seen(sent.hex, { numMoves: obs.numMoves + 1, movesLeft: obs.movesLeft - 1 }) };
+  return { sent, arrived: seen(sent.hex, { movesUsed: obs.movesUsed + 1, movesLeft: obs.movesLeft - 1 }) };
 }
 
 describe("route queue", () => {
@@ -70,7 +70,7 @@ describe("route queue", () => {
     const q = startRoute(route, "0");
     const a = advanceRoute(q, seen(hex(0, 0)), NO_WRAP);
     if (a.kind !== "send") throw new Error();
-    expect(advanceRoute(a.queue, seen(hex(0, 1), { numMoves: 1 }), NO_WRAP)).toEqual({ kind: "done", reason: "interrupted" });
+    expect(advanceRoute(a.queue, seen(hex(0, 1), { movesUsed: 1 }), NO_WRAP)).toEqual({ kind: "done", reason: "interrupted" });
   });
 
   it("stops on arriving at a port's docking hex before the end", () => {
@@ -108,7 +108,7 @@ describe("route queue", () => {
     const q = startRoute([hex(8, -4)], "0");
     const a = advanceRoute(q, seen(hex(7, -4), { openSteps: [hex(8, -4)] }), wrap);
     if (a.kind !== "send") throw new Error();
-    const end = advanceRoute(a.queue, seen(hex(0, 0), { numMoves: 1 }), wrap);
+    const end = advanceRoute(a.queue, seen(hex(0, 0), { movesUsed: 1 }), wrap);
     expect(end).toEqual({ kind: "done", reason: "arrived" });
   });
 });

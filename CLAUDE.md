@@ -30,8 +30,9 @@ Tests use **Vitest** and live next to their source as `*.test.ts`. Game logic is
 **`src/game/`** — All game logic. No rendering, no React, no Three.js. Pure functions plus the boardgame.io `Game` definition. Boardgame.io uses Immer internally, so moves mutate `G` directly.
 
 Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that composes them:
-- `Game.ts` — `Game<CaribbeanState>` definition: `setup()`, the two-phase flow, and all `moves` (moves delegate to pure `can*/apply*` helpers in the modules below). Also exports `MOVES_PER_TURN`, `getMaxMoves()`, and `withSetupData` / `withGeneratedMap` (a game whose `setup()` starts on a pinned size and seed, or on a map already generated).
+- `Game.ts` — `Game<CaribbeanState>` definition: `setup()`, the two-phase flow, and all `moves` (moves delegate to pure `can*/apply*` helpers in the modules below). Also re-exports `MOVES_PER_TURN` and `getMaxMoves()` (from `turnMoves.ts`), and exports `withSetupData` / `withGeneratedMap` (a game whose `setup()` starts on a pinned size and seed, or on a map already generated).
 - `types.ts` — All shared types, including `CaribbeanState` (the root G shape: `cells`, `ships`, `npcs`, `captainDeck`, `draftHands`, `combat?`, `floatingLoot`, …). Re-exported from `Game.ts` for convenience.
+- `turnMoves.ts` — The turn's move budget: `getMaxMoves()` (the class's moves less mast damage), `movesLeft()`, `spendMove()` and `turnRunsOut()`, over the per-turn counter `G.movesUsed`.
 - `hex.ts` — Pure hex-grid math (cube coords, neighbors, distance, `hexToWorld`).
 - `constants.ts` — Ship specs/costs, upgrade definitions, repair costs.
 - `mapConfig.ts` / `mapGenerator.ts` — Map size presets + procedural map generation (islands, ports, biomes).
@@ -67,7 +68,7 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 
 boardgame.io phases in `Game.ts`:
 1. **`draft`** (start phase) — each player drafts a captain from a dealt hand (`minMoves/maxMoves: 1`), then advances to `main`.
-2. **`main`** — the core loop. Each turn allows up to `MOVES_PER_TURN` (3) moves, adjusted by ship state via `getMaxMoves()`. `onEnd` handles NPC movement/spawning. `endIf` on the game checks the win condition.
+2. **`main`** — the core loop. Each ship class sails its own number of moves a turn (`maneuverability`: Sloop 4, Frigate 3, Flute 2, Galleon 1; less one per point of mast damage, at least 1; `getMaxMoves()`). Only sailing a hex (`moveShip`), scouting (`spyglass`) and jury-rigging (`juryRig`) use a move, counted in `G.movesUsed` (reset as each turn begins), not boardgame.io's `ctx.numMoves`; port and ship-management actions (trade, upgrades, repair, buying a ship, stashing gold, the tavern) are free, and an attack ends the turn by starting combat. The turn ends by itself when the moves run out, unless the ship is then docked at a port: its captain may still use the port and presses End Turn. `onEnd` handles NPC movement/spawning. `endIf` on the game checks the win condition.
 
 ### Coordinate System
 

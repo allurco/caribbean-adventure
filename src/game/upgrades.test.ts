@@ -215,13 +215,14 @@ describe("buyUpgrade move", () => {
     expect(G.ships["0"].stats!.cannons).toBe(statsBefore.cannons);
   });
 
-  it("counts toward moves per turn", () => {
+  it("does not use a move (#227)", () => {
     const client = setupAtPortNoDraft();
-    client.moves.buyUpgrade("chain_shot");   // move 1
-    client.moves.buyUpgrade("grape_shot");   // move 2
-    client.moves.buyUpgrade("long_guns");    // move 3 → auto-end
-    const { ctx } = client.getState()!;
-    expect(ctx.currentPlayer).toBe("1");
+    client.moves.buyUpgrade("chain_shot");
+    client.moves.buyUpgrade("grape_shot");
+    client.moves.buyUpgrade("long_guns");
+    const { G, ctx } = client.getState()!;
+    expect(ctx.currentPlayer).toBe("0");
+    expect(G.movesUsed ?? 0).toBe(0);
   });
 });
 
@@ -308,7 +309,7 @@ describe("repair move", () => {
     expect(G.ships["0"].gold).toBe(goldBefore - REPAIR_COST_PER_POINT); // charged for 1
   });
 
-  it("counts toward moves per turn", () => {
+  it("does not use a move (#227)", () => {
     // Set up a ship with multi-point damage at docking hex (1, 0)
     const ship0 = createShipState(hex(1, 0), "Sloop");
     ship0.stats = structuredClone(SHIP_SPECS.Sloop);
@@ -345,11 +346,12 @@ describe("repair move", () => {
     const client = Client<CaribbeanState>({ game: TestGame });
     client.start();
 
-    client.moves.repair("hull", 1);  // move 1
-    client.moves.repair("crew", 1);  // move 2
-    client.moves.repair("masts", 1); // move 3 → auto-end
-    const { ctx } = client.getState()!;
-    expect(ctx.currentPlayer).toBe("1");
+    client.moves.repair("hull", 1);
+    client.moves.repair("crew", 1);
+    client.moves.repair("masts", 1);
+    const { G, ctx } = client.getState()!;
+    expect(ctx.currentPlayer).toBe("0");
+    expect(G.movesUsed ?? 0).toBe(0);
   });
 });
 

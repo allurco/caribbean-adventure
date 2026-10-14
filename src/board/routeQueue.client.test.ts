@@ -26,6 +26,7 @@ function mainPhase(cells: MapCell[], p1At: Hex = hex(-4, 0)) {
       wrap: null,
       pirates: {},
       bountyClaims: [],
+      movesUsed: 0,
     }),
     phases: { ...phases, draft: { ...phases.draft, start: false }, main: { ...phases.main, start: true } },
   };
@@ -74,7 +75,7 @@ describe("sailing a route through the game", () => {
     expect(result).toEqual({ sent: [hex(1, 0)], reason: "interrupted" });
     const { G, ctx } = client.getState()!;
     expect(hexEquals(G.ships["0"].position, hex(1, 0))).toBe(true);
-    expect(ctx.numMoves).toBe(1);
+    expect(G.movesUsed).toBe(1);
     expect(ctx.currentPlayer).toBe("0");
   });
 
@@ -82,6 +83,22 @@ describe("sailing a route through the game", () => {
     const client = mainPhase(water(), hex(2, 0));
     const result = sail(client, [hex(1, 0), hex(2, 0), hex(3, 0)]);
     expect(result).toEqual({ sent: [hex(1, 0)], reason: "rejected" });
-    expect(client.getState()!.ctx.numMoves).toBe(1);
+    expect(client.getState()!.G.movesUsed).toBe(1);
+  });
+
+  it("sails its whole route after trading at the port: trading is free (#227)", () => {
+    const market = {
+      prices: { Wood: { buy: 8, sell: 6 }, Sugar: { buy: 20, sell: 15 }, Rum: { buy: 30, sell: 23 }, Spice: { buy: 45, sell: 35 } },
+      inDemandGood: null,
+    };
+    const port: Partial<MapCell> = { terrain: "island", hasPort: true, market, dockingHex: hex(0, 0) };
+    const client = mainPhase(water({ "1,-1": port }));
+    client.moves.trade("Wood", 1, "BUY");
+    client.moves.trade("Wood", 1, "SELL");
+    const route = [hex(-1, 1), hex(-2, 2), hex(-3, 3)];
+    expect(sail(client, route).sent).toEqual(route);
+    const { G, ctx } = client.getState()!;
+    expect(hexEquals(G.ships["0"].position, hex(-3, 3))).toBe(true);
+    expect(ctx.currentPlayer).toBe("1");
   });
 });

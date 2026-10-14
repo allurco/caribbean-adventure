@@ -5,6 +5,8 @@ interface HudTurnBarProps {
   mapLabel: string;
   movesRemaining: number;
   maxMoves: number;
+  /** The shown captain's turn is still on, so they may end it, moves left or not (docked on the last one, #227). */
+  turnOpen: boolean;
   gold: number;
   glory: number;
   onEndTurn: () => void;
@@ -14,6 +16,7 @@ export function HudTurnBar({
   mapLabel,
   movesRemaining,
   maxMoves,
+  turnOpen,
   gold,
   glory,
   onEndTurn,
@@ -78,7 +81,7 @@ export function HudTurnBar({
 
         {/* Right: End Turn */}
         <div className="pointer-events-auto">
-          {movesRemaining > 0 ? (
+          {turnOpen ? (
             <button
               onClick={onEndTurn}
               className="font-heading px-5 py-1.5 bg-amber-900/60 hover:bg-amber-800/80 border border-amber-700/40 hover:border-amber-600/60 text-amber-200/90 text-[11px] font-bold rounded uppercase tracking-widest cursor-pointer transition-all"

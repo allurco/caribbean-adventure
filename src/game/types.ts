@@ -237,6 +237,14 @@ export interface CaribbeanState {
    * the HUD and sound events read. Optional for the same reason as `pirates`.
    */
   bountyClaims?: BountyClaim[];
+  /**
+   * The moves the current player has used this turn (#227): sailing a hex,
+   * scouting, jury-rigging. Port actions are free and leave it alone. Reset
+   * as each turn begins; read it through `movesUsed` / `movesLeft`
+   * (turnMoves.ts). Always set by `setup()`; optional only so hand-built
+   * states in tests can leave it out (missing means none used).
+   */
+  movesUsed?: number;
 }
 
 /** How a player turned pirate: by sinking or by boarding an NPC merchant. */

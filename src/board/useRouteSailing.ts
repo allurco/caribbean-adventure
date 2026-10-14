@@ -29,10 +29,10 @@ export function useRouteSailing(
   const [plan, setPlan] = useState<Hex[] | null>(null);
   const queue = useRef<RouteQueue | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { currentPlayer, phase, numMoves, gameover } = ctx;
+  const { currentPlayer, phase, gameover } = ctx;
   const observation = useMemo(
-    () => routeObservation(G, { currentPlayer, phase, numMoves, gameover }, currentPlayer),
-    [G, currentPlayer, phase, numMoves, gameover],
+    () => routeObservation(G, { currentPlayer, phase, gameover }, currentPlayer),
+    [G, currentPlayer, phase, gameover],
   );
   const seen = useRef<RouteObservation | undefined>(observation);
   const wrap = G.wrap;

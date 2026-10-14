@@ -5,7 +5,7 @@ import { PerspectiveCamera, Vector3 } from "three";
 import type { MapControls as MapControlsType } from "three-stdlib";
 import type { BoardProps } from "boardgame.io/react";
 import type { CaribbeanState } from "../game/Game";
-import { getMaxMoves } from "../game/Game";
+import { getMaxMoves, movesLeft } from "../game/turnMoves";
 import type { Hex } from "../game/hex";
 import type { ShipState, ShipClass, NPCShip, MapCell } from "../game/types";
 import { hexToWorld, hexEquals, wrapWorldWidth } from "../game/hex";
@@ -923,7 +923,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     });
   if (!firstView) setFirstView(start);
   const maxMoves = currentShipState ? getMaxMoves(currentShipState) : 0;
-  const movesRemaining = maxMoves - (ctx.numMoves ?? 0);
+  // Only sailing, scouting and jury-rigging use moves; port actions are free (#227)
+  const movesRemaining = movesLeft(G, currentPlayer);
 
   const inCombat = ctx.phase === "combat" && G.combat;
   // Until the next turn is announced, the HUD stays with the captain whose turn just ended (#216)
@@ -1056,6 +1057,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           mapLabel={preset.label}
           movesRemaining={hudPlayer === currentPlayer ? movesRemaining : 0}
           maxMoves={hudShip ? getMaxMoves(hudShip) : maxMoves}
+          turnOpen={hudPlayer === currentPlayer}
           gold={hudShip.gold}
           glory={hudShip.score}
           onEndTurn={() => {
