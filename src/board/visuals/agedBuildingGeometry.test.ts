@@ -442,14 +442,9 @@ describe("buildAgedBuildingGeometry", () => {
   it("shows no missing or inside-out facet from any direction above the ground: every first hit faces the viewer", () => {
     for (const kind of BUILDING_KINDS) {
       const hits = backfacingFirstHits(built[kind]);
-      // The tower's chipped proud blocks have one non-planar side each, which can fold a sliver inwards
-      // at the foot; a few grazing rays of nearly twenty thousand meet one of two such slivers in the
-      // bottom course. The roofs' tile strips are closed underneath where they overshoot the slab's
-      // eave (#91), so no ray from below enters one. Everything else is clean.
-      const tolerated = kind === "watchtower" ? hits.filter((h) => h.point[1] < 0.05) : [];
-      expect(new Set(tolerated.map((h) => h.triangle)).size).toBeLessThanOrEqual(2);
-      const rest = hits.filter((h) => !tolerated.includes(h));
-      expect(rest.map((h) => `${kind} triangle ${h.triangle} at ${h.point.map((v) => v.toFixed(3)).join(", ")}`)).toEqual([]);
+      // Nothing is tolerated (#68): the roofs' tile strips are closed underneath where they overshoot
+      // the slab's eave (#91), so no ray from below enters one, and the tower's foot has no folded sliver.
+      expect(hits.map((h) => `${kind} triangle ${h.triangle} at ${h.point.map((v) => v.toFixed(3)).join(", ")}`)).toEqual([]);
     }
     // Nearly twenty thousand rays against up to 850 triangles per kind: a few seconds under a loaded suite.
   }, 30_000);

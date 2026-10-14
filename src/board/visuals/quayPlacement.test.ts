@@ -22,7 +22,6 @@ import {
   portQuays,
   quayAt,
   quayTopAt,
-  quayTopY,
   QUAY_DEPTH_RANGE,
   QUAY_LIP,
   QUAY_MAX_STEP,
@@ -137,6 +136,18 @@ describe("quayAt", () => {
 });
 
 describe("placeQuay", () => {
+  it("places each cell's quay once for a field and seed, so the settlement and portQuays share it (#68)", () => {
+    const field = flat(0.05);
+    const q = placeQuay(port, field, seed);
+    expect(placeQuay(port, field, seed)).toBe(q);
+    expect(portQuays([port], field, seed)[0]).toBe(q);
+    // Another field or seed places it afresh.
+    const other = flat(0.05);
+    expect(placeQuay(port, other, seed)).not.toBe(q);
+    expect(placeQuay(port, other, seed)).toEqual(q);
+    expect(placeQuay(port, field, seed + 1)).not.toEqual(q);
+  });
+
   it("gives a port with a pier a quay sized from the cell and the whole seed, and none to a cell without a pier", () => {
     const field = flat(0.05);
     const q = placeQuay(port, field, seed);
@@ -210,46 +221,27 @@ describe("placeQuay", () => {
   });
 });
 
-describe("quayTopY", () => {
+describe("quayTopAt", () => {
   const field = flat(0.05);
   const q = placeQuay(port, field, seed)!;
 
-  it("gives the deck height over the deck, the step height over the rear step, and nothing beyond the quay or without a pier", () => {
+  it("gives the deck height over the deck, the step height over the rear step, and nothing beyond the quay; a cell without a pier has no quay", () => {
     const hw = QUAY_WIDTH / 2;
     const onDeck = worldPoint(q, hw * 0.5, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2);
-    expect(quayTopY(port, field, seed, onDeck)).toBeCloseTo(q.top, 9);
+    expect(quayTopAt(q, onDeck)).toBeCloseTo(q.top, 9);
     const onStep = worldPoint(q, -hw * 0.5, (QUAY_BACK + QUAY_STEP_Z) / 2);
-    expect(quayTopY(port, field, seed, onStep)).toBeCloseTo(q.top - QUAY_COPING_THICKNESS * k, 9);
+    expect(quayTopAt(q, onStep)).toBeCloseTo(q.top - QUAY_COPING_THICKNESS * k, 9);
     const beside = worldPoint(q, hw * 1.2, 0);
-    expect(quayTopY(port, field, seed, beside)).toBeUndefined();
+    expect(quayTopAt(q, beside)).toBeUndefined();
     const behind = worldPoint(q, 0, QUAY_BACK - 0.05);
-    expect(quayTopY(port, field, seed, behind)).toBeUndefined();
+    expect(quayTopAt(q, behind)).toBeUndefined();
     const seaward = worldPoint(q, 0, QUAY_SEA_FACE + 0.05);
-    expect(quayTopY(port, field, seed, seaward)).toBeUndefined();
-    expect(quayTopY({ ...port, decorations: [] }, field, seed, onDeck)).toBeUndefined();
+    expect(quayTopAt(q, seaward)).toBeUndefined();
+    expect(placeQuay({ ...port, decorations: [] }, field, seed)).toBeNull();
   });
 
   it("follows the per-port width: a point just inside a wide quay's edge is on it", () => {
     const edge = worldPoint(q, QUAY_WIDTH / 2 - 0.001, 0);
-    expect(quayTopY(port, field, seed, edge)).toBeCloseTo(q.top, 9);
-  });
-
-  it("is quayTopAt over the placement, so a caller probing many points places the quay once", () => {
-    const hw = QUAY_WIDTH / 2;
-    const points = [
-      worldPoint(q, hw * 0.5, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2),
-      worldPoint(q, -hw * 0.5, (QUAY_BACK + QUAY_STEP_Z) / 2),
-      worldPoint(q, hw * 1.2, 0),
-      worldPoint(q, 0, QUAY_BACK - 0.05),
-      worldPoint(q, 0, QUAY_SEA_FACE + 0.05),
-    ];
-    for (const p of points) expect(quayTopAt(q, p)).toBe(quayTopY(port, field, seed, p));
-    expect(quayTopAt(q, points[0])).toBeCloseTo(q.top, 9);
-    expect(quayTopAt(q, points[1])).toBeCloseTo(q.top - QUAY_COPING_THICKNESS * k, 9);
-    expect(quayTopAt(q, points[2])).toBeUndefined();
-    // The lookup follows the placement it is given, not the cell: a quay lifted and turned elsewhere answers for itself.
-    const moved: QuayPlacement = { ...q, worldX: q.worldX + 5, worldZ: q.worldZ - 3, yaw: q.yaw + 1, worldY: q.worldY + 0.02, top: q.top + 0.02 };
-    expect(quayTopAt(moved, points[0])).toBeUndefined();
-    expect(quayTopAt(moved, worldPoint(moved, 0, (QUAY_STEP_Z + QUAY_SEA_FACE) / 2))).toBeCloseTo(q.top + 0.02, 9);
+    expect(quayTopAt(q, edge)).toBeCloseTo(q.top, 9);
   });
 });

@@ -45,6 +45,7 @@ import {
   TOWER_OVER_TOWN,
   settlementCentre,
   familyScaleOf,
+  hiddenBehind,
   plateauOfPort,
   type PortBuilding,
 } from "./portSettlement";
@@ -225,6 +226,32 @@ describe("standBuilding", () => {
   });
 });
 
+/** A placed building's silhouette for `hiddenBehind`. */
+const silhouette = (b: PortBuilding) => ({ x: b.worldX, y: b.worldY, z: b.worldZ, reach: AGED_BUILDING_HALF_DIAGONAL[b.kind] * b.scale, height: AGED_BUILDING_HEIGHT[b.kind] * b.scale });
+
+describe("hiddenBehind (the board's camera looks due north, #69)", () => {
+  const tower = { x: 0, y: 0, z: 0, reach: 0.09, height: 0.35 };
+  const church = { x: 0, y: 0, z: 0, reach: 0.13, height: 0.2 };
+  const shadow = tower.height / Math.tan(CAMERA_PITCH);
+
+  it("hides a building straight behind the tower, within the stretch of ground its height covers on screen", () => {
+    expect(hiddenBehind(tower, { ...church, z: -0.3 })).toBe(true);
+    expect(hiddenBehind(tower, { ...church, x: 0.1, z: -0.2 })).toBe(true);
+  });
+
+  it("leaves one beside it, in front of it or far behind it in view", () => {
+    expect(hiddenBehind(tower, { ...church, x: 0.3, z: -0.3 })).toBe(false);
+    expect(hiddenBehind(tower, { ...church, x: -0.3, z: -0.3 })).toBe(false);
+    expect(hiddenBehind(tower, { ...church, z: 0.3 })).toBe(false);
+    expect(hiddenBehind(tower, { ...church, z: -(shadow + 0.5) })).toBe(false);
+  });
+
+  it("measures the tower's height from the ground the building behind stands on", () => {
+    // A church on higher ground behind a short tower shows over it.
+    expect(hiddenBehind({ ...tower, height: 0.1 }, { ...church, y: 0.2, z: -0.3 })).toBe(false);
+  });
+});
+
 describe("portBuildings", () => {
   it("names its layout constants: five slots on the landward arc, the middle one straight landward for the church, small scale and tint spreads", () => {
     expect(PORT_BUILDING_SLOT_ANGLES).toHaveLength(5);
@@ -365,7 +392,7 @@ describe("portBuildings", () => {
     }
   });
 
-  it("fronts the church on the square from straight landward, placed second so it gets the ground after the tower", () => {
+  it("fronts the church on the square from straight landward, placed second so it gets the ground after the tower, unless the tower would hide it (#69)", () => {
     const onFlat = portBuildings(cells, flat(0.3), seed);
     for (const port of ports) {
       const mine = onFlat.filter((b) => portOf(b) === port);
@@ -374,12 +401,39 @@ describe("portBuildings", () => {
       const c = centreOf(port, flat(0.3));
       const landward = pierRotation(port) + Math.PI;
       const direction = Math.atan2(mine[1].worldX - c.x, mine[1].worldZ - c.z);
-      // On flat ground the church takes the centre slot exactly: straight landward of the square.
-      expect(angleDiff(direction, landward)).toBeLessThan(1e-6);
+      // On flat ground the church stands on a slot's ray (to the nearest of the candidate rays, π/48 at
+      // most off it): straight landward of the square where the tower leaves it in view, else a slot round.
+      const slot = PORT_BUILDING_SLOT_ANGLES.map((a) => landward + a).find((a) => angleDiff(direction, a) <= Math.PI / 48 + 1e-9);
+      expect(slot).toBeDefined();
+      expect(hiddenBehind(silhouette(mine[0]), silhouette(mine[1]))).toBe(false);
       // Its door faces the square and the water, like the others.
       expect(angleDiff(mine[1].yaw, pierRotation(port))).toBeLessThanOrEqual(PORT_BUILDING_YAW_JITTER + 1e-9);
       expect(mine[1].nation).toBeUndefined();
     }
+  });
+
+  it("never stands the church behind the tower from the board's camera, over seeded maps (#69)", () => {
+    let pairs = 0;
+    let straight = 0;
+    for (let s = 1; s <= 8; s++) {
+      const map = generateMap(getMapPreset("small"), s);
+      const drawn = landSurface(createTerrainHeightField(map, s));
+      const all = portBuildings(map, drawn, s);
+      for (const port of map.filter((c) => c.hasPort)) {
+        const [px, , pz] = hexToWorld(port.hex);
+        const mine = all.filter((b) => Math.hypot(b.worldX - px, b.worldZ - pz) < 1.2);
+        const tower = mine.find((b) => b.kind === "watchtower");
+        const church = mine.find((b) => b.kind === "church");
+        if (!tower || !church) continue;
+        pairs++;
+        expect(hiddenBehind(silhouette(tower), silhouette(church))).toBe(false);
+        const c = centreOf(port, drawn);
+        if (angleDiff(Math.atan2(church.worldX - c.x, church.worldZ - c.z), pierRotation(port) + Math.PI) < 0.3) straight++;
+      }
+    }
+    expect(pairs).toBeGreaterThan(30);
+    // Where the tower leaves it in view the church still fronts the square from straight landward.
+    expect(straight).toBeGreaterThan(pairs / 5);
   });
 
   it("gives nearly every port a church over seeded maps of every size, and keeps every top under the label", () => {

@@ -60,7 +60,8 @@ import type { MapCell, PortNation } from "../../game/types";
 import { PIER_WIDTH } from "./pierGeometry";
 import { pierOrigin } from "./pierPlacement";
 import { BUILDING_FOOTING, BUILDING_KINDS, type BuildingKind } from "./buildingGeometry";
-import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
+import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
+import { CAMERA_DIRECTION, CAMERA_PITCH } from "../cameraBounds";
 import { placeOnGround, type GroundField, type GroundPlacementOptions } from "./groundPlacement";
 import { SEA_LEVEL } from "./terrainHeightField";
 import { placeQuay, quayTopAt, type QuayPlacement } from "./quayPlacement";
@@ -96,8 +97,50 @@ export interface PortBuilding {
  * outer ring before it cleared it.
  */
 export const PORT_BUILDING_SLOT_ANGLES: readonly number[] = [-1.3, -0.8, 0, 0.8, 1.3];
-/** The slot the church takes, straight landward of the square. */
+/** The slot the church takes, straight landward of the square, unless the tower would hide it there (`churchSlotOrder`, #69). */
 export const PORT_CHURCH_SLOT_INDEX = 2;
+
+/** A building as the board's camera sees it: where it stands (its ground contact), its plan radius and its height. */
+export interface Silhouette {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly reach: number;
+  readonly height: number;
+}
+
+/** Unit vector on the ground from a point towards the board's camera (due south, `CAMERA_DIRECTION`). */
+const TOWARD_CAMERA = (() => {
+  const length = Math.hypot(CAMERA_DIRECTION[0], CAMERA_DIRECTION[2]);
+  return { x: CAMERA_DIRECTION[0] / length, z: CAMERA_DIRECTION[2] / length };
+})();
+
+/**
+ * Whether `back` stands hidden behind `front` from the board's camera, which
+ * looks due north at `CAMERA_PITCH` (#69): further from the camera, their
+ * plans overlapping across the view, and close enough behind that `front`'s
+ * top, measured from `back`'s ground, is above `back`'s foot on screen.
+ */
+export function hiddenBehind(front: Silhouette, back: Silhouette): boolean {
+  const dx = back.x - front.x;
+  const dz = back.z - front.z;
+  const behind = -(dx * TOWARD_CAMERA.x + dz * TOWARD_CAMERA.z);
+  if (behind <= 0) return false;
+  const across = Math.abs(dx * TOWARD_CAMERA.z - dz * TOWARD_CAMERA.x);
+  if (across >= front.reach + back.reach) return false;
+  return behind < (front.y + front.height - back.y) / Math.tan(CAMERA_PITCH);
+}
+
+/**
+ * The slots the church tries, in order (indices into `PORT_BUILDING_SLOT_ANGLES`),
+ * when the tower took `towerSlot`: straight landward first, then the inner slot
+ * away from the tower, the one beside it, and the far end.
+ */
+export function churchSlotOrder(towerSlot: number): number[] {
+  const last = PORT_BUILDING_SLOT_ANGLES.length - 1;
+  const away = towerSlot === 0 ? [3, 1, last] : [1, 3, 0];
+  return [PORT_CHURCH_SLOT_INDEX, ...away];
+}
 /** The open square at the hex centre that no building corner enters: the crescent forms round it. */
 export const PORT_SQUARE_RADIUS = 0.15;
 /** Farthest a building's origin stands from the hex centre: the widest building then still lies inside the hex. */
@@ -503,38 +546,60 @@ export function portBuildings(cells: readonly MapCell[], field: GroundField, wor
       fortDirection === null
         ? ends[next() < 0.5 ? 0 : 1]
         : ends.reduce((best, i) => (angleDiff(slots[i], fortDirection) < angleDiff(slots[best], fortDirection) ? i : best), ends[0]);
-    // The church fronts the square from straight landward and is placed second, before the shuffled others.
-    const order: { kind: BuildingKind; slot: number }[] = [
-      { kind: "watchtower", slot: slots[towerSlot] },
-      { kind: "church", slot: slots[PORT_CHURCH_SLOT_INDEX] },
-    ];
-    slots.splice(towerSlot, 1);
-    slots.splice(slots.indexOf(landward + PORT_BUILDING_SLOT_ANGLES[PORT_CHURCH_SLOT_INDEX]), 1);
-    for (const kind of shuffledKinds(next)) {
-      const slot = slots.shift();
-      if (slot === undefined) break;
-      order.push({ kind, slot });
-    }
+    // The church fronts the square, placed second, before the shuffled others, which take the slots left.
+    const kinds: BuildingKind[] = ["watchtower", "church", ...shuffledKinds(next)];
+    const free = slots.map((_, i) => i).filter((i) => i !== towerSlot);
 
     const placed: Footprint[] = [];
-    for (const { kind, slot } of order) {
+    let towerSilhouette: Silhouette | null = null;
+    for (const kind of kinds) {
+      if (kind !== "watchtower" && kind !== "church" && free.length === 0) break;
       const scale = lerpRange(scaleRangeOf(kind), next()) * familyScaleOf(kind);
       const tint = 1 + (next() * 2 - 1) * PORT_BUILDING_TINT_SPREAD;
       const yaw = toWater + (next() * 2 - 1) * PORT_BUILDING_YAW_JITTER;
       const reach = AGED_BUILDING_HALF_DIAGONAL[kind] * scale;
       const footing = BUILDING_FOOTING * scale;
       const plan = planFootprint(kind, scale, yaw);
-      let spot = standOnBeach(ground, centre, candidateAngles(landward, slot, false), reach, footing, pierRoot, placed, plan);
+      const stand = (slot: number, wholeCircle = false) =>
+        standOnBeach(ground, centre, candidateAngles(landward, slot, wholeCircle), reach, footing, pierRoot, placed, plan);
+      let spot: { x: number; y: number; z: number } | null;
+      if (kind === "watchtower") {
+        spot = stand(slots[towerSlot]);
+      } else if (kind === "church") {
+        // Straight landward, unless the tower would stand in front of it from
+        // the board's camera (#69): then the first slot round where it shows.
+        const tower: Silhouette | null = towerSilhouette;
+        const shows = (at: { x: number; y: number; z: number }) =>
+          !tower || !hiddenBehind(tower, { ...at, reach, height: AGED_BUILDING_HEIGHT.church * scale });
+        let chosen: number | null = null;
+        spot = null;
+        for (const i of churchSlotOrder(towerSlot)) {
+          const at = stand(slots[i]);
+          if (!at) continue;
+          if (chosen === null || shows(at)) {
+            chosen = i;
+            spot = at;
+          }
+          if (shows(at)) break;
+        }
+        if (chosen !== null) free.splice(free.indexOf(chosen), 1);
+        else free.splice(free.indexOf(PORT_CHURCH_SLOT_INDEX), 1);
+      } else {
+        spot = stand(slots[free.shift()!]);
+      }
       // The landmark and the church look round the whole hex if the landward arc has no room; the tower
       // is never dropped and takes the hex centre on its highest ground (never under the sea), the church is dropped.
-      if (!spot && (kind === "watchtower" || kind === "church")) spot = standOnBeach(ground, centre, candidateAngles(landward, slot, true), reach, footing, pierRoot, placed, plan);
+      if (!spot && (kind === "watchtower" || kind === "church")) spot = stand(kind === "watchtower" ? slots[towerSlot] : slots[PORT_CHURCH_SLOT_INDEX], true);
       // The fallback is the hex centre, not the settlement's: that one may stand on the shore ramp or in the water.
       if (!spot && kind === "watchtower")
         spot = { x: hexCentre.x, y: buildingGroundY(Math.max(SEA_LEVEL, footprintGround(ground, hexCentre.x, hexCentre.z, reach, plan).max)), z: hexCentre.z };
       if (!spot) continue;
       placed.push({ x: spot.x, z: spot.z, reach });
       const building: PortBuilding = { kind, worldX: spot.x, worldY: spot.y, worldZ: spot.z, yaw, scale, tint };
-      if (kind === "watchtower" && cell.nation) building.nation = cell.nation;
+      if (kind === "watchtower") {
+        towerSilhouette = { ...spot, reach, height: AGED_BUILDING_HEIGHT.watchtower * scale };
+        if (cell.nation) building.nation = cell.nation;
+      }
       buildings.push(building);
     }
   }
