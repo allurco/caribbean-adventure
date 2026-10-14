@@ -20,6 +20,11 @@ export function seatMayAct({ playerID, currentPlayer }: SeatTurn): boolean {
   return playerID == null || playerID === currentPlayer;
 }
 
+/** Whose ship the board treats as the viewer's own (hover, ship details, port, scouting): the seat's, or in hotseat the current player's. */
+export function ownSeat({ playerID, currentPlayer }: SeatTurn): string {
+  return playerID ?? currentPlayer;
+}
+
 /**
  * The seat whose ship, gold and hand the HUD shows. A seat sees its own,
  * always: a rival's purse and hold reach it emptied (`playerView`, #109),
@@ -94,4 +99,13 @@ export function gloryScoreboard(G: Pick<CaribbeanState, "ships">, viewer: string
   return Object.entries(G.ships)
     .map(([seat, ship]) => ({ seat, name: seatName(G, seat), glory: ship.score, viewer: seat === viewer }))
     .sort((a, b) => b.glory - a.glory || Number(a.seat) - Number(b.seat));
+}
+
+/** The line a seat watching someone else's fight sees: who is fighting whom (an NPC as the combat panel names it). */
+export function fightWatched(
+  G: Pick<CaribbeanState, "ships">,
+  combat: Pick<CombatState, "attackerId" | "defenderId" | "isNPCCombat">
+): string {
+  const defender = combat.isNPCCombat ? "a merchant" : seatName(G, combat.defenderId);
+  return `${seatName(G, combat.attackerId)} is fighting ${defender}`;
 }

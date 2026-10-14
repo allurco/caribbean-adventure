@@ -6,7 +6,7 @@ import { Caribbean } from "../game/Game";
 import { createShipState, STARTING_GOLD } from "../game/economy";
 import { hex } from "../game/hex";
 import type { Captain, CaribbeanState } from "../game/types";
-import { draftView, gloryScoreboard, hudSeat, seatMayAct, seatMayActInCombat, seatName, waitingFor } from "./seat";
+import { draftView, fightWatched, gloryScoreboard, hudSeat, ownSeat, seatMayAct, seatMayActInCombat, seatName, waitingFor } from "./seat";
 import { startHandoff } from "./turnHandoff";
 
 const captain = (id: string, name = `Captain ${id}`): Captain => ({ id, name, nation: "Spain", ability: "-" });
@@ -213,5 +213,21 @@ describe("seatMayActInCombat", () => {
     expect(seatMayActInCombat("2", combat("0", "1", false))).toBe(false);
     expect(seatMayActInCombat("0", combat("0", "npc-1", true))).toBe(true);
     expect(seatMayActInCombat("1", combat("0", "npc-1", true))).toBe(false);
+  });
+});
+
+describe("fightWatched: the line a bystander seat sees over someone else's fight", () => {
+  it("names both sides by captain, an NPC as a merchant", () => {
+    const G = table(3);
+    G.ships["0"].captain = captain("a", "Anne Bonny");
+    expect(fightWatched(G, { attackerId: "0", defenderId: "1", isNPCCombat: false })).toBe("Anne Bonny is fighting Player 2");
+    expect(fightWatched(G, { attackerId: "1", defenderId: "npc-4", isNPCCombat: true })).toBe("Player 2 is fighting a merchant");
+  });
+});
+
+describe("ownSeat: whose ship the board treats as 'yours' (hover, details, port, scouting)", () => {
+  it("is the client's seat, or in hotseat the current player's", () => {
+    expect(ownSeat({ playerID: "2", currentPlayer: "0" })).toBe("2");
+    expect(ownSeat({ playerID: null, currentPlayer: "3" })).toBe("3");
   });
 });

@@ -9,6 +9,10 @@ interface CombatPanelProps {
   onRollFleeAttempt: () => void;
   onRollCannons: () => void;
   onApplyResolution: () => void;
+  /** This client may act in the fight (`seatMayActInCombat`, #110); else its controls are off. */
+  mayAct: boolean;
+  /** The line a seat watching someone else's fight sees. */
+  watchingLine?: string;
 }
 
 function ShipCombatStats({ ship, label }: { ship: ShipState; label: string }) {
@@ -91,6 +95,8 @@ export function CombatPanel({
   onRollFleeAttempt,
   onRollCannons,
   onApplyResolution,
+  mayAct,
+  watchingLine,
 }: CombatPanelProps) {
   const attacker = ships[combat.attackerId];
   const defender = combat.isNPCCombat
@@ -121,6 +127,10 @@ export function CombatPanel({
         Distance: {combat.distance} hex{combat.distance > 1 ? "es" : ""}
       </div>
 
+      {!mayAct && watchingLine && (
+        <div className="text-center text-xs italic text-amber-300/70 mb-2">{watchingLine}</div>
+      )}
+
       {combat.stage === "seamanship" && (
         <div className="text-center space-y-2">
           <div className="text-amber-100/80 text-xs mb-2">
@@ -129,6 +139,7 @@ export function CombatPanel({
           <ActionButton
             label="Roll Seamanship"
             onClick={onRollSeamanship}
+            disabled={!mayAct}
             primary
           />
         </div>
@@ -159,16 +170,18 @@ export function CombatPanel({
               <ActionButton
                 label="Fire!"
                 onClick={() => onChooseAction("fire")}
+                disabled={!mayAct}
                 primary
               />
               <ActionButton
                 label="Board"
                 onClick={() => onChooseAction("board")}
-                disabled={combat.distance > 1}
+                disabled={!mayAct || combat.distance > 1}
               />
               <ActionButton
                 label="Flee"
                 onClick={() => onChooseAction("flee")}
+                disabled={!mayAct}
               />
             </div>
             {combat.distance > 1 && (
@@ -196,6 +209,7 @@ export function CombatPanel({
             <ActionButton
               label="Roll Pursuit Check"
               onClick={onRollFleeAttempt}
+              disabled={!mayAct}
               primary
             />
           </div>
@@ -226,6 +240,7 @@ export function CombatPanel({
           <ActionButton
             label={combat.fleeOutcome === "caught" ? "Fire Parting Shot!" : "Fire Cannons!"}
             onClick={onRollCannons}
+            disabled={!mayAct}
             primary
           />
         </div>
@@ -251,6 +266,7 @@ export function CombatPanel({
             <ActionButton
               label="Apply Damage"
               onClick={onApplyResolution}
+              disabled={!mayAct}
               primary
             />
           </div>

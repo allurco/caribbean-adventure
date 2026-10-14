@@ -9,6 +9,8 @@ interface HudTurnBarProps {
   turnOpen: boolean;
   gold: number;
   glory: number;
+  /** Another seat's turn (#110): "Waiting for <captain>" in place of End Turn. */
+  waitingLine?: string | null;
   onEndTurn: () => void;
 }
 
@@ -19,6 +21,7 @@ export function HudTurnBar({
   turnOpen,
   gold,
   glory,
+  waitingLine,
   onEndTurn,
 }: HudTurnBarProps) {
   return (
@@ -90,7 +93,7 @@ export function HudTurnBar({
             </button>
           ) : (
             <span className="text-amber-600/40 text-[11px] uppercase tracking-widest font-medium italic">
-              Waiting...
+              {waitingLine ?? "Waiting..."}
             </span>
           )}
         </div>

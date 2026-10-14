@@ -84,6 +84,16 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?seedGallery=0&snapshot=yes")).toEqual({});
   });
 
+  it("opens every seat on one page through the local transport (#110)", () => {
+    expect(parseDevUrlParams("?seats=1")).toEqual({ localSeats: true });
+    expect(parseDevUrlParams("?seats=1&size=small&seed=7")).toEqual({
+      localSeats: true,
+      setupData: { mapSize: "small", mapSeed: 7 },
+    });
+    expect(parseDevUrlParams("?seats=0")).toEqual({});
+    expect(parseDevUrlParams("?seats=yes")).toEqual({});
+  });
+
   it("shows the render stats overlay", () => {
     expect(parseDevUrlParams("?stats=1")).toEqual({ renderStats: true });
     expect(parseDevUrlParams("?stats=0")).toEqual({});

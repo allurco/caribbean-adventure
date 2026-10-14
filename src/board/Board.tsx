@@ -81,6 +81,18 @@ import { PortTooltip } from "./PortTooltip";
 import { ShipDetailsPanel } from "./ShipDetailsPanel";
 import { PortPanel } from "./PortPanel";
 import { DraftScreen } from "./DraftScreen";
+import { HudGloryBoard } from "./HudGloryBoard";
+import {
+  draftView,
+  fightWatched,
+  gloryScoreboard,
+  hudSeat,
+  ownSeat,
+  seatMayAct,
+  seatMayActInCombat,
+  seatName,
+  waitingFor,
+} from "./seat";
 import { HudParchmentPanel } from "./HudParchmentPanel";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
@@ -138,6 +150,7 @@ interface RouteSelection {
 function Scene({
   G,
   currentPlayer,
+  ownSeatId,
   cam,
   movesRemaining,
   attackMode,
@@ -169,6 +182,8 @@ function Scene({
 }: {
   G: CaribbeanState;
   currentPlayer: string;
+  /** The viewer's own ship (`ownSeat`, #110): the seat's, or in hotseat the current player's. */
+  ownSeatId: string;
   /** The first target. */
   cam: { target: [number, number, number] };
   movesRemaining: number;
@@ -616,7 +631,7 @@ function Scene({
           position={position}
           ship={G.ships[hoveredShipId] ?? npcs[hoveredShipId]}
           isNPC={!!npcs[hoveredShipId]}
-          isPlayer={hoveredShipId === currentPlayer}
+          isPlayer={hoveredShipId === ownSeatId}
           playerIndex={G.ships[hoveredShipId] ? hoveredShipId : undefined}
           isScouted={
             npcs[hoveredShipId]
@@ -635,14 +650,14 @@ function Scene({
       })()}
 
       {/* Port Tooltip, likewise */}
-      {hoveredPort && !hoveredShipId && G.ships[currentPlayer] && (
+      {hoveredPort && !hoveredShipId && G.ships[ownSeatId] && (
         <PointerCopy x={hexToWorld(hoveredPort.hex)[0]} period={period}>
         <PortTooltip
           position={hexToWorld(hoveredPort.hex)}
           nation={hoveredPort.nation}
           portName={hoveredPort.portName}
           hasShipyard={hoveredPort.hasShipyard}
-          ship={G.ships[currentPlayer]}
+          ship={G.ships[ownSeatId]}
           market={hoveredPort.market}
         />
         </PointerCopy>
@@ -716,6 +731,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   const currentPlayer = ctx.currentPlayer;
   const currentShipState = G.ships[currentPlayer];
+  // The client's seat (#110): with one, the board acts only on that seat's
+  // turn and shows that seat's own ship; hotseat (no seat) is as before.
+  const turn = { playerID: props.playerID, currentPlayer };
+  const mayAct = seatMayAct(turn);
+  const own = ownSeat(turn);
+  const ownShip = G.ships[own];
 
   // Sound (#73): audio unlocks on the first click (the draft pick), then
   // every change of G plays the sounds its moves map to.
@@ -790,15 +811,15 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     shipHeadingsRef.current = headings;
   }, [G]);
 
-  // Detect when current player docks at a new port
+  // Detect when the viewer's own ship docks at a new port
   useEffect(() => {
-    if (!currentShipState || ctx.phase === "draft") return;
+    if (!ownShip || ctx.phase === "draft") return;
 
-    const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
+    const accessiblePort = findAccessiblePort(ownShip.position, G.cells, G.wrap);
     // Keyed by player: a new turn that starts in port is not an arrival (#216)
-    const currentPortId = `${currentPlayer}:${accessiblePort?.portName ?? ""}`;
+    const currentPortId = `${own}:${accessiblePort?.portName ?? ""}`;
     const prevPortId = prevPortRef.current;
-    if (prevPortId === null || !prevPortId.startsWith(`${currentPlayer}:`)) {
+    if (prevPortId === null || !prevPortId.startsWith(`${own}:`)) {
       prevPortRef.current = currentPortId;
       return;
     }
@@ -812,7 +833,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     }
 
     prevPortRef.current = currentPortId;
-  }, [currentShipState?.position, G.cells, G.wrap, ctx.phase, currentShipState, currentPlayer]);
+  }, [ownShip?.position, G.cells, G.wrap, ctx.phase, ownShip, own]);
 
   // The hand-off between turns (#216): the outgoing ship arrives, a "turn
   // ends" beat, the NPCs sail, and only then the next turn is announced
@@ -847,13 +868,14 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // Detect mission completion
   useEffect(() => {
     const prev = prevMissionRef.current;
-    const currentMission = currentShipState?.activeMission;
+    // The viewer's own: a rival's mission is hidden from a seat (playerView, #109)
+    const currentMission = ownShip?.activeMission;
 
     // Only detect completion if we're still the same player
     // This prevents false triggers when turn changes to a different player
     if (
       prev &&
-      prev.playerId === currentPlayer &&
+      prev.playerId === own &&
       prev.mission &&
       prev.mission.status === "ACTIVE" &&
       !currentMission
@@ -862,12 +884,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       const timer = setTimeout(() => {
         setCompletedMission({ ...completedMissionData, status: "COMPLETED" });
       }, 0);
-      prevMissionRef.current = { mission: currentMission, playerId: currentPlayer };
+      prevMissionRef.current = { mission: currentMission, playerId: own };
       return () => clearTimeout(timer);
     }
 
-    prevMissionRef.current = { mission: currentMission, playerId: currentPlayer };
-  }, [currentShipState?.activeMission, currentPlayer]);
+    prevMissionRef.current = { mission: currentMission, playerId: own };
+  }, [ownShip?.activeMission, own]);
 
   const handleSinkingComplete = (id: string) => {
     setSinkingShips((prev) => prev.filter((s) => s.id !== id));
@@ -909,8 +931,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   if (ctx.phase === "draft") {
     return (
       <DraftScreen
-        G={G}
-        currentPlayer={ctx.currentPlayer}
+        view={draftView(G, turn)}
+        drafting={seatName(G, ctx.currentPlayer)}
         onPickCaptain={(index, shipClass) =>
           props.moves.pickCaptain(index, shipClass)
         }
@@ -940,8 +962,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   const inCombat = ctx.phase === "combat" && G.combat;
   // Until the next turn is announced, the HUD stays with the captain whose turn just ended (#216)
-  const hudPlayer =
-    handoff && handoff.phase !== "nextTurn" && handoff.phase !== "idle" && G.ships[handoff.from] ? handoff.from : currentPlayer;
+  // A seat's HUD shows its own ship always: a rival's purse reaches it emptied (#110)
+  const hudPlayer = hudSeat({ ...turn, handoff, ships: G.ships });
   const hudShip = G.ships[hudPlayer] ?? currentShipState;
 
   const handleHexClickForAttack = (hex: Hex) => {
@@ -1007,18 +1029,21 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         <Scene
           G={G}
           currentPlayer={currentPlayer}
+          ownSeatId={own}
           cam={{ target: start.target }}
-          movesRemaining={movesRemaining}
+          movesRemaining={mayAct ? movesRemaining : 0}
           attackMode={attackMode}
           spyglassMode={spyglassMode}
           attackTargetHexes={attackTargetHexes}
           spyglassTargetHexes={spyglassTargetHexes}
           sinkingShips={sinkingShips}
           npcs={shownNpcs}
-          locked={locked}
+          // Another seat's turn locks the board like a hand-off does (#110)
+          locked={locked || !mayAct}
           hoveredShipId={hoveredShipId}
           hoveredPort={hoveredPort}
-          scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
+          // The viewer's spyglass: a rival's scouting reveals nothing to this seat (#110)
+          scoutedPlayerIds={ownShip?.scoutedShips ?? []}
           focusView={cameraFocusView}
           sailing={sailing}
           plannedRoute={plannedRoute}
@@ -1032,7 +1057,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onSinkingComplete={handleSinkingComplete}
           onShipHover={setHoveredShipId}
           onShipClick={(id) => {
-            if (id === currentPlayer) {
+            if (id === own) {
               setShowDetailsPanel(true);
             }
           }}
@@ -1066,6 +1091,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onRollFleeAttempt={() => props.moves.rollFleeAttempt()}
           onRollCannons={() => props.moves.rollCannons()}
           onApplyResolution={() => props.moves.applyResolution()}
+          mayAct={seatMayActInCombat(props.playerID, G.combat)}
+          watchingLine={fightWatched(G, G.combat)}
         />
       )}
 
@@ -1075,17 +1102,23 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           mapLabel={preset.label}
           movesRemaining={hudPlayer === currentPlayer ? movesRemaining : 0}
           maxMoves={hudShip ? getMaxMoves(hudShip) : maxMoves}
-          turnOpen={hudPlayer === currentPlayer}
+          turnOpen={mayAct && hudPlayer === currentPlayer}
           gold={hudShip.gold}
           glory={hudShip.score}
+          waitingLine={waitingFor(G, turn)}
           onEndTurn={() => {
-            if (!locked) props.events.endTurn!();
+            if (!locked && mayAct) props.events.endTurn!();
           }}
         />
       )}
 
       {/* Sound: mute and volume, under the turn bar */}
       {currentShipState && <HudSoundControl />}
+
+      {/* Every captain's glory, which is public (#110) */}
+      {!inCombat && currentShipState && (
+        <HudGloryBoard rows={gloryScoreboard(G, hudPlayer)} colours={PLAYER_COLOURS} />
+      )}
 
       {/* Bottom-left: captain and ship cards on parchment */}
       {currentShipState && (
@@ -1097,7 +1130,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* Action buttons - only in main phase */}
-      {!inCombat && !locked && currentShipState && (hasAttackTargets || hasSpyglassTargets) && (
+      {!inCombat && !locked && mayAct && currentShipState && (hasAttackTargets || hasSpyglassTargets) && (
         <div className="absolute bottom-4 right-4 flex gap-2">
           {/* Spyglass button */}
           {hasSpyglassTargets && (
@@ -1137,6 +1170,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {/* A route is selected (#213): how to sail it or let it go */}
       {!inCombat &&
         !locked &&
+        mayAct &&
         currentShipState &&
         !sailing &&
         !underway[currentPlayer] &&
@@ -1165,7 +1199,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* Right: Port panel - only in main phase when docked at a port */}
-      {!inCombat && !locked && currentShipState && (() => {
+      {!inCombat && !locked && mayAct && currentShipState && (() => {
         const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
         if (!accessiblePort?.market) return null;
         return (
@@ -1198,11 +1232,11 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       })()}
 
       {/* Ship Details Panel */}
-      {showDetailsPanel && currentShipState && (
+      {showDetailsPanel && ownShip && (
         <ShipDetailsPanel
-          ship={currentShipState}
+          ship={ownShip}
           onClose={() => setShowDetailsPanel(false)}
-          onStashGold={(amount) => props.moves.stashGold(amount)}
+          onStashGold={mayAct ? (amount) => props.moves.stashGold(amount) : undefined}
         />
       )}
 
