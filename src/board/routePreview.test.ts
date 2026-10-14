@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { routeDots, routePoints, ROUTE_DOT_CLEARANCE, ROUTE_DOT_SPACING } from "./routePreview";
+import { plannedCourse, routeDots, routePoints, ROUTE_DOT_CLEARANCE, ROUTE_DOT_SPACING } from "./routePreview";
 import { createWrap, hex, hexToWorld, offsetToHex, wrapWorldWidth } from "../game/hex";
 
 describe("routeDots", () => {
@@ -37,5 +37,23 @@ describe("routePoints", () => {
     const step = hexToWorld(offsetToHex(1, 2))[0] - hexToWorld(offsetToHex(0, 2))[0];
     expect(points[1][0] - points[0][0]).toBeCloseTo(step, 5);
     expect(points[2][0] - points[1][0]).toBeCloseTo(step, 5);
+  });
+});
+
+describe("plannedCourse", () => {
+  const plan = [hex(1, 0), hex(2, 0), hex(3, 0)];
+  const centre = (q: number, r: number): [number, number] => {
+    const [x, , z] = hexToWorld(hex(q, r));
+    return [x, z];
+  };
+
+  it("is the whole route when the move lands on its first hex", () => {
+    expect(plannedCourse(plan, centre(1, 0))).toEqual([centre(1, 0), centre(2, 0), centre(3, 0)]);
+  });
+
+  it("is nothing for any other move, or no plan", () => {
+    expect(plannedCourse(plan, centre(2, 0))).toBeNull();
+    expect(plannedCourse(null, centre(1, 0))).toBeNull();
+    expect(plannedCourse([], centre(1, 0))).toBeNull();
   });
 });

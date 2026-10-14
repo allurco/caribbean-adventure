@@ -470,6 +470,24 @@ export function setCourse(
 }
 
 /**
+ * Whether `point` is a waypoint still ahead on the voyage `motion` is on
+ * (any copy of it a whole `wrapWidth` away). A planned route is given to the
+ * ship whole as it sets out, and its hexes then arrive one by one (#213):
+ * a hex already on the course needs no new one.
+ */
+export function courseIncludes(motion: ShipMotion, point: Point, wrapWidth: number = Infinity, tolerance = 1e-3): boolean {
+  const voyage = motion.voyage;
+  if (!voyage) return false;
+  const sailed = voyageProgress(voyage.path.length, voyage.duration, voyage.startSpeed, voyage.elapsed).distance;
+  return voyage.waypoints.some(
+    (w, i) =>
+      voyage.waypointDistances[i] > sailed - tolerance &&
+      Math.abs(nearest(w[0], point[0], wrapWidth) - point[0]) < tolerance &&
+      Math.abs(w[1] - point[1]) < tolerance
+  );
+}
+
+/**
  * `motion` advanced `dt` seconds: along its voyage if it has one (ending it
  * at its last waypoint), the bow turned toward the course at no more than
  * MAX_TURN_RATE, the heel and pitch eased toward what the turn and the way
