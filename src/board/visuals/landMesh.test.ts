@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import type { MapCell } from "../../game/types";
 import { createWrap, hexGrid, hexRect, hexToOffset, hexToWorld, wrapWorldWidth } from "../../game/hex";
 import { createReefMask } from "./reefMask";
@@ -608,33 +608,44 @@ describe("buildLandMesh", () => {
 });
 
 describe("landSurfaceHeight", () => {
+  // One real map for the block, generated and meshed once outside any test's
+  // time limit: the tests only sample it.
+  let wrap: ReturnType<typeof createWrap>;
+  let cells: MapCell[];
+  let wrappedField: ReturnType<typeof createTerrainHeightField>;
+  let landPositions: Float32Array;
+  beforeAll(() => {
+    wrap = createWrap(getMapPreset("small").columns);
+    cells = generateMap(getMapPreset("small"), 11);
+    wrappedField = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+    landPositions = buildLandMesh(wrappedField).land.positions;
+  });
+
   it("is the drawn surface: the field at every lattice vertex and the plane of the emitted triangle between them", () => {
-    const { columns } = getMapPreset("small");
-    const wrap = createWrap(columns);
-    const cells = generateMap(getMapPreset("small"), 11);
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
-    const { land } = buildLandMesh(field);
-    const p = land.positions;
+    const field = wrappedField;
+    const p = landPositions;
     let checked = 0;
+    // The largest miss over every sampled point, asserted once: thousands of
+    // per-point expects cost more than the sampling itself.
+    let worst = 0;
     for (let t = 0; t < p.length / 9; t += 7) {
       const [ax, ay, az, bx, by, bz, cx, cy, cz] = p.subarray(t * 9, t * 9 + 9);
       // Each vertex: the surface passes through it (the emitted positions are float32, a few 1e-6 off the lattice).
-      expect(landSurfaceHeight(field, ax, az)).toBeCloseTo(ay, 4);
+      worst = Math.max(worst, Math.abs(landSurfaceHeight(field, ax, az) - ay));
       // The centroid and a point a third of the way from a to the bc midpoint: on the triangle's plane.
-      expect(landSurfaceHeight(field, (ax + bx + cx) / 3, (az + bz + cz) / 3)).toBeCloseTo((ay + by + cy) / 3, 4);
+      worst = Math.max(worst, Math.abs(landSurfaceHeight(field, (ax + bx + cx) / 3, (az + bz + cz) / 3) - (ay + by + cy) / 3));
       const mx = (bx + cx) / 2, mz = (bz + cz) / 2, my = (by + cy) / 2;
-      expect(landSurfaceHeight(field, ax + (mx - ax) / 3, az + (mz - az) / 3)).toBeCloseTo(ay + (my - ay) / 3, 4);
+      worst = Math.max(worst, Math.abs(landSurfaceHeight(field, ax + (mx - ax) / 3, az + (mz - az) / 3) - (ay + (my - ay) / 3)));
       checked++;
     }
     expect(checked).toBeGreaterThan(1000);
+    // toBeCloseTo(…, 4)'s bound.
+    expect(worst).toBeLessThan(5e-5);
   });
 
   it("repeats across the wrap seam and differs from the field between the lattice points where the ground curves", () => {
-    const { columns } = getMapPreset("small");
-    const wrap = createWrap(columns);
     const width = wrapWorldWidth(wrap);
-    const cells = generateMap(getMapPreset("small"), 11);
-    const field = createTerrainHeightField(cells, terrainSeedFromCells(cells), { wrap });
+    const field = wrappedField;
     let maxGap = 0;
     for (const cell of cells) {
       if (cell.terrain !== "island") continue;
@@ -649,7 +660,6 @@ describe("landSurfaceHeight", () => {
   });
 
   it("landSurface is the same surface as a GroundField, and samples each lattice vertex once however often it is asked", () => {
-    const cells = generateMap(getMapPreset("small"), 11);
     const base = createTerrainHeightField(cells, terrainSeedFromCells(cells));
     let samples = 0;
     const counted = { ...base, sampleHeight: (x: number, z: number) => (samples++, base.sampleHeight(x, z)) };
@@ -669,7 +679,6 @@ describe("landSurfaceHeight", () => {
   });
 
   it("creasesWithin lists the lattice vertices inside a disc and the lattice edges' crossings of its rim: where the drawn surface bends", () => {
-    const cells = generateMap(getMapPreset("small"), 11);
     const field = createTerrainHeightField(cells, terrainSeedFromCells(cells));
     const surface = landSurface(field);
     const rowHeight = LAND_MESH_SPACING * (Math.sqrt(3) / 2);

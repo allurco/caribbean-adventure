@@ -1,130 +1,106 @@
-import type { ShipState, GoodType } from "../game/types";
-import { GOOD_TYPES } from "../game/types";
-import { UPGRADES } from "../game/constants";
-import { totalCargo } from "../game/economy";
-import { getWantedNations } from "../game/reputation";
+import type { GoodType, ShipState } from "../game/types";
 import { NationFlag } from "./NationFlag";
+import { shipCardView, type ShipMeter } from "./hudShipCardView";
 
 interface HudShipCardProps {
   ship: ShipState;
 }
 
-function StatBar({
-  label,
-  current,
-  max,
-  barColor,
-  trackColor,
-}: {
-  label: string;
-  current: number;
-  max: number;
-  barColor: string;
-  trackColor: string;
-}) {
-  const pct = max > 0 ? (current / max) * 100 : 0;
+/** Fill of each meter, in ink; the track is the same ink, faint. */
+const METER_INK: Record<string, { bar: string; track: string }> = {
+  Hull: { bar: "bg-ink-red", track: "bg-ink-red/15" },
+  Crew: { bar: "bg-ink-blue", track: "bg-ink-blue/15" },
+};
+
+/** A swatch beside each good's name in the hold; the name carries the meaning. */
+const CARGO_SWATCH: Record<GoodType, string> = {
+  Wood: "#7c4a12",
+  Sugar: "#f8f4e6",
+  Rum: "#b4410f",
+  Spice: "#b91c1c",
+};
+
+function StatMeter({ meter }: { meter: ShipMeter }) {
+  const ink = METER_INK[meter.label] ?? { bar: "bg-ink", track: "bg-ink/15" };
   return (
     <div className="flex items-center gap-2">
-      <span className="text-amber-300/60 text-[11px] w-9 text-right shrink-0 font-medium">
-        {label}
+      <span className="text-ink-faded text-[11px] w-9 text-right shrink-0 font-semibold">
+        {meter.label}
       </span>
       <div
-        className="flex-1 h-2 rounded-full overflow-hidden"
-        style={{ backgroundColor: trackColor }}
+        role="meter"
+        aria-label={meter.label}
+        aria-valuemin={0}
+        aria-valuemax={meter.max}
+        aria-valuenow={meter.current}
+        aria-valuetext={`${meter.current} of ${meter.max}`}
+        className={`flex-1 h-2 rounded-full overflow-hidden ring-1 ring-ink/20 ${ink.track}`}
       >
         <div
-          className="h-full rounded-full transition-all duration-300"
-          style={{ width: `${pct}%`, backgroundColor: barColor }}
+          className={`h-full rounded-full transition-all duration-300 ${ink.bar}`}
+          style={{ width: `${meter.percent}%` }}
         />
       </div>
-      <span className="text-amber-100/70 text-[11px] w-7 tabular-nums text-right shrink-0">
-        {current}/{max}
+      <span className="text-ink text-[11px] w-7 tabular-nums text-right shrink-0 font-medium" aria-hidden="true">
+        {meter.current}/{meter.max}
       </span>
     </div>
   );
 }
 
-const CARGO_COLORS: Record<GoodType, string> = {
-  Wood: "#a16207",
-  Sugar: "#d4d4aa",
-  Rum: "#c2410c",
-  Spice: "#dc2626",
-};
-
-
+/** The ship's half of the parchment sheet (`HudParchmentPanel`), in ink. */
 export function HudShipCard({ ship }: HudShipCardProps) {
-  const stats = ship.stats;
-  const cargoUsed = totalCargo(ship.cargo);
-  const hasDamage =
-    ship.damage.hull > 0 || ship.damage.crew > 0 || ship.damage.masts > 0;
-  const wantedNations = getWantedNations(ship.bounties);
+  const view = shipCardView(ship);
 
   return (
     <div className="flex flex-col h-full">
       {/* Section label */}
       <div className="flex items-center justify-between mb-2">
-        <span className="font-heading text-[11px] text-amber-500/80 uppercase tracking-widest">
-          {ship.shipClass ?? "Ship"}
-        </span>
+        <h2 className="font-heading text-[11px] font-bold text-ink-faded uppercase tracking-widest">
+          {view.title}
+        </h2>
       </div>
 
       <div className="flex-1 flex flex-col gap-2.5">
-        {/* Health bars */}
-        {stats && (
+        {view.meters.length > 0 && (
           <div className="space-y-1.5">
-            <StatBar
-              label="Hull"
-              current={stats.hull.current}
-              max={stats.hull.max}
-              barColor="#b45309"
-              trackColor="rgba(120,53,15,0.25)"
-            />
-            <StatBar
-              label="Crew"
-              current={stats.crew.current}
-              max={stats.crew.max}
-              barColor="#0284c7"
-              trackColor="rgba(7,89,133,0.25)"
-            />
+            {view.meters.map((m) => (
+              <StatMeter key={m.label} meter={m} />
+            ))}
           </div>
         )}
 
-        {/* Damage indicator */}
-        {hasDamage && (
-          <div className="flex items-center gap-2 bg-red-950/30 border border-red-900/30 rounded px-2 py-1">
-            <span className="text-red-400/80 text-[10px] font-semibold uppercase tracking-wide">
+        {view.damage.length > 0 && (
+          <div className="flex items-center gap-2 border border-ink-red/50 rounded px-2 py-1">
+            <span className="text-ink-red text-[11px] font-bold uppercase tracking-wide">
               Damaged
             </span>
             <div className="flex gap-2">
-              {ship.damage.hull > 0 && (
-                <span className="text-red-300/70 text-[10px]">Hull -{ship.damage.hull}</span>
-              )}
-              {ship.damage.crew > 0 && (
-                <span className="text-red-300/70 text-[10px]">Crew -{ship.damage.crew}</span>
-              )}
-              {ship.damage.masts > 0 && (
-                <span className="text-red-300/70 text-[10px]">Masts -{ship.damage.masts}</span>
-              )}
+              {view.damage.map((d) => (
+                <span key={d.label} className="text-ink-red text-[11px] font-medium">
+                  {d.label} -{d.amount}
+                </span>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Wanted indicator */}
-        {wantedNations.length > 0 && (
-          <div className="flex items-center gap-2 bg-red-950/40 border border-red-800/40 rounded px-2 py-1">
-            <span className="text-red-500 text-[10px] font-bold uppercase tracking-wide">
+        {view.wanted.length > 0 && (
+          <div className="flex items-center gap-2 border-2 border-ink-red/70 rounded px-2 py-1">
+            <span className="text-ink-red text-[11px] font-bold uppercase tracking-wide">
               Wanted
             </span>
             <div className="flex gap-1.5">
-              {wantedNations.map((nation) => (
+              {view.wanted.map(({ nation, bounty }) => (
                 <div
                   key={nation}
                   className="flex items-center gap-1"
-                  title={`${nation}: ${ship.bounties[nation]} bounty`}
+                  title={`${nation}: ${bounty} bounty`}
                 >
                   <NationFlag nation={nation} size="sm" />
-                  <span className="text-red-300/80 text-[10px] font-semibold">
-                    {ship.bounties[nation]}
+                  <span className="text-ink-red text-[11px] font-semibold">
+                    <span className="sr-only">{nation} bounty </span>
+                    {bounty}
                   </span>
                 </div>
               ))}
@@ -132,54 +108,43 @@ export function HudShipCard({ ship }: HudShipCardProps) {
           </div>
         )}
 
-        {/* Stat grid */}
-        {stats && (
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <StatItem label="Cannons" value={stats.cannons} />
-            <StatItem label="Scouting" value={stats.scouting} />
-            <StatItem label="Speed" value={stats.maneuverability} />
-            <StatItem label="Cargo" value={`${cargoUsed}/${ship.maxCargo}`} />
-          </div>
+        {view.stats.length > 0 && (
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+            {view.stats.map((s) => (
+              <div key={s.label} className="flex justify-between items-baseline">
+                <dt className="text-ink-faded text-[11px]">{s.label}</dt>
+                <dd className="text-ink text-xs font-semibold tabular-nums">{s.value}</dd>
+              </div>
+            ))}
+          </dl>
         )}
 
-        {/* Cargo + Upgrades in a compact row */}
-        {(cargoUsed > 0 || ship.upgrades.length > 0) && (
-          <div className="mt-auto pt-2 border-t border-amber-700/20 flex flex-wrap gap-1">
-            {GOOD_TYPES.filter((g) => ship.cargo[g] > 0).map((g) => (
+        {(view.cargo.length > 0 || view.upgrades.length > 0) && (
+          <div className="mt-auto pt-2 border-t border-ink/25 flex flex-wrap gap-1">
+            {view.cargo.map(({ good, amount }) => (
               <span
-                key={g}
-                className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
-                style={{
-                  backgroundColor: CARGO_COLORS[g] + "20",
-                  color: CARGO_COLORS[g],
-                  border: `1px solid ${CARGO_COLORS[g]}30`,
-                }}
+                key={good}
+                className="inline-flex items-center gap-1 rounded border border-ink/30 px-1.5 py-0.5 text-[11px] font-medium text-ink"
               >
-                {g} {ship.cargo[g]}
+                <span
+                  aria-hidden="true"
+                  className="w-2 h-2 rounded-full ring-1 ring-ink/40"
+                  style={{ backgroundColor: CARGO_SWATCH[good] }}
+                />
+                {good} {amount}
               </span>
             ))}
-            {ship.upgrades.map((id) => (
+            {view.upgrades.map((name, i) => (
               <span
-                key={id}
-                className="inline-flex items-center rounded bg-emerald-900/30 border border-emerald-700/25 text-emerald-400/80 px-1.5 py-0.5 text-[10px] font-medium"
+                key={`${i}-${name}`}
+                className="inline-flex items-center rounded border border-ink-green/50 text-ink-green px-1.5 py-0.5 text-[11px] font-semibold"
               >
-                {UPGRADES[id]?.name ?? id}
+                {name}
               </span>
             ))}
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function StatItem({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="flex justify-between items-baseline">
-      <span className="text-amber-400/50 text-[11px]">{label}</span>
-      <span className="text-amber-100 text-xs font-semibold tabular-nums">
-        {value}
-      </span>
     </div>
   );
 }
