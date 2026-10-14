@@ -96,8 +96,9 @@ export const shipTooltipHeight = (shipClass: ShipClass | undefined): number => s
 
 /**
  * Where a hull meets the water, for its contact foam (hullContact.ts, #144):
- * the waterline's length and beam in world units and how round its ends are
- * (0 square … 1 a stadium).
+ * the waterline's length and beam in world units and the radius of its ends
+ * in half beams (0 square, 1 a stadium, over 1 an ogive pointed at the stem
+ * and the stern).
  */
 export interface Waterline {
   readonly length: number;
@@ -115,6 +116,19 @@ export interface Waterline {
  */
 export const WATERLINE_LENGTH_SHARE = 0.88;
 export const WATERLINE_BEAM_SHARE = 0.92;
+/**
+ * STYLISTIC: each modelled hull's waterline ends, as their radius in half
+ * beams (#144): the fine Sloop and Frigate come to a point at the stem and
+ * the stern (an ogive), the fuller Galleon less so, and the bluff Flute is
+ * nearly a stadium. A stadium for every class floated foam off the Sloop's
+ * pointed ends.
+ */
+export const WATERLINE_END_RADIUS: Readonly<Record<ShipClass, number>> = {
+  Sloop: 5,
+  Flute: 1.2,
+  Frigate: 2.5,
+  Galleon: 1.6,
+};
 /** A box hull's footprint is its waterline: square ends, barely rounded. */
 const BOX_WATERLINE_ROUNDNESS = 0.15;
 
@@ -122,6 +136,6 @@ const BOX_WATERLINE_ROUNDNESS = 0.15;
 export const shipWaterline = (shipClass: ShipClass | undefined): Waterline => {
   const [width, , length] = shipHullBox(shipClass);
   const model = shipClass ? SHIP_MODELS[shipClass] : null;
-  if (!model) return { length, beam: width, roundness: BOX_WATERLINE_ROUNDNESS };
-  return { length: length * WATERLINE_LENGTH_SHARE, beam: width * WATERLINE_BEAM_SHARE, roundness: 1 };
+  if (!shipClass || !model) return { length, beam: width, roundness: BOX_WATERLINE_ROUNDNESS };
+  return { length: length * WATERLINE_LENGTH_SHARE, beam: width * WATERLINE_BEAM_SHARE, roundness: WATERLINE_END_RADIUS[shipClass] };
 };

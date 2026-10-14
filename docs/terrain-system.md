@@ -1158,16 +1158,24 @@ bright as dry sand). `PALETTE_SURF` is gone.
   `SHIP_FOAM_CAP` (24) ships. Nothing bounds the NPC count in the game, so
   the fill order is fixed by id (players first, then NPCs) and the registry
   warns once when ships are left out. The soft contact patch treats the
-  hull as a segment of half the hull length along the heading; foam falls
-  off to nothing about a third of a hull length out, extends astern with
-  speed, and a ship at anchor keeps a light ring. On top, measured from the
-  waterline outline (a stadium for the modelled hulls, nearly square for the
-  boxes), the **contact line** (#144): a narrow, dense line hugging the hull
-  at rest and under way, wider along the sides and most at the bow when
-  moving, full under the outline so a slightly small waterline leaves no
-  gap; under way a **bow wave** crest stands just off the stem; and a
-  **wet band** a little wider than the line darkens the water against the
-  hull. Lines under a couple of pixels wide (map zoom) fade out. All ship
+  hull as a segment of the hull length along the heading; foam falls off to
+  nothing `HULL_FOAM_REACH` (0.14) hull lengths out, a few faint threads at
+  anchor and a laced, never solid, patch under way; it lays no wake of its
+  own (the trail does), so nothing smears astern under reduced motion. On
+  top, measured from the waterline outline, the **contact line** (#144): a
+  thin, nearly solid line just outside the outline (0.05 beam, then a 0.02
+  beam edge), at rest and under way, a little wider along the sides and
+  more at the bow when moving, full under the outline so a slightly small
+  waterline leaves no gap, and reaching just past the widest beam so it
+  shows from a low side angle; under way a **bow wave** crest stands just
+  off the stem, growing with speed; and a **wet band** darkens the water
+  against the hull, darkest just past the foam line and fading over half a
+  beam. The outline has ends of one radius in half beams
+  (`WATERLINE_END_RADIUS`, per class): a rounded rectangle under 1 (the
+  boxes), a stadium at 1, a pointed ogive above (the Sloop and the Frigate);
+  a fine bow ends aft in a transom (`HULL_STERN_ROUNDNESS`). Lines are drawn
+  at least `LINE_MIN_PIXELS` (1.6) wide so they read at mid zoom, and fade
+  out only where they would be a fraction of a pixel (map zoom). All ship
   foam, the band included, fades out over the last metre of water
   (`SHIP_FOAM_SHALLOW_METRES`) and is nothing on land. Distances wrap
   east–west.
@@ -1183,15 +1191,21 @@ bright as dry sand). `PALETTE_SURF` is gone.
   pixel is past its reach. Positions are unwrapped onto the trail, so a ship
   crossing the seam leaves one wake; a jump over `WAKE_BREAK_DISTANCE`
   starts a new trail; a ship that leaves the registry (sunk) lays nothing
-  more and its wake fades where it was. The foam has a turbulent **centre
-  line** about a beam wide, strongest just astern, widening and fading with
-  age, and two **Kelvin arms** at asin(1/3) ≈ 19.47° either side of the
-  path from the bow (`s · tan 19.47°` off the path, `s` astern of the bow),
-  thin lines that widen and fade with age and are stronger at speed (the
-  segment's length over the time between its ends). The water takes the
-  strongest of the hull foam and the wake, so they join without a seam,
-  through the same lace and depth fade; the arms fade out under a couple of
-  pixels like the contact line.
+  more and its wake fades where it was. The foam reads through texture, not
+  brightness. A turbulent **centre** about a beam wide, peaked on the path
+  with no flat core, is dense just astern, settles within a fraction of a
+  second into lace that holds, then fades; the water draws it as churn
+  (`foamChurnLace`, `foamShading.ts`): a coarse noise thins it into holes
+  without cutting it apart and the fine lace breaks it up, so it is one
+  connected streak that narrows and frays as it thins. Two **Kelvin arms**
+  at asin(1/3) ≈ 19.47° either side of the path from the bow (`s · tan
+  19.47°` off the path, `s` astern of the bow) are drawn as many short
+  crest segments slanted at 35° (varied in length and place per crest),
+  stronger at speed, reaching only `WAKE_ARM_REACH_BEAMS` astern and
+  fading within `WAKE_ARM_LIFETIME_SECONDS` (1.6 s), well before the centre.
+  The water unions the hull foam and the wake, so they join without a seam,
+  under the same depth fade; the arms keep the lines' minimum width at mid
+  zoom and fade out at map zoom.
 
 *Foam above the island.* The water plane stops showing where the land mesh
 rises above the waterline, so on its own the wash was cut off at the beach.
