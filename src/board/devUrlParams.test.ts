@@ -72,6 +72,18 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?buoys=yes")).toEqual({});
   });
 
+  it("opens the seed gallery and takes a gallery shot (#161)", () => {
+    expect(parseDevUrlParams("?seedGallery=1")).toEqual({ seedGallery: true });
+    expect(parseDevUrlParams("?seedGallery=1&size=medium")).toEqual({ seedGallery: true, setupData: { mapSize: "medium" } });
+    expect(parseDevUrlParams("?size=small&seed=7&cx=1&cz=2&dist=3.4&snapshot=1")).toEqual({
+      setupData: { mapSize: "small", mapSeed: 7 },
+      cameraTarget: [1, 0, 2],
+      cameraDistance: 3.4,
+      gallerySnapshot: true,
+    });
+    expect(parseDevUrlParams("?seedGallery=0&snapshot=yes")).toEqual({});
+  });
+
   it("shows the render stats overlay", () => {
     expect(parseDevUrlParams("?stats=1")).toEqual({ renderStats: true });
     expect(parseDevUrlParams("?stats=0")).toEqual({});

@@ -98,6 +98,9 @@ import { AmbienceBedDriver } from "./AmbienceBedDriver";
 import { HudSoundControl } from "./HudSoundControl";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { RenderStatsOverlay } from "./RenderStatsOverlay";
+import { DevSeedControl } from "./DevSeedControl";
+import { GallerySnapshot } from "../lab/GallerySnapshot";
+import { STARTER_SHIP_CLASSES } from "../game/types";
 import { createRenderStatsFeed } from "./renderStats";
 import { useAudioUnlock } from "../audio/useAudioUnlock";
 import { useGameSounds } from "../audio/useGameSounds";
@@ -554,10 +557,18 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   seaBuoys?: boolean;
   /** Show the fps, draw calls and triangles readout (dev, #162); ignored in production builds. */
   renderStats?: boolean;
+  /** A seed-gallery shot (dev, #161): the draft picks itself and the frame is posted to the gallery; ignored in production builds. */
+  gallerySnapshot?: boolean;
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, renderStats } = props;
+  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, renderStats, gallerySnapshot } = props;
+  const snapshot = import.meta.env.DEV && gallerySnapshot === true;
+  // Dev seed gallery (#161): each seat takes its first captain and starter ship, so the shot reaches the main phase.
+  const { pickCaptain } = props.moves;
+  useEffect(() => {
+    if (snapshot && ctx.phase === "draft") pickCaptain(0, STARTER_SHIP_CLASSES[0]);
+  }, [snapshot, ctx.phase, ctx.currentPlayer, pickCaptain]);
   // Dev `stats=1` (#162): the probe in the Canvas reports to the overlay through this feed.
   const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
   const [attackMode, setAttackMode] = useState(false);
@@ -860,9 +871,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         />
         {/* Dev: fps, draw calls and triangles (#162); the DEV guard drops it from production builds */}
         {import.meta.env.DEV && renderStatsFeed && <RenderStatsProbe onStats={renderStatsFeed.publish} />}
+        {/* Dev: a seed-gallery shot (#161); the DEV guard drops it from production builds */}
+        {import.meta.env.DEV && snapshot && <GallerySnapshot />}
       </Canvas>
 
       {import.meta.env.DEV && renderStatsFeed && <RenderStatsOverlay feed={renderStatsFeed} />}
+      {/* Dev: the seed control (#161); the DEV guard drops it from production builds */}
+      {import.meta.env.DEV && !snapshot && G.mapSeed !== undefined && <DevSeedControl mapSize={G.mapSize} mapSeed={G.mapSeed} />}
 
       {/* Combat Panel */}
       {inCombat && G.combat && (
