@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reachClick, reachConfirm } from "./routeSelection";
+import { reachClick, reachConfirm, selectionKey } from "./routeSelection";
 import { turnReach } from "../game/reach";
 import { hex, hexGrid, NO_WRAP } from "../game/hex";
 import type { MapCell } from "../game/types";
@@ -45,5 +45,14 @@ describe("reachConfirm", () => {
   it("is nothing with neither, or one out of reach", () => {
     expect(reachConfirm(reach, null, null)).toEqual([]);
     expect(reachConfirm(reach, hex(5, 0), null)).toEqual([]);
+  });
+});
+
+describe("selectionKey", () => {
+  it("changes when the ship moves or the turn passes", () => {
+    const k = selectionKey("0", hex(1, 2));
+    expect(selectionKey("0", hex(1, 2))).toBe(k);
+    expect(selectionKey("0", hex(2, 2))).not.toBe(k);
+    expect(selectionKey("1", hex(1, 2))).not.toBe(k);
   });
 });

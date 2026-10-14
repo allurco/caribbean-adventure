@@ -1,26 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { reachLayers, reachOpacity, routeDots, routePoints, ROUTE_DOT_CLEARANCE, ROUTE_DOT_SPACING } from "./routePreview";
-import { turnReach } from "../game/reach";
-import { createWrap, hex, hexGrid, hexToWorld, NO_WRAP, offsetToHex, wrapWorldWidth } from "../game/hex";
-import type { MapCell } from "../game/types";
-
-const disc: MapCell[] = hexGrid(5).map((h) => ({ hex: h, terrain: "water", hasPort: false, elevation: 0 }));
-
-describe("reachOpacity", () => {
-  it("fades with cost and holds at the faintest past the last shade", () => {
-    expect(reachOpacity(1)).toBeGreaterThan(reachOpacity(2));
-    expect(reachOpacity(2)).toBeGreaterThan(reachOpacity(3));
-    expect(reachOpacity(9)).toBe(reachOpacity(4));
-  });
-});
-
-describe("reachLayers", () => {
-  it("groups the reach by cost, cheapest first", () => {
-    const layers = reachLayers(turnReach(hex(0, 0), 3, disc, NO_WRAP));
-    expect(layers.map((l) => l.cost)).toEqual([1, 2, 3]);
-    expect(layers.map((l) => l.hexes.length)).toEqual([6, 12, 18]);
-  });
-});
+import { routeDots, routePoints, ROUTE_DOT_CLEARANCE, ROUTE_DOT_SPACING } from "./routePreview";
+import { createWrap, hex, hexToWorld, offsetToHex, wrapWorldWidth } from "../game/hex";
 
 describe("routeDots", () => {
   it("is nothing for no route", () => {

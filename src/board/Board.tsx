@@ -66,9 +66,11 @@ import { Ship, SinkingShip } from "./Ship";
 import { openWaterFrom, seaRoute } from "./shipRoute";
 import { spawnHeading } from "./shipSpawnHeading";
 import { ReachOverlay } from "./ReachOverlay";
-import { reachLayers, routeDots } from "./routePreview";
-import { reachClick, reachConfirm } from "./routeSelection";
+import { routeDots } from "./routePreview";
+import { reachClick, reachConfirm, selectionKey } from "./routeSelection";
+import { clipToWater, reachEdges, ribbonPositions, waterHexTriangles } from "./reachOutline";
 import { useRouteSailing } from "./useRouteSailing";
+import { RouteHint } from "./RouteHint";
 import type { Point } from "./shipMotion";
 import { trackShipHeadings } from "./shipHeading";
 import { ShipTooltip } from "./ShipTooltip";
@@ -118,6 +120,18 @@ interface SinkingShipData {
  */
 const WRAP_COPY_MARGIN = 3;
 
+/** The reach's lines and tint over the sea (#213): widths in world units, heights above sea level. */
+const REACH_OUTLINE_WIDTH = 0.04;
+const REACH_RING_WIDTH = 0.03;
+const REACH_TINT_Y = 0.012;
+const REACH_LINE_Y = 0.02;
+
+/** A hex whose route shows after a first click, and the `selectionKey` of the ship it was made for. */
+interface RouteSelection {
+  hex: Hex;
+  from: string;
+}
+
 function Scene({
   G,
   currentPlayer,
@@ -134,6 +148,10 @@ function Scene({
   scoutedPlayerIds,
   focusView,
   sailing,
+  shipUnderway,
+  selection,
+  onSelect,
+  onShipUnderway,
   onMoveShip,
   onSailRoute,
   onHexClick,
@@ -161,6 +179,13 @@ function Scene({
   focusView: CameraView | null;
   /** A planned route is being sailed: no reach, no moves (#213). */
   sailing: boolean;
+  /** The current player's ship is still on its way: the reach waits until it settles. */
+  shipUnderway: boolean;
+  /** The hex whose route shows after a first click, with the `selectionKey` it was made for. */
+  selection: RouteSelection | null;
+  onSelect: (selection: RouteSelection | null) => void;
+  /** A player's ship got under way or came to rest. */
+  onShipUnderway: (id: string, underway: boolean) => void;
   onMoveShip: (q: number, r: number) => void;
   /** Sail a planned route, one move per hex (#213). */
   onSailRoute: (route: Hex[]) => void;
@@ -349,7 +374,7 @@ function Scene({
   // The turn's reach (#213): every hex the ship can sail to with the moves
   // left, routed round land and ships, a port's docking hex ending a route.
   const stops = useMemo(() => dockingHexes(G.cells), [G.cells]);
-  const canMove = movesRemaining > 0 && !sailing && !attackMode && !spyglassMode;
+  const canMove = movesRemaining > 0 && !sailing && !shipUnderway && !attackMode && !spyglassMode;
   const reach = useMemo(() => {
     if (!currentShipState || !canMove) return null;
     return turnReach(currentShipState.position, movesRemaining, G.cells, G.wrap, {
@@ -360,10 +385,8 @@ function Scene({
   }, [currentShipState, canMove, movesRemaining, G.cells, G.wrap, otherShipPositions, stops]);
   const targets = useMemo(() => reach?.hexes.map((s) => s.hex) ?? [], [reach]);
 
-  // The hex whose route is showing after a first click, kept with the hex the
-  // ship was on, so it lapses once the ship moves.
-  const [selection, setSelection] = useState<{ hex: Hex; from: string } | null>(null);
-  const shipKey = currentShipState ? `${currentPlayer}:${currentShipState.position.q},${currentShipState.position.r}` : "";
+  // The selection lapses once the ship moves or the turn passes (its key no longer matches).
+  const shipKey = currentShipState ? selectionKey(currentPlayer, currentShipState.position) : "";
   const selected = reach && selection && selection.from === shipKey && reachCost(reach, selection.hex) !== undefined ? selection.hex : null;
 
   // Built once per map (and turn) and drawn by every copy of the world: the
@@ -391,29 +414,37 @@ function Scene({
       const click = reachClick(reach, selected, h);
       if (click.kind === "move") onMoveShip(click.hex.q, click.hex.r);
       else if (click.kind === "sail") onSailRoute(click.route);
-      setSelection(click.kind === "select" ? { hex: click.hex, from: shipKey } : null);
+      onSelect(click.kind === "select" ? { hex: click.hex, from: shipKey } : null);
     },
-    onMiss: () => setSelection(null),
+    onMiss: () => onSelect(null),
     onPortHover,
     interactive: attackMode || spyglassMode || canMove,
+    // A new turn starts with no hover, so the next player sees no stale preview
+    resetKey: currentPlayer,
   });
 
   // The route to the selected hex, else the hovered one, as dots on the water
   const hovered = reach && grid.hoveredHex && reachCost(reach, grid.hoveredHex) !== undefined ? grid.hoveredHex : null;
   const previewTarget = selected ?? hovered;
-  const reachShades = useMemo(
-    () =>
-      reach
-        ? reachLayers(reach).map(({ cost, hexes }) => ({
-            cost,
-            points: hexes.map((h): Point => {
-              const [x, , z] = hexToWorld(h);
-              return [x, z];
-            }),
-          }))
-        : [],
-    [reach]
-  );
+  // The reach as an outline, cost rings and a light tint one move out, all on the water (reachOutline.ts)
+  const reachShapes = useMemo(() => {
+    if (!reach) return null;
+    const { boundary, rings } = reachEdges(reach, G.cells);
+    const oneMove = reach.hexes.filter((s) => s.cost === 1).map((s): Point => {
+      const [x, , z] = hexToWorld(s.hex);
+      return [x, z];
+    });
+    return {
+      tint: waterHexTriangles(oneMove, ground, REACH_TINT_Y),
+      outline: ribbonPositions(clipToWater(boundary, ground), REACH_OUTLINE_WIDTH, REACH_LINE_Y),
+      rings: ribbonPositions(clipToWater(rings, ground), REACH_RING_WIDTH, REACH_LINE_Y),
+    };
+  }, [reach, G.cells, ground]);
+  const targetShape = useMemo(() => {
+    if (!previewTarget) return null;
+    const [x, , z] = hexToWorld(previewTarget);
+    return waterHexTriangles([[x, z]], ground, REACH_TINT_Y + 0.002, 0.94);
+  }, [previewTarget, ground]);
   const routeDotPoints = useMemo(
     () => (reach && previewTarget ? routeDots(reach.start, routeTo(reach, previewTarget), period) : []),
     [reach, previewTarget, period]
@@ -424,18 +455,18 @@ function Scene({
     if (!reach) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "Escape") setSelection(null);
+      if (e.key === "Escape") onSelect(null);
       if (e.key === "Enter") {
         const route = reachConfirm(reach, selected, hovered);
         if (route.length === 0) return;
         e.preventDefault();
-        setSelection(null);
+        onSelect(null);
         onSailRoute(route);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [reach, selected, hovered, onSailRoute]);
+  }, [reach, selected, hovered, onSailRoute, onSelect]);
 
   return (
     <SeaSurfaceContext.Provider value={sea}>
@@ -497,7 +528,7 @@ function Scene({
       <HexGrid grid={grid} copy={copy} />
 
       {/* The turn's reach and the previewed route (#213) */}
-      <ReachOverlay layers={reachShades} dots={routeDotPoints} target={previewTarget} />
+      <ReachOverlay reach={reachShapes} target={targetShape} dots={routeDotPoints} />
 
       {Object.entries(G.ships).map(([id, ship]) => (
         <Ship
@@ -512,6 +543,7 @@ function Scene({
           initialHeading={shipSpawnHeading(id, ship.position)}
           foamId={copy === 0 ? id : undefined}
           foamPlayer
+          onUnderway={copy === 0 ? (underway) => onShipUnderway(id, underway) : undefined}
           onPointerEnter={() => onShipHover(id)}
           onPointerLeave={() => onShipHover(null)}
           onClick={() => onShipClick(id)}
@@ -668,6 +700,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const { moveShip } = props.moves;
   const moveOneHex = useCallback((q: number, r: number) => moveShip(q, r), [moveShip]);
   const { sailing, sail } = useRouteSailing(G, ctx, moveOneHex);
+  // Which players' ships are still on their way (the reach waits for the current one to settle)
+  const [underway, setUnderway] = useState<Record<string, boolean>>({});
+  const onShipUnderway = useCallback(
+    (id: string, now: boolean) => setUnderway((u) => (Boolean(u[id]) === now ? u : { ...u, [id]: now })),
+    []
+  );
+  const [routeSelection, setRouteSelection] = useState<RouteSelection | null>(null);
 
   // Track previous player to detect turn changes
   const prevPlayerRef = useRef<string | null>(null);
@@ -936,6 +975,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
           focusView={cameraFocusView}
           sailing={sailing}
+          shipUnderway={Boolean(underway[currentPlayer])}
+          selection={routeSelection}
+          onSelect={setRouteSelection}
+          onShipUnderway={onShipUnderway}
           onMoveShip={(q, r) => props.moves.moveShip(q, r)}
           onSailRoute={sail}
           onHexClick={spyglassMode ? handleHexClickForSpyglass : handleHexClickForAttack}
@@ -1034,6 +1077,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           )}
         </div>
       )}
+
+      {/* A route is selected (#213): how to sail it or let it go */}
+      {!inCombat &&
+        currentShipState &&
+        !sailing &&
+        !underway[currentPlayer] &&
+        routeSelection?.from === selectionKey(currentPlayer, currentShipState.position) && <RouteHint />}
 
       {/* Attack mode indicator */}
       {attackMode && (

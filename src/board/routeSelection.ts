@@ -28,3 +28,9 @@ export function reachConfirm(reach: Reach, selected: Hex | null, hovered: Hex | 
   const target = selected ?? hovered;
   return target ? routeTo(reach, target) : [];
 }
+
+/**
+ * Which ship, where, a selection was made for: a selection lapses once the
+ * turn passes or the ship moves, as its key no longer matches.
+ */
+export const selectionKey = (player: string, position: Hex): string => `${player}:${position.q},${position.r}`;
