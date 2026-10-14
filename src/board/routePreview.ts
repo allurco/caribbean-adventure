@@ -47,3 +47,19 @@ export function routeDots(start: Hex, route: readonly Hex[], wrapWidth: number, 
   for (let i = 1; i <= count; i++) dots.push(pathPoint(path, ROUTE_DOT_CLEARANCE + i * step));
   return dots;
 }
+
+/**
+ * The whole course of a planned route (#213) when the ship's first move on
+ * it lands on `to`: every hex centre of `plan`, so the ship is given the
+ * route at once and sails it as one curve while the moves arrive one by one.
+ * Null when `to` is not the route's first hex.
+ */
+export function plannedCourse(plan: readonly Hex[] | null, to: Point): Point[] | null {
+  if (!plan || plan.length === 0) return null;
+  const [x, , z] = hexToWorld(plan[0]);
+  if (Math.abs(x - to[0]) > 1e-6 || Math.abs(z - to[1]) > 1e-6) return null;
+  return plan.map((h): Point => {
+    const [hx, , hz] = hexToWorld(h);
+    return [hx, hz];
+  });
+}

@@ -23,8 +23,10 @@ export function useRouteSailing(
   G: CaribbeanState,
   ctx: TurnContext,
   moveShip: (q: number, r: number) => void,
-): { sailing: boolean; sail: (route: Hex[]) => void } {
+): { sailing: boolean; plan: Hex[] | null; sail: (route: Hex[]) => void } {
   const [sailing, setSailing] = useState(false);
+  // The route being sailed, for the ship to be given whole as it sets out
+  const [plan, setPlan] = useState<Hex[] | null>(null);
   const queue = useRef<RouteQueue | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { currentPlayer, phase, numMoves, gameover } = ctx;
@@ -40,6 +42,7 @@ export function useRouteSailing(
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     setSailing(false);
+    setPlan(null);
   }, []);
 
   const advance = useCallback(() => {
@@ -82,10 +85,11 @@ export function useRouteSailing(
       if (queue.current || route.length === 0) return;
       queue.current = startRoute(route, currentPlayer);
       setSailing(true);
+      setPlan(route);
       advance();
     },
     [advance, currentPlayer],
   );
 
-  return { sailing, sail };
+  return { sailing, plan, sail };
 }
