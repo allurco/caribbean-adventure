@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accountPath, parseAccountRoute, profilePath } from "./accountRoute";
+import { accountPath, parseAccountRoute, profilePath, skipsLogin } from "./accountRoute";
 
 const ID = "3f1c2b4a-9d8e-4f7a-b6c5-1a2b3c4d5e6f";
 
@@ -30,5 +30,19 @@ describe("paths", () => {
     expect(parseAccountRoute(accountPath().slice(1))).toEqual({ kind: "account" });
     expect(parseAccountRoute(profilePath(ID).slice(1))).toEqual({ kind: "profile", id: ID });
     expect(accountPath()).toBe("/?view=account");
+  });
+});
+
+describe("skipsLogin", () => {
+  it("is set by skipLogin=1 alone, beside any other parameters", () => {
+    expect(skipsLogin("?skipLogin=1")).toBe(true);
+    expect(skipsLogin("?size=small&seed=4&skipLogin=1")).toBe(true);
+  });
+
+  it("is off for a bare URL and any other value", () => {
+    expect(skipsLogin("")).toBe(false);
+    expect(skipsLogin("?skipLogin=0")).toBe(false);
+    expect(skipsLogin("?skipLogin")).toBe(false);
+    expect(skipsLogin("?skiplogin=1")).toBe(false);
   });
 });

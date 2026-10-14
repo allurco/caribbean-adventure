@@ -3,9 +3,9 @@ import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { SoundLab } from "./lab/SoundLab";
 import { parseDevUrlParams } from "./board/devUrlParams";
-import { loadGameClient } from "./loadGameClient";
+import { loadGameClient, type GameClient } from "./loadGameClient";
 import { GameClientLoader } from "./GameClientLoader";
-import { parseAccountRoute } from "./online/accountRoute";
+import { parseAccountRoute, skipsLogin } from "./online/accountRoute";
 import { supabaseConfig } from "./online/supabaseClient";
 
 // The online pages (#105) and their corner link exist only when a backend is
@@ -13,6 +13,7 @@ import { supabaseConfig } from "./online/supabaseClient";
 // hotseat game, exactly as before. Each is its own chunk.
 const AccountPage = lazy(() => import("./online/AccountPage").then((m) => ({ default: m.AccountPage })));
 const ProfilePage = lazy(() => import("./online/ProfilePage").then((m) => ({ default: m.ProfilePage })));
+const SignInGate = lazy(() => import("./online/SignInGate").then((m) => ({ default: m.SignInGate })));
 const AccountLink = lazy(() => import("./online/AccountLink").then((m) => ({ default: m.AccountLink })));
 
 // Dev URL parameters (#74), read once: a map size and seed pin the generated
@@ -27,13 +28,22 @@ const accountRoute = supabaseConfig ? parseAccountRoute(window.location.search) 
 const SeedGallery = import.meta.env.DEV ? lazy(() => import("./lab/SeedGallery")) : null;
 const showSeedGallery = SeedGallery !== null && devParams.seedGallery === true;
 
-// The game's map is generated in a worker (#124), started here at load so it
-// runs while React mounts; the local client's match starts on it. Only for
-// the game itself, not the labs or the prop viewer.
-const gameClient =
-  isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || accountRoute
-    ? undefined
-    : loadGameClient(devParams.setupData);
+const showsGame = !(isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || accountRoute);
+
+// With a backend configured the root URL is the sign-in screen, and the game
+// sits behind it; `?skipLogin=1` goes straight to the game (temporary, until
+// the online entry #125). Without a backend there is nothing to sign in to.
+const loginGate = showsGame && supabaseConfig !== null && !skipsLogin(window.location.search);
+
+// The game's map is generated in a worker (#124), started once and only for
+// the game itself, not the labs or the prop viewer: here at load so it runs
+// while React mounts, or behind the sign-in screen once a player is through.
+let gameClientPromise: Promise<GameClient> | undefined;
+function gameClient(): Promise<GameClient> {
+  gameClientPromise ??= loadGameClient(devParams.setupData);
+  return gameClientPromise;
+}
+if (showsGame && !loginGate) void gameClient();
 
 export default function App() {
   // Visit http://localhost:5173/#lab for the shader sandbox,
@@ -65,13 +75,27 @@ export default function App() {
       </Suspense>
     );
   }
-  if (devParams.soundLab || !gameClient) {
+  if (devParams.soundLab || !showsGame) {
     return <SoundLab />;
   }
+  if (supabaseConfig && loginGate) {
+    return (
+      <Suspense fallback={null}>
+        <SignInGate config={supabaseConfig} backLink={false}>
+          {() => <Game />}
+        </SignInGate>
+      </Suspense>
+    );
+  }
+  return <Game />;
+}
+
+/** The local hotseat game, with the account link when a backend is configured. */
+function Game() {
   return (
     <>
       <GameClientLoader
-        client={gameClient}
+        client={gameClient()}
         cameraTarget={devParams.cameraTarget}
         cameraDistance={devParams.cameraDistance}
         seaBuoys={devParams.seaBuoys}
