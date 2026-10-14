@@ -106,6 +106,9 @@ export function withGeneratedMap(game: Game<CaribbeanState>, map: GeneratedMap):
   return { ...game, setup: ({ random }) => createInitialState(map, random.Number) };
 }
 
+/** The seats a match is set up for. Every client's `numPlayers` must match it. */
+export const PLAYER_COUNT = 2;
+
 /**
  * The state a match starts in, on `map`: the players' ships, the captain draft, no NPCs yet.
  * `random` is boardgame.io's setup `random.Number`, so the match's seed reproduces the draft (#160).
@@ -115,7 +118,7 @@ function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: (
   // columns (#36); the generator and G share the wrap.
   const wrap: MapWrap = createWrap(getMapPreset(mapSize).columns);
 
-  const numPlayers = 2;
+  const numPlayers = PLAYER_COUNT;
   const deck = createCaptainDeck(random);
   const { hands, remaining } = dealHands(deck, numPlayers);
 
