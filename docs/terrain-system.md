@@ -1144,17 +1144,28 @@ bright as dry sand). `PALETTE_SURF` is gone.
   wherever the reef mask is set and the crest is within ~3–4.5 m of the
   surface, weighted by the field's windward channel so the line is
   densest on the face that meets the wind (`REEF_WINDWARD_BIAS`).
-- *Hull foam* (`hullFoam.ts`, `shipFoamSources.ts`). `Ship.tsx` writes
-  each ship's animated position, heading, hull length (the mesh's) and
+- *Hull foam* (`hullFoam.ts`, `hullContact.ts`, `shipFoamSources.ts`).
+  `Ship.tsx` writes each ship's animated position, heading, waterline
+  (`shipWaterline`, `shipHull.ts`: length, beam, roundness of the ends) and
   speed into a rendering-side registry from its frame callback (only in
   the canonical world copy; a sinking ship is a different component and
   stops); `Ocean.tsx` reads it into a uniform array of at most
   `SHIP_FOAM_CAP` (24) ships. Nothing bounds the NPC count in the game, so
   the fill order is fixed by id (players first, then NPCs) and the registry
-  warns once when ships are left out. The hull is a segment of half the hull
-  length along the heading; foam falls off to nothing half a hull length
-  out, extends astern with speed as a wake, and a ship at anchor keeps a
-  light ring. Distances wrap east–west.
+  warns once when ships are left out. The soft contact patch treats the
+  hull as a segment of half the hull length along the heading; foam falls
+  off to nothing about a third of a hull length out, extends astern with
+  speed, and a ship at anchor keeps a light ring. On top, measured from the
+  waterline outline (a stadium for the modelled hulls, nearly square for the
+  boxes), the **contact line** (#144): a narrow, dense line hugging the hull
+  at rest and under way, wider along the sides and most at the bow when
+  moving, full under the outline so a slightly small waterline leaves no
+  gap; under way a **bow wave** crest stands just off the stem; and a
+  **wet band** a little wider than the line darkens the water against the
+  hull. Lines under a couple of pixels wide (map zoom) fade out. All ship
+  foam, the band included, fades out over the last metre of water
+  (`SHIP_FOAM_SHALLOW_METRES`) and is nothing on land. Distances wrap
+  east–west.
 
 *Foam above the island.* The water plane stops showing where the land mesh
 rises above the waterline, so on its own the wash was cut off at the beach.
@@ -1389,6 +1400,7 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | `src/board/visuals/shoreFoam.ts` | Shore, breaker and reef bands; the wash up the beach; windward weight |
 | `src/board/visuals/shoreFoamLand.ts` | Patches the land material so the wash runs up the sand |
 | `src/board/visuals/hullFoam.ts` | Contact foam around a hull |
+| `src/board/visuals/hullContact.ts` | Contact line, bow wave and wet band at a hull's waterline |
 | `src/board/shipFoamSources.ts` | Ships' animated positions for the hull foam |
 | `src/board/visuals/foamShading.ts` | Foam union, lace, detail fade, radiance; the surf pulse and churn noise |
 | `src/board/visuals/causticFocus.ts` | Caustic maths: focus matrix, Hessian, intensity, depth and LOD fades |

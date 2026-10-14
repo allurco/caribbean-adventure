@@ -33,6 +33,7 @@ import type { TerrainFieldTexture } from "./useTerrainFieldTexture";
 import { FOAM_MOTION_GLSL, FOAM_SHADING_GLSL } from "./foamShading";
 import { SHORE_FOAM_GLSL } from "./shoreFoam";
 import { HULL_FOAM_GLSL } from "./hullFoam";
+import { HULL_CONTACT_GLSL } from "./hullContact";
 import { WHITECAP_FOAM_GLSL } from "./whitecapFoam";
 import { SHIP_FOAM_CAP, SHIP_FOAM_FLOATS_A, SHIP_FOAM_FLOATS_B, shipFoamSources } from "../shipFoamSources";
 
@@ -127,10 +128,11 @@ const fragmentShader = `
   ${SHORE_FOAM_GLSL}
   ${WHITECAP_FOAM_GLSL}
   ${HULL_FOAM_GLSL}
+  ${HULL_CONTACT_GLSL}
 
   const int SHIP_FOAM_CAP = ${SHIP_FOAM_CAP};
   uniform vec4 shipFoamA[SHIP_FOAM_CAP]; // x, z, heading x, heading z
-  uniform vec2 shipFoamB[SHIP_FOAM_CAP]; // hull length, speed
+  uniform vec4 shipFoamB[SHIP_FOAM_CAP]; // waterline length, beam, roundness, speed
   uniform int shipFoamCount;
   uniform float shipFoamWrap; // the map's wrap width; 0 where it does not wrap
 
@@ -142,17 +144,33 @@ const fragmentShader = `
   varying vec2 vRestXZ; // its rest point, for the wave look-ups
   #include <fog_pars_fragment>
 
-  // Hull foam coverage at worldXZ: the strongest of the ships' patches,
-  // each measured the short way round on a wrapping map.
-  float shipFoamCoverage(vec2 worldXZ) {
-    float coverage = 0.0;
+  // Foam round the hulls at worldXZ, where a pixel spans \`footprint\` world
+  // units: the strongest of the ships' contact patches (hullFoam.ts), contact
+  // lines and bow waves (hullContact.ts), and the strongest wet band as
+  // \`shade\`; each ship measured the short way round on a wrapping map.
+  void shipContactFoam(vec2 worldXZ, float footprint, out float coverage, out float shade) {
+    coverage = 0.0;
+    shade = 0.0;
     for (int i = 0; i < SHIP_FOAM_CAP; i++) {
       if (i >= shipFoamCount) break;
       vec2 d = worldXZ - shipFoamA[i].xy;
       if (shipFoamWrap > 0.0) d.x -= shipFoamWrap * floor(d.x / shipFoamWrap + 0.5);
-      coverage = max(coverage, hullFoamCoverage(d, shipFoamA[i].zw, shipFoamB[i].x, shipFoamB[i].y));
+      vec4 hull = shipFoamB[i]; // length, beam, roundness, speed
+      // Past the patch's wake and the wet band nothing here reaches.
+      float reach = hull.x * (0.5 + HULL_FOAM_WAKE_LENGTHS + HULL_FOAM_REACH) + hull.y;
+      if (dot(d, d) > reach * reach) continue;
+      vec2 heading = shipFoamA[i].zw;
+      float along = dot(d, heading);
+      float across = dot(d, vec2(-heading.y, heading.x));
+      float halfLength = 0.5 * hull.x;
+      float motion = min(1.0, max(hull.w, 0.0) / HULL_FOAM_FULL_SPEED);
+      float outline = hullWaterlineDistance(along, across, halfLength, 0.5 * hull.y, hull.z);
+      float alongShare = along / max(halfLength, 1e-4);
+      float contact = max(hullContactCoverage(outline, alongShare, hull.y, motion, footprint),
+        bowWaveCoverage(outline, alongShare, hull.y, motion, footprint));
+      coverage = max(coverage, max(hullFoamCoverage(d, heading, hull.x, hull.w), contact));
+      shade = max(shade, hullContactShade(outline, hull.y));
     }
-    return coverage;
   }
 
   // A coverage turned into lace by the breakup noise at \`scale\` cycles per
@@ -415,7 +433,15 @@ const fragmentShader = `
     // (#77, waterOptics.ts); the whitecaps and the hull foam do not.
     float shoreCoverage = shoreFoamCoverage(seabedDepthMetres, reef, terrainFieldReefWindward(fieldTexel), pulse, sets) * distanceFade
       * shoreFoamRecedeShare(shelfRecedeWeight(cameraDistance));
-    float hullCoverage = shipFoamCoverage(vWorld.xz) * distanceFade;
+    // The ships' foam and wet band fade out in the last metre of water and
+    // are nothing on land (hullContact.ts); the band darkens the water under
+    // the foam.
+    float shipFoamFade = shipFoamDepthFade(seabedDepthMetres) * distanceFade;
+    float shipCoverage;
+    float shipShade;
+    shipContactFoam(vWorld.xz, footprintMetres / METRES_PER_UNIT, shipCoverage, shipShade);
+    seaColor *= 1.0 - shipShade * shipFoamFade;
+    float hullCoverage = shipCoverage * shipFoamFade;
     float shore = lacedFoam(shoreCoverage, SHORE_FOAM_NOISE_SCALE, SHORE_FOAM_LACE_METRES, churn, footprintMetres);
     float whitecaps = lacedFoam(whitecapCoverage, WHITECAP_NOISE_SCALE, WHITECAP_LACE_METRES, churn, footprintMetres);
     float hull = lacedFoam(hullCoverage, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres);
