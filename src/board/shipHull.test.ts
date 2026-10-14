@@ -12,6 +12,9 @@ import {
   shipHoverBox,
   shipHullBox,
   shipTooltipHeight,
+  shipWaterline,
+  WATERLINE_BEAM_SHARE,
+  WATERLINE_LENGTH_SHARE,
 } from "./shipHull";
 import { SHIP_MODELS, shipModelDraftUnits, shipModelScale } from "./shipModels";
 
@@ -136,5 +139,29 @@ describe("shipTooltipHeight", () => {
       expect(shipTooltipHeight(shipClass)).toBeCloseTo(shipHoverBox(shipClass).top + SHIP_TOOLTIP_CLEARANCE, 12);
     }
     expect(shipTooltipHeight("Galleon")).toBeGreaterThan(shipTooltipHeight("Sloop"));
+  });
+});
+
+describe("shipWaterline", () => {
+  it("is a modelled hull's waterline: a little shorter and narrower than its hull box, with rounded ends", () => {
+    for (const shipClass of SHIP_CLASSES) {
+      const [width, , length] = shipHullBox(shipClass);
+      const waterline = shipWaterline(shipClass);
+      expect(SHIP_MODELS[shipClass]).not.toBeNull();
+      expect(waterline.length).toBeCloseTo(length * WATERLINE_LENGTH_SHARE, 12);
+      expect(waterline.beam).toBeCloseTo(width * WATERLINE_BEAM_SHARE, 12);
+      expect(waterline.roundness).toBe(1);
+    }
+    expect(WATERLINE_LENGTH_SHARE).toBeGreaterThan(0.75);
+    expect(WATERLINE_LENGTH_SHARE).toBeLessThanOrEqual(1);
+    expect(WATERLINE_BEAM_SHARE).toBeGreaterThan(0.75);
+    expect(WATERLINE_BEAM_SHARE).toBeLessThanOrEqual(1);
+  });
+
+  it("is a box hull's footprint, nearly square, for a ship without a class", () => {
+    const waterline = shipWaterline(undefined);
+    expect(waterline.length).toBeCloseTo(DEFAULT_HULL_BOX[2], 12);
+    expect(waterline.beam).toBeCloseTo(DEFAULT_HULL_BOX[0], 12);
+    expect(waterline.roundness).toBeLessThan(0.3);
   });
 });

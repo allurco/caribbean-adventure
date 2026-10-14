@@ -93,3 +93,35 @@ export const SHIP_TOOLTIP_CLEARANCE = 0.08;
 
 /** How high above the sea a ship's tooltip stands: its bottom edge just over the masthead (ADR 0006). */
 export const shipTooltipHeight = (shipClass: ShipClass | undefined): number => shipHoverBox(shipClass).top + SHIP_TOOLTIP_CLEARANCE;
+
+/**
+ * Where a hull meets the water, for its contact foam (hullContact.ts, #144):
+ * the waterline's length and beam in world units and how round its ends are
+ * (0 square … 1 a stadium).
+ */
+export interface Waterline {
+  readonly length: number;
+  readonly beam: number;
+  readonly roundness: number;
+}
+
+/**
+ * STYLISTIC: a modelled hull's waterline against its overall length and
+ * greatest beam. The stem and the stern rake out over the water and the
+ * sides tumble home above it, so the waterline is a little shorter and
+ * narrower; the contact foam is full under the outline, so a waterline a
+ * little small never leaves a gap, where one too big would float foam off
+ * the hull.
+ */
+export const WATERLINE_LENGTH_SHARE = 0.88;
+export const WATERLINE_BEAM_SHARE = 0.92;
+/** A box hull's footprint is its waterline: square ends, barely rounded. */
+const BOX_WATERLINE_ROUNDNESS = 0.15;
+
+/** The waterline of a ship of `shipClass`: its model's, from the hull box, or the box's own footprint. */
+export const shipWaterline = (shipClass: ShipClass | undefined): Waterline => {
+  const [width, , length] = shipHullBox(shipClass);
+  const model = shipClass ? SHIP_MODELS[shipClass] : null;
+  if (!model) return { length, beam: width, roundness: BOX_WATERLINE_ROUNDNESS };
+  return { length: length * WATERLINE_LENGTH_SHARE, beam: width * WATERLINE_BEAM_SHARE, roundness: 1 };
+};
