@@ -92,7 +92,7 @@ function ShipClassCard({
         </h3>
 
         <div className="space-y-2">
-          <StatRow label="Speed" value={`${stats.maneuverability} moves`} accent />
+          <StatRow label="Moves per turn" value={stats.maneuverability} accent />
           <StatRow label="Cargo" value={`${stats.cargo} slots`} />
 
           <div className="border-t border-amber-700/20 my-1" />

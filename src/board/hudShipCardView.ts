@@ -56,7 +56,7 @@ export function shipCardView(ship: ShipState): ShipCardView {
       ? [
           { label: "Cannons", value: String(stats.cannons) },
           { label: "Scouting", value: String(stats.scouting) },
-          { label: "Speed", value: String(stats.maneuverability) },
+          { label: "Moves", value: String(stats.maneuverability) },
           { label: "Cargo", value: `${totalCargo(ship.cargo)}/${ship.maxCargo}` },
         ]
       : [],
