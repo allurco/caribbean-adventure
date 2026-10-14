@@ -22,6 +22,12 @@ describe("turn hand-off", () => {
     expect(stepHandoff(h, calm(T.sailingMin)).phase).toBe("turnEnded");
   });
 
+  it("waits out a slow reversal (well over 2.5 s) before giving up", () => {
+    const h = startHandoff("0", "1", 0, false);
+    expect(stepHandoff(h, calm(3000, { shipAtRest: false })).phase).toBe("sailing");
+    expect(T.sailingMax).toBeGreaterThanOrEqual(5000);
+  });
+
   it("gives up waiting for a ship that never settles", () => {
     const h = startHandoff("0", "1", 0, false);
     expect(stepHandoff(h, calm(T.sailingMax, { shipAtRest: false })).phase).toBe("turnEnded");

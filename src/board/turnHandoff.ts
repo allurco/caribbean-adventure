@@ -37,7 +37,8 @@ export interface HandoffSignals {
 export const HANDOFF_TIMING = {
   /** A ship reports it is under way within a frame or two of its new hex: wait at least this long. */
   sailingMin: 120,
-  sailingMax: 4000,
+  // A reversal mid-move slows into its turn and can take over 2 s to settle (#219): wait well past that
+  sailingMax: 6000,
   turnEnded: 1100,
   turnEndedReduced: 500,
   /** NPCs get their new hexes as the phase starts and report they are under way a frame later. */
