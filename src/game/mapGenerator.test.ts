@@ -230,8 +230,16 @@ describe("generateMap: across the seam", () => {
 });
 
 describe("generateMap", () => {
+  it("requires a seed: there is no unseeded fallback (#160)", () => {
+    // @ts-expect-error the seed is a required argument
+    expect(() => generateMap(TEST_MAP)).toThrow(/seed/);
+    for (const seed of [1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => generateMap(TEST_MAP, seed)).toThrow(/seed/);
+    }
+  });
+
   it("every cell has a valid terrain type", () => {
-    const map = generateMap(TEST_MAP);
+    const map = generateMap(TEST_MAP, 42);
     for (const cell of map) {
       expect(["water", "island", "reef"]).toContain(cell.terrain);
     }
@@ -240,8 +248,8 @@ describe("generateMap", () => {
   it("contains at least one island", () => {
     // Run multiple times to guard against unlikely all-water rolls
     let hasIsland = false;
-    for (let i = 0; i < 20; i++) {
-      const map = generateMap(TEST_MAP);
+    for (let seed = 0; seed < 20; seed++) {
+      const map = generateMap(TEST_MAP, seed);
       if (map.some((c) => c.terrain === "island")) {
         hasIsland = true;
         break;
