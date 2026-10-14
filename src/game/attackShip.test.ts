@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { hex, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
+import { hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
 import type { CaribbeanState, ShipState } from "./types";
@@ -916,6 +916,7 @@ describe("bounty and flotilla system", () => {
           terrain: "island" as const, elevation: 2,
           hasPort: true,
           nation: "England" as const,
+          dockingHex: hex(1, 0),
           market: {
             inDemandGood: null, prices: {
               Wood: { buy: 8, sell: 6 },
@@ -1057,5 +1058,9 @@ describe("bounty and flotilla system", () => {
     expect(flotillas.length).toBe(1);
     expect(flotillas[0].nation).toBe("England");
     expect(flotillas[0].huntingTargetId).toBe("0");
+    // It launches from the port's docking hex, on the water (#189)
+    expect(flotillas[0].spawnPortHex).toEqual(hex(0, 0));
+    const under = G.cells.find((c) => hexEquals(c.hex, flotillas[0].position));
+    expect(under?.terrain).toBe("water");
   });
 });
