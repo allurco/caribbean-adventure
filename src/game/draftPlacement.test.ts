@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { createCaptainDeck, dealHands } from "./captains";
 import { createShipState } from "./economy";
@@ -54,7 +54,7 @@ function draftedShips(mapSize: MapSizeId, mapSeed: number) {
       npcIdCounter: 0,
     }),
   };
-  const client = Client<CaribbeanState>({ game, numPlayers: PLAYERS });
+  const client = Client<CaribbeanState>({ game: withHotseatView(game), numPlayers: PLAYERS });
   client.start();
   for (let i = 0; i < PLAYERS; i++) client.moves.pickCaptain(0, STARTER_SHIP_CLASSES[i % STARTER_SHIP_CLASSES.length]);
   const { G, ctx } = client.getState()!;

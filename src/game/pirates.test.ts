@@ -4,7 +4,7 @@ import type { Game } from "boardgame.io";
 import { hex, hexGrid } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, Nation, NPCRole, NPCShip, PirateRecord, ShipState } from "./types";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
 import { isBannedAtPort, isPlayerPirate } from "./reputation";
 
@@ -95,7 +95,7 @@ function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanSta
       ...extra,
     }),
   };
-  const client = Client<CaribbeanState>({ game, numPlayers: Object.keys(ships).length });
+  const client = Client<CaribbeanState>({ game: withHotseatView(game), numPlayers: Object.keys(ships).length });
   client.start();
   return client;
 }

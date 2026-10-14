@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { createShipState } from "./economy";
 import { SHIP_SPECS } from "./constants";
@@ -80,7 +80,7 @@ function setupAtShipyard(overrides?: {
     }),
   };
 
-  const client = Client<CaribbeanState>({ game: BuyShipGame });
+  const client = Client<CaribbeanState>({ game: withHotseatView(BuyShipGame) });
   client.start();
   return client;
 }
@@ -156,7 +156,7 @@ describe("buyShip move", () => {
       wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: NoShipyardGame });
+    const client = Client<CaribbeanState>({ game: withHotseatView(NoShipyardGame) });
     client.start();
     client.moves.buyShip("Frigate");
     const { G } = client.getState()!;
@@ -194,7 +194,7 @@ describe("buyShip move", () => {
       wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: WaterGame });
+    const client = Client<CaribbeanState>({ game: withHotseatView(WaterGame) });
     client.start();
     client.moves.buyShip("Frigate");
     const { G } = client.getState()!;

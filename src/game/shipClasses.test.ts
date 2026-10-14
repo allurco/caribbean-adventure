@@ -3,7 +3,7 @@ import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { SHIP_CLASSES, SHIP_SPECS } from "./types";
 import type { ShipClass, CaribbeanState, Captain, MapCell } from "./types";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
 import { hex, hexEquals } from "./hex";
 import type { MapSizeId } from "./mapConfig";
@@ -193,7 +193,7 @@ function setupDraft() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: DraftGame, numPlayers: 2 });
+  const client = Client<CaribbeanState>({ game: withHotseatView(DraftGame), numPlayers: 2 });
   client.start();
   return client;
 }

@@ -14,6 +14,7 @@ import type {
   CombatAction,
 } from "./types";
 import { SHIP_CLASSES, STARTER_SHIP_CLASSES } from "./types";
+import { playerViewFor } from "./playerView";
 import {
   canAttack,
   canAttackNPC,
@@ -84,6 +85,17 @@ export function withSetupData(
 }
 
 /**
+ * The game for the local hotseat client (#109): one screen that every seat
+ * shares, so it sees the whole table. boardgame.io's local client applies
+ * `playerView` with the client's `playerID`, and the hotseat client has none,
+ * which `Caribbean`'s view reads as a spectator; this keeps the full state.
+ * Never for a client that talks to a server.
+ */
+export function withHotseatView(game: Game<CaribbeanState>): Game<CaribbeanState> {
+  return { ...game, playerView: ({ G }) => G };
+}
+
+/**
  * The game started on `map`, generated before the match was created (in the
  * map worker, #124), so `setup()` stays synchronous and skips generating.
  * For the local client, which creates its match itself; `map` must come from
@@ -145,6 +157,9 @@ const movesBudgetTurn = {
 
 export const Caribbean: Game<CaribbeanState> = {
   name: "caribbean",
+
+  // Each seat sees only its own hidden information; a client with no seat is a spectator (#109).
+  playerView: ({ G, playerID }) => playerViewFor(G, playerID),
 
   endIf: ({ G }) => {
     const winner = findWinner(G.ships);

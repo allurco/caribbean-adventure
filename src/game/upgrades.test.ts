@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import type { Captain, MapCell, ShipClass } from "./types";
 import { hex } from "./hex";
@@ -81,7 +81,7 @@ function setupMainPhase(p0Class: ShipClass = "Sloop", p1Class: ShipClass = "Flut
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: DraftGame, numPlayers: 2 });
+  const client = Client<CaribbeanState>({ game: withHotseatView(DraftGame), numPlayers: 2 });
   client.start();
   // Draft: P0 picks captain + ship class
   client.moves.pickCaptain(0, p0Class);
@@ -124,7 +124,7 @@ function setupAtPortNoDraft() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: TestGame });
+  const client = Client<CaribbeanState>({ game: withHotseatView(TestGame) });
   client.start();
   return client;
 }
@@ -260,7 +260,7 @@ describe("repair move", () => {
       wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: TestGame });
+    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame) });
     client.start();
     return client;
   }
@@ -343,7 +343,7 @@ describe("repair move", () => {
       wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: TestGame });
+    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame) });
     client.start();
 
     client.moves.repair("hull", 1);

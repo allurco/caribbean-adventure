@@ -5,7 +5,7 @@ import { hex, hexEquals, hexGrid, hexRect, offsetToHex, createWrap } from "./hex
 import type { MapCell } from "./mapGenerator";
 import type { MapSizeId } from "./mapConfig";
 import type { CaribbeanState, ShipState } from "./types";
-import { Caribbean } from "./Game";
+import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
 
 /** An all-water hexagon of `radius` around the origin, so combat tests aren't blocked by islands. */
@@ -61,7 +61,7 @@ function setupCombatGame(options: {
     }),
   };
 
-  const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
+  const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
   client.start();
   return client;
 }
@@ -737,7 +737,7 @@ describe("bounty and flotilla system", () => {
       }),
     };
 
-    const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
     client.start();
 
     expect(client.getState()!.G.ships["0"].bounties.Spain).toBe(0);
@@ -808,7 +808,7 @@ describe("bounty and flotilla system", () => {
       }),
     };
 
-    const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
     client.start();
 
     const bountyBefore = client.getState()!.G.ships["0"].bounties.France;
@@ -896,7 +896,7 @@ describe("bounty and flotilla system", () => {
       }),
     };
 
-    const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
     client.start();
 
     expect(client.getState()!.G.ships["0"].bounties.Spain).toBe(0);
@@ -983,7 +983,7 @@ describe("bounty and flotilla system", () => {
       }),
     };
 
-    const client = Client<CaribbeanState>({ game: TestGame, numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
     client.start();
 
     // No flotilla initially
@@ -1042,7 +1042,7 @@ describe("bounty and flotilla system", () => {
       }),
     };
 
-    const client2 = Client<CaribbeanState>({ game: TestGame2, numPlayers: 2 });
+    const client2 = Client<CaribbeanState>({ game: withHotseatView(TestGame2), numPlayers: 2 });
     client2.start();
 
     // Attack the NPC

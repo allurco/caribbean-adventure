@@ -1,10 +1,20 @@
 import { describe, it, expect, vi } from "vitest";
+import { Client as HeadlessClient } from "boardgame.io/client";
+import type { Game } from "boardgame.io";
 import { SHIP_MODELS, shipModelUrl } from "./board/shipModels";
+import type { CaribbeanState } from "./game/Game";
 
 const preload = vi.hoisted(() => vi.fn());
 vi.mock("@react-three/drei", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@react-three/drei")>()),
   useGLTF: Object.assign(() => undefined, { preload }),
+}));
+
+// The React client is replaced by its options, so a test can read the game it was given.
+vi.mock("boardgame.io/react", () => ({ Client: (options: unknown) => options }));
+// A tiny map, so the test does not wait on the generator.
+vi.mock("./mapWorker/generateMapOffThread", () => ({
+  generateMapOffThread: async () => ({ mapSize: "small", mapSeed: 1, cells: [] }),
 }));
 
 describe("loading the game client", () => {
@@ -14,5 +24,13 @@ describe("loading the game client", () => {
     const urls = Object.values(SHIP_MODELS).flatMap((model) => (model ? [shipModelUrl(model, import.meta.env.BASE_URL)] : []));
     expect(urls.length).toBeGreaterThan(0);
     for (const url of urls) expect(preload).toHaveBeenCalledWith(url, false, false);
+  });
+
+  it("keeps the hotseat client's view of the whole table: every seat's draft hand (#109)", async () => {
+    const { loadGameClient } = await import("./loadGameClient");
+    const { game } = (await loadGameClient(undefined)) as unknown as { game: Game<CaribbeanState> };
+    // Like the hotseat client: one shared screen, no seat.
+    const client = HeadlessClient<CaribbeanState>({ game, numPlayers: 2 });
+    expect(Object.keys(client.getState()!.G.draftHands)).toEqual(["0", "1"]);
   });
 });
