@@ -10,7 +10,7 @@ import {
   GRID_LINE_COLOR,
   gridGlare,
 } from "./hexOutlineGrid";
-import { SUN_DIRECTION } from "./visuals/atmosphere";
+import { SCENE_LIGHTING } from "./visuals/sceneLighting";
 import {
   CAMERA_FOV,
   CAMERA_MAX_DISTANCE,
@@ -121,32 +121,45 @@ function brightness(hex: string): number {
 }
 
 describe("gridGlare (#152)", () => {
-  // The #152 overview: target (0, 0, 15.5), camera (0, 36, 33); the sun's
-  // glare lies ahead and to the left of the view, over the west seam.
+  // The #152 overview: target (0, 0, 15.5), camera (0, 36, 33). The glare
+  // lies where the camera sees the scene's sun mirrored in the sea; the
+  // points are derived from the sun, wherever the time of day puts it.
   const camera = [0, 36, 33] as const;
+  const sun = SCENE_LIGHTING.sun.direction;
+  /** The sea point the camera sees the sun mirrored in, and the one mirrored across the view (away from the sun). */
+  const glintFrom = (cam: readonly [number, number, number]) => {
+    const s = cam[1] / sun[1];
+    return {
+      glint: [cam[0] + sun[0] * s, 0, cam[2] + sun[2] * s] as const,
+      away: [cam[0] - sun[0] * s, 0, cam[2] + sun[2] * s] as const,
+    };
+  };
+  const { glint, away } = glintFrom(camera);
 
   it("is full where the camera sees the sun mirrored in the sea", () => {
-    expect(gridGlare(camera, [-20, 0, 15.5], SUN_DIRECTION)).toBeGreaterThan(0.9);
+    expect(gridGlare(camera, glint, sun)).toBeGreaterThan(0.9);
   });
 
   it("is nothing over the dark sea away from the sun", () => {
-    expect(gridGlare(camera, [20, 0, 15.5], SUN_DIRECTION)).toBe(0);
-    expect(gridGlare([12.3, 3.14, 16.56], [16, 0, 14], SUN_DIRECTION)).toBe(0);
+    expect(gridGlare(camera, away, sun)).toBe(0);
+    const ship = [12.3, 3.14, 16.56] as const;
+    expect(gridGlare(ship, glintFrom(ship).away, sun)).toBe(0);
   });
 
   it("eases from none to full with the mirrored sun", () => {
     let prev = -1;
-    for (let x = 25; x >= -25; x -= 1) {
-      const g = gridGlare(camera, [x, 0, 15.5], SUN_DIRECTION);
+    for (let f = 0; f <= 1; f += 1 / 50) {
+      const g = gridGlare(camera, [away[0] + (glint[0] - away[0]) * f, 0, glint[2]], sun);
       expect(g).toBeGreaterThanOrEqual(prev - 1e-12);
       expect(g).toBeGreaterThanOrEqual(0);
       expect(g).toBeLessThanOrEqual(1);
       prev = g;
     }
+    expect(prev).toBeGreaterThan(0.9);
   });
 
   it("is nothing with the camera on the point (no direction to reflect)", () => {
-    expect(gridGlare([1, 0, 1], [1, 0, 1], SUN_DIRECTION)).toBe(0);
+    expect(gridGlare([1, 0, 1], [1, 0, 1], sun)).toBe(0);
   });
 });
 

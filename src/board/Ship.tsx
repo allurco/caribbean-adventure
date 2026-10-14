@@ -4,8 +4,8 @@ import { useGLTF } from "@react-three/drei";
 import { Vector3, Mesh, MathUtils, Group, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
-import { shipFoamSources } from "./shipFoamSources";
-import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox } from "./shipHull";
+import { type ShipFoamSource, shipFoamSources } from "./shipFoamSources";
+import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox, shipWaterline } from "./shipHull";
 import { moveHeading } from "./shipHeading";
 import { useShipWavePose } from "./useShipWavePose";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
@@ -77,8 +77,10 @@ export function Ship({
   const targetYRotation = useRef(0);
   const foamPrevPosition = useRef<Vector3 | null>(null);
   const foamSpeed = useRef(0);
+  /** Written in place each frame (the registry copies it), so registering allocates nothing. */
+  const foamSource = useRef<ShipFoamSource>({ x: 0, z: 0, headingX: 0, headingZ: 1, hullLength: 0, beam: 0, roundness: 0, speed: 0, player: false });
   const hull = shipHullBox(shipClass);
-  const hullLength = hull[2];
+  const waterline = shipWaterline(shipClass);
   const hover = shipHoverBox(shipClass);
   const model = shipModel(shipClass);
   // The wave pose rides on an inner group, under the group that sails and turns.
@@ -146,15 +148,17 @@ export function Ship({
       prev.copy(p);
       foamSpeed.current = Math.max(raw, foamSpeed.current * Math.exp(-delta / FOAM_SPEED_DECAY));
       const rot = ref.current.rotation.y;
-      shipFoamSources.set(foamId, {
-        x: p.x,
-        z: p.z,
-        headingX: Math.sin(rot),
-        headingZ: Math.cos(rot),
-        hullLength,
-        speed: foamSpeed.current,
-        player: foamPlayer,
-      });
+      const source = foamSource.current;
+      source.x = p.x;
+      source.z = p.z;
+      source.headingX = Math.sin(rot);
+      source.headingZ = Math.cos(rot);
+      source.hullLength = waterline.length;
+      source.beam = waterline.beam;
+      source.roundness = waterline.roundness;
+      source.speed = foamSpeed.current;
+      source.player = foamPlayer;
+      shipFoamSources.set(foamId, source);
     }
   });
 

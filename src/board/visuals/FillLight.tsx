@@ -2,23 +2,23 @@ import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { DirectionalLight } from "three";
 import { controlsTarget } from "../controlsTarget";
+import type { DirectionalLighting } from "./lighting";
 import { SEABED_LAYER } from "./seabedPrepass";
 
 interface FillLightProps {
-  color: string;
-  intensity: number;
-  /** Light position relative to the point the camera is looking at. */
-  offset: [number, number, number];
+  /** The fill from `lightingFor`: colour, intensity and its mount relative to the camera target. */
+  fill: DirectionalLighting;
 }
 
 /**
  * Shadowless fill that follows the camera target (#63): a directional light
  * standing in for the ground bounce the sky map cannot carry (see
- * FILL_COLOR in atmosphere.ts). It casts no shadow, so there is no box to
+ * the fill in lighting.ts). It casts no shadow, so there is no box to
  * fit; it only has to keep pointing at the focus so its direction stays the
  * same from the player's point of view wherever the camera pans.
  */
-export function FillLight({ color, intensity, offset }: FillLightProps) {
+export function FillLight({ fill }: FillLightProps) {
+  const { color, intensity, offset } = fill;
   const lightRef = useRef<DirectionalLight>(null);
   const controls = useThree((state) => state.controls);
 

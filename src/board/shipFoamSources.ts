@@ -3,7 +3,7 @@
  *
  * Ships animate their positions per frame inside Ship.tsx, outside React
  * state, so the ocean cannot read them from props. Instead each Ship writes
- * its animated position, heading, hull length and speed here from its frame
+ * its animated position, heading, waterline and speed here from its frame
  * callback, and Ocean.tsx reads the lot into a fixed-size uniform array in
  * its own. A rendering-side registry only: nothing here touches game state.
  *
@@ -24,8 +24,8 @@
 export const SHIP_FOAM_CAP = 24;
 /** Floats per ship in the first array: x, z, heading x, heading z. */
 export const SHIP_FOAM_FLOATS_A = 4;
-/** Floats per ship in the second: hull length, speed. */
-export const SHIP_FOAM_FLOATS_B = 2;
+/** Floats per ship in the second: waterline length, waterline beam, roundness of its ends, speed. */
+export const SHIP_FOAM_FLOATS_B = 4;
 
 export interface ShipFoamSource {
   /** Animated world position on the sea, canonical copy. */
@@ -34,8 +34,10 @@ export interface ShipFoamSource {
   /** Unit heading in world xz (the way the bow points). */
   headingX: number;
   headingZ: number;
-  /** World units. */
+  /** The waterline's length and beam, world units, and how round its ends are (shipWaterline, shipHull.ts). */
   hullLength: number;
+  beam: number;
+  roundness: number;
   /** World units per second. */
   speed: number;
   /** A player's ship: written ahead of every NPC when more than SHIP_FOAM_CAP ships register. */
@@ -47,13 +49,15 @@ export interface ShipFoamRegistry {
   remove: (id: string) => void;
   /**
    * Writes the ships into `a` (SHIP_FOAM_FLOATS_A per ship: x, z, heading)
-   * and `b` (SHIP_FOAM_FLOATS_B per ship: hull length, speed), at most
+   * and `b` (SHIP_FOAM_FLOATS_B per ship: length, beam, roundness, speed), at most
    * SHIP_FOAM_CAP of them, and returns how many were written. The order is
    * fixed by the ids alone: players first, then NPCs, each group by id, so
    * which ships lose their foam past the cap never depends on when they
    * registered. Past the cap it warns once.
    */
   fill: (a: Float32Array, b: Float32Array) => number;
+  /** Visits every registered ship, in no particular order (the wake trails read them this way, wakeTrail.ts). */
+  forEach: (visit: (source: ShipFoamSource, id: string) => void) => void;
 }
 
 /** Players first, then by id; plain code-point order, so it is the same everywhere. */
@@ -72,9 +76,24 @@ export function createShipFoamRegistry(): ShipFoamRegistry {
   let warned = false;
   return {
     set: (id, source) => {
+      // Copied into the registry's own entry, so a caller may reuse one
+      // object every frame and the registry allocates only for a new ship.
       const previous = sources.get(id);
-      if (!previous || previous.player !== source.player) orderStale = true;
-      sources.set(id, source);
+      if (!previous) {
+        sources.set(id, { ...source });
+        orderStale = true;
+        return;
+      }
+      if (previous.player !== source.player) orderStale = true;
+      previous.x = source.x;
+      previous.z = source.z;
+      previous.headingX = source.headingX;
+      previous.headingZ = source.headingZ;
+      previous.hullLength = source.hullLength;
+      previous.beam = source.beam;
+      previous.roundness = source.roundness;
+      previous.speed = source.speed;
+      previous.player = source.player;
     },
     remove: (id) => {
       if (sources.delete(id)) orderStale = true;
@@ -98,10 +117,13 @@ export function createShipFoamRegistry(): ShipFoamRegistry {
         a[i * SHIP_FOAM_FLOATS_A + 2] = s.headingX;
         a[i * SHIP_FOAM_FLOATS_A + 3] = s.headingZ;
         b[i * SHIP_FOAM_FLOATS_B] = s.hullLength;
-        b[i * SHIP_FOAM_FLOATS_B + 1] = s.speed;
+        b[i * SHIP_FOAM_FLOATS_B + 1] = s.beam;
+        b[i * SHIP_FOAM_FLOATS_B + 2] = s.roundness;
+        b[i * SHIP_FOAM_FLOATS_B + 3] = s.speed;
       }
       return n;
     },
+    forEach: (visit) => sources.forEach(visit),
   };
 }
 

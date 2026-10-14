@@ -41,7 +41,7 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 - `economy.ts` — Buy/sell goods, upgrades, repair, buying ships, jury-rig.
 - `captains.ts` — Captain deck, drafting, home ports.
 - `npcManager.ts` / `npcAI` — NPC merchants/flotillas: spawning and movement.
-- `reputation.ts` — Bounties and flotilla escalation.
+- `reputation.ts` — Bounties, flotilla escalation, pirate status (`isPlayerPirate`, kept per player in `G.pirates`) and the per-flag bounty on pirates.
 - `missions.ts` — Mission generation and completion checks (delivery/escort/assassination).
 - `scoring.ts` — Gold stashing, combat glory, win condition.
 - `scouting.ts` — Scout targeting.
@@ -52,7 +52,7 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 - `Ship.tsx` — Ship with per-frame lerp animation (also `SinkingShip`): draws the class's generated model when it has one, else (and while it loads) the hull box from `shipHull.ts`.
 - `shipModels.ts` — The ship model catalogue: each `ShipClass` to a model in `public/ships/` (board-variant `.glb` from `boats/`) or none, with its real length and part names; gives the scale (`metresToUnits × SHIP_SCALE`) and the turn from glTF −Z onto the heading. `shipAssetCheck.ts` (with `glb.ts`) holds every file in `public/ships/` to the budget and the catalogue, run by `shipAssets.node.test.ts`; `*.node.test.ts` files use Node's `fs` and are type-checked by `tsconfig.node.json`.
 - `HexGrid.tsx` — Hex tile geometry.
-- `visuals/` — Environment rendering: the terrain height field (`terrainHeightField.ts`, `sharedTerrainField.ts`), the land mesh (`landMesh.ts`, `useLandTerrain.ts`, `LandTerrain.tsx`), `Ocean.tsx` and its wave/water maths, `TerrainDecorations.tsx` with the placement modules, `SunLight.tsx`. See **Terrain System** below.
+- `visuals/` — Environment rendering: the terrain height field (`terrainHeightField.ts`, `sharedTerrainField.ts`), the land mesh (`landMesh.ts`, `useLandTerrain.ts`, `LandTerrain.tsx`), `Ocean.tsx` and its wave/water maths, `TerrainDecorations.tsx` with the placement modules, and the light: `lighting.ts` (`lightingFor(timeOfDay)`, the one source of every lighting value, pinned to `GOLDEN_HOUR` in `sceneLighting.ts`; ADR 0002 amendment b) feeding `SunLight.tsx`, `FillLight.tsx`, the sky map and `PostEffects.tsx`. See **Terrain System** below.
 - Panels & HUD: `PortPanel`, `MarketPanel`, `ShipyardPanel`, `ShipwrightPanel`, `TavernPanel`, `CombatPanel`, `DraftScreen`, `GameOverScreen`, `Hud*`, tooltips, and animation components.
 
 **`src/audio/`** — Sound, played through three.js audio only: `soundRegistry.ts` (every sound and its CC0 credit; a test keeps it in step with `public/sounds/` and `NOTICE`), `audioEngine.ts` (one `AudioListener` on the camera, unlock on the first user gesture), `audioSettings.ts` (mute and master volume, saved per browser), `soundEvents.ts` / `eventSounds.ts` (game-state changes to sounds, played by `useGameSounds`), and the open-sea ambience bed (`ambienceBed.ts`, with `ambienceMix.ts` crossfading its two layers by camera distance). Keep the logic in the pure modules; `src/board/` only mounts the listener and feeds the bed.

@@ -12,23 +12,14 @@ import {
 import type { ShaderMaterial, Texture, WebGLRenderTarget } from "three";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { LightProbeGenerator } from "three/examples/jsm/lights/LightProbeGenerator.js";
-import {
-  SEA_BOUNCE_ALBEDO,
-  SKY_DIFFUSE_FRACTION,
-  SKY_MIE_COEFFICIENT,
-  SKY_MIE_DIRECTIONAL_G,
-  SKY_RAYLEIGH,
-  SKY_TURBIDITY,
-  SUN_ELEVATION_DEG,
-  SUN_INTENSITY,
-} from "./atmosphere";
+import { SEA_BOUNCE_ALBEDO } from "./atmosphere";
+import type { Lighting } from "./lighting";
 import {
   groundBounceRadiance,
   relativeLuminance,
   skyEnvironmentFragmentShader,
   skyEnvironmentIntensity,
 } from "./skyEnvironment";
-import type { Vec3 } from "./sunDirection";
 
 export interface SkyEnvironment {
   /** The sky as a PMREM, ready for `textureCubeUV` lookups. */
@@ -43,16 +34,16 @@ export interface SkyEnvironment {
 const MEASURE_CUBE_SIZE = 16;
 const UP = new Vector3(0, 1, 0);
 
-function createEnvironmentSky(sun: Vec3): Sky {
+function createEnvironmentSky({ sun, sky: params }: Lighting): Sky {
   const sky = new Sky();
   const material = sky.material as ShaderMaterial;
   material.fragmentShader = skyEnvironmentFragmentShader(material.fragmentShader);
   material.uniforms.groundRadiance = { value: new Vector3() };
-  material.uniforms.turbidity.value = SKY_TURBIDITY;
-  material.uniforms.rayleigh.value = SKY_RAYLEIGH;
-  material.uniforms.mieCoefficient.value = SKY_MIE_COEFFICIENT;
-  material.uniforms.mieDirectionalG.value = SKY_MIE_DIRECTIONAL_G;
-  (material.uniforms.sunPosition.value as Vector3).set(...sun);
+  material.uniforms.turbidity.value = params.turbidity;
+  material.uniforms.rayleigh.value = params.rayleigh;
+  material.uniforms.mieCoefficient.value = params.mieCoefficient;
+  material.uniforms.mieDirectionalG.value = params.mieDirectionalG;
+  (material.uniforms.sunPosition.value as Vector3).set(...sun.direction);
   return sky;
 }
 
@@ -65,13 +56,14 @@ function createEnvironmentSky(sun: Vec3): Sky {
  * is read back once and scaled to the clear-sky diffuse share of the sun's
  * (see `skyEnvironmentIntensity`). Returns null until that is done.
  */
-export function useSkyEnvironment(sun: Vec3): SkyEnvironment | null {
+export function useSkyEnvironment(lighting: Lighting): SkyEnvironment | null {
   const gl = useThree((state) => state.gl);
   const scene = useThree((state) => state.scene);
   const [environment, setEnvironment] = useState<SkyEnvironment | null>(null);
 
   useEffect(() => {
-    const sky = createEnvironmentSky(sun);
+    const sky = createEnvironmentSky(lighting);
+    const { sun, sky: skyParams } = lighting;
     const groundRadiance = (sky.material as ShaderMaterial).uniforms.groundRadiance.value as Vector3;
     const skyScene = new Scene();
     skyScene.add(sky);
@@ -92,8 +84,8 @@ export function useSkyEnvironment(sun: Vec3): SkyEnvironment | null {
       groundRadiance.set(
         ...groundBounceRadiance({
           albedo: SEA_BOUNCE_ALBEDO,
-          directHorizontal: SUN_INTENSITY * Math.sin(MathUtils.degToRad(SUN_ELEVATION_DEG)),
-          diffuseFraction: SKY_DIFFUSE_FRACTION,
+          directHorizontal: sun.intensity * Math.sin(MathUtils.degToRad(sun.elevationDeg)),
+          diffuseFraction: skyParams.diffuseFraction,
           environmentIntensity: intensity,
         })
       );
@@ -109,9 +101,9 @@ export function useSkyEnvironment(sun: Vec3): SkyEnvironment | null {
         bake(
           skyEnvironmentIntensity({
             measuredSkyIrradiance: relativeLuminance(e.x, e.y, e.z),
-            sunIntensity: SUN_INTENSITY,
-            sunElevationDeg: SUN_ELEVATION_DEG,
-            diffuseFraction: SKY_DIFFUSE_FRACTION,
+            sunIntensity: sun.intensity,
+            sunElevationDeg: sun.elevationDeg,
+            diffuseFraction: skyParams.diffuseFraction,
           })
         );
       })
@@ -133,7 +125,7 @@ export function useSkyEnvironment(sun: Vec3): SkyEnvironment | null {
       sky.geometry.dispose();
       (sky.material as ShaderMaterial).dispose();
     };
-  }, [gl, scene, sun]);
+  }, [gl, scene, lighting]);
 
   return environment;
 }

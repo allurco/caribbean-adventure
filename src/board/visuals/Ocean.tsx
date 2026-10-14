@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import {
   BufferAttribute,
@@ -33,6 +33,11 @@ import type { TerrainFieldTexture } from "./useTerrainFieldTexture";
 import { FOAM_MOTION_GLSL, FOAM_SHADING_GLSL } from "./foamShading";
 import { SHORE_FOAM_GLSL } from "./shoreFoam";
 import { HULL_FOAM_GLSL } from "./hullFoam";
+import { HULL_CONTACT_GLSL } from "./hullContact";
+import { WAKE_FOAM_GLSL } from "./wakeFoam";
+import { WAKE_FLOATS_A, WAKE_FLOATS_B, WAKE_POINT_BUDGET, createWakeTrails } from "./wakeTrail";
+import { waveTimeStep } from "./waveClock";
+import { useSeaSurface } from "./seaSurfaceContext";
 import { WHITECAP_FOAM_GLSL } from "./whitecapFoam";
 import { SHIP_FOAM_CAP, SHIP_FOAM_FLOATS_A, SHIP_FOAM_FLOATS_B, shipFoamSources } from "../shipFoamSources";
 
@@ -127,12 +132,19 @@ const fragmentShader = `
   ${SHORE_FOAM_GLSL}
   ${WHITECAP_FOAM_GLSL}
   ${HULL_FOAM_GLSL}
+  ${HULL_CONTACT_GLSL}
+  ${WAKE_FOAM_GLSL}
 
   const int SHIP_FOAM_CAP = ${SHIP_FOAM_CAP};
   uniform vec4 shipFoamA[SHIP_FOAM_CAP]; // x, z, heading x, heading z
-  uniform vec2 shipFoamB[SHIP_FOAM_CAP]; // hull length, speed
+  uniform vec4 shipFoamB[SHIP_FOAM_CAP]; // waterline length, beam, roundness, speed
   uniform int shipFoamCount;
   uniform float shipFoamWrap; // the map's wrap width; 0 where it does not wrap
+  // The ships' wake trails (wakeTrail.ts), as segments from the newer end a to the older b.
+  const int WAKE_POINT_BUDGET = ${WAKE_POINT_BUDGET};
+  uniform vec4 wakeSegA[WAKE_POINT_BUDGET]; // a.x, a.z, b.x, b.z
+  uniform vec4 wakeSegB[WAKE_POINT_BUDGET]; // age at a, age at b, path astern of the bow at a, beam
+  uniform int wakeSegCount;
 
   uniform sampler2D terrainField;
   uniform vec4 mapBounds; // minX, maxX, minZ, maxZ
@@ -142,15 +154,52 @@ const fragmentShader = `
   varying vec2 vRestXZ; // its rest point, for the wave look-ups
   #include <fog_pars_fragment>
 
-  // Hull foam coverage at worldXZ: the strongest of the ships' patches,
-  // each measured the short way round on a wrapping map.
-  float shipFoamCoverage(vec2 worldXZ) {
-    float coverage = 0.0;
+  // Foam round the hulls at worldXZ, where a pixel spans \`footprint\` world
+  // units: the strongest of the ships' contact patches (hullFoam.ts), contact
+  // lines and bow waves (hullContact.ts), and the strongest wet band as
+  // \`shade\`; each ship measured the short way round on a wrapping map.
+  void shipContactFoam(vec2 worldXZ, float footprint, out float coverage, out float shade) {
+    coverage = 0.0;
+    shade = 0.0;
     for (int i = 0; i < SHIP_FOAM_CAP; i++) {
       if (i >= shipFoamCount) break;
       vec2 d = worldXZ - shipFoamA[i].xy;
       if (shipFoamWrap > 0.0) d.x -= shipFoamWrap * floor(d.x / shipFoamWrap + 0.5);
-      coverage = max(coverage, hullFoamCoverage(d, shipFoamA[i].zw, shipFoamB[i].x, shipFoamB[i].y));
+      vec4 hull = shipFoamB[i]; // length, beam, roundness, speed
+      // Past the patch's wake and the wet band nothing here reaches.
+      float reach = hull.x * (0.5 + HULL_FOAM_WAKE_LENGTHS + HULL_FOAM_REACH) + hull.y;
+      if (dot(d, d) > reach * reach) continue;
+      vec2 heading = shipFoamA[i].zw;
+      float along = dot(d, heading);
+      float across = dot(d, vec2(-heading.y, heading.x));
+      float halfLength = 0.5 * hull.x;
+      float motion = min(1.0, max(hull.w, 0.0) / HULL_FOAM_FULL_SPEED);
+      float outline = hullWaterlineDistance(along, across, halfLength, 0.5 * hull.y, hull.z);
+      float alongShare = along / max(halfLength, 1e-4);
+      float contact = max(hullContactCoverage(outline, alongShare, hull.y, motion, footprint),
+        bowWaveCoverage(outline, alongShare, hull.y, motion, footprint));
+      coverage = max(coverage, max(hullFoamCoverage(d, heading, hull.x, hull.w), contact));
+      shade = max(shade, hullContactShade(outline, hull.y));
+    }
+  }
+
+  // The wakes' foam at worldXZ (wakeFoam.ts): the strongest of the trail
+  // segments', each measured the short way round on a wrapping map; a
+  // segment is skipped where the point is past its reach.
+  float shipWakeCoverage(vec2 worldXZ, float footprint) {
+    float coverage = 0.0;
+    for (int i = 0; i < WAKE_POINT_BUDGET; i++) {
+      if (i >= wakeSegCount) break;
+      vec4 ends = wakeSegA[i];
+      vec4 info = wakeSegB[i];
+      vec2 ab = ends.zw - ends.xy;
+      vec2 d = worldXZ - ends.xy;
+      if (shipFoamWrap > 0.0) d.x -= shipFoamWrap * floor(d.x / shipFoamWrap + 0.5);
+      vec2 fromMid = d - 0.5 * ab;
+      float segmentLength = length(ab);
+      float reach = 0.5 * segmentLength + wakeSegmentReach(segmentLength, info.z, info.w);
+      if (dot(fromMid, fromMid) > reach * reach) continue;
+      coverage = max(coverage, wakeSegmentCoverage(d, ab, info.x, info.y, info.z, info.w, footprint));
     }
     return coverage;
   }
@@ -415,7 +464,18 @@ const fragmentShader = `
     // (#77, waterOptics.ts); the whitecaps and the hull foam do not.
     float shoreCoverage = shoreFoamCoverage(seabedDepthMetres, reef, terrainFieldReefWindward(fieldTexel), pulse, sets) * distanceFade
       * shoreFoamRecedeShare(shelfRecedeWeight(cameraDistance));
-    float hullCoverage = shipFoamCoverage(vWorld.xz) * distanceFade;
+    // The ships' foam and wet band fade out in the last metre of water and
+    // are nothing on land (hullContact.ts); the band darkens the water under
+    // the foam.
+    float shipFoamFade = shipFoamDepthFade(seabedDepthMetres) * distanceFade;
+    float shipCoverage;
+    float shipShade;
+    float footprintUnits = footprintMetres / METRES_PER_UNIT;
+    shipContactFoam(vWorld.xz, footprintUnits, shipCoverage, shipShade);
+    // The wakes join the hull foam: the strongest of the two, so no seam.
+    shipCoverage = max(shipCoverage, shipWakeCoverage(vWorld.xz, footprintUnits));
+    seaColor *= 1.0 - shipShade * shipFoamFade;
+    float hullCoverage = shipCoverage * shipFoamFade;
     float shore = lacedFoam(shoreCoverage, SHORE_FOAM_NOISE_SCALE, SHORE_FOAM_LACE_METRES, churn, footprintMetres);
     float whitecaps = lacedFoam(whitecapCoverage, WHITECAP_NOISE_SCALE, WHITECAP_LACE_METRES, churn, footprintMetres);
     float hull = lacedFoam(hullCoverage, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres);
@@ -528,6 +588,9 @@ export function Ocean({
     mat.uniforms.cameraViewProjection = { value: new Matrix4() };
     mat.uniforms.shipFoamA = { value: new Float32Array(SHIP_FOAM_CAP * SHIP_FOAM_FLOATS_A) };
     mat.uniforms.shipFoamB = { value: new Float32Array(SHIP_FOAM_CAP * SHIP_FOAM_FLOATS_B) };
+    mat.uniforms.wakeSegA = { value: new Float32Array(WAKE_POINT_BUDGET * WAKE_FLOATS_A) };
+    mat.uniforms.wakeSegB = { value: new Float32Array(WAKE_POINT_BUDGET * WAKE_FLOATS_B) };
+    mat.uniforms.wakeSegCount = { value: 0 };
     bindWaveSlopeTextures(mat.uniforms, waveSlopes);
     bindWhitecapTextures(mat.uniforms, waveWhitecaps);
     bindWaveDisplacementTextures(mat.uniforms, waveDisplacements);
@@ -540,6 +603,12 @@ export function Ocean({
   useFrame(() => {
     bindWhitecapTextures(material.uniforms, waveWhitecaps);
   }, WHITECAP_BIND_PRIORITY);
+
+  // The ships' wake trails, aged on the wave clock's step: frozen with it
+  // under reduced motion, when they lay nothing new either.
+  const sea = useSeaSurface();
+  const [wakeTrails] = useState(createWakeTrails);
+  const lastWaveTime = useRef<number | null>(null);
 
   const gridRef = useRef<Group>(null);
   const innerRingRef = useRef<Mesh>(null);
@@ -570,6 +639,13 @@ export function Ocean({
     surfTimeUniform.value = advanceSurfTime(surfTimeUniform.value, delta, reducedMotion);
     // This frame's animated ship positions (written by Ship.tsx) for the hull foam.
     mat.uniforms.shipFoamCount.value = shipFoamSources.fill(mat.uniforms.shipFoamA.value, mat.uniforms.shipFoamB.value);
+    // Their wakes: the trails advance by this frame's wave-clock step (none
+    // without a sea surface, or on the first frame) and lay from the same registry.
+    const waveTime = sea ? sea.clock.waveTimeAt() : null;
+    const waveStep = waveTime !== null && lastWaveTime.current !== null ? waveTimeStep(lastWaveTime.current, waveTime) : 0;
+    lastWaveTime.current = waveTime;
+    wakeTrails.update(waveStep, shipFoamSources, mat.uniforms.shipFoamWrap.value);
+    mat.uniforms.wakeSegCount.value = wakeTrails.fill(mat.uniforms.wakeSegA.value, mat.uniforms.wakeSegB.value);
   });
 
   // One mesh per ring, so the rings off screen at ship zoom are culled.
