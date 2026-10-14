@@ -154,7 +154,8 @@ export function createNPCShip(
   destinationHex: Hex,
   nation: Nation,
   shipClass: ShipClass,
-  rng: () => number
+  rng: () => number,
+  spawnPortHex: Hex = spawnHex
 ): NPCShip {
   const stats = structuredClone(SHIP_SPECS[shipClass]);
   const cargo = generateRandomCargo(stats.cargo, rng);
@@ -172,7 +173,7 @@ export function createNPCShip(
     nation,
     aiBehavior: "MERCHANT_ROUTE",
     destinationPortHex: { ...destinationHex },
-    spawnPortHex: { ...spawnHex },
+    spawnPortHex: { ...spawnPortHex },
     isIdentified: false,
     bounty,
     role: "MERCHANT" as const,
@@ -189,7 +190,8 @@ export function createFlotillaShip(
   spawnHex: Hex,
   nation: Nation,
   shipClass: ShipClass,
-  targetPlayerId: string
+  targetPlayerId: string,
+  spawnPortHex: Hex = spawnHex
 ): NPCShip {
   const stats = structuredClone(SHIP_SPECS[shipClass]);
 
@@ -203,13 +205,32 @@ export function createFlotillaShip(
     damage: { hull: 0, crew: 0, masts: 0 },
     nation,
     aiBehavior: "HUNTER",
-    destinationPortHex: { ...spawnHex }, // Not used for hunters
-    spawnPortHex: { ...spawnHex },
+    destinationPortHex: { ...spawnPortHex }, // Not used for hunters
+    spawnPortHex: { ...spawnPortHex },
     isIdentified: true, // Flotillas are always identified (military ships)
     bounty: 0, // No bounty for attacking military ships
     role: "FLOTILLA" as const,
     huntingTargetId: targetPlayerId,
   };
+}
+
+function isFreeWater(G: CaribbeanState, h: Hex): boolean {
+  const cell = getCellAt(G.cells, h);
+  if (!cell || cell.terrain !== "water") return false;
+  const ships = [...Object.values(G.ships), ...Object.values(G.npcs)];
+  return !ships.some((s) => hexEquals(s.position, h));
+}
+
+/**
+ * The water hex an NPC launched from `port` starts on: the port's `dockingHex`, else,
+ * when a ship already sits there, another free water hex next to the port. Null when the
+ * port has no docking hex or no free water beside it, so an NPC never spawns on land.
+ */
+export function findSpawnHex(G: CaribbeanState, port: MapCell): Hex | null {
+  if (!port.dockingHex) return null;
+  const candidates = [port.dockingHex, ...wrappedNeighbors(port.hex, G.wrap)];
+  const free = candidates.find((h) => isFreeWater(G, h));
+  return free ? { ...free } : null;
 }
 
 export function spawnMerchant(
@@ -221,18 +242,23 @@ export function spawnMerchant(
     (p) => p.nation && p.nation !== "Pirate"
   );
 
-  if (ports.length < 2) {
+  // Ships launch from a port's docking hex, so only ports with one are spawn points
+  const spawnPorts = ports.filter((p) => p.dockingHex);
+
+  if (ports.length < 2 || spawnPorts.length === 0) {
     return null;
   }
 
   // Pick random spawn port
-  const spawnIndex = Math.floor(rng() * ports.length);
-  const spawnPort = ports[spawnIndex];
+  const spawnPort = spawnPorts[Math.floor(rng() * spawnPorts.length)];
 
   // Pick random destination port (different from spawn)
-  let destIndex = Math.floor(rng() * (ports.length - 1));
-  if (destIndex >= spawnIndex) destIndex++;
-  const destPort = ports[destIndex];
+  const destinations = ports.filter((p) => !hexEquals(p.hex, spawnPort.hex));
+  const destPort = destinations[Math.floor(rng() * destinations.length)];
+
+  // Never spawn on land: no free water beside the port means no merchant this time
+  const spawnHex = findSpawnHex(G, spawnPort);
+  if (!spawnHex) return null;
 
   // Pick random merchant ship class
   const shipClass =
@@ -242,19 +268,64 @@ export function spawnMerchant(
   G.npcIdCounter++;
   const id = `npc-${G.npcIdCounter}`;
 
-  // Create the NPC - nation is guaranteed to be a valid Nation (not Pirate)
+  // Create the NPC - nation is guaranteed to be a valid Nation (not Pirate).
+  // It starts on the water, while spawnPortHex still names the port cell.
   const npc = createNPCShip(
     id,
-    spawnPort.hex,
+    spawnHex,
     destPort.hex,
     spawnPort.nation as Nation,
     shipClass,
-    rng
+    rng,
+    spawnPort.hex
   );
 
   G.npcs[id] = npc;
 
   return id;
+}
+
+/**
+ * Spawn a flotilla to hunt a player who has accumulated enough bounty with a nation.
+ * The flotilla launches from a port of that nation, on the water beside it, and hunts
+ * the target player. Returns its id, or null when none was spawned.
+ */
+export function spawnFlotillaForPlayer(
+  G: CaribbeanState,
+  nation: Nation,
+  targetPlayerId: string
+): string | null {
+  // Only one flotilla from this nation hunts this player at a time
+  const existingFlotilla = Object.values(G.npcs).find(
+    (npc) =>
+      npc.role === "FLOTILLA" &&
+      npc.nation === nation &&
+      npc.huntingTargetId === targetPlayerId
+  );
+  if (existingFlotilla) return null;
+
+  // The first port of this nation with free water at its dock
+  for (const port of getPortCells(G.cells)) {
+    if (port.nation !== nation) continue;
+    const spawnHex = findSpawnHex(G, port);
+    if (!spawnHex) continue;
+
+    G.npcIdCounter++;
+    const flotillaId = `flotilla-${G.npcIdCounter}`;
+
+    // Frigates are the standard warship
+    G.npcs[flotillaId] = createFlotillaShip(
+      flotillaId,
+      spawnHex,
+      nation,
+      "Frigate",
+      targetPlayerId,
+      port.hex
+    );
+    return flotillaId;
+  }
+
+  return null;
 }
 
 export function shouldDespawn(npc: NPCShip): boolean {

@@ -13,6 +13,8 @@ import { createMapWorkerRunner } from "./mapWorker/createMapWorkerRunner";
  * `setupData` is the dev URL pin (#74): its size and seed, else random ones.
  */
 export async function loadGameClient(setupData: CaribbeanSetupData | undefined) {
+  // Seed picking (ADR 0007): with no pinned size or seed, this is where a new world's seed is drawn.
+  // eslint-disable-next-line no-restricted-properties -- the one allowed seed-picking call site
   const map = await generateMapOffThread(resolveMapRequest(setupData, Math.random), createMapWorkerRunner());
   return Client({ game: withGeneratedMap(Caribbean, map), board: CaribbeanBoard });
 }

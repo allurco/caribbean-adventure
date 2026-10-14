@@ -392,8 +392,11 @@ function growIsland(
  * wrapped hex maths, so the result has no seam. Without one the east and west
  * edges are hard and nothing crosses them. The north and south edges are always
  * open sea (`OPEN_SEA_EDGE_ROWS`).
+ *
+ * The seed is required (#160): the same seed always gives the same map, and
+ * there is no unseeded fallback for clients to disagree on.
  */
-export function generateMap(dimensions: MapDimensions, seed?: number, wrap: MapWrap = null): MapCell[] {
+export function generateMap(dimensions: MapDimensions, seed: number, wrap: MapWrap = null): MapCell[] {
   const { columns, rows } = dimensions;
   if (!Number.isInteger(columns) || columns % 2 !== 0) {
     throw new Error(`Map width must be an even number of columns, got ${columns}`);
@@ -403,7 +406,11 @@ export function generateMap(dimensions: MapDimensions, seed?: number, wrap: MapW
   }
   if (wrap) createWrap(wrap.columns); // validates the wrap itself
 
-  const rng = seed !== undefined ? mulberry32(seed) : Math.random;
+  if (!Number.isInteger(seed)) {
+    throw new Error(`The map generator needs an integer seed, got ${seed}`);
+  }
+
+  const rng = mulberry32(seed);
   const grid = hexRect(columns, rows);
 
   // Hexes an island may cover: everything but the open-sea rows at the north and south edges

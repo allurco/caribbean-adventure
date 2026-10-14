@@ -5,7 +5,7 @@
  */
 import type { ShipClass } from "../game/types";
 import { SHIP_SCALE } from "./visuals/worldScale";
-import { type ShipModel, SHIP_MODELS, shipModelScale } from "./shipModels";
+import { type ShipModel, SHIP_MODELS, shipModelDraftUnits, shipModelScale } from "./shipModels";
 
 /** A hull box: width, height, length (world units). */
 export type HullBox = readonly [number, number, number];
@@ -45,7 +45,14 @@ export const DEFAULT_HULL_BOX: HullBox = scaled([0.3, 0.25, 0.7]);
 /** The hull box for a ship of `shipClass`. */
 export const shipHullBox = (shipClass: ShipClass | undefined): HullBox => (shipClass ? SHIP_HULL_BOXES[shipClass] : DEFAULT_HULL_BOX);
 
-/** How far the hull box's centre rides above the sea. */
+/**
+ * Height of a ship's group above the sea level it is placed at: none. The
+ * group stands on the sea at the ship's waterline, so the wave pose (#142)
+ * heaves, pitches and rolls the hull about its waterline, and a model, whose
+ * origin is its waterline, sits in it as it is (#150).
+ */
+export const SHIP_WATERLINE_Y = 0;
+/** How far the hull box's centre rides above the ship's waterline: the box alone; a model sits on its waterline (`shipModelPlacement`). */
 export const SHIP_RIDE_HEIGHT = 0.12 * SHIP_SCALE;
 /** How far a sinking ship goes down. */
 export const SHIP_SINK_DEPTH = 1.5 * SHIP_SCALE;
@@ -62,8 +69,9 @@ export const hullFootprintRadius = (box: HullBox): number => Math.hypot(box[0] /
 
 /**
  * What the pointer hits for a ship (ADR 0006): its hull's footprint, from
- * the hull box's bottom up to the masthead, so hovering the topsails, or
- * the gaps between them, hits the ship. Heights from the waterline.
+ * the keel up to the masthead, so hovering the topsails, or the gaps between
+ * them, hits the ship. Heights from the ship's waterline, the origin of its
+ * group (`SHIP_WATERLINE_Y`, #150).
  */
 export interface HoverBox {
   readonly width: number;
@@ -75,13 +83,9 @@ export interface HoverBox {
 export const shipHoverBox = (shipClass: ShipClass | undefined): HoverBox => {
   const [width, height, length] = shipHullBox(shipClass);
   const model = shipClass ? SHIP_MODELS[shipClass] : null;
-  const hullTop = SHIP_RIDE_HEIGHT + height / 2;
-  return {
-    width,
-    length,
-    bottom: SHIP_RIDE_HEIGHT - height / 2,
-    top: model ? Math.max(hullTop, model.mastheadMetres * shipModelScale()) : hullTop,
-  };
+  // The box hull rides SHIP_RIDE_HEIGHT above the waterline; a model's keel is its draft under it.
+  if (!model) return { width, length, bottom: SHIP_RIDE_HEIGHT - height / 2, top: SHIP_RIDE_HEIGHT + height / 2 };
+  return { width, length, bottom: -shipModelDraftUnits(model), top: model.mastheadMetres * shipModelScale() };
 };
 
 /** World units between a ship's masthead and the bottom edge of its tooltip. */

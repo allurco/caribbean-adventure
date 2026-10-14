@@ -2,7 +2,7 @@
  * The rules every committed ship model under `public/ships/` is held to
  * (#130): the board variant's budget, the parts the game relies on, and the
  * generator's contract (real metres, origin at the waterline, bow along
- * glTF −Z) checked against the catalogue. Pure; the ship asset test feeds
+ * glTF −Z) checked against the catalogue, the keel at its declared draft. Pure; the ship asset test feeds
  * it the files.
  */
 import type { ShipClass } from "../game/types";
@@ -55,6 +55,10 @@ export function shipAssetProblems(model: ShipModel, bytes: Uint8Array): string[]
       }
     }
     if (hull.min[1] >= 0) problems.push(`${file}: the keel (${hull.min[1].toFixed(2)} m) is not below the waterline origin`);
+    // Below the origin is not enough: off by a metre, the hull floats or sinks on the board (#150).
+    else if (offBy(-hull.min[1], model.draftMetres) > SHIP_DIMENSION_TOLERANCE) {
+      problems.push(`${file}: the keel is ${(-hull.min[1]).toFixed(2)} m under the waterline origin, the catalogue's draft is ${model.draftMetres} m`);
+    }
     if (hull.max[1] <= 0) problems.push(`${file}: the deck (${hull.max[1].toFixed(2)} m) is not above the waterline origin`);
   }
 

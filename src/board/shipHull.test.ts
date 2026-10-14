@@ -13,7 +13,7 @@ import {
   shipHullBox,
   shipTooltipHeight,
 } from "./shipHull";
-import { SHIP_MODELS, shipModelScale } from "./shipModels";
+import { SHIP_MODELS, shipModelDraftUnits, shipModelScale } from "./shipModels";
 
 const expectBox = (actual: readonly number[], expected: readonly number[]) => {
   expect(actual).toHaveLength(3);
@@ -107,16 +107,17 @@ describe("ships at diorama scale (ADR 0006)", () => {
 
 describe("shipHoverBox", () => {
   for (const shipClass of SHIP_CLASSES) {
-    it(`reaches from the ${shipClass}'s hull bottom up to its masthead, as wide and long as its hull`, () => {
+    it(`reaches from the ${shipClass}'s keel up to its masthead, as wide and long as its hull`, () => {
       const hull = shipHullBox(shipClass);
       const box = shipHoverBox(shipClass);
       const masthead = SHIP_MODELS[shipClass]!.mastheadMetres * shipModelScale();
       expect(box.top).toBeCloseTo(masthead, 12);
-      expect(box.bottom).toBeCloseTo(SHIP_RIDE_HEIGHT - hull[1] / 2, 12);
+      expect(box.bottom).toBeCloseTo(-shipModelDraftUnits(SHIP_MODELS[shipClass]!), 12);
+      expect(box.bottom).toBeLessThan(0);
       expect(box.width).toBe(hull[0]);
       expect(box.length).toBe(hull[2]);
       // The topsails stand well above the hull box, where the old hit test stopped.
-      expect(box.top).toBeGreaterThan(SHIP_RIDE_HEIGHT + 1.5 * hull[1]);
+      expect(box.top).toBeGreaterThan(1.5 * hull[1]);
     });
   }
 

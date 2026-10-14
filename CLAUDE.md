@@ -81,6 +81,10 @@ One terrain height field (ADR 0001) drives everything drawn on or under the sea.
 
 Photorealism is confined to the water and the light; islands, props, ports and ships are our own stylised mid-poly models authored in code (**ADR 0002**, `docs/adr/0002-art-direction.md`). The hex is a board space, not a distance: each family of things carries its own picture factor (**ADR 0006**, `docs/adr/0006-diorama-scale-per-family-factors.md`, which supersedes ADR 0003's ship, building and village scale lines). Ships are ×2.3 on twice true scale (`SHIP_SCALE`, the Frigate's hull 0.44 of a hex, every hull box inside the hex inradius), rocks and stones stay at 115/350 (`PROP_SCALE`), and buildings, landmarks, vegetation and town pieces take `BUILDING_SCALE`, `LANDMARK_SCALE`, `VEGETATION_SCALE` and `TOWN_PIECE_SCALE`, while the water keeps 65 m per world unit (ADR 0003). The factors are named constants in `src/board/visuals/worldScale.ts`, with `PROP_DENSITY`; a new prop takes its family's factor there. Read ADR 0002 and ADR 0006 before adding or reshaping anything visible.
 
+### Seeded World
+
+The same map seed gives exactly the same world on every client; different seeds look different (**ADR 0007**, `docs/adr/0007-seeded-world-variety.md`). Every seeded visual draws from `stream(subSeed(G.mapSeed, "feature", ...ids))` (`src/board/visuals/subSeed.ts`), keyed by the stable ids of `src/board/visuals/islands.ts` (`cellId`, `portId`, `islandId`); nothing visual is stored in `G`. ESLint rejects `Math.random` in game and render code; game randomness goes through boardgame.io's `random`.
+
 ### Multiplayer
 
 boardgame.io handles all multiplayer. All game state changes go through boardgame.io moves — never mutate state outside of moves.

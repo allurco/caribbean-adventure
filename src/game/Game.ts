@@ -46,7 +46,7 @@ import {
   applyJuryRig,
 } from "./economy";
 import { createCaptainDeck, dealHands, findHomePort } from "./captains";
-import { moveAllNPCs, spawnMerchant, createFlotillaShip, getPortCells } from "./npcManager";
+import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { getBountyForAction, addBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
@@ -91,17 +91,20 @@ export function withSetupData(
  * its size and seed.
  */
 export function withGeneratedMap(game: Game<CaribbeanState>, map: GeneratedMap): Game<CaribbeanState> {
-  return { ...game, setup: () => createInitialState(map) };
+  return { ...game, setup: ({ random }) => createInitialState(map, random.Number) };
 }
 
-/** The state a match starts in, on `map`: the players' ships, the captain draft, no NPCs yet. */
-function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap): CaribbeanState {
+/**
+ * The state a match starts in, on `map`: the players' ships, the captain draft, no NPCs yet.
+ * `random` is boardgame.io's setup `random.Number`, so the match's seed reproduces the draft (#160).
+ */
+function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: () => number): CaribbeanState {
   // The map is a rectangle that wraps east–west, a cylinder as wide as its
   // columns (#36); the generator and G share the wrap.
   const wrap: MapWrap = createWrap(getMapPreset(mapSize).columns);
 
   const numPlayers = 2;
-  const deck = createCaptainDeck(Math.random);
+  const deck = createCaptainDeck(random);
   const { hands, remaining } = dealHands(deck, numPlayers);
 
   const ships: Record<string, ReturnType<typeof createShipState>> = {};
@@ -137,51 +140,6 @@ export function getMaxMoves(ship: {
   return Math.max(1, base - mastDamage);
 }
 
-/**
- * Spawn a flotilla to hunt a player who has accumulated enough bounty with a nation.
- * The flotilla spawns at a port belonging to that nation and hunts the target player.
- */
-function spawnFlotillaForPlayer(
-  G: CaribbeanState,
-  nation: string,
-  targetPlayerId: string
-): void {
-  // Find a port belonging to this nation to spawn the flotilla
-  const ports = getPortCells(G.cells);
-  const nationPort = ports.find((p) => p.nation === nation);
-
-  if (!nationPort) {
-    return; // No port found for this nation
-  }
-
-  // Check if there's already a flotilla from this nation hunting this player
-  const existingFlotilla = Object.values(G.npcs).find(
-    (npc) =>
-      npc.role === "FLOTILLA" &&
-      npc.nation === nation &&
-      npc.huntingTargetId === targetPlayerId
-  );
-
-  if (existingFlotilla) {
-    return; // Already have a flotilla hunting this player
-  }
-
-  // Generate a unique ID for the flotilla
-  G.npcIdCounter++;
-  const flotillaId = `flotilla-${G.npcIdCounter}`;
-
-  // Create the flotilla ship (Frigates are the standard warship)
-  const flotilla = createFlotillaShip(
-    flotillaId,
-    nationPort.hex,
-    nation as "England" | "France" | "Spain" | "Netherlands",
-    "Frigate",
-    targetPlayerId
-  );
-
-  G.npcs[flotillaId] = flotilla;
-}
-
 export const Caribbean: Game<CaribbeanState> = {
   name: "caribbean",
 
@@ -200,7 +158,7 @@ export const Caribbean: Game<CaribbeanState> = {
   setup: ({ random }, setupData?: CaribbeanSetupData) => {
     // The provided size and seed, else random ones (see resolveMapRequest).
     const request = resolveMapRequest(setupData, random.Number);
-    return createInitialState({ ...request, cells: generateMapFor(request) });
+    return createInitialState({ ...request, cells: generateMapFor(request) }, random.Number);
   },
 
   // Top-level moves/turn serve as defaults when tests override phases

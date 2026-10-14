@@ -37,4 +37,23 @@ export default defineConfig([
       ],
     },
   },
+  {
+    // Seeded world (ADR 0007): the same seed gives the same world on every
+    // client, so game and render code never call Math.random. Seeds are
+    // picked only at the seed-picking call sites, each with a disable comment
+    // naming why; tests may still pass Math.random where a stream is wanted.
+    files: ['src/board/**/*.{ts,tsx}', 'src/game/**/*.{ts,tsx}', 'src/mapWorker/**/*.{ts,tsx}', 'src/loadGameClient.ts'],
+    ignores: ['**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'Math',
+          property: 'random',
+          message:
+            'No Math.random in game or render code (ADR 0007): derive a stream with stream(subSeed(G.mapSeed, feature, ...ids)), or use boardgame.io\'s random in moves and setup.',
+        },
+      ],
+    },
+  },
 ])

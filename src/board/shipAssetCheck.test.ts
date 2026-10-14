@@ -8,6 +8,7 @@ const MODEL: ShipModel = {
   beamMetres: 10,
   depthMetres: 8,
   mastheadMetres: 30,
+  draftMetres: 4,
   parts: { hull: "Hull", sails: "Sails", flag: "Flag" },
   tintedParts: ["Sails"],
 };
@@ -105,6 +106,16 @@ describe("shipAssetProblems", () => {
     expect(shipAssetProblems(MODEL, glb({ parts: [afloat, SAILS, FLAG, BOWSPRIT] })).join("\n")).toMatch(/keel/);
     const sunk = { ...HULL, translation: [0, -5, 0] } as Part;
     expect(shipAssetProblems(MODEL, glb({ parts: [sunk, SAILS, FLAG, BOWSPRIT] })).join("\n")).toMatch(/deck/);
+  });
+
+  it("flags a model whose keel is not at the catalogue's draft below the origin (#150)", () => {
+    // Still keel below and deck above the origin, but the waterline is 1.5 m off: the hull would float.
+    const shallow = { ...HULL, translation: [0, 1.5, 0] } as Part;
+    expect(shipAssetProblems(MODEL, glb({ parts: [shallow, SAILS, FLAG, BOWSPRIT] })).join("\n")).toMatch(/draft/);
+    const deep = { ...HULL, translation: [0, -1.5, 0] } as Part;
+    expect(shipAssetProblems(MODEL, glb({ parts: [deep, SAILS, FLAG, BOWSPRIT] })).join("\n")).toMatch(/draft/);
+    const close = { ...HULL, translation: [0, 0.08, 0] } as Part;
+    expect(shipAssetProblems(MODEL, glb({ parts: [close, SAILS, FLAG, BOWSPRIT] }))).toEqual([]);
   });
 
   it("flags a model whose bow points along +Z", () => {
