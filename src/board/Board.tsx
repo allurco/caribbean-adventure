@@ -59,7 +59,7 @@ import {
   wrapCopyRange,
 } from "./wrapView";
 import { openingView, turnChangeView, type CameraView } from "./shipView";
-import { flightStep } from "./cameraFlight";
+import { flightStep, flightStyle, type FlightStyle } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
 import { Ship, SinkingShip } from "./Ship";
@@ -164,6 +164,7 @@ function Scene({
   onShipHover,
   onShipClick,
   onPortHover,
+  onCameraCut,
   seaBuoys,
 }: {
   G: CaribbeanState;
@@ -203,6 +204,8 @@ function Scene({
   onShipHover: (id: string | null) => void;
   onShipClick: (id: string) => void;
   onPortHover: (cell: MapCell | null) => void;
+  /** The camera cut straight to its goal instead of flying (reduced motion, #229). */
+  onCameraCut: () => void;
   /** Dev: buoys on the CPU sea surface (#141). */
   seaBuoys: boolean;
 }) {
@@ -212,6 +215,8 @@ function Scene({
   const targetPosition = useRef(new Vector3());
   const targetDistance = useRef(0);
   const isAnimating = useRef(false);
+  // How the current flight goes, chosen on its first frame (cameraFlight.ts, #229)
+  const flight = useRef<FlightStyle | null>(null);
   // All light comes from one `Lighting` at the scene's time of day (#169).
   const lighting = SCENE_LIGHTING;
   const sunShadow = useMemo(() => sunShadowFor(lighting.sun), [lighting.sun]);
@@ -342,6 +347,7 @@ function Scene({
       // Within the zoom limits, or the controls would hold it off forever
       targetDistance.current = Math.min(CAMERA_MAX_DISTANCE, Math.max(CAMERA_MIN_DISTANCE, focusView.distance));
       isAnimating.current = true;
+      flight.current = null;
     }
   }, [focusView]);
 
@@ -360,11 +366,14 @@ function Scene({
 
       // The camera keeps its direction from the focus; only the distance changes
       const direction = new Vector3().subVectors(camera.position, target);
-      const step = flightStep(
-        { x: target.x, z: target.z, distance: direction.length() },
-        { x, z, distance: targetDistance.current },
-        0.08
-      );
+      const view = { x: target.x, z: target.z, distance: direction.length() };
+      const flightGoal = { x, z, distance: targetDistance.current };
+      if (!flight.current) {
+        // Under reduced motion, no sweep across the sea: a quick glide or a cut
+        flight.current = flightStyle(view, flightGoal, reducedMotion);
+        if (flight.current.kind === "cut") onCameraCut();
+      }
+      const step = flightStep(view, flightGoal, flight.current.kind === "cut" ? 1 : flight.current.alpha);
       // Keep the ground follow's height; the clamp on update corrects it
       target.set(step.x, target.y, step.z);
       camera.position.copy(target).addScaledVector(direction.normalize(), step.distance);
@@ -696,6 +705,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
   const [dockingPort, setDockingPort] = useState<MapCell | null>(null);
   const [showTurnChange, setShowTurnChange] = useState(false);
+  // Camera cuts so far (reduced motion, #229): each one lifts a brief veil over the scene
+  const [cameraCuts, setCameraCuts] = useState(0);
+  const cameraCut = useCallback(() => setCameraCuts((n) => n + 1), []);
   const [completedMission, setCompletedMission] = useState<Mission | null>(null);
   const [cameraFocusView, setCameraFocusView] = useState<CameraView | null>(null);
   // The first view, taken once when the main phase starts: MapControls
@@ -1024,6 +1036,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
             }
           }}
           onPortHover={setHoveredPort}
+          onCameraCut={cameraCut}
           seaBuoys={seaBuoys ?? false}
         />
         {/* Dev: fps, draw calls and triangles (#162); the DEV guard drops it from production builds */}
@@ -1031,6 +1044,11 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         {/* Dev: a seed-gallery shot (#161); the DEV guard drops it from production builds */}
         {import.meta.env.DEV && snapshot && <GallerySnapshot />}
       </Canvas>
+
+      {/* A camera cut (reduced motion, #229) fades in from a veil rather than jumping */}
+      {cameraCuts > 0 && (
+        <div key={cameraCuts} className="absolute inset-0 pointer-events-none bg-[#0a0e17] opacity-0 animate-camera-cut" />
+      )}
 
       {import.meta.env.DEV && renderStatsFeed && <RenderStatsOverlay feed={renderStatsFeed} />}
       {/* Dev: the seed control (#161); the DEV guard drops it from production builds */}
