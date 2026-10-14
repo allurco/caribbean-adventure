@@ -39,6 +39,8 @@ export const SEED_FEATURES = {
   portBuildings: "portBuildings",
   /** A port's quay size (`quayPlacement.ts`), per port. */
   quay: "quay",
+  /** Which neighbouring land cells a port's town spills onto (`townCells.ts`), per port. */
+  townSpill: "townSpill",
   /** A port's village houses (`villageLayout.ts`), per port. */
   village: "village",
   /** A port's town clutter (`townDetailLayout.ts`), per port. */

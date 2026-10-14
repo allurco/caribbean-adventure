@@ -13,10 +13,15 @@
  *   disc of `SQUARE_RADIUS` at level L0: the natural height there, kept
  *   between `SHORE_KEEP_TOP` and one riser above it, so the square meets the
  *   beach with at most a low bank.
- * - Inland along the pier's line, one to three terraces of equal length up
+ * - Inland along the pier's line, one to four terraces of equal length up
  *   to `LENGTH`, each exactly flat, stepping up by at most `RISER` (as many
  *   as the natural rise asks for, never down). Across, the terraces reach
- *   `HALF_WIDTH` either side of the axis.
+ *   `HALF_WIDTH` either side of the axis. With the port's town cells
+ *   (`townCells.ts`, #170) the terraces end where the axis would leave them,
+ *   so the plan never runs on past the town, and the axis turns towards the
+ *   cells the town spilled onto (by up to `MAX_AXIS_TURN`) where that runs
+ *   further. They also end a blend short of where the land falls back to a
+ *   far shore, so a narrow island's other beach is never terraced over.
  * - A riser is a short steep face (`RISER_FACE`, about 2 m) that the
  *   dry-stone retaining walls stand against, except where the main street or
  *   a back lane climbs it: there it is the full `RAMP`, so the street runs up
@@ -38,10 +43,14 @@
  *   result lies between the natural height and a level above the bottom, the
  *   land stays above the sea.
  *
- * Lengths are authored for the 115 m hex and drawn at the plan's `scale`
- * (`PROP_SCALE`), except the shore band, which is a height on the beach, and
- * the back lanes' offset, which follows the houses (`BUILDING_SCALE`).
+ * Lengths are authored for the 115 m hex and drawn at the plan's `scale`,
+ * the buildings' (`BUILDING_SCALE`, ADR 0006: the town grows with its
+ * houses, or bigger houses no longer fit and the village collapses), except
+ * the shore band, which is a height on the beach, and where the square
+ * stands, which follows the pier and the port kit's centre (`pierScale`,
+ * `PROP_SCALE`, as `settlementCentre` has it).
  */
+import { townCellsBound, type TownCells } from "./townCells";
 
 /** The square's radius, at scale 1 (the port kit's square plus room round it). */
 export const SQUARE_RADIUS = 0.6;
@@ -67,7 +76,9 @@ export const BLEND = 0.7;
 export const SHORE_KEEP_BOTTOM = 0.021;
 export const SHORE_KEEP_TOP = 0.032;
 /** Most terraces a plateau has. */
-export const MAX_TERRACES = 3;
+export const MAX_TERRACES = 4;
+/** Shortest a terrace runs along the axis, at scale 1: room for a house either side of a cross lane, and its risers never meet. */
+export const MIN_TERRACE = 0.5;
 /** A riser's face where no street climbs it, at scale 1 (about 2 m at the 350 m hex): steep, for the retaining wall to stand against. */
 export const RISER_FACE = 0.03;
 /** Street half widths at scale 1: the main street (about 7 m across) and the lanes (about 5 m). */
@@ -91,6 +102,9 @@ const PIER_SHORE_MAX = 0.85;
 const PIER_SHORE_HEIGHT = 0.02;
 const PIER_LAND_OVERLAP = 0.12;
 const SEARCH_STEP = 0.025;
+/** With the town's cells, the axis may turn from straight inland of the pier towards the spill by up to this much (radians, 60°), in these steps (15°). */
+export const MAX_AXIS_TURN = Math.PI / 3;
+const AXIS_TURN_STEP = Math.PI / 12;
 
 /** A street of the village plan: a straight run between two points (world units). */
 export interface TownStreet {
@@ -128,6 +142,16 @@ export interface TownPlateau {
   climbs: readonly number[];
   climbHalf: number;
   rampShoulder: number;
+  /** The port's town cells (#170), which bound its village, kit and clutter; absent for a plan made without them (tests). */
+  town?: TownCells;
+}
+
+/** How a plateau is planned besides its building scale. */
+export interface PlateauOptions {
+  /** The pier's scale, which sets where the square stands (the kit's centre, `settlementCentre`); the building scale when absent. */
+  pierScale?: number;
+  /** The port's town cells: the terraces end where the axis would leave them. */
+  town?: TownCells;
 }
 
 /** A port to plan a plateau for: its hex centre and the pier's heading (towards the water). */
@@ -143,11 +167,25 @@ const smoothstep = (t: number): number => {
 };
 
 /**
- * The plateau for a port, on the `natural` field (the field without
- * plateaus), at prop scale `scale`; the back lanes are spaced for houses at
- * `buildingScale`.
+ * How far inland of the square's centre (x, z) the axis (ux, uz) stays on
+ * the town's cells, up to `length`, in `SEARCH_STEP`s.
  */
-export function planTownPlateau(port: PlateauPort, natural: (x: number, z: number) => number, scale: number, buildingScale = scale): TownPlateau {
+function lengthOnTown(town: TownCells, x: number, z: number, ux: number, uz: number, length: number): number {
+  const bound = townCellsBound(town);
+  for (let s = SEARCH_STEP; s <= length; s += SEARCH_STEP) {
+    if (!bound.contains(x + ux * s, z + uz * s, 0)) return s - SEARCH_STEP;
+  }
+  return length;
+}
+
+/**
+ * The plateau for a port, on the `natural` field (the field without
+ * plateaus), at building scale `scale`: every length of the plan follows
+ * it, so doubling the scale doubles the square, the terraces, the risers'
+ * runs and the streets. The square stands by the pier root at `pierScale`.
+ */
+export function planTownPlateau(port: PlateauPort, natural: (x: number, z: number) => number, scale: number, options: PlateauOptions = {}): TownPlateau {
+  const pierScale = options.pierScale ?? scale;
   const dx = Math.sin(port.toWater);
   const dz = Math.cos(port.toWater);
   // The pier root as pierPlacement.ts finds it, then the kit's square: the
@@ -159,21 +197,66 @@ export function planTownPlateau(port: PlateauPort, natural: (x: number, z: numbe
       break;
     }
   }
-  const root = shore - PIER_LAND_OVERLAP * scale;
-  const fromRoot = root * (1 - scale);
+  const root = shore - PIER_LAND_OVERLAP * pierScale;
+  const fromRoot = root * (1 - pierScale);
   const x = port.x + dx * fromRoot;
   const z = port.z + dz * fromRoot;
-  const ux = -dx;
-  const uz = -dz;
 
   const squareRadius = SQUARE_RADIUS * scale;
-  const length = LENGTH * scale;
   const riser = RISER * scale;
   const squareEnd = SQUARE_END * scale;
+  const ramp = RAMP * scale;
+  const blend = BLEND * scale;
+  const halfWidth = HALF_WIDTH * scale;
+  const full = LENGTH * scale;
+  /**
+   * How far the terraces may run inland along (ax, az): to where the axis
+   * leaves the town, and a blend short of where the land, along the axis or
+   * either side of the terraces, falls back to a far shore (a narrow
+   * island's other beach).
+   */
+  const runAlong = (ax: number, az: number): number => {
+    let run = options.town ? lengthOnTown(options.town, x, z, ax, az, full) : full;
+    for (const across of [0, halfWidth, -halfWidth]) {
+      let inland = false;
+      for (let s = squareEnd; s <= run + blend; s += SEARCH_STEP) {
+        const h = natural(x + ax * s - az * across, z + az * s + ax * across);
+        if (h >= SHORE_KEEP_TOP + riser) inland = true;
+        else if (inland && h < SHORE_KEEP_TOP) {
+          run = Math.min(run, s - blend);
+          break;
+        }
+      }
+    }
+    return run;
+  };
+  // Straight inland of the pier, or with the town's cells turned up to
+  // `MAX_AXIS_TURN` towards the cells the town spilled onto where that runs
+  // further (by more than a search step, so the turn is never for nothing).
+  let ux = -dx;
+  let uz = -dz;
+  let run = runAlong(ux, uz);
+  if (options.town) {
+    for (let k = 1; k * AXIS_TURN_STEP <= MAX_AXIS_TURN + 1e-9; k++) {
+      for (const side of [1, -1]) {
+        const turn = side * k * AXIS_TURN_STEP;
+        const ax = -dx * Math.cos(turn) + dz * Math.sin(turn);
+        const az = -dz * Math.cos(turn) - dx * Math.sin(turn);
+        const r = runAlong(ax, az);
+        if (r > run + SEARCH_STEP) {
+          run = r;
+          ux = ax;
+          uz = az;
+        }
+      }
+    }
+  }
+  // Room for one terrace past the square, whatever the land.
+  const length = Math.min(full, Math.max(squareEnd + MIN_TERRACE * scale, run));
 
   const l0 = Math.max(SHORE_KEEP_TOP, Math.min(natural(x, z), SHORE_KEEP_TOP + riser));
   const rise = natural(x + ux * length, z + uz * length) - l0;
-  const count = Math.max(1, Math.min(MAX_TERRACES, Math.ceil(rise / riser)));
+  const count = Math.max(1, Math.min(MAX_TERRACES, Math.ceil(rise / riser), Math.floor((length - squareEnd) / (MIN_TERRACE * scale))));
   const span = (length - squareEnd) / count;
   const levels = [l0];
   const steps: number[] = [];
@@ -185,13 +268,10 @@ export function planTownPlateau(port: PlateauPort, natural: (x: number, z: numbe
     levels.push(Math.max(prev, Math.min(want, prev + riser)));
     steps.push(start);
   }
-  const ramp = RAMP * scale;
-  const blend = BLEND * scale;
-  const halfWidth = HALF_WIDTH * scale;
   const mainHalf = MAIN_STREET_HALF * scale;
   const laneHalf = LANE_HALF * scale;
   // The back lanes stay inside the terraces with a lane's width to spare.
-  const back = Math.min(BACK_LANE_OFFSET * buildingScale, halfWidth - 2 * laneHalf);
+  const back = Math.min(BACK_LANE_OFFSET * scale, halfWidth - 2 * laneHalf);
   const plateau: TownPlateau = {
     x,
     z,
@@ -212,6 +292,7 @@ export function planTownPlateau(port: PlateauPort, natural: (x: number, z: numbe
     climbHalf: mainHalf,
     rampShoulder: RAMP_SHOULDER * scale,
   };
+  if (options.town) plateau.town = options.town;
   plateau.streets = planStreets(plateau, mainHalf, laneHalf, back);
   return plateau;
 }

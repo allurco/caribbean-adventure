@@ -121,6 +121,8 @@ const REACH: Readonly<Partial<Record<SeedFeature, readonly Output[]>>> = {
   [SEED_FEATURES.portBuildings]: ["buildings", "villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
   [SEED_FEATURES.quay]: ["quays", "buildings", "villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
   [SEED_FEATURES.village]: ["villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
+  // The spill moves the town's cells and so the plateau it bounds, and everything in the town (#170).
+  [SEED_FEATURES.townSpill]: ["townPlans", "buildings", "quays", "villageBuildings", "clutter", "works", ...KEEP_OUT],
   [SEED_FEATURES.townClutter]: ["clutter", ...KEEP_OUT],
   [SEED_FEATURES.retainingWalls]: ["works"],
   [SEED_FEATURES.kerbs]: ["works"],
@@ -215,6 +217,38 @@ describe("the board's seeded world (ADR 0007, #165)", () => {
       expect(reef.seabed).not.toEqual(a.seabed);
       const coast = shift(SEED_FEATURES.coastNoise);
       expect(coast.coast).not.toEqual(a.coast);
+    });
+
+    it("the town spill moves the land only round the ports, never the coast or the seabed (#170)", () => {
+      const field = (feature: SeedFeature | null) => {
+        shifted.feature = feature;
+        try {
+          return sharedTerrainField(structuredClone(cells), WRAP, REQUEST.mapSeed);
+        } finally {
+          shifted.feature = null;
+        }
+      };
+      const a = field(null);
+      const b = field(SEED_FEATURES.townSpill);
+      expect(b.townPlateaus.map((p) => p.town)).not.toEqual(a.townPlateaus.map((p) => p.town));
+      const unshifted = fieldSamples(structuredClone(cells), REQUEST.mapSeed);
+      shifted.feature = SEED_FEATURES.townSpill;
+      let moved: ReturnType<typeof fieldSamples>;
+      try {
+        moved = fieldSamples(structuredClone(cells), REQUEST.mapSeed);
+      } finally {
+        shifted.feature = null;
+      }
+      expect(moved.coast).toEqual(unshifted.coast);
+      expect(moved.seabed).toEqual(unshifted.seabed);
+      // Away from every town's reach the land is untouched.
+      const ports = cells.filter((c) => c.hasPort).map((c) => hexToWorld(c.hex));
+      for (const cell of cells) {
+        if (cell.terrain !== "island") continue;
+        const [x, , z] = hexToWorld(cell.hex);
+        if (ports.some(([px, , pz]) => Math.hypot(px - x, pz - z) < 4)) continue;
+        expect(b.sampleHeight(x, z)).toBe(a.sampleHeight(x, z));
+      }
     });
 
     it("the land mesh's band noise recolours the land and moves nothing", () => {

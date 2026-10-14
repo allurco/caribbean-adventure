@@ -20,6 +20,9 @@ import { pieceClearRadius, streetEdgeStones, townClutter } from "./townDetailLay
 import { AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { BUILDING_FOOTING } from "./buildingGeometry";
 import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
+import { VILLAGE_EAVE } from "./villageBuildingGeometry";
+import { townCellsRule } from "./townBound";
+import { townCellsBound } from "./townCells";
 import {
   overlaps,
   pierRect,
@@ -28,6 +31,7 @@ import {
   quayRect,
   rectCorners,
   villageWalls,
+  wallGround,
   BEACH_MAX_SPREAD,
   BEACH_TOP,
   VILLAGE_DRY_HEIGHT,
@@ -94,6 +98,8 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
     tally.maps++;
     tally.ports += ports.length;
     tally.clutter += clutter.length;
+    const towns = ports.map((p) => townCellsBound(p.town));
+    for (const c of clutter) if (!towns.some((t) => t.contains(c.x, c.z, 0))) fail(seed, `${c.kind} on no port's town cells`);
     for (const port of ports) {
       const harbour: PlanRect[] = [pierRect(port.pier), ...port.quays.map(quayRect)];
       // Every building's walls: the kit's here, the village's below; no kerb or edge stone may stand in one.
@@ -113,10 +119,15 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
         tally.stones++;
         if (walls.some((w) => overlaps(w, stone, 0))) fail(seed, `a ${stone.kerb ? "kerb" : "edge stone"} inside a building's walls`);
       }
+      const onTown = townCellsRule(port.town);
       for (const b of port.buildings) {
         tally.houses++;
         const walls = villageWalls(b);
         const corners = rectCorners(walls);
+        // On the port's town cells, the eaves included, and off a spilled cell's shore band (#170).
+        const eave = VILLAGE_EAVE[b.variant] * b.scale;
+        const refused = onTown(b.worldX, b.worldZ, Math.hypot(walls.halfW + eave, walls.halfD + eave), wallGround(drawn, walls).bottom);
+        if (refused) fail(seed, `${b.variant} ${refused}`);
         if (crossesRiser(port.plateau, corners, RETAINING_WALL_DEPTH * BUILDING_SCALE)) fail(seed, `${b.variant} across a riser`);
         for (const s of port.streets) {
           if (corners.some(([x, z]) => polylineDistance(x, z, s.line) < s.halfWidth) || polylineDistance(b.worldX, b.worldZ, s.line) < s.halfWidth) fail(seed, `${b.variant} on a street`);
@@ -140,9 +151,12 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
         // The footing reaches under the lowest ground.
         if (b.worldY - BUILDING_FOOTING * b.scale > bottom) fail(seed, `${b.variant} footing short of the ground`);
       }
+      const inThisTown = townCellsBound(port.town);
       for (const c of clutter) {
-        if (Math.hypot(c.x - port.cx, c.z - port.cz) > 1) continue;
+        // This port's pieces: on its town cells (a piece elsewhere is another port's, or wrongly placed: the check below).
+        if (!inThisTown.contains(c.x, c.z, 0)) continue;
         const r = pieceClearRadius(c);
+        if (onTown(c.x, c.z, r * 0.99, drawn.sampleHeight(c.x, c.z) + 1) === "outside town") fail(seed, `${c.kind} outside the town`);
         for (const s of port.streets) if (polylineDistance(c.x, c.z, s.line) < s.halfWidth) fail(seed, `${c.kind} on a street`);
         if (harbour.some((h) => overlaps(h, { x: c.x, z: c.z, fx: 0, fz: 1, halfW: r * 0.7, halfD: r * 0.7 }, 0))) fail(seed, `${c.kind} on the quay or pier`);
         const g = drawn.sampleHeight(c.x, c.z);

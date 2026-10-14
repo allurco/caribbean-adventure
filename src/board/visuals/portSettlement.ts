@@ -69,6 +69,7 @@ import { stream, subSeed } from "./subSeed";
 import { lerpRange } from "./variationStream";
 import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
 import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH, type TownPlateau } from "./townPlateau";
+import { townCellsRule } from "./townBound";
 
 export interface PortBuilding {
   kind: BuildingKind;
@@ -306,6 +307,12 @@ export interface SettlementGround extends GroundField {
   crossesRiser?(corners: readonly (readonly [number, number])[]): boolean;
   /** Whether a footprint (its corners in order) touches one of the town's streets or the kerbs along them (#87); absent without a town. */
   onStreet?(corners: readonly (readonly [number, number])[]): boolean;
+  /**
+   * Whether a plan circle may stand here as far as the town's cells go
+   * (#170): wholly on them, and, off the port's own cell, above the shore
+   * band (`lowest` is the lowest ground under it); absent without a town.
+   */
+  onTownCells?(x: number, z: number, reach: number, lowest: number): boolean;
 }
 
 /**
@@ -321,7 +328,9 @@ export interface SettlementGround extends GroundField {
  * as the village's are; the plateau keeps its square one level out past the
  * kit and starts its lanes beyond it, so the kit seldom meets a riser, and
  * the main street runs out of the square's paving, so the kit stands round
- * its mouth rather than across it (#91).
+ * its mouth rather than across it (#91). The kit's rings are bound against
+ * the port's town cells too (#170, `townBound.ts`): a footprint stands only
+ * wholly on them, and off the port's own cell only above the shore band.
  */
 export function settlementGround(cell: MapCell, field: GroundField, worldSeed: number, plateau?: TownPlateau): SettlementGround {
   const quay = placeQuay(cell, field, worldSeed);
@@ -329,12 +338,15 @@ export function settlementGround(cell: MapCell, field: GroundField, worldSeed: n
   const creasesWithin = field.creasesWithin?.bind(field);
   const crossesRiserHere = plateau && ((corners: readonly (readonly [number, number])[]) => crossesRiser(plateau, corners, RETAINING_WALL_DEPTH * BUILDING_SCALE));
   const onStreet = plateau && ((corners: readonly (readonly [number, number])[]) => footprintOnStreet(plateau, corners, KERB_WIDTH * BUILDING_SCALE));
-  if (!quay) return { quay, creasesWithin, crossesRiser: crossesRiserHere, onStreet, onQuay: () => false, sampleHeight: (x, z) => field.sampleHeight(x, z) };
+  const rule = plateau && townCellsRule(plateau.town ?? { portId: mapCellId(cell), cells: [cell.hex] });
+  const onTownCells = rule && ((x: number, z: number, reach: number, lowest: number) => rule(x, z, reach, lowest) === undefined);
+  if (!quay) return { quay, creasesWithin, crossesRiser: crossesRiserHere, onStreet, onTownCells, onQuay: () => false, sampleHeight: (x, z) => field.sampleHeight(x, z) };
   return {
     quay,
     creasesWithin,
     crossesRiser: crossesRiserHere,
     onStreet,
+    onTownCells,
     onQuay: (x, z) => quayTopAt(quay, { x, z }) !== undefined,
     sampleHeight: (x, z) => {
       const terrain = field.sampleHeight(x, z);
@@ -369,6 +381,7 @@ export function standBuilding(
   // The reserve is the pier's width, so it shrinks with the pier.
   if (Math.hypot(pierRoot.x - at.x, pierRoot.z - at.z) < pierRootReserve(quay === "on") * PROP_SCALE + reach) return null;
   if (max - min > buildingMaxSpread(footing)) return null;
+  if (ground.onTownCells && !ground.onTownCells(at.x, at.z, reach, min)) return null;
   if (plan && (ground.crossesRiser || ground.onStreet)) {
     // The walls' corners in order round the rectangle.
     const corners = [

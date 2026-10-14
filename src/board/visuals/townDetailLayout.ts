@@ -46,6 +46,7 @@ import {
 import { TOWN_PIECE_RADIUS, TOWN_PIECE_VARIANTS, type TownPieceKind } from "./townPieces";
 import { VILLAGE_EAVE, VILLAGE_PLAN } from "./villageBuildingGeometry";
 import { overlaps, pierRect, polylineDistance, quayRect, type PlanRect, type PortTownPlan } from "./villageLayout";
+import { townCellsRule } from "./townBound";
 
 /** At the building scale: the wall's batter per unit of height, the coping's rise over the upper terrace, the footing under the lower. */
 const WALL_BATTER = 0.12;
@@ -288,8 +289,6 @@ const HOUSE_CLUTTER_CHANCE = 0.35;
 const BOAT_BEACH: readonly [number, number] = [SEA_LEVEL + 0.002, SEA_LEVEL + 0.012];
 const BOAT_RING: readonly [number, number] = [0.25, 0.8];
 const BOAT_GAP = 0.02;
-/** Pieces stay this close to their port's hex centre. */
-const CLUTTER_REACH = 0.85;
 /** A palm's trunk, at scale 1: what keeps it off streets and walls (its crown may overhang them). */
 const PALM_TRUNK = 0.012;
 /** Clear margin kept round the quay and the pier deck. */
@@ -313,11 +312,13 @@ function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSe
   const pieces: PiecePlacement[] = [];
   const radius = (kind: TownPieceKind) => TOWN_PIECE_RADIUS[kind] * k;
   const harbour = [pierRect(plan.pier), ...plan.quays.map(quayRect)];
+  // Pieces stand on the port's town cells, and off the port's own cell above the shore band (#170).
+  const onTown = townCellsRule(plan.town);
   const onHarbour = (x: number, z: number, r: number) => harbour.some((h) => circleHitsRect(h, x, z, r + QUAY_CLEARANCE));
   /** Whether a piece of `kind` may stand at (x, z); `owner` is a building it may stand against (under its eaves). */
   const clear = (kind: TownPieceKind, x: number, z: number, owner?: PlanRect, trunkOnly = false): boolean => {
     const r = trunkOnly ? PALM_TRUNK * k : radius(kind);
-    if (Math.hypot(x - plan.cx, z - plan.cz) > CLUTTER_REACH) return false;
+    if (onTown(x, z, r, groundUnder(x, z, r))) return false;
     if (plan.streets.some((s) => polylineDistance(x, z, s.line) < s.halfWidth + r)) return false;
     if (onHarbour(x, z, r)) return false;
     if (plan.footprints.some((f) => f !== owner && circleHitsRect(f, x, z, r))) return false;
@@ -460,7 +461,7 @@ function portClutter(plan: PortTownPlan, ground: GroundField, k: number, worldSe
       if (plan.streets.some((s) => polylineDistance(x, z, s.line) < s.halfWidth + gardenHalf.w)) continue;
       if (pieces.some((q) => Math.hypot(q.x - x, q.z - z) < pieceClearRadius(q) + gardenHalf.w)) continue;
       if (onHarbour(x, z, Math.hypot(gardenHalf.w, gardenHalf.d))) continue;
-      if (Math.hypot(x - plan.cx, z - plan.cz) > CLUTTER_REACH) continue;
+      if (onTown(x, z, Math.hypot(gardenHalf.w, gardenHalf.d), groundUnder(x, z, gardenHalf.w))) continue;
       if (groundSpread(ground, x, z, gardenHalf.w) > 0.004) continue;
       if (ground.sampleHeight(x, z) < SEA_LEVEL + 0.006) continue;
       if (crossesRiser(plan.plateau, squareAround(x, z, Math.hypot(gardenHalf.w, gardenHalf.d)), RETAINING_WALL_DEPTH * k)) continue;

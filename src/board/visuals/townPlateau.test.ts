@@ -4,12 +4,18 @@ import { getMapPreset } from "../../game/mapConfig";
 import { createWrap } from "../../game/hex";
 import { createTerrainHeightField, type TerrainHeightField } from "./terrainHeightField";
 import {
+  HALF_WIDTH,
+  LENGTH,
+  MAX_AXIS_TURN,
   MAX_TERRACES,
+  MIN_TERRACE,
+  planTownPlateau,
   RISER,
   SHORE_KEEP_BOTTOM,
   SHORE_KEEP_TOP,
   SQUARE_END,
   SQUARE_PAVED,
+  SQUARE_RADIUS,
   crossesRiser,
   footprintOnStreet,
   plateauLocal,
@@ -21,9 +27,10 @@ import {
   streetCarveAt,
   type TownPlateau,
 } from "./townPlateau";
-import { PROP_SCALE } from "./worldScale";
+import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
+import { townCellsBound } from "./townCells";
 
-const SCALE = PROP_SCALE;
+const SCALE = BUILDING_SCALE;
 
 /** The field as drawn (towns on, the default) and the same field without them. */
 function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightField } {
@@ -63,7 +70,7 @@ describe("town plateaus (#87)", () => {
     }
   });
 
-  it("plans one to three terraces stepping up by at most a riser", () => {
+  it("plans one to four terraces stepping up by at most a riser", () => {
     for (const seed of SEEDS) {
       for (const p of fieldsOf(seed).town.townPlateaus) {
         expect(p.levels.length - 1).toBeGreaterThanOrEqual(1);
@@ -268,5 +275,64 @@ describe("town plateaus (#87)", () => {
       );
       expect(alone.townPlateaus[0]).toEqual(town.townPlateaus[town.townPlateaus.length - 1]);
     }
+  });
+});
+
+describe("town plateaus at the building scale, on the town's cells (#170)", () => {
+  /** Land rising steadily inland of a port at the origin whose pier points +z: the shore just past z = 0.6. */
+  const slope = (_x: number, z: number) => 0.02 + Math.max(0, 0.6 - z) * 0.08;
+  const port = { x: 0, z: 0, toWater: 0 };
+
+  it("doubles every length of the plan when the building scale doubles: the square, the terraces, the risers' runs and the streets", () => {
+    const a = planTownPlateau(port, slope, BUILDING_SCALE, { pierScale: PROP_SCALE });
+    const b = planTownPlateau(port, slope, 2 * BUILDING_SCALE, { pierScale: PROP_SCALE });
+    // The square stands where the kit's does, whatever the building scale.
+    expect(b.x).toBeCloseTo(a.x, 12);
+    expect(b.z).toBeCloseTo(a.z, 12);
+    for (const key of ["squareRadius", "length", "halfWidth", "ramp", "blend", "riserFace", "carve", "climbHalf", "rampShoulder"] as const) {
+      expect(b[key], key).toBeCloseTo(2 * a[key], 12);
+    }
+    expect(b.climbs.map((c) => c / 2)).toEqual(a.climbs.map((c) => expect.closeTo(c, 12)));
+    expect(b.steps.length).toBe(a.steps.length);
+    b.steps.forEach((s, i) => expect(s).toBeCloseTo(2 * a.steps[i], 12));
+    expect(b.streets.map((s) => s.halfWidth / 2)).toEqual(a.streets.map((s) => expect.closeTo(s.halfWidth, 12)));
+    expect(b.streets.map((s) => s.kind)).toEqual(a.streets.map((s) => s.kind));
+  });
+
+  it("is planned at BUILDING_SCALE in the drawn field, its square by the pier at PROP_SCALE", () => {
+    const { town } = fieldsOf(1);
+    for (const p of town.townPlateaus) {
+      expect(p.squareRadius).toBeCloseTo(SQUARE_RADIUS * BUILDING_SCALE, 12);
+      expect(p.halfWidth).toBeCloseTo(HALF_WIDTH * BUILDING_SCALE, 12);
+      expect(p.length).toBeLessThanOrEqual(LENGTH * BUILDING_SCALE + 1e-12);
+    }
+  });
+
+  it("runs its terraces inland only as far as the town's cells go, turning towards the spill by at most MAX_AXIS_TURN", () => {
+    let turned = 0;
+    let total = 0;
+    for (const seed of SEEDS) {
+      const preset = getMapPreset("small");
+      const cells = generateMap(preset, seed, createWrap(preset.columns));
+      for (const p of fieldsOf(seed).town.townPlateaus) {
+        expect(p.town).toBeDefined();
+        if (!p.town) continue;
+        const bound = townCellsBound(p.town);
+        const minimum = (SQUARE_END + MIN_TERRACE) * BUILDING_SCALE;
+        if (p.length > minimum + 1e-9) {
+          const [ex, ez] = plateauPoint(p, p.length, 0);
+          expect(bound.contains(ex, ez, 0)).toBe(true);
+        }
+        // The axis against straight inland of the pier.
+        const port = cells.find((c) => `${c.hex.q},${c.hex.r}` === p.town!.portId)!;
+        const toWater = port.decorations!.find((d) => d.type === "pier")!.rotation;
+        const turn = Math.acos(Math.max(-1, Math.min(1, -(p.ux * Math.sin(toWater) + p.uz * Math.cos(toWater)))));
+        expect(turn).toBeLessThanOrEqual(MAX_AXIS_TURN + 1e-9);
+        total++;
+        if (turn > 1e-6) turned++;
+      }
+    }
+    expect(total).toBeGreaterThan(5);
+    expect(turned).toBeGreaterThan(0);
   });
 });

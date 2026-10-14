@@ -29,6 +29,8 @@ import { seamStrip, withSeamImages, wrapIntoStrip } from "./seamStrip";
 import { seabedDepth } from "./seabedProfile";
 import { BUILDING_SCALE, PROP_SCALE, metresToUnits, unitsToMetres } from "./worldScale";
 import { applyTownPlateaus, planTownPlateau, plateauLookup, type PlateauLookup, type TownPlateau } from "./townPlateau";
+import { portTownCells } from "./townCells";
+import { mapCellId } from "./islands";
 
 /** World height that each land elevation rises to (1 beach, 2 jungle, 3 mountain). */
 export const ELEVATION_HEIGHTS = { 1: 0.3, 2: 0.75, 3: 1.4 } as const;
@@ -153,6 +155,12 @@ export interface TerrainHeightFieldOptions {
    * consumer draws has them. Off gives the natural land, for tests.
    */
   towns?: boolean;
+  /**
+   * The building scale the town plateaus are planned at (`BUILDING_SCALE`
+   * by default): the plateau grows with its houses (ADR 0006, #170). Tests
+   * vary it to show the village holds as the buildings grow.
+   */
+  buildingScale?: number;
 }
 
 export interface TerrainHeightField {
@@ -551,11 +559,18 @@ export function createTerrainHeightField(
   // empty while they are planned), then they are all applied at once.
   if (options.towns ?? true) {
     const planned: TownPlateau[] = [];
+    // Each town on its port's town cells (#170), which bound its terraces.
+    const towns = portTownCells(cells, options.wrap ?? null, worldSeed);
     for (const cell of cells) {
       const pier = cell.hasPort ? cell.decorations?.find((deco) => deco.type === "pier") : undefined;
       if (!pier) continue;
       const [px, , pz] = hexToWorld(cell.hex);
-      planned.push(planTownPlateau({ x: px, z: pz, toWater: pier.rotation }, (sx, sz) => sampleHeight(inStrip(sx), sz), PROP_SCALE, BUILDING_SCALE));
+      planned.push(
+        planTownPlateau({ x: px, z: pz, toWater: pier.rotation }, (sx, sz) => sampleHeight(inStrip(sx), sz), options.buildingScale ?? BUILDING_SCALE, {
+          pierScale: PROP_SCALE,
+          town: towns.get(mapCellId(cell)),
+        })
+      );
     }
     plateaus = planned;
     plateausNear = plateauLookup(planned, strip ? strip.width : null);

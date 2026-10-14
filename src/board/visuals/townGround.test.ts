@@ -5,7 +5,7 @@ import { createWrap } from "../../game/hex";
 import { createTerrainHeightField, SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { buildLandMesh, landSurface, TOWN_FLAG_MARGIN } from "./landMesh";
 import { PAVING_TONE, pavingTone, townGround, TOWN_REFINE } from "./townGround";
-import { plateauPoint } from "./townPlateau";
+import { plateauPoint, streetDistance } from "./townPlateau";
 
 function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightField } {
   const preset = getMapPreset("small");
@@ -67,8 +67,12 @@ describe("town ground (#87)", () => {
       expect(ground.surface((main.from[0] + main.to[0]) / 2, (main.from[1] + main.to[1]) / 2)).toBe("paved");
       const back = p.streets.find((s) => s.kind === "back");
       if (back) expect(ground.surface((back.from[0] + back.to[0]) / 2, (back.from[1] + back.to[1]) / 2)).toBe("earth");
-      const [ox, oz] = plateauPoint(p, p.length * 0.5, p.climbs[1] / 2);
-      expect(ground.surface(ox, oz)).toBe("ground");
+      // Between the main street and a back lane, off the cross lanes: open ground.
+      const off = [0.5, 0.4, 0.6, 0.3, 0.7, 0.8]
+        .map((t) => plateauPoint(p, p.length * t, p.climbs[1] / 2))
+        .find(([x, z]) => p.streets.every((s) => streetDistance(s, x, z) > s.halfWidth));
+      expect(off).toBeDefined();
+      if (off) expect(ground.surface(off[0], off[1])).toBe("ground");
     }
   });
 
