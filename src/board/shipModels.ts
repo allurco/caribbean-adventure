@@ -28,7 +28,31 @@ export interface ShipModel {
   /** The hull's depth in metres, keel to sheer. */
   readonly depthMetres: number;
   readonly parts: ShipModelParts;
+  /**
+   * The parts that take the owner's colour, by node name (#134). Named by
+   * part, not by material: the Frigate's flag and sail patches share the
+   * sails' canvas. Each is merged apart from the rest (#136).
+   */
+  readonly tintedParts: readonly string[];
 }
+
+const SLOOP: ShipModel = {
+  file: "sloop.glb",
+  lengthMetres: 18,
+  beamMetres: 5.6,
+  depthMetres: 4.15,
+  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  tintedParts: ["Sails"],
+};
+
+const FLUTE: ShipModel = {
+  file: "flute.glb",
+  lengthMetres: 30,
+  beamMetres: 7.4,
+  depthMetres: 7.2,
+  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  tintedParts: ["Sails"],
+};
 
 const FRIGATE: ShipModel = {
   file: "frigate.glb",
@@ -36,14 +60,25 @@ const FRIGATE: ShipModel = {
   beamMetres: 10.2,
   depthMetres: 8.4,
   parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  // Whether the sail patches take the colour too is #134's call.
+  tintedParts: ["Sails"],
+};
+
+const GALLEON: ShipModel = {
+  file: "galleon.glb",
+  lengthMetres: 34,
+  beamMetres: 11,
+  depthMetres: 10.1,
+  parts: { hull: "Hull", sails: "Sails", flag: "Jolly_Roger" },
+  tintedParts: ["Sails"],
 };
 
 /** Every class's model, or `null` for a class still drawn as a box. */
 export const SHIP_MODELS: Readonly<Record<ShipClass, ShipModel | null>> = {
-  Sloop: null,
-  Flute: null,
+  Sloop: SLOOP,
+  Flute: FLUTE,
   Frigate: FRIGATE,
-  Galleon: null,
+  Galleon: GALLEON,
 };
 
 /** The model a ship of `shipClass` is drawn with, or `null` for the box. */

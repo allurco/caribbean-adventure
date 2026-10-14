@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 # Local agent settings and environment
-.claude/settings.local.json
+.claude/
 .env
 .env.*
 .playwright-mcp/

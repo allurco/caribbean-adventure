@@ -29,6 +29,8 @@ import { useSkyEnvironment } from "./visuals/useSkyEnvironment";
 import { useWaveCascades } from "./visuals/useWaveCascades";
 import { useWaveClock } from "./visuals/useWaveClock";
 import { SeaBuoys } from "./visuals/SeaBuoys";
+import { createSeaSurface, fieldSeabed } from "./visuals/seaSurface";
+import { SeaSurfaceContext } from "./visuals/seaSurfaceContext";
 import { useTerrainFieldTexture } from "./visuals/useTerrainFieldTexture";
 import { WAVE_CASCADES, WHITECAP_CASCADES } from "./visuals/oceanWaves";
 import { DISPLACEMENT_CASCADES } from "./visuals/waveDisplacement";
@@ -77,6 +79,7 @@ import { flightStep } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
 import { Ship, SinkingShip } from "./Ship";
+import { trackShipHeadings } from "./shipHeading";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
 import { ShipDetailsPanel } from "./ShipDetailsPanel";
@@ -102,6 +105,8 @@ interface SinkingShipData {
   position: [number, number, number];
   color: string;
   shipClass?: ShipClass;
+  /** The heading it last sailed on, which it goes down facing. */
+  heading: number;
 }
 
 const PLAYER_COLORS: Record<string, string> = {
@@ -226,6 +231,14 @@ function Scene({
 
   // The ground the focus follows at town zoom (#90): the one terrain field.
   const ground = useMemo(() => sharedTerrainField(G.cells, G.wrap).sampleHeight, [G.cells, G.wrap]);
+
+  // The one CPU sea surface (#141), read at the wave clock by everything that
+  // rides the swell: the ships (#142) and the dev buoys.
+  const seaSurface = useMemo(
+    () => createSeaSurface({ seabedHeightAt: fieldSeabed(sharedTerrainField(G.cells, G.wrap)), enabled: waves.enabled }),
+    [G.cells, G.wrap, waves.enabled]
+  );
+  const sea = useMemo(() => ({ clock: waveClock, surface: seaSurface }), [waveClock, seaSurface]);
 
   // Keep the view over the map: after every MapControls update (pan, zoom,
   // damping, focus-lerp) pull the target back inside the bounds, and at town
@@ -359,6 +372,7 @@ function Scene({
   });
 
   return (
+    <SeaSurfaceContext.Provider value={sea}>
     <>
       {/* The ears of the game: the audio listener rides on the camera (#73) */}
       <CameraAudioListener />
@@ -395,7 +409,7 @@ function Scene({
       )}
 
       {/* Dev: buoys on the CPU sea surface, to check it rides the drawn swell (#141) */}
-      {seaBuoys && <SeaBuoys cells={G.cells} wrap={G.wrap} clock={waveClock} enabled={waves.enabled} />}
+      {seaBuoys && <SeaBuoys />}
 
       {/* Everything on the map, once per copy of the wrapping world */}
       <WorldCopies period={period} stripMinX={strip?.minX ?? 0} from={copies.from} to={copies.to}>
@@ -445,6 +459,7 @@ function Scene({
           position={ship.position}
           color={ship.color}
           shipClass={ship.shipClass}
+          heading={ship.heading}
           onComplete={() => onSinkingComplete(ship.id)}
         />
       ))}
@@ -523,6 +538,7 @@ function Scene({
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       </EffectComposer>
     </>
+    </SeaSurfaceContext.Provider>
   );
 }
 
@@ -572,12 +588,15 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // Use a ref to track previous ship IDs without causing re-renders
   const prevShipIdsRef = useRef<Set<string>>(new Set(Object.keys(G.ships)));
   const prevShipSnapshotsRef = useRef<Record<string, ShipState>>(G.ships);
+  // Each ship's last heading, so a sunk ship goes down facing the way it sailed.
+  const shipHeadingsRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     const currentIds = Object.keys(G.ships);
     const currentIdSet = new Set(currentIds);
     const prevIds = prevShipIdsRef.current;
     const prevSnapshots = prevShipSnapshotsRef.current;
+    const headings = trackShipHeadings(shipHeadingsRef.current, prevSnapshots, G.ships, wrapWorldWidth(G.wrap));
 
     // Find ships that were removed
     const removedIds: string[] = [];
@@ -593,6 +612,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         position: hexToWorld(prevSnapshots[id].position),
         color: PLAYER_COLORS[id] ?? "#888888",
         shipClass: prevSnapshots[id].shipClass,
+        heading: headings[id] ?? 0,
       }));
 
       setSinkingShips((prev) => {
@@ -605,7 +625,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     // Update refs for next comparison
     prevShipIdsRef.current = currentIdSet;
     prevShipSnapshotsRef.current = G.ships;
-  }, [G.ships]);
+    for (const id of removedIds) delete headings[id];
+    shipHeadingsRef.current = headings;
+  }, [G.ships, G.wrap]);
 
   // Detect when current player docks at a new port
   useEffect(() => {

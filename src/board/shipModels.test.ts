@@ -20,10 +20,23 @@ describe("ship model catalogue", () => {
     expect(frigate?.lengthMetres).toBe(38);
   });
 
-  it("reports no model for the Sloop, Flute and Galleon, nor a ship without a class", () => {
-    expect(shipModel("Sloop")).toBeNull();
-    expect(shipModel("Flute")).toBeNull();
-    expect(shipModel("Galleon")).toBeNull();
+  it("has a model for the Galleon, 34 m overall without the bowsprit", () => {
+    expect(shipModel("Galleon")?.lengthMetres).toBe(34);
+  });
+
+  it("has a model for the Sloop, 18 m overall without the bowsprit", () => {
+    expect(shipModel("Sloop")?.lengthMetres).toBe(18);
+  });
+
+  it("has a model for the Flute, 30 m overall without the bowsprit", () => {
+    expect(shipModel("Flute")?.lengthMetres).toBe(30);
+  });
+
+  it("has a model for every ship class", () => {
+    for (const shipClass of SHIP_CLASSES) expect(shipModel(shipClass)).not.toBeNull();
+  });
+
+  it("reports no model for a ship without a class", () => {
     expect(shipModel(undefined)).toBeNull();
   });
 
@@ -42,6 +55,15 @@ describe("ship model catalogue", () => {
 
   it("names the parts the game relies on", () => {
     expect(shipModel("Frigate")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
+    expect(shipModel("Galleon")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
+    expect(shipModel("Sloop")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
+    expect(shipModel("Flute")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
+  });
+
+  it("tints the Frigate's sails by part name, not the flag that shares their canvas", () => {
+    const frigate = shipModel("Frigate")!;
+    expect(frigate.tintedParts).toContain("Sails");
+    expect(frigate.tintedParts).not.toContain("Jolly_Roger");
   });
 
   it("serves the model under the app's base path", () => {

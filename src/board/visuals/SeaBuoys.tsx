@@ -1,13 +1,9 @@
 import { useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { Matrix4, type InstancedMesh } from "three";
-import type { MapWrap } from "../../game/hex";
-import type { MapCell } from "../../game/types";
 import { controlsTarget } from "../controlsTarget";
 import { buoyGrid } from "./buoyGrid";
-import { createSeaSurface, fieldSeabed } from "./seaSurface";
-import { sharedTerrainField } from "./sharedTerrainField";
-import type { WaveClock } from "./waveClock";
+import { useSeaSurface } from "./seaSurfaceContext";
 
 /** Buoys per side of the square. */
 const BUOY_COUNT = 9;
@@ -16,32 +12,23 @@ const BUOY_SPACING = 0.5;
 /** Buoy radius, world units (about 3 m): centred on the surface, half of it shows. */
 const BUOY_RADIUS = 0.05;
 
-interface SeaBuoysProps {
-  cells: readonly MapCell[];
-  wrap: MapWrap;
-  clock: WaveClock;
-  /** False where the GPU cannot run the cascades (WaveCascadeTextures.enabled): the drawn sea is flat. */
-  enabled: boolean;
-}
-
 /**
  * Dev only (#141, `?buoys=1`): small spheres centred on the CPU sea surface
  * on a grid round the camera focus, to check by eye that it sits on the
- * drawn water. Runs after the wave clock (useWaveClock) in the frame.
+ * drawn water. Reads the scene's sea surface (SeaSurfaceContext), the one the
+ * ships ride, after the wave clock (useWaveClock) in the frame.
  */
-export function SeaBuoys({ cells, wrap, clock, enabled }: SeaBuoysProps) {
+export function SeaBuoys() {
   const controls = useThree((s) => s.controls);
-  const surface = useMemo(
-    () => createSeaSurface({ seabedHeightAt: fieldSeabed(sharedTerrainField(cells, wrap)), enabled }),
-    [cells, wrap, enabled]
-  );
+  const sea = useSeaSurface();
   const meshRef = useRef<InstancedMesh>(null);
   const matrix = useMemo(() => new Matrix4(), []);
 
   useFrame(({ camera }) => {
     const mesh = meshRef.current;
     const focus = controlsTarget(controls);
-    if (!mesh || !focus) return;
+    if (!mesh || !focus || !sea) return;
+    const { clock, surface } = sea;
     const seconds = clock.waveTimeAt();
     const eye: [number, number, number] = [camera.position.x, camera.position.y, camera.position.z];
     buoyGrid(focus, BUOY_COUNT, BUOY_SPACING).forEach(([x, z], i) => {

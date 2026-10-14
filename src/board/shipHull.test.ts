@@ -8,15 +8,22 @@ const expectBox = (actual: readonly number[], expected: readonly number[]) => {
 };
 
 describe("shipHullBox", () => {
+  const toWorld = (metres: number) => metresToUnits(metres) * SHIP_SCALE;
+
   it("sizes the Frigate's box from its model: 10.2 m beam, 8.4 m deep, 38 m long, at ship scale", () => {
-    const toWorld = (metres: number) => metresToUnits(metres) * SHIP_SCALE;
     expectBox(shipHullBox("Frigate"), [toWorld(10.2), toWorld(8.4), toWorld(38)]);
   });
 
-  it("keeps the authored boxes for the classes without a model", () => {
-    expectBox(shipHullBox("Sloop"), [0.25 * SHIP_SCALE, 0.2 * SHIP_SCALE, 0.65 * SHIP_SCALE]);
-    expectBox(shipHullBox("Flute"), [0.4 * SHIP_SCALE, 0.3 * SHIP_SCALE, 0.6 * SHIP_SCALE]);
-    expectBox(shipHullBox("Galleon"), [0.5 * SHIP_SCALE, 0.35 * SHIP_SCALE, 0.8 * SHIP_SCALE]);
+  it("sizes the Galleon's box from its model: 11 m beam, 10.1 m deep, 34 m long, at ship scale", () => {
+    expectBox(shipHullBox("Galleon"), [toWorld(11), toWorld(10.1), toWorld(34)]);
+  });
+
+  it("sizes the Sloop's box from its model: 5.6 m beam, 4.15 m deep, 18 m long, at ship scale", () => {
+    expectBox(shipHullBox("Sloop"), [toWorld(5.6), toWorld(4.15), toWorld(18)]);
+  });
+
+  it("sizes the Flute's box from its model: 7.4 m beam, 7.2 m deep, 30 m long, at ship scale", () => {
+    expectBox(shipHullBox("Flute"), [toWorld(7.4), toWorld(7.2), toWorld(30)]);
   });
 
   it("keeps the default box for a ship without a class", () => {

@@ -8,6 +8,7 @@ const MODEL: ShipModel = {
   beamMetres: 10,
   depthMetres: 8,
   parts: { hull: "Hull", sails: "Sails", flag: "Flag" },
+  tintedParts: ["Sails"],
 };
 
 interface Part {
