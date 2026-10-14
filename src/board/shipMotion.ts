@@ -6,11 +6,15 @@
  * changes and steps it each frame.
  *
  * - **The path** is a chain of cubic Hermite segments through the waypoints.
- *   It leaves along the way the ship is already sailing (or pointing, at
- *   rest); at each interior waypoint its tangent bisects the legs in and
- *   out, so the curve is tangent-continuous; it arrives along its last leg.
- *   A first waypoint well behind the bow gets a turning point ahead and to
- *   the side, so the ship comes about in an arc instead of pivoting. Given
+ *   It leaves along the way the ship is already sailing, or at rest along
+ *   its bow swung up to `REST_PIVOT` toward the first waypoint, and runs on
+ *   that way only briefly (`DEPARTURE_TANGENT`); at each interior waypoint
+ *   its tangent bisects the legs in and out, so the curve is
+ *   tangent-continuous; it arrives along its last leg. So the course keeps
+ *   close to the hexes (#214 follow-up; shipMotionBounds.test.ts pins how
+ *   close). A first waypoint more than `COME_ABOUT_ANGLE` behind the course
+ *   of a ship under way gets a small turning point ahead and to the side,
+ *   so it comes about in an arc instead of pivoting. Given
  *   where the open water is (`OpenWater`), it turns to the side whose arc
  *   stays over water, and tightens the arc when both sides are near land.
  * - **Distance along the path** follows a cubic in time over the whole move:
@@ -18,8 +22,12 @@
  *   it gathers way, glides and settles; a new course mid-move keeps its way.
  * - **The duration** grows with the path's length, so one hex is brisk and a
  *   long move is not rushed.
+ * - **The pace** (`voyagePace`) runs that clock slower where the curve is
+ *   tighter than the bow can follow at speed, and while the bow is well off
+ *   the course, so the ship slows into a sharp turn and swings round before
+ *   it makes way, rather than crabbing or spinning.
  * - **The heading** turns toward the path's tangent at no more than
- *   `MAX_TURN_RATE`.
+ *   `turnRate`: `MAX_TURN_RATE`, and faster when barely under way.
  * - **Heel and pitch** add to the wave pose (shipWavePose.ts), never replace
  *   it: a roll toward the outside of a turn from speed × yaw rate and a
  *   slight bow-down pitch as it gathers way, clamped to a few degrees and
@@ -56,9 +64,15 @@ export interface ShipVoyage {
   /** The waypoints the caller asked for (no turning points), and each one's distance along the path. */
   waypoints: readonly Point[];
   waypointDistances: readonly number[];
-  /** Seconds the voyage takes, and seconds sailed. */
+  /**
+   * Seconds the voyage takes at full pace, and seconds of it sailed: its
+   * clock runs at `pace`, so a ship slowed for a tight turn or a bow not yet
+   * round takes longer.
+   */
   duration: number;
   elapsed: number;
+  /** How fast the voyage's clock runs, 0..1 (see `voyagePace`). */
+  pace: number;
   /** Speed along the path when the voyage began (world units per second). */
   startSpeed: number;
   /**
@@ -95,6 +109,21 @@ export const VOYAGE_SECONDS_PER_UNIT = 0.17;
 export const VOYAGE_MAX_SECONDS = 2.2;
 /** Fastest the bow swings round, radians per second (about 200°/s). */
 export const MAX_TURN_RATE = 3.5;
+/** Extra turn rate at rest, radians per second, fading out by SLOW_TURN_SPEED: a ship barely under way swings round faster than one at speed. */
+export const SLOW_TURN_BONUS = 4;
+/** Speed (world units per second) by which the slow-turn bonus is gone. */
+export const SLOW_TURN_SPEED = 2;
+/** Share of the turn rate a ship may need to follow its course's curve at speed; the rest is headroom for the bow to catch up. */
+export const TURN_HEADROOM = 0.9;
+/** World units ahead (at least, or a quarter second of way) the pace looks for a tighter curve. */
+export const PACE_LOOK_AHEAD = 0.3;
+/** Seconds the pace takes to fall (to slow for a turn) and to rise again (to gather way after it). */
+export const PACE_FALL_SECONDS = 0.06;
+export const PACE_RISE_SECONDS = 0.2;
+/** How far (radians, 60°) a ship at rest swings its bow toward its first waypoint before the course leaves it. */
+export const REST_PIVOT = Math.PI / 3;
+/** Length of the first segment's departure tangent, as a share of the segment's chord: how far the course runs on along the old heading. */
+export const DEPARTURE_TANGENT = 0.5;
 /** Radians of heel per (world unit/s × radian/s) of speed × yaw rate, and its cap (6°). */
 export const HEEL_GAIN = 0.006;
 export const MAX_HEEL = (6 * Math.PI) / 180;
@@ -104,10 +133,10 @@ export const MAX_PITCH = (2 * Math.PI) / 180;
 /** Seconds the heel and pitch take to follow (first-order lag): a hull has inertia. */
 export const LEAN_RESPONSE_SECONDS = 0.25;
 /** A first leg more than this far (radians) off the bow comes about through a turning point. */
-export const COME_ABOUT_ANGLE = (110 * Math.PI) / 180;
+export const COME_ABOUT_ANGLE = (150 * Math.PI) / 180;
 /** Where that turning point sits from the start, world units: ahead along the bow, and to the side. */
-export const COME_ABOUT_AHEAD = 0.45;
-export const COME_ABOUT_SIDE = 0.6;
+export const COME_ABOUT_AHEAD = 0.25;
+export const COME_ABOUT_SIDE = 0.3;
 /** The sizes a come-about arc tries, largest first, as shares of COME_ABOUT_AHEAD and COME_ABOUT_SIDE. */
 export const COME_ABOUT_SCALES: readonly number[] = [1, 0.75, 0.5, 0.3];
 /** World units between the points of a come-about arc checked against the open water. */
@@ -159,6 +188,17 @@ function hermiteDerivative(s: Segment, t: number): Point {
   return [
     d00 * s.p0[0] + d10 * s.m0[0] + d01 * s.p1[0] + d11 * s.m1[0],
     d00 * s.p0[1] + d10 * s.m0[1] + d01 * s.p1[1] + d11 * s.m1[1],
+  ];
+}
+
+function hermiteSecond(s: Segment, t: number): Point {
+  const e00 = 12 * t - 6;
+  const e10 = 6 * t - 4;
+  const e01 = -12 * t + 6;
+  const e11 = 6 * t - 2;
+  return [
+    e00 * s.p0[0] + e10 * s.m0[0] + e01 * s.p1[0] + e11 * s.m1[0],
+    e00 * s.p0[1] + e10 * s.m0[1] + e01 * s.p1[1] + e11 * s.m1[1],
   ];
 }
 
@@ -287,14 +327,31 @@ export function buildShipPath(start: Point, startHeading: number, waypoints: rea
 function buildPathFromKnots(knots: readonly Point[], startHeading: number, turning: boolean): ShipPath {
   const segments: Segment[] = [];
   const n = knots.length;
+  const chords = knots.slice(1).map((k, i) => len(sub(k, knots[i])));
+  // An interior knot's tangent is the geometric mean of the legs beside it:
+  // a hex's own length between equal legs, and between a come-about's short
+  // first leg and long second one, short enough not to overshoot the turn
+  // yet long enough not to kink it.
+  const knotSpeed = (i: number) => Math.sqrt(chords[i - 1] * chords[i]);
+  // At a come-about's turning point the ship is half way round: square across its old heading.
+  const bow = headingDirection(startHeading);
+  const across = (k: Point): Point => {
+    const right = starboard(bow);
+    const off = sub(k, knots[0]);
+    return off[0] * right[0] + off[1] * right[1] < 0 ? [-right[0], -right[1]] : right;
+  };
+  const direction = (i: number): Point => (turning && i === 1 ? across(knots[1]) : knotDirection(knots, i));
   for (let i = 0; i + 1 < n; i++) {
     const p0 = knots[i];
     const p1 = knots[i + 1];
-    const chord = len(sub(p1, p0));
-    const d0 = i === 0 ? headingDirection(startHeading) : knotDirection(knots, i);
+    const chord = chords[i];
+    const d0 = i === 0 ? headingDirection(startHeading) : direction(i);
     const arrival = turning && n === 3 ? sub(p1, knots[0]) : sub(p1, p0);
-    const d1 = i + 1 === n - 1 ? unit(arrival) : knotDirection(knots, i + 1);
-    segments.push({ p0, p1, m0: scale(d0, chord), m1: scale(d1, chord) });
+    const d1 = i + 1 === n - 1 ? unit(arrival) : direction(i + 1);
+    // A come-about's first leg keeps its full departure, so its turning point is rounded, not cusped.
+    const m0 = i === 0 ? chord * (turning ? 1 : DEPARTURE_TANGENT) : knotSpeed(i);
+    const m1 = i + 1 === n - 1 ? chord : knotSpeed(i + 1);
+    segments.push({ p0, p1, m0: scale(d0, m0), m1: scale(d1, m1) });
   }
   return tabulate(segments);
 }
@@ -344,6 +401,16 @@ export function pathHeading(path: ShipPath, s: number): number {
   return directionHeading(d);
 }
 
+/** The path's curvature (1 / turning radius, world units) at distance `s`. */
+export function pathCurvature(path: ShipPath, s: number): number {
+  if (path.segments.length === 0) return 0;
+  const { segment, t } = segmentAt(path, paramAt(path, s));
+  const d = hermiteDerivative(segment, t);
+  const dd = hermiteSecond(segment, t);
+  const speed = len(d);
+  return speed > EPSILON ? Math.abs(d[0] * dd[1] - d[1] * dd[0]) / (speed * speed * speed) : 0;
+}
+
 /** How long a move along a path `length` world units long takes, seconds. */
 export function voyageDuration(length: number): number {
   return Math.min(VOYAGE_BASE_SECONDS + VOYAGE_SECONDS_PER_UNIT * length, VOYAGE_MAX_SECONDS);
@@ -382,6 +449,25 @@ export function voyageDurationFrom(length: number, startSpeed: number): number {
 export function turnToward(current: number, target: number, maxStep: number): number {
   const d = angleDelta(target, current);
   return current + Math.max(-maxStep, Math.min(maxStep, d));
+}
+
+/** The fastest a ship at `speed` swings its bow: MAX_TURN_RATE, plus SLOW_TURN_BONUS at rest fading out by SLOW_TURN_SPEED. */
+export function turnRate(speed: number): number {
+  return MAX_TURN_RATE + SLOW_TURN_BONUS * Math.max(0, 1 - speed / SLOW_TURN_SPEED);
+}
+
+/**
+ * How fast a voyage's clock should run, 0..1, for a ship whose bow is
+ * `bowOff` radians off its course, sailing at the profile's `speed` into
+ * curvature `curvature`: slow enough that following the curve needs no
+ * more than TURN_HEADROOM of its turn rate at that speed, and, while the bow is well off
+ * the course, slow almost to a stop so it swings round before it makes way
+ * (cos² of the angle: half pace at 45°, none past 90°).
+ */
+export function voyagePace(bowOff: number, speed: number, curvature: number): number {
+  const align = Math.max(0, Math.cos(bowOff)) ** 2;
+  const curveLimit = curvature > EPSILON && speed > EPSILON ? (TURN_HEADROOM * turnRate(speed)) / (curvature * speed) : 1;
+  return Math.max(0, Math.min(1, align, curveLimit));
 }
 
 /** The heel a ship makes at `speed` turning at `yawRate`: toward the outside of the turn, clamped. */
@@ -446,7 +532,15 @@ export function setCourse(
   const start: Point = [motion.x + shift, motion.z];
   const shifted = route.map((p): Point => [p[0] + shift, p[1]]);
   // Leave along the course it is making, or at rest along its bow.
-  const startHeading = voyage && motion.speed > EPSILON ? motion.course : motion.heading;
+  // Under way, leave along the course it is making; at rest, along its bow
+  // swung up to REST_PIVOT toward the first waypoint (it turns on the spot as it gathers way).
+  const underWay = voyage !== null && motion.speed > EPSILON;
+  const firstLeg = sub(shifted[0], start);
+  const startHeading = underWay
+    ? motion.course
+    : len(firstLeg) > EPSILON
+      ? turnToward(motion.heading, directionHeading(firstLeg), REST_PIVOT)
+      : motion.heading;
   const { knots, turning } = keptTurn ? { knots: [start, ...shifted], turning: true } : pathKnots(start, startHeading, shifted, openWater);
   if (knots.length < 2) return { ...motion, x: start[0], voyage: null };
   const path = buildPathFromKnots(knots, startHeading, turning);
@@ -464,6 +558,7 @@ export function setCourse(
       duration: voyageDurationFrom(path.length, startSpeed),
       elapsed: 0,
       startSpeed,
+      pace: voyage ? voyage.pace : 1,
       turn: turning ? { point: knots[1], distance: path.distances[Math.min(SAMPLES_PER_SEGMENT, path.distances.length - 1)] } : null,
     },
   };
@@ -497,15 +592,24 @@ export function stepMotion(motion: ShipMotion, dt: number, reducedMotion: boolea
   if (dt <= 0) return motion;
   let { x, z, course, speed, voyage } = motion;
   if (voyage) {
-    const elapsed = voyage.elapsed + dt;
-    const { distance, speed: nextSpeed } = voyageProgress(voyage.path.length, voyage.duration, voyage.startSpeed, elapsed);
-    [x, z] = pathPoint(voyage.path, distance);
-    course = pathHeading(voyage.path, distance);
-    speed = nextSpeed;
-    voyage = elapsed >= voyage.duration ? null : { ...voyage, elapsed };
+    const { path, duration, startSpeed } = voyage;
+    // The pace for where it is and a little ahead: slow for the curve before reaching it.
+    const here = voyageProgress(path.length, duration, startSpeed, voyage.elapsed);
+    const ahead = Math.min(path.length, here.distance + Math.max(PACE_LOOK_AHEAD, here.speed * 0.25));
+    const curvature = Math.max(pathCurvature(path, here.distance), pathCurvature(path, ahead));
+    const bowOff = angleDelta(pathHeading(path, here.distance), motion.heading);
+    const target = voyagePace(bowOff, here.speed, curvature);
+    const lag = target < voyage.pace ? PACE_FALL_SECONDS : PACE_RISE_SECONDS;
+    const pace = voyage.pace + (target - voyage.pace) * (1 - Math.exp(-dt / lag));
+    const elapsed = voyage.elapsed + dt * pace;
+    const { distance, speed: profileSpeed } = voyageProgress(path.length, duration, startSpeed, elapsed);
+    [x, z] = pathPoint(path, distance);
+    course = pathHeading(path, distance);
+    speed = profileSpeed * pace;
+    voyage = elapsed >= duration ? null : { ...voyage, elapsed, pace };
   }
   const acceleration = (speed - motion.speed) / dt;
-  const heading = turnToward(motion.heading, course, MAX_TURN_RATE * dt);
+  const heading = turnToward(motion.heading, course, turnRate(speed) * dt);
   const yawRate = (heading - motion.heading) / dt;
   const follow = 1 - Math.exp(-dt / LEAN_RESPONSE_SECONDS);
   const rollTarget = reducedMotion ? 0 : turnHeel(speed, yawRate);

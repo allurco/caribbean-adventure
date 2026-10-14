@@ -4,6 +4,7 @@ import {
   MAX_HEEL,
   MAX_PITCH,
   MAX_TURN_RATE,
+  SLOW_TURN_SPEED,
   VOYAGE_MAX_SECONDS,
   angleDelta,
   buildShipPath,
@@ -16,6 +17,7 @@ import {
   setCourse,
   stepMotion,
   turnHeel,
+  turnRate,
   turnToward,
   voyageDuration,
   voyageDurationFrom,
@@ -89,14 +91,14 @@ describe("buildShipPath", () => {
       maxSide = Math.max(maxSide, Math.abs(z));
       maxAhead = Math.max(maxAhead, x);
     }
-    expect(maxAhead).toBeGreaterThan(0.2); // it sails on before it turns
-    expect(maxSide).toBeGreaterThan(0.3); // it swings out to the side
-    expect(maxSide).toBeLessThan(HEX_STEP); // within about a hex
+    expect(maxAhead).toBeGreaterThan(0.1); // it sails on before it turns
+    expect(maxSide).toBeGreaterThan(0.15); // it swings out to the side
+    expect(maxSide).toBeLessThan(HEX_STEP / 2); // within its own hex
     // ...and the tangent swings round smoothly the whole way.
     let prev = pathHeading(path, 0);
     for (let s = 0.01; s <= path.length; s += 0.01) {
       const h = pathHeading(path, s);
-      expect(Math.abs(angleDelta(h, prev))).toBeLessThan(0.15);
+      expect(Math.abs(angleDelta(h, prev))).toBeLessThan(0.25);
       prev = h;
     }
     expect(close(pathPoint(path, path.length), [-HEX_STEP, 0])).toBe(true);
@@ -176,11 +178,12 @@ describe("a ship sailing", () => {
     expect(end.speed).toBe(0);
   });
 
-  it("never turns faster than the turn rate, and the bow never jumps", () => {
+  it("never turns faster than the turn rate for its speed, and the bow never jumps", () => {
     const frames = sail(setCourse(restingMotion(0, 0, EAST), [[-HEX_STEP, 0]]));
     for (let i = 1; i < frames.length; i++) {
-      expect(Math.abs(frames[i].heading - frames[i - 1].heading)).toBeLessThanOrEqual(MAX_TURN_RATE * FRAME + 1e-9);
+      expect(Math.abs(frames[i].heading - frames[i - 1].heading)).toBeLessThanOrEqual(turnRate(frames[i].speed) * FRAME + 1e-9);
     }
+    expect(turnRate(SLOW_TURN_SPEED)).toBe(MAX_TURN_RATE);
     // It has come about by the end of a reversal: its bow on the course it arrived on, the way it was sent.
     let m = frames[frames.length - 1];
     for (let k = 0; k < 120; k++) m = stepMotion(m, FRAME, false);
@@ -250,7 +253,7 @@ describe("a ship sailing", () => {
     for (let i = underWay; i < settling; i++) expect(frames[i].speed).toBeGreaterThan(0.5);
     // The bow never snaps.
     for (let i = 1; i < frames.length; i++) {
-      expect(Math.abs(frames[i].heading - frames[i - 1].heading)).toBeLessThanOrEqual(MAX_TURN_RATE * FRAME + 1e-9);
+      expect(Math.abs(frames[i].heading - frames[i - 1].heading)).toBeLessThanOrEqual(turnRate(frames[i].speed) * FRAME + 1e-9);
     }
     // It passes by every hex and ends on the last.
     for (const [hx, hz] of hexes) expect(Math.min(...frames.map((f) => Math.hypot(f.x - hx, f.z - hz)))).toBeLessThan(0.3);
@@ -277,30 +280,34 @@ describe("a ship sailing", () => {
 });
 
 describe("coming about near land", () => {
-  const pointsOf = (frames: ShipMotion[]): Point[] => frames.map((f): Point => [f.x, f.z]);
-  /** Every point the ship sails through, from rest at the origin facing east, sent a hex dead astern. */
-  const reversal = (openWater?: OpenWater): Point[] => pointsOf(sail(setCourse(restingMotion(0, 0, EAST), [[-HEX_STEP, 0]], Infinity, openWater)));
+  /** Every point of the course from the origin, leaving east, to a hex dead astern (as a ship under way comes about). */
+  const reversal = (openWater?: OpenWater): Point[] => {
+    const path = buildShipPath([0, 0], EAST, [[-HEX_STEP, 0]], openWater);
+    const points: Point[] = [];
+    for (let s = 0; s <= path.length; s += 0.01) points.push(pathPoint(path, s));
+    return [...points, pathPoint(path, path.length)];
+  };
 
   it("turns to starboard in open sea", () => {
     // Starboard of a ship heading east (+x) is −z.
     const zs = reversal(() => true).map((p) => p[1]);
-    expect(Math.min(...zs)).toBeLessThan(-0.3);
+    expect(Math.min(...zs)).toBeLessThan(-0.15);
     expect(Math.max(...zs)).toBeLessThan(0.05);
   });
 
   it("turns away from a shore on its starboard side", () => {
-    // A coast along z = −0.3: land to starboard, sea to port.
-    const sea: OpenWater = (_x, z) => z > -0.3;
+    // A coast along z = −0.1: land to starboard, sea to port.
+    const sea: OpenWater = (_x, z) => z > -0.1;
     const points = reversal(sea);
     for (const [x, z] of points) expect(sea(x, z)).toBe(true);
-    expect(Math.max(...points.map((p) => p[1]))).toBeGreaterThan(0.3); // it swung out to port
+    expect(Math.max(...points.map((p) => p[1]))).toBeGreaterThan(0.15); // it swung out to port
     const end = points[points.length - 1];
     expect(end[0]).toBeCloseTo(-HEX_STEP, 6);
   });
 
   it("tightens the arc in a channel with land on both sides", () => {
-    // Open water only within 0.4 of the line it sails along.
-    const channel: OpenWater = (_x, z) => Math.abs(z) < 0.4;
+    // Open water only within 0.2 of the line it sails along.
+    const channel: OpenWater = (_x, z) => Math.abs(z) < 0.2;
     const points = reversal(channel);
     for (const [x, z] of points) expect(channel(x, z)).toBe(true);
     const open = reversal(() => true);
