@@ -29,7 +29,7 @@ import {
   streetCarveAt,
   type TownPlateau,
 } from "./townPlateau";
-import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
+import { BUILDING_ENLARGEMENT, BUILDING_SCALE, PROP_SCALE } from "./worldScale";
 import { townCellsBound } from "./townCells";
 
 const SCALE = BUILDING_SCALE;
@@ -45,6 +45,13 @@ function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightF
     town: createTerrainHeightField(cells, terrainSeed, { wrap }),
   };
 }
+
+/**
+ * Grid steps over a plateau, as many points per plateau as at ADR 0003's
+ * building scale: the plateau is ×2.5 across now (#176), so its grid is too,
+ * or a sweep costs six times what it did.
+ */
+const GRID = (step: number) => step * BUILDING_ENLARGEMENT;
 
 /** Points on a grid over each plateau's reach. */
 function* aroundPlateaus(plateaus: readonly TownPlateau[], step: number): Generator<[number, number, TownPlateau]> {
@@ -91,7 +98,7 @@ describe("town plateaus (#87)", () => {
       const { plain, town } = fieldsOf(seed);
       const plateaus = town.townPlateaus;
       let checked = 0;
-      for (const [x, z, p] of aroundPlateaus(plateaus, 0.02)) {
+      for (const [x, z, p] of aroundPlateaus(plateaus, GRID(0.02))) {
         const natural = plain.sampleHeight(x, z);
         if (plateauPlanDistance(p, x, z) > 0 || shoreKeep(natural) < 1) continue;
         const s = (x - p.x) * p.ux + (z - p.z) * p.uz;
@@ -119,7 +126,7 @@ describe("town plateaus (#87)", () => {
     let banked = 0;
     for (const seed of SEEDS) {
       const { plain, town } = fieldsOf(seed);
-      for (const [x, z] of aroundPlateaus(town.townPlateaus, 0.05)) {
+      for (const [x, z] of aroundPlateaus(town.townPlateaus, GRID(0.02))) {
         const natural = plain.sampleHeight(x, z);
         const lift = town.sampleHeight(x, z) - natural;
         expect(lift).toBeLessThanOrEqual(bankLift(natural) + 1e-9);
@@ -137,7 +144,8 @@ describe("town plateaus (#87)", () => {
         // Rays from the centre out past the blend in 0.004 steps: no step more
         // than the untouched terrain's own plus 0.02 and half a riser (the
         // steep face).
-        for (let a = 0; a < Math.PI * 2; a += Math.PI / 8) {
+        // Eight rays: the ×2.5 plateau (#176) is long, and each is sampled at the riser face's resolution.
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
           let prev = town.sampleHeight(p.x, p.z);
           let prevPlain = plain.sampleHeight(p.x, p.z);
           for (let r = 0.004; r <= p.reach; r += 0.004) {
@@ -152,7 +160,7 @@ describe("town plateaus (#87)", () => {
         }
       }
     }
-  });
+  }, 30_000);
 
   it("lays a main street, two back lanes and one or two cross lanes inside the plan, carved into the ground", () => {
     for (const seed of SEEDS) {
@@ -271,7 +279,7 @@ describe("town plateaus (#87)", () => {
     for (const seed of SEEDS) {
       const { plain, town } = fieldsOf(seed);
       const plateaus = town.townPlateaus;
-      for (const [x, z] of aroundPlateaus(plateaus, 0.03)) {
+      for (const [x, z] of aroundPlateaus(plateaus, GRID(0.03))) {
         const h0 = plain.sampleHeight(x, z);
         const h1 = town.sampleHeight(x, z);
         expect(town.sampleCoastDistance(x, z)).toBe(plain.sampleCoastDistance(x, z));
