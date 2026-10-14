@@ -14,6 +14,7 @@ import {
   shipTooltipHeight,
   shipWaterline,
   WATERLINE_BEAM_SHARE,
+  WATERLINE_END_RADIUS,
   WATERLINE_LENGTH_SHARE,
 } from "./shipHull";
 import { SHIP_MODELS, shipModelDraftUnits, shipModelScale } from "./shipModels";
@@ -150,12 +151,22 @@ describe("shipWaterline", () => {
       expect(SHIP_MODELS[shipClass]).not.toBeNull();
       expect(waterline.length).toBeCloseTo(length * WATERLINE_LENGTH_SHARE, 12);
       expect(waterline.beam).toBeCloseTo(width * WATERLINE_BEAM_SHARE, 12);
-      expect(waterline.roundness).toBe(1);
+      expect(waterline.roundness).toBe(WATERLINE_END_RADIUS[shipClass]);
     }
     expect(WATERLINE_LENGTH_SHARE).toBeGreaterThan(0.75);
     expect(WATERLINE_LENGTH_SHARE).toBeLessThanOrEqual(1);
     expect(WATERLINE_BEAM_SHARE).toBeGreaterThan(0.75);
     expect(WATERLINE_BEAM_SHARE).toBeLessThanOrEqual(1);
+  });
+
+  it("points the fine hulls' ends and keeps the full hulls' round (#144)", () => {
+    // Over a half beam the ends are an ogive (hullContact.ts); a stadium at one.
+    expect(shipWaterline("Sloop").roundness).toBeGreaterThan(1.5);
+    expect(shipWaterline("Frigate").roundness).toBeGreaterThan(1.5);
+    expect(shipWaterline("Flute").roundness).toBeGreaterThanOrEqual(1);
+    expect(shipWaterline("Flute").roundness).toBeLessThan(shipWaterline("Frigate").roundness);
+    expect(shipWaterline("Galleon").roundness).toBeGreaterThanOrEqual(1);
+    expect(shipWaterline("Galleon").roundness).toBeLessThan(shipWaterline("Sloop").roundness);
   });
 
   it("is a box hull's footprint, nearly square, for a ship without a class", () => {

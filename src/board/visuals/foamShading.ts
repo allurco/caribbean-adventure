@@ -20,15 +20,23 @@
  * included. Real whitecap albedo is ~0.5–0.9 and falls as the foam thins
  * (Frouin et al. 1996, JGR 101, "Spectral reflectance of sea foam in the
  * visible and near-infrared"); the high end stands in for fresh foam and
- * the lace does the thinning. Slightly warm, so it never reads bluer than
- * the sky it is lit by.
+ * the lace does the thinning. A touch cool, and the sun's colour on it is
+ * partly whitened (FOAM_SUN_WHITENING, same brightness), so under the golden
+ * light it reads as white foam against the sea, not as cream or tan like the
+ * sand (#144).
  */
 import { cascadeLodFade } from "./waveNormalFilter";
 
 type Rgb = readonly [number, number, number];
 
-/** Linear albedo of fresh foam: luminance ≈ 0.88, a touch warm. */
-export const FOAM_ALBEDO: Rgb = [0.9, 0.88, 0.85];
+/** Linear albedo of fresh foam: luminance ≈ 0.89, a touch cool (was [0.9, 0.88, 0.85], a touch warm). */
+export const FOAM_ALBEDO: Rgb = [0.87, 0.89, 0.93];
+/**
+ * STYLISTIC: the share of the sun's colour taken out of the light on the
+ * foam (toward its luminance, so no brighter): a low golden sun would
+ * otherwise tint the foam the colour of the sand.
+ */
+export const FOAM_SUN_WHITENING = 0.5;
 
 /** Edge softness of the lace: the noise range over which a thread fades in. */
 export const FOAM_LACE_SOFTNESS = 0.2;
@@ -52,6 +60,29 @@ export function foamLace(coverage: number, noise: number): number {
   return smoothstep(threshold, threshold + FOAM_LACE_SOFTNESS, noise);
 }
 
+/**
+ * STYLISTIC: how far the coarse noise thins churned foam where it is lowest
+ * (share of the coverage taken off): deep enough to open holes in the lace,
+ * shallow enough that dense churn stays one connected body.
+ */
+export const FOAM_CHURN_GAP_DEPTH = 0.3;
+/** STYLISTIC: the churn's coverage gain before it is thinned, so fresh churn is nearly solid inside. */
+export const FOAM_CHURN_GAIN = 0.6;
+
+/**
+ * Churned foam (a ship's wake, #144): one connected body whose texture
+ * breaks up, not islands. The coarse `coarse` noise thins the coverage
+ * (by up to FOAM_CHURN_GAP_DEPTH) rather than cutting it, and the fine
+ * `fine` noise laces what is left, so dense churn has holes inside a
+ * continuous streak and only thin churn (its edges, its old tail) falls
+ * apart into scattered threads. Both noises 0 … 1.
+ */
+export function foamChurnLace(coverage: number, coarse: number, fine: number): number {
+  if (coverage <= 0) return 0;
+  const thinned = Math.min(1, coverage * (1 + FOAM_CHURN_GAIN)) * (1 - FOAM_CHURN_GAP_DEPTH * (1 - Math.max(0, Math.min(1, coarse))));
+  return foamLace(thinned, fine);
+}
+
 /** Share of the lace kept where a pixel spans `footprintMetres` and the lace's features are `featureMetres` across. */
 export function foamDetailFade(footprintMetres: number, featureMetres: number): number {
   return cascadeLodFade(footprintMetres, (2 * Math.PI) / featureMetres);
@@ -63,7 +94,11 @@ export function foamDetailFade(footprintMetres: number, featureMetres: number): 
  */
 export function foamRadiance(nDotL: number, sunIrradiance: Rgb, skyDiffuse: Rgb): [number, number, number] {
   const sun = Math.max(nDotL, 0) / Math.PI;
-  return [0, 1, 2].map((i) => FOAM_ALBEDO[i] * (sunIrradiance[i] * sun + skyDiffuse[i])) as [number, number, number];
+  const luminance = 0.2126 * sunIrradiance[0] + 0.7152 * sunIrradiance[1] + 0.0722 * sunIrradiance[2];
+  return [0, 1, 2].map((i) => {
+    const whitened = sunIrradiance[i] + (luminance - sunIrradiance[i]) * FOAM_SUN_WHITENING;
+    return FOAM_ALBEDO[i] * (whitened * sun + skyDiffuse[i]);
+  }) as [number, number, number];
 }
 
 /**
@@ -139,10 +174,20 @@ export const FOAM_SHADING_GLSL = `
     float threshold = 1.0 - min(coverage, 1.0);
     return smoothstep(threshold, threshold + FOAM_LACE_SOFTNESS, noise);
   }
+  const float FOAM_CHURN_GAP_DEPTH = ${FOAM_CHURN_GAP_DEPTH.toFixed(4)};
+  const float FOAM_CHURN_GAIN = ${FOAM_CHURN_GAIN.toFixed(4)};
+  float foamChurnLace(float coverage, float coarse, float fine) {
+    if (coverage <= 0.0) return 0.0;
+    float thinned = min(1.0, coverage * (1.0 + FOAM_CHURN_GAIN)) * (1.0 - FOAM_CHURN_GAP_DEPTH * (1.0 - clamp(coarse, 0.0, 1.0)));
+    return foamLace(thinned, fine);
+  }
   float foamDetailFade(float footprintMetres, float featureMetres) {
     return cascadeLodFade(footprintMetres, 6.28318530718 / featureMetres);
   }
+  const float FOAM_SUN_WHITENING = ${FOAM_SUN_WHITENING.toFixed(4)};
   vec3 foamRadiance(vec3 n, vec3 l, vec3 sunIrradiance, vec3 skyDiffuse) {
-    return FOAM_ALBEDO * (sunIrradiance * max(dot(n, l), 0.0) / PI + skyDiffuse);
+    float luminance = dot(sunIrradiance, vec3(0.2126, 0.7152, 0.0722));
+    vec3 whitened = mix(sunIrradiance, vec3(luminance), FOAM_SUN_WHITENING);
+    return FOAM_ALBEDO * (whitened * max(dot(n, l), 0.0) / PI + skyDiffuse);
   }
 `;
