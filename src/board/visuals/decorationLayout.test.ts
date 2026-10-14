@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset, type MapSizeId } from "../../game/mapConfig";
 import { createWrap, hexToWorld } from "../../game/hex";
@@ -24,15 +24,22 @@ const pierRotation = (cell: MapCell) => (cell.decorations ?? []).find((d) => d.t
 const near = (a: { x: number; z: number }, b: { worldX: number; worldZ: number }) => Math.hypot(a.x - b.worldX, a.z - b.worldZ) < 1e-9;
 
 describe("decorationLayout", () => {
-  it("starts every drawn pier where its quay and the settlement's pier-root reserve expect it: on the drawn land surface (#59)", () => {
-    let ports = 0;
-    let movedBySurface = 0;
-    for (const [size, seed] of SAMPLES) {
+  // The sample maps, their layouts and their terrain fields, built once outside
+  // any test's time limit: generating eight real maps is the expensive part.
+  let sampled: { cells: MapCell[]; layout: ReturnType<typeof decorationLayout>; field: ReturnType<typeof sharedTerrainField> }[];
+  beforeAll(() => {
+    sampled = SAMPLES.map(([size, seed]) => {
       const preset = getMapPreset(size);
       const wrap = createWrap(preset.columns);
       const cells = generateMap(preset, seed, wrap);
-      const layout = decorationLayout(cells, wrap);
-      const field = sharedTerrainField(cells, wrap);
+      return { cells, layout: decorationLayout(cells, wrap), field: sharedTerrainField(cells, wrap) };
+    });
+  });
+
+  it("starts every drawn pier where its quay and the settlement's pier-root reserve expect it: on the drawn land surface (#59)", () => {
+    let ports = 0;
+    let movedBySurface = 0;
+    for (const { cells, layout, field } of sampled) {
       const drawn = landSurface(field);
       for (const cell of cells) {
         const rotation = pierRotation(cell);

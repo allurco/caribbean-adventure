@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import type { MapCell } from "../../game/types";
 import { hexGrid, hexToWorld, worldToHex } from "../../game/hex";
 import { createReefMask } from "./reefMask";
@@ -193,19 +193,26 @@ describe("terrainFieldTexture", () => {
   });
 
   describe("on a real height field", () => {
-    const field = createTerrainHeightField(islandMap(), 1234);
-    const baked = bakeTerrainField(field);
+    // Built once for the block, outside any test's time limit: baking a real
+    // field is the expensive part, and the tests only read it.
+    let field: TerrainHeightField;
+    let baked: BakedTerrainField;
+    beforeAll(() => {
+      field = createTerrainHeightField(islandMap(), 1234);
+      baked = bakeTerrainField(field);
+    });
 
     it("matches sampleHeight at every texel within half-float precision", () => {
+      const off: { i: number; j: number; error: number }[] = [];
       for (let j = 0; j < baked.height; j++) {
         for (let i = 0; i < baked.width; i++) {
           const [x, z] = texelCenter(baked, i, j);
           const expected = field.sampleHeight(x, z);
-          expect(Math.abs(decodeHeight(texel(baked, i, j)[0]) - expected)).toBeLessThanOrEqual(
-            Math.abs(expected) * 1e-3 + 1e-7
-          );
+          const error = Math.abs(decodeHeight(texel(baked, i, j)[0]) - expected);
+          if (error > Math.abs(expected) * 1e-3 + 1e-7) off.push({ i, j, error });
         }
       }
+      expect(off.slice(0, 10)).toEqual([]);
     });
 
     it("is deep water far from land", () => {
@@ -241,8 +248,15 @@ describe("terrainFieldTexture", () => {
     const cells = islandMap().map((c) =>
       reefKeys.includes(`${c.hex.q},${c.hex.r}`) ? { ...c, terrain: "reef" as const, elevation: 0 as const } : c
     );
-    const field = createTerrainHeightField(cells, 1234);
-    const baked = bakeTerrainField(field, { sampleReef: createReefMask(cells) });
+    // Both bakes (with and without the reef mask) run once for the block,
+    // outside any test's time limit; the tests only compare them.
+    let baked: BakedTerrainField;
+    let plain: BakedTerrainField;
+    beforeAll(() => {
+      const field = createTerrainHeightField(cells, 1234);
+      baked = bakeTerrainField(field, { sampleReef: createReefMask(cells) });
+      plain = bakeTerrainField(field);
+    });
 
     it("marks the texel at every reef hex centre as full reef", () => {
       for (const k of reefKeys) {
@@ -257,25 +271,34 @@ describe("terrainFieldTexture", () => {
 
     it("never marks a texel that sits in a non-reef hex", () => {
       let reefTexels = 0;
+      const strays: { i: number; j: number; reef: number }[] = [];
       for (let j = 0; j < baked.height; j++) {
         for (let i = 0; i < baked.width; i++) {
           const [x, z] = texelCenter(baked, i, j);
           const h = worldToHex(x, z);
           const b = decodeReef(texel(baked, i, j)[2]);
-          if (!reefKeys.includes(`${h.q},${h.r}`)) expect(b).toBe(0);
-          else if (b > 0) reefTexels++;
+          if (!reefKeys.includes(`${h.q},${h.r}`)) {
+            if (b !== 0) strays.push({ i, j, reef: b });
+          } else if (b > 0) reefTexels++;
         }
       }
+      expect(strays.slice(0, 10)).toEqual([]);
       expect(reefTexels).toBeGreaterThan(0);
     });
 
     it("leaves the height and coast distance channels as they were without the reef mask", () => {
-      const plain = bakeTerrainField(field);
-      for (let k = 0; k < baked.data.length; k += 4) {
-        expect(baked.data[k]).toBe(plain.data[k]);
-        expect(baked.data[k + 1]).toBe(plain.data[k + 1]);
-        expect(decodeReef(baked.data[k + 3])).toBe(1);
+      // One assertion over the whole texture, not three per texel: the
+      // per-texel expects alone took over a second.
+      const changed: number[] = [];
+      for (let k = 0; k < baked.data.length && changed.length < 10; k += 4) {
+        const same =
+          baked.data[k] === plain.data[k] &&
+          baked.data[k + 1] === plain.data[k + 1] &&
+          decodeReef(baked.data[k + 3]) === 1;
+        if (!same) changed.push(k / 4);
       }
+      expect(baked.data.length).toBe(plain.data.length);
+      expect(changed).toEqual([]);
     });
   });
 
