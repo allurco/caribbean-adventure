@@ -1,17 +1,26 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
-import { Vector3, Mesh, MathUtils, Group } from "three";
+import { Vector3, Mesh, MathUtils, Group, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
 import { seamAwareStart } from "./wrapView";
 import { shipFoamSources } from "./shipFoamSources";
 import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, shipHullBox } from "./shipHull";
 import { type ShipModel, SHIP_MODELS, SHIP_MODEL_ROTATION_Y, shipModel, shipModelScale, shipModelUrl } from "./shipModels";
+import { mergeShipModel } from "./shipModelMerge";
 
 const modelUrl = (model: ShipModel) => shipModelUrl(model, import.meta.env.BASE_URL);
 
 // Fetch the models as the board loads, not when the first ship of a class appears.
 for (const model of Object.values(SHIP_MODELS)) if (model) useGLTF.preload(modelUrl(model), false, false);
+
+/** Each loaded model merged once (#136), however many ships draw it. */
+const mergedModels = new WeakMap<Object3D, Group>();
+const mergedShipModel = (scene: Object3D, model: ShipModel): Group => {
+  let merged = mergedModels.get(scene);
+  if (!merged) mergedModels.set(scene, (merged = mergeShipModel(scene, model.tintedParts)));
+  return merged;
+};
 
 const DURATION = 0.4; // seconds
 const SINK_DURATION = 2.0; // seconds for sinking animation
@@ -182,14 +191,14 @@ export function Ship({
  */
 function ShipModelMesh({ model }: { model: ShipModel }) {
   const { scene } = useGLTF(modelUrl(model), false, false);
-  // One copy per ship: the nodes are its own, the geometry and materials shared.
+  // One copy per ship of the class's merged model: the nodes are its own, the geometry and materials shared.
   const copy = useMemo(() => {
-    const clone = scene.clone(true);
+    const clone = mergedShipModel(scene, model).clone(true);
     clone.traverse((object) => {
       if ((object as Mesh).isMesh) object.castShadow = object.receiveShadow = true;
     });
     return clone;
-  }, [scene]);
+  }, [scene, model]);
   return (
     <group position-y={-SHIP_RIDE_HEIGHT} rotation-y={SHIP_MODEL_ROTATION_Y} scale={shipModelScale()}>
       <primitive object={copy} />
