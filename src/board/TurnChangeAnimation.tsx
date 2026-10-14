@@ -5,6 +5,8 @@ interface TurnChangeAnimationProps {
   playerIndex: string;
   playerColor: string;
   captain?: Captain;
+  /** Shorter, and fades only (#216). */
+  reducedMotion?: boolean;
   onComplete: () => void;
 }
 
@@ -12,6 +14,7 @@ export function TurnChangeAnimation({
   playerIndex,
   playerColor,
   captain,
+  reducedMotion = false,
   onComplete,
 }: TurnChangeAnimationProps) {
   const [phase, setPhase] = useState<"enter" | "hold" | "exit">("enter");
@@ -19,17 +22,14 @@ export function TurnChangeAnimation({
   useEffect(() => {
     const timers: NodeJS.Timeout[] = [];
 
-    // Phase 1: Enter animation (0.5s)
-    timers.push(setTimeout(() => setPhase("hold"), 500));
-
-    // Phase 2: Hold (1s)
-    timers.push(setTimeout(() => setPhase("exit"), 1500));
-
-    // Phase 3: Exit and complete (0.5s)
-    timers.push(setTimeout(() => onComplete(), 2000));
+    // Enter (0.5s), hold (1s), exit (0.5s); under reduced motion 0.2s, 0.8s, 0.2s
+    const [enter, hold, exit] = reducedMotion ? [200, 800, 200] : [500, 1000, 500];
+    timers.push(setTimeout(() => setPhase("hold"), enter));
+    timers.push(setTimeout(() => setPhase("exit"), enter + hold));
+    timers.push(setTimeout(() => onComplete(), enter + hold + exit));
 
     return () => timers.forEach(clearTimeout);
-  }, [onComplete]);
+  }, [onComplete, reducedMotion]);
 
   const playerName = captain?.name ?? `Player ${Number(playerIndex) + 1}`;
   const nationText = captain?.nation ? `Captain of ${captain.nation}` : "";
@@ -49,7 +49,11 @@ export function TurnChangeAnimation({
       {/* Main content */}
       <div
         className={`relative flex flex-col items-center transition-all duration-500 ${
-          phase === "enter"
+          reducedMotion
+            ? phase === "hold"
+              ? "opacity-100"
+              : "opacity-0"
+            : phase === "enter"
             ? "opacity-0 scale-110 translate-y-4"
             : phase === "exit"
             ? "opacity-0 scale-95 -translate-y-4"

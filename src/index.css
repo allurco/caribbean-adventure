@@ -13,6 +13,20 @@
   --color-ink-red: #8a1c12;
   --color-ink-blue: #1f4a6e;
   --color-ink-green: #2f5a23;
+
+  /* The "turn ends" beat between turns (#216): in, hold, out over its length. */
+  --animate-turn-ended: turn-ended 1.1s ease-in-out forwards;
+  @keyframes turn-ended {
+    0% { opacity: 0; transform: translateY(6px); }
+    25%, 70% { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-4px); }
+  }
+  --animate-turn-ended-still: turn-ended-still 0.5s ease-in-out forwards;
+  @keyframes turn-ended-still {
+    0% { opacity: 0; }
+    25%, 70% { opacity: 1; }
+    100% { opacity: 0; }
+  }
 }
 
 html,
