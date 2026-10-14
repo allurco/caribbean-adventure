@@ -192,6 +192,22 @@ const DEFAULT_COLORS: LandMeshColors = {
   deepSeabed: [0.3, 0.3, 0.2],
 };
 
+/**
+ * How an island's look (`islandLook.ts`, #177) paints its land: a multiplier
+ * on the rock (and on the rock share of the highland), and a scale on the
+ * height at which the sand gives way to the green, so a wide beach climbs
+ * further up the shore.
+ */
+export interface LandLook {
+  rockTint: Rgb;
+  beachWidth: number;
+}
+
+/** The palette as it is: no island's look. */
+export const NEUTRAL_LAND_LOOK: LandLook = { rockTint: [1, 1, 1], beachWidth: 1 };
+
+const tinted = (rgb: Rgb, tint: Rgb): [number, number, number] => [rgb[0] * tint[0], rgb[1] * tint[1], rgb[2] * tint[2]];
+
 /** What `landFaceColor` needs to know about a face. */
 export interface LandFaceSample {
   /** Mean height of the face (world Y). */
@@ -244,6 +260,8 @@ export interface LandMeshOptions {
   occlusion?: number;
   /** Reef mask in [0, 1] at world (x, z) (reefMask.ts); coral grows in patches where it is set. */
   sampleReef?: (x: number, z: number) => number;
+  /** The island look at world (x, z) (`landLookAt`, #177); the palette as it is when absent. */
+  lookAt?: (x: number, z: number) => LandLook;
 }
 
 function lerpRgb(a: Rgb, b: Rgb, t: number): [number, number, number] {
@@ -261,12 +279,14 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
  * by occlusion. Faces below sea level are seabed: wet sand turning to clean
  * sand within the first metres, then the deep seabed colour down the drop-off,
  * with coral where `sample.coral` is set. `occlusion` scales the darkening per
- * unit of cavity.
+ * unit of cavity. `look` is the face's island's (#177): its rock tint and its
+ * beach width.
  */
 export function landFaceColor(
   colors: LandMeshColors,
   sample: LandFaceSample,
-  occlusion = LAND_MESH_OCCLUSION
+  occlusion = LAND_MESH_OCCLUSION,
+  look: LandLook = NEUTRAL_LAND_LOOK
 ): [number, number, number] {
   const { height, normalY, noise, cavity, coral } = sample;
   let rgb: [number, number, number];
@@ -276,19 +296,23 @@ export function landFaceColor(
     rgb = lerpRgb(rgb, colors.deepSeabed, smoothstep(SEABED_DEEP_BAND[0], SEABED_DEEP_BAND[1], depth));
     if (coral > 0) rgb = lerpRgb(rgb, colors.coral, coral);
   } else {
-    const jungle = smoothstep(SAND_TO_JUNGLE[0], SAND_TO_JUNGLE[1], height + noise * SAND_TO_JUNGLE_NOISE);
+    const jungle = smoothstep(
+      SAND_TO_JUNGLE[0] * look.beachWidth,
+      SAND_TO_JUNGLE[1] * look.beachWidth,
+      height + noise * SAND_TO_JUNGLE_NOISE
+    );
     const highland = smoothstep(
       JUNGLE_TO_HIGHLAND[0],
       JUNGLE_TO_HIGHLAND[1],
       height + noise * JUNGLE_TO_HIGHLAND_NOISE
     );
-    rgb = lerpRgb(lerpRgb(colors.drySand, colors.jungle, jungle), colors.highland, highland);
+    rgb = lerpRgb(lerpRgb(colors.drySand, colors.jungle, jungle), tinted(colors.highland, look.rockTint), highland);
     const dry = smoothstep(0, WET_SAND_TOP, height);
     rgb = lerpRgb(colors.wetSand, rgb, dry);
   }
   // Underwater faces (hidden by the ocean) stay sand, so the seabed drop-off isn't rock.
   const rock = height > SEA_LEVEL ? smoothstep(ROCK_STEEPNESS[0], ROCK_STEEPNESS[1], 1 - normalY) : 0;
-  if (rock > 0) rgb = lerpRgb(rgb, colors.rock, rock);
+  if (rock > 0) rgb = lerpRgb(rgb, tinted(colors.rock, look.rockTint), rock);
   const shade = 1 - Math.min(OCCLUSION_MAX, Math.max(0, cavity) * occlusion);
   return [rgb[0] * shade, rgb[1] * shade, rgb[2] * shade];
 }
@@ -567,6 +591,7 @@ export function buildLandMesh(
   const palette = options.colors ?? DEFAULT_COLORS;
   const occlusion = options.occlusion ?? LAND_MESH_OCCLUSION;
   const { sampleReef } = options;
+  const lookAt = options.lookAt ?? (() => NEUTRAL_LAND_LOOK);
   const lattice = landLattice(field, options.spacing);
   const { minX, minZ, spacing, rowHeight, cols, rows, period } = lattice;
   const column = (i: number): number => latticeColumn(lattice, i);
@@ -772,6 +797,7 @@ export function buildLandMesh(
   const faceColor: [number, number, number] = [0, 0, 0];
   const faceNormal: [number, number, number] = [0, 0, 0];
   let coarseNoise = 0;
+  let coarseLook: LandLook = NEUTRAL_LAND_LOOK;
   /** Whether the refined triangle being emitted has any paving or lane on it. */
   let coarseSurfaced = false;
   /** The paving's normals are the field's, by central differences a sub-face's edge across. */
@@ -832,7 +858,7 @@ export function buildLandMesh(
       out++;
       return;
     }
-    const rgb: Rgb = landFaceColor(palette, sample, occlusion);
+    const rgb: Rgb = landFaceColor(palette, sample, occlusion, coarseLook);
     const shade = 0.93 + hash(cx, cz) * 0.14;
     faceColor[0] = rgb[0] * shade;
     faceColor[1] = rgb[1] * shade;
@@ -857,6 +883,7 @@ export function buildLandMesh(
       const centroidX = (ca[0] + cb[0] + cc[0]) / 3;
       const centroidZ = (ca[2] + cb[2] + cc[2]) / 3;
       coarseNoise = boundaryNoise(bandNoise, centroidX, centroidZ);
+      coarseLook = lookAt(centroidX, centroidZ);
       // A lattice triangle lies within a step's reach of its centroid.
       coarseSurfaced = town?.surfaceNear(centroidX, centroidZ, spacing) ?? false;
       for (let i = 0; i <= N; i++) {
@@ -898,7 +925,7 @@ export function buildLandMesh(
     sample.cavity = (pointCavity(a) + pointCavity(b) + pointCavity(c)) / 3;
     const reef = sampleReef && sample.height <= SEA_LEVEL ? sampleReef(cx, cz) : 0;
     sample.coral = reef > 0 ? reef * coralPatch(bandNoise, cx, cz) : 0;
-    const [r, g, bl] = landFaceColor(palette, sample, occlusion);
+    const [r, g, bl] = landFaceColor(palette, sample, occlusion, lookAt(cx, cz));
     const shade = 0.93 + hash(cx, cz) * 0.14;
     if (cutsOf(t) > 0) {
       // Next to a refined triangle: a fan from the centroid to the corners and

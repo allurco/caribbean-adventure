@@ -9,6 +9,7 @@ import { buildLandMesh, type LandMeshArrays, type LandMeshColors } from "./landM
 import { paletteColor, type PaletteName } from "./palette";
 import { createReefMask } from "./reefMask";
 import { perMapCache } from "./perMapCache";
+import { islandLooksOf, landLookAt } from "./islandLook";
 import { injectSeabedCaustics } from "./seabedCaustics";
 import { injectShoreFoam } from "./shoreFoamLand";
 import type { Vec3 } from "./sunDirection";
@@ -61,7 +62,12 @@ export interface LandTerrainResources {
 
 /** The land mesh arrays, built once per map, wrap and world seed (`perMapCache`). */
 const landMeshOf = perMapCache((cells, wrap, worldSeed) =>
-  buildLandMesh(sharedTerrainField(cells, wrap, worldSeed), { colors: LAND_COLORS, sampleReef: createReefMask(cells, wrap) })
+  buildLandMesh(sharedTerrainField(cells, wrap, worldSeed), {
+    colors: LAND_COLORS,
+    sampleReef: createReefMask(cells, wrap),
+    // Each island's rock tint and beach width (#177).
+    lookAt: landLookAt(islandLooksOf(cells, wrap, worldSeed), wrap),
+  })
 );
 
 /** What the seabed's sunlight is focused through (#38 step 6) and what the shore's foam is drawn from (step 7). */

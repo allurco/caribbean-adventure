@@ -9,6 +9,7 @@ import { TOWN_REFINE } from "./townGround";
 import {
   buildLandMesh,
   landFaceColor,
+  NEUTRAL_LAND_LOOK,
   LAND_MESH_SKIRT_DEPTH,
   VISIBLE_SEABED_DEPTH,
   LAND_MESH_SPACING,
@@ -182,6 +183,38 @@ describe("landFaceColor", () => {
     expect(hollow[1]).toBeLessThan(open[1] * 0.95);
     expect(hollow[1]).toBeGreaterThan(open[1] * 0.5);
     expect(crest).toEqual(open);
+  });
+
+  describe("with an island's look (#177)", () => {
+    const look = { rockTint: [1.2, 0.9, 0.5] as const, beachWidth: 1.5 };
+
+    it("is the palette as it is under the neutral look", () => {
+      for (const height of [m(-3), 0.01, 0.3, 0.48, 0.75, 1.1, 1.6]) {
+        for (const normalY of [1, 0.3]) {
+          const face = { ...flat, height, normalY };
+          expect(landFaceColor(CHANNEL_COLORS, face, undefined, NEUTRAL_LAND_LOOK)).toEqual(landFaceColor(CHANNEL_COLORS, face));
+        }
+      }
+    });
+
+    it("tints the rock and the highland's rock, and nothing else", () => {
+      expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: 0.75, normalY: 0.3 }, undefined, look)).toEqual([0, 0, 0.5]);
+      const highland = landFaceColor(CHANNEL_COLORS, { ...flat, height: 1.6 }, undefined, look);
+      expect(highland[0]).toBeCloseTo(1.2, 9);
+      expect(highland[1]).toBeCloseTo(0.45, 9);
+      // Sand and jungle keep their colours, and so does the seabed.
+      expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: 0.3 }, undefined, look)).toEqual([1, 1, 0]);
+      expect(landFaceColor(CHANNEL_COLORS, { ...flat, height: m(-3), normalY: 0.3 }, undefined, look)).toEqual([0.8, 0.8, 0.8]);
+    });
+
+    it("lets a wide beach climb further up the shore, and a narrow one stop lower", () => {
+      // Sand's red channel: 1 on sand, 0 on jungle.
+      const sand = (height: number, beachWidth: number) => landFaceColor(CHANNEL_COLORS, { ...flat, height }, undefined, { ...look, beachWidth })[0];
+      expect(sand(0.6, 1)).toBe(0);
+      expect(sand(0.6, 1.5)).toBe(1);
+      expect(sand(0.4, 1)).toBe(1);
+      expect(sand(0.4, 0.8)).toBeLessThan(0.5);
+    });
   });
 });
 

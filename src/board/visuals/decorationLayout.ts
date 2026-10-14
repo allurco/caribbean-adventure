@@ -18,6 +18,7 @@ import { landSurface } from "./landMesh";
 import { placeShrubs } from "./shrubPlacement";
 import { shoreBoulders, type ShoreBoulder } from "./shoreBoulders";
 import { mapCellId } from "./islands";
+import { boulderFactor, islandLooksOf, lookOfCell, shrubFactor, treeFactor, type IslandLook } from "./islandLook";
 import { SEED_FEATURES } from "./seedFeatures";
 import { stream, subSeed } from "./subSeed";
 import { lerpRange } from "./variationStream";
@@ -50,13 +51,18 @@ interface PropSpot {
   rotation: number;
 }
 
-/** The decoration's own spot and scale, then its companions' (none on a port cell). */
-function withCompanions(cell: MapCell, index: number, worldSeed: number, own: PropSpot): PropSpot[] {
+/**
+ * The decoration's own spot and scale, then its companions' (none on a port
+ * cell): `PROP_DENSITY - 1` of them times `factor` (its island's look, #177),
+ * the first of the stream, so a lower factor only drops the last ones.
+ */
+function withCompanions(cell: MapCell, index: number, worldSeed: number, own: PropSpot, factor = 1): PropSpot[] {
   const out = [own];
   if (PROP_DENSITY <= 1 || cell.hasPort) return out;
   const [hexX, , hexZ] = hexToWorld(cell.hex);
   const next = stream(subSeed(worldSeed, SEED_FEATURES.companions, mapCellId(cell), index));
-  for (let j = 1; j < PROP_DENSITY; j++) {
+  const companions = Math.round((PROP_DENSITY - 1) * factor);
+  for (let j = 1; j <= companions; j++) {
     const angle = next() * Math.PI * 2;
     const distance = Math.sqrt(next()) * COMPANION_SPREAD;
     out.push({
@@ -131,6 +137,13 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap, world
   // quay and the settlement's reserve round the pier root all find the shore
   // on the same surface (#59).
   const drawn = landSurface(field);
+  // Each island's look scales its palms, shrubs and shore boulders (#177).
+  const looks = islandLooksOf(cells, wrap, worldSeed);
+  const byLook = (factor: (look: IslandLook) => number) => (cell: MapCell) => {
+    const look = lookOfCell(looks, cell);
+    return look ? factor(look) : 1;
+  };
+  const treesOf = byLook(treeFactor);
 
   for (const cell of cells) {
     if (!cell.decorations || cell.decorations.length === 0) continue;
@@ -159,7 +172,7 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap, world
 
       switch (deco.type) {
         case "tree": {
-          withCompanions(cell, index, worldSeed, own).forEach((p, j) => {
+          withCompanions(cell, index, worldSeed, own, treesOf(cell)).forEach((p, j) => {
             // A trunk rests on the lowest ground under its base so it never floats.
             const tree = standing(
               placeOnGround(field, p, anchor, { ...TREE_PLACEMENT, footprintRadius: TREE_PLACEMENT.footprintRadius * p.scale }),
@@ -215,10 +228,10 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap, world
   const keptRocks = outside(rocks, ROCK_TOWN_RADIUS);
   const stones = outside(smallStones(cells, field, worldSeed), ROCK_TOWN_RADIUS);
   // The port kit is placed first so the shrubs keep off it.
-  const shrubs = placeShrubs(cells, field, worldSeed, { trees: keptTrees, rocks: keptRocks, stones, piers, quays, buildings }).filter(
+  const shrubs = placeShrubs(cells, field, worldSeed, { trees: keptTrees, rocks: keptRocks, stones, piers, quays, buildings }, byLook(shrubFactor)).filter(
     (s) => !inTown(s.worldX, s.worldZ, SHRUB_FOOTPRINT_RADIUS[s.kind] * s.scale)
   );
-  const boulders = shoreBoulders(cells, field, wrap, worldSeed).filter((b) => !inTown(b.worldX, b.worldZ, b.reach));
+  const boulders = shoreBoulders(cells, field, wrap, worldSeed, byLook(boulderFactor)).filter((b) => !inTown(b.worldX, b.worldZ, b.reach));
 
   return { trees: keptTrees, rocks: keptRocks, stones, shoreBoulders: boulders, piers, shrubs, quays, buildings, village };
 }

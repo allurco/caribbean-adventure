@@ -328,3 +328,34 @@ describe("the port kit's keep-out at the 350 m hex", () => {
     expect(buildings).toBeGreaterThan(10);
   });
 });
+
+describe("placeShrubs scaled by each island's look (#177)", () => {
+  const { cells, seed, field, placed, shrubs } = layoutOf("small", 5);
+  const cellKey = (x: number, z: number) => {
+    const c = cells.find((cell) => {
+      const [hx, , hz] = hexToWorld(cell.hex);
+      return Math.hypot(hx - x, hz - z) < 0.87;
+    });
+    return c ? `${c.hex.q},${c.hex.r}` : "";
+  };
+  const counts = (list: readonly { worldX: number; worldZ: number }[]) => {
+    const out = new Map<string, number>();
+    for (const s of list) out.set(cellKey(s.worldX, s.worldZ), (out.get(cellKey(s.worldX, s.worldZ)) ?? 0) + 1);
+    return out;
+  };
+
+  it("is today's layout at a factor of 1", () => {
+    expect(placeShrubs(cells, field, seed, placed, () => 1)).toEqual(shrubs);
+  });
+
+  it("grows none at 0, fewer below 1 and more above it, the fewer being the first of the more", () => {
+    expect(placeShrubs(cells, field, seed, placed, () => 0)).toEqual([]);
+    const fewer = placeShrubs(cells, field, seed, placed, () => 0.5);
+    const more = placeShrubs(cells, field, seed, placed, () => 1.5);
+    expect(fewer.length).toBeLessThan(shrubs.length);
+    expect(more.length).toBeGreaterThan(shrubs.length);
+    for (const s of fewer) expect(shrubs).toContainEqual(s);
+    const base = counts(shrubs);
+    for (const [k, n] of counts(fewer)) expect(n).toBeLessThanOrEqual(base.get(k)!);
+  });
+});

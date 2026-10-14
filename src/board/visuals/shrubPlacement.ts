@@ -196,12 +196,18 @@ const clear = (x: number, z: number, radius: number, obstacles: readonly ShrubOb
 const obstacleReach = (o: ShrubObstacle) =>
   o.radius + SHRUB_SPREAD + SHRUB_FOOTPRINT_RADIUS.bush * SHRUB_SCALE_RANGE[1] + SHRUB_CLEARANCE;
 
-/** The shrubs for every sand or grass cell, on the ground; `worldSeed` is `G.mapSeed`. */
+/**
+ * The shrubs for every sand or grass cell, on the ground; `worldSeed` is
+ * `G.mapSeed`. `countFactor` scales a cell's count (its island's look,
+ * `shrubFactor`, #177); the shrubs it keeps are the first of the cell's
+ * stream, so a lower factor only drops the last ones.
+ */
 export function placeShrubs(
   cells: readonly MapCell[],
   field: GroundField,
   worldSeed: number,
-  placed: PlacedProps
+  placed: PlacedProps,
+  countFactor: (cell: MapCell) => number = () => 1
 ): ShrubPlacement[] {
   const obstacles = shrubObstacles(placed);
   const shrubs: ShrubPlacement[] = [];
@@ -216,7 +222,7 @@ export function placeShrubs(
     const anchor = { x: hexX, z: hexZ };
     const id = mapCellId(cell);
     const next = stream(subSeed(worldSeed, SEED_FEATURES.shrubs, id));
-    const count = min + Math.floor(next() * (max - min + 1));
+    const count = Math.round((min + Math.floor(next() * (max - min + 1))) * countFactor(cell));
 
     // Only this cell's props can touch its shrubs; neighbours' props are too far.
     const nearby = obstacles.filter((o) => segmentDistance(hexX, hexZ, o) <= obstacleReach(o));

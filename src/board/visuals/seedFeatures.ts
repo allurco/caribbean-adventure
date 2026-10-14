@@ -51,6 +51,10 @@ export const SEED_FEATURES = {
   retainingWalls: "retainingWalls",
   /** The kerb stones of a town's street, per port and street index. */
   kerbs: "kerbs",
+  /** An island's archetype (`islandArchetypes.ts`, #177), per island. */
+  archetype: "archetype",
+  /** An island's continuous look parameters (`islandLook.ts`, #177), per island and parameter name. */
+  islandLook: "islandLook",
   /** The heading a ship lies at before it first sails (`shipSpawnHeading.ts`), per ship id. */
   shipSpawnHeading: "shipSpawnHeading",
 } as const;
