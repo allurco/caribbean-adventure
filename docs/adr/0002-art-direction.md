@@ -29,3 +29,13 @@ The game is a turn-based strategy board. The scene is there to give it ambience 
 - Every new prop and building is built at the notch-up setting; older rocks, palms and shrubs get a matching pass (#71).
 - Art direction in issues points here instead of being restated per issue.
 - The fixed camera means view-line checks (does this hide the port?) are part of placing anything tall near a port.
+
+## Amendments
+
+### (b) All light from one time of day (#158, #169)
+
+All of the scene's light derives from one pure input, the time of day: `lightingFor(timeOfDay)` (`src/board/visuals/lighting.ts`) returns the sun (direction, colour, intensity), the fill, the sky the environment map is baked from, the haze, the exposure and colour grade, bloom and vignette, and the sea's reflection tint. No other module holds a lighting value; a source-scan test keeps it so.
+
+- **V1 and async games are fixed at golden hour** (`GOLDEN_HOUR`) on every client and every seed: a low (~22°), warm (~3200 K) sun ahead and to the right of the camera, a cooler fill from behind it, a warmer grade. Lighting is not a variety axis; a per-seed mood would perturb `lightingFor`'s output, never add a second lighting path.
+- **Day and night come later, for live games only**: the time then comes from the shared game clock, never a local one, and only the input changes, not the consumers. Night needs lit windows, port lights and ship lanterns (emissive and bloom), so village and ship pieces export window and lantern positions from the start.
+- The sun now sits ahead-right, not ahead-left: its glare lies over the upper-right sea and the shadows fall towards the lower left. The light stays physically based, as decided above; only its time of day is chosen.

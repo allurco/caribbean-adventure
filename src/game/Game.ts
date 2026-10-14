@@ -47,7 +47,7 @@ import {
 } from "./economy";
 import { createCaptainDeck, dealHands, findHomePort } from "./captains";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
-import { getBountyForAction, addBounty, shouldSpawnFlotilla } from "./reputation";
+import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
 import { findAccessiblePort } from "./moves";
@@ -123,6 +123,8 @@ function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: (
     draftHands: hands,
     floatingLoot: [],
     npcIdCounter: 0,
+    pirates: {},
+    bountyClaims: [],
   };
 }
 
@@ -529,8 +531,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
           // Add bounty for attacking a merchant (not flotillas)
           if (npc.role === "MERCHANT") {
-            const bountyGained = getBountyForAction("attack_merchant", npc.bounty);
-            addBounty(attacker.bounties, npc.nation, bountyGained);
+            applyMerchantAction(G, ctx.currentPlayer, "attack_merchant", npc.nation, npc.bounty, ctx.turn);
 
             // Check if flotilla should spawn
             if (shouldSpawnFlotilla(attacker.bounties, npc.nation)) {
@@ -615,7 +616,7 @@ export const Caribbean: Game<CaribbeanState> = {
           }
         },
 
-        chooseCombatAction: ({ G, events }, action: CombatAction) => {
+        chooseCombatAction: ({ G, ctx, events }, action: CombatAction) => {
           if (!G.combat || G.combat.stage !== "chooseAction") return INVALID_MOVE;
           // In hotseat mode, we trust the UI to show who should choose
           // In NPC combat, player always chooses (NPC auto-fires if it won)
@@ -631,8 +632,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
             // Add bounty for boarding a merchant (not flotillas)
             if (npc.role === "MERCHANT") {
-              const bountyGained = getBountyForAction("board_merchant", npc.bounty);
-              addBounty(attacker.bounties, npc.nation, bountyGained);
+              applyMerchantAction(G, G.combat.attackerId, "board_merchant", npc.nation, npc.bounty, ctx.turn);
 
               // Check if flotilla should spawn
               if (shouldSpawnFlotilla(attacker.bounties, npc.nation)) {
@@ -788,7 +788,7 @@ export const Caribbean: Game<CaribbeanState> = {
           G.combat.stage = "resolution";
         },
 
-        applyResolution: ({ G, events }) => {
+        applyResolution: ({ G, ctx, events }) => {
           if (!G.combat || G.combat.stage !== "resolution") return INVALID_MOVE;
 
           const attacker = G.ships[G.combat.attackerId];
@@ -825,8 +825,7 @@ export const Caribbean: Game<CaribbeanState> = {
             if (npc.stats.hull.current <= 0) {
               // Add bounty for sinking a merchant (not flotillas)
               if (npc.role === "MERCHANT") {
-                const bountyGained = getBountyForAction("sink_merchant", npc.bounty);
-                addBounty(attacker.bounties, npc.nation, bountyGained);
+                applyMerchantAction(G, G.combat.attackerId, "sink_merchant", npc.nation, npc.bounty, ctx.turn);
 
                 // Check if flotilla should spawn
                 if (shouldSpawnFlotilla(attacker.bounties, npc.nation)) {
@@ -859,6 +858,9 @@ export const Caribbean: Game<CaribbeanState> = {
             if (isSunk(defenderShip)) {
               // Award combat glory to attacker for sinking player ship
               awardCombatGlory(attacker, defenderShip);
+              // Sinking a pirate pays the attacker their own nation's bounty
+              // on them (#201), before the sunk ship's record goes.
+              applyPirateBounty(G, G.combat.attackerId, G.combat.defenderId, ctx.turn);
 
               const loot = createLootFromShip(defenderShip);
               G.floatingLoot.push(loot);
@@ -875,6 +877,9 @@ export const Caribbean: Game<CaribbeanState> = {
             if (!isNPC) {
               const defenderShip = defender as typeof attacker;
               awardCombatGlory(defenderShip, attacker);
+              // The defender collects their nation's bounty on a pirate
+              // attacker (#201); a flotilla that sinks one pays nobody.
+              applyPirateBounty(G, G.combat.defenderId, G.combat.attackerId, ctx.turn);
             }
 
             const loot = createLootFromShip(attacker);

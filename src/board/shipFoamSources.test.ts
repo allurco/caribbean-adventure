@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createShipFoamRegistry, SHIP_FOAM_CAP, SHIP_FOAM_FLOATS_A, SHIP_FOAM_FLOATS_B } from "./shipFoamSources";
 
-const source = (x: number, player = false) => ({ x, z: x * 2, headingX: 0, headingZ: 1, hullLength: 0.7, speed: 0, player });
+const source = (x: number, player = false) => ({ x, z: x * 2, headingX: 0, headingZ: 1, hullLength: 0.7, beam: 0.2, roundness: 1, speed: 0, player });
 
 const arrays = () => ({
   a: new Float32Array(SHIP_FOAM_CAP * SHIP_FOAM_FLOATS_A),
@@ -16,13 +16,13 @@ describe("createShipFoamRegistry", () => {
     vi.restoreAllMocks();
   });
 
-  it("fills the uniform arrays with each ship's position and heading, and its hull length and speed", () => {
+  it("fills the uniform arrays with each ship's position and heading, and its waterline and speed", () => {
     const registry = createShipFoamRegistry();
-    registry.set("a", { x: 1, z: 2, headingX: 0.6, headingZ: 0.8, hullLength: 0.65, speed: 1.5, player: true });
+    registry.set("a", { x: 1, z: 2, headingX: 0.6, headingZ: 0.8, hullLength: 0.65, beam: 0.2, roundness: 0.5, speed: 1.5, player: true });
     const { a, b } = arrays();
     expect(registry.fill(a, b)).toBe(1);
     expect(Array.from(a.subarray(0, 4))).toEqual(Array.from(new Float32Array([1, 2, 0.6, 0.8])));
-    expect(Array.from(b.subarray(0, 2))).toEqual(Array.from(new Float32Array([0.65, 1.5])));
+    expect(Array.from(b.subarray(0, 4))).toEqual(Array.from(new Float32Array([0.65, 0.2, 0.5, 1.5])));
   });
 
   it("updates a ship in place and drops a removed one", () => {
@@ -103,5 +103,31 @@ describe("createShipFoamRegistry", () => {
 
   it("holds every ship of a six-player game with its merchants and flotillas", () => {
     expect(SHIP_FOAM_CAP).toBeGreaterThanOrEqual(24);
+  });
+
+  it("visits every registered ship, the cap notwithstanding", () => {
+    const registry = createShipFoamRegistry();
+    for (let i = 0; i < SHIP_FOAM_CAP + 2; i++) registry.set(`npc-${i}`, source(i));
+    registry.remove("npc-0");
+    const seen: string[] = [];
+    registry.forEach((s, id) => {
+      expect(s.x).toBe(Number(id.slice(4)));
+      seen.push(id);
+    });
+    expect(seen).toHaveLength(SHIP_FOAM_CAP + 1);
+    expect(seen).not.toContain("npc-0");
+  });
+
+  it("copies a source, so a caller can write one object in place every frame", () => {
+    const registry = createShipFoamRegistry();
+    const reused = source(1);
+    registry.set("a", reused);
+    reused.x = 5;
+    const { a, b } = arrays();
+    registry.fill(a, b);
+    expect(a[0]).toBe(1);
+    registry.set("a", reused);
+    registry.fill(a, b);
+    expect(a[0]).toBe(5);
   });
 });

@@ -9,14 +9,20 @@
  * rather than a disc. Under way the segment extends astern by the speed, as
  * a wake, and the whole patch strengthens from the light ring of a ship at
  * anchor (water slapping the hull) to full. The shaders break the patch up
- * with the same lace and churn as the shore foam (foamShading.ts).
+ * with the same lace and churn as the shore foam (foamShading.ts). The crisp
+ * line where the hull meets the water, the bow wave and the wet band are
+ * hullContact.ts; the wake left behind is wakeFoam.ts.
  */
 import { METRES_PER_UNIT } from "./worldScale";
 
-/** How far out the foam reaches, in hull lengths. */
-export const HULL_FOAM_REACH = 0.5;
-/** Coverage of the ring on a ship at rest. */
-export const HULL_FOAM_ANCHOR_STRENGTH = 0.35;
+/**
+ * How far out the foam reaches, in hull lengths. Narrowed from 0.5 with the
+ * contact line (hullContact.ts, #144): the crisp line carries the contact,
+ * this softer patch only the stirred water round it.
+ */
+export const HULL_FOAM_REACH = 0.35;
+/** Coverage of the ring on a ship at rest: a few threads round the contact line, faint at map zoom (was 0.35). */
+export const HULL_FOAM_ANCHOR_STRENGTH = 0.2;
 /** Speed (world units per second) at which the foam is at full strength; a hex move peaks near 4. */
 export const HULL_FOAM_FULL_SPEED = 2;
 /** How far the wake trails astern at full speed, in hull lengths. */

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { CAMERA_FOV, CAMERA_MAX_DISTANCE, CAMERA_PITCH, groundViewReach } from "./cameraBounds";
 import {
+  shadowBoxFor,
   shadowBoxNeedsRefit,
   shadowDepthBias,
   shadowDepthRange,
@@ -205,5 +206,72 @@ describe("shadowDepthRange", () => {
     const large = shadowDepthRange(fit.maxExtent, sunDistance, 55, heights);
     expect(small.far - small.near).toBeLessThan(large.far - large.near);
     expect(small.far - small.near).toBeGreaterThan(heights.max - heights.min);
+  });
+});
+
+describe("shadowBoxFor (#169: a low sun's long shadows)", () => {
+  const seabed: ShadowFit = { ...fit, receiverDepth: 1.46 };
+  const lowSun: ShadowFit = { ...seabed, sunElevationDeg: 22 };
+  const sinOf = (deg: number) => Math.sin((deg * Math.PI) / 180);
+  const cosOf = (deg: number) => Math.cos((deg * Math.PI) / 180);
+
+  it("spans the view's reach across the sun, where heights do not move a receiver", () => {
+    for (const distance of [3.5, 8, 12]) {
+      const sea = groundViewReach(distance, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
+      const bed = groundViewReach(distance, CAMERA_PITCH, CAMERA_FOV, 16 / 9, lowSun.receiverDepth);
+      expect(shadowBoxFor(distance, 16 / 9, lowSun).halfWidth).toBeCloseTo(Math.max(sea, bed), 10);
+    }
+  });
+
+  it("foreshortens the reach along the sun by sin(elevation) and adds each layer's height across the box", () => {
+    for (const distance of [3.5, 8, 12]) {
+      const sea = groundViewReach(distance, CAMERA_PITCH, CAMERA_FOV, 16 / 9);
+      const bed = groundViewReach(distance, CAMERA_PITCH, CAMERA_FOV, 16 / 9, lowSun.receiverDepth);
+      const along = Math.max(
+        sea * sinOf(22) + lowSun.casterHeight * cosOf(22),
+        bed * sinOf(22) + lowSun.receiverDepth * cosOf(22)
+      );
+      expect(shadowBoxFor(distance, 16 / 9, lowSun).halfHeight).toBeCloseTo(along, 10);
+    }
+  });
+
+  it("is never larger than the square fit on either side", () => {
+    for (const elevation of [22, 55]) {
+      for (const distance of [1, 3.5, 8, 16, CAMERA_MAX_DISTANCE]) {
+        const f = { ...seabed, sunElevationDeg: elevation };
+        const box = shadowBoxFor(distance, 16 / 9, f);
+        const square = shadowExtentFor(distance, 16 / 9, f);
+        expect(box.halfWidth).toBeLessThanOrEqual(square + 1e-12);
+        expect(box.halfHeight).toBeLessThanOrEqual(square + 1e-12);
+      }
+    }
+  });
+
+  it("keeps the ground texel along the sun at ship zoom as fine under a 22° sun as the square box gave at 55°", () => {
+    // A light-space texel spans texel / sin(elevation) of level ground along the sun.
+    const groundAlong = (f: ShadowFit, halfHeight: number) => shadowTexel(halfHeight, 4096) / sinOf(f.sunElevationDeg);
+    const before = groundAlong(seabed, shadowExtentFor(3.5, 16 / 9, seabed));
+    const squareLow = groundAlong(lowSun, shadowExtentFor(3.5, 16 / 9, lowSun));
+    const fitted = groundAlong(lowSun, shadowBoxFor(3.5, 16 / 9, lowSun).halfHeight);
+    expect(squareLow / before).toBeGreaterThan(2);
+    expect(fitted / before).toBeLessThan(1.25);
+  });
+
+  it("clamps both sides to the extent limits", () => {
+    const far = shadowBoxFor(CAMERA_MAX_DISTANCE, 16 / 9, lowSun);
+    expect(far.halfWidth).toBe(lowSun.maxExtent);
+    expect(far.halfHeight).toBeLessThanOrEqual(lowSun.maxExtent);
+    const near = shadowBoxFor(0, 16 / 9, { ...lowSun, receiverDepth: 0 });
+    expect(near.halfWidth).toBe(lowSun.minExtent);
+    expect(near.halfHeight).toBe(lowSun.minExtent);
+    const horizon = shadowBoxFor(10, 1, { ...lowSun, pitch: (10 * Math.PI) / 180 });
+    expect(horizon).toEqual({ halfWidth: lowSun.maxExtent, halfHeight: lowSun.maxExtent });
+  });
+
+  it("covers the sea and the seabed seen from a focus lifted onto the ground (#90)", () => {
+    const lifted = shadowBoxFor(1, 16 / 9, { ...lowSun, minExtent: 0 }, 1.4);
+    const level = shadowBoxFor(1, 16 / 9, { ...lowSun, minExtent: 0 });
+    expect(lifted.halfWidth).toBeGreaterThan(level.halfWidth);
+    expect(lifted.halfHeight).toBeGreaterThan(level.halfHeight);
   });
 });

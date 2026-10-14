@@ -224,4 +224,35 @@ export interface CaribbeanState {
   combat?: CombatState;
   floatingLoot: FloatingLoot[];
   npcIdCounter: number;
+  /**
+   * The players who have turned pirate, by player id (#201). Kept on the
+   * player rather than the ship, so it outlives a sunk or replaced ship;
+   * entries are added once and never removed. Read it through
+   * `isPlayerPirate`. Always set by `setup()`; optional only so hand-built
+   * states in tests can leave it out (missing means nobody is a pirate).
+   */
+  pirates?: Record<string, PirateRecord>;
+  /**
+   * Every pirate bounty collected so far, oldest first (#201): the record
+   * the HUD and sound events read. Optional for the same reason as `pirates`.
+   */
+  bountyClaims?: BountyClaim[];
+}
+
+/** How a player turned pirate: by sinking or by boarding an NPC merchant. */
+export type PirateCause = "sink" | "board";
+
+export interface PirateRecord {
+  /** The game turn (`ctx.turn`) on which the player turned pirate. */
+  turn: number;
+  cause: PirateCause;
+}
+
+/** One nation's bounty on a pirate, paid to a captain who sails under that flag. */
+export interface BountyClaim {
+  captorId: string;
+  pirateId: string;
+  nation: Nation;
+  gold: number;
+  turn: number;
 }

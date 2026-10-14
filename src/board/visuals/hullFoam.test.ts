@@ -23,12 +23,12 @@ describe("hullFoamCoverage", () => {
     expect(HULL_FOAM_ANCHOR_STRENGTH).toBeLessThan(0.6);
   });
 
-  it("is strongest at the hull and gone about half a hull length out", () => {
+  it("is strongest at the hull and gone about a third of a hull length out", () => {
     const beside = (d: number) => hullFoamCoverage([d, 0], heading, hull, 0);
     expect(beside(0.1)).toBeGreaterThan(beside(0.2));
     expect(beside(0.2)).toBeGreaterThan(beside(0.3));
     expect(beside(HULL_FOAM_REACH * hull + 0.001)).toBe(0);
-    expect(HULL_FOAM_REACH).toBeCloseTo(0.5, 12);
+    expect(HULL_FOAM_REACH).toBeCloseTo(0.35, 12);
   });
 
   it("follows the hull along its heading: a point off the bow is as close as the same point abeam of the stern", () => {

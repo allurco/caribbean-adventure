@@ -3,8 +3,6 @@ import { Canvas, useThree, useFrame } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
 import { PerspectiveCamera, Vector3 } from "three";
 import type { MapControls as MapControlsType } from "three-stdlib";
-import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
-import { ToneMappingMode } from "postprocessing";
 import type { BoardProps } from "boardgame.io/react";
 import type { CaribbeanState } from "../game/Game";
 import { getMaxMoves } from "../game/Game";
@@ -35,25 +33,9 @@ import { useTerrainFieldTexture } from "./visuals/useTerrainFieldTexture";
 import { WAVE_CASCADES, WHITECAP_CASCADES } from "./visuals/oceanWaves";
 import { DISPLACEMENT_CASCADES } from "./visuals/waveDisplacement";
 import { usePrefersReducedMotion } from "./usePrefersReducedMotion";
-import {
-  HAZE_COLOR,
-  HAZE_NEAR,
-  HAZE_FAR,
-  SUN_COLOR,
-  SUN_DIRECTION,
-  SUN_INTENSITY,
-  SUN_OFFSET,
-  SUN_SHADOW,
-  FILL_COLOR,
-  FILL_INTENSITY,
-  FILL_OFFSET,
-  SHADOW_MAP_TYPE,
-  BLOOM_INTENSITY,
-  BLOOM_THRESHOLD,
-  BLOOM_SMOOTHING,
-  VIGNETTE_DARKNESS,
-  VIGNETTE_OFFSET,
-} from "./visuals/atmosphere";
+import { SHADOW_MAP_TYPE, sunShadowFor } from "./visuals/atmosphere";
+import { SCENE_LIGHTING } from "./visuals/sceneLighting";
+import { PostEffects } from "./visuals/PostEffects";
 import {
   CAMERA_BOUNDS_PADDING,
   CAMERA_FOV,
@@ -185,9 +167,12 @@ function Scene({
   const targetPosition = useRef(new Vector3());
   const targetDistance = useRef(0);
   const isAnimating = useRef(false);
+  // All light comes from one `Lighting` at the scene's time of day (#169).
+  const lighting = SCENE_LIGHTING;
+  const sunShadow = useMemo(() => sunShadowFor(lighting.sun), [lighting.sun]);
   // Physical sky as image-based lighting for the whole scene (replaces the old
   // hemisphere and fill lights) and as the sea's reflection.
-  const skyEnvironment = useSkyEnvironment(SUN_DIRECTION);
+  const skyEnvironment = useSkyEnvironment(lighting);
   // The sea's wave slopes, rebuilt on the GPU each frame (frozen under
   // reduced motion). The water shades its surface with them and the seabed
   // focuses its sunlight through them (#38 step 6), so they live here; the
@@ -355,7 +340,7 @@ function Scene({
 
   // Built once per map (and turn) and drawn by every copy of the world: the
   // copies share these geometries, materials and hover state.
-  const landTerrain = useLandTerrain(G.cells, G.wrap, worldSeed, { sun: SUN_DIRECTION, waveSlopes, terrainField });
+  const landTerrain = useLandTerrain(G.cells, G.wrap, worldSeed, { sun: lighting.sun.direction, waveSlopes, terrainField });
   const decorations = useDecorationLayout(G.cells, G.wrap, worldSeed);
   // The displaced sea the grid lines float on (#38 step 8).
   const waveSurface = useMemo(
@@ -389,13 +374,13 @@ function Scene({
       <AmbienceBedDriver />
 
       {/* Horizon haze: background matches the fog so the far edge dissolves */}
-      <color attach="background" args={[HAZE_COLOR]} />
-      <fog attach="fog" args={[HAZE_COLOR, HAZE_NEAR, HAZE_FAR]} />
+      <color attach="background" args={[lighting.haze.color]} />
+      <fog attach="fog" args={[lighting.haze.color, lighting.haze.near, lighting.haze.far]} />
 
-      {/* High, warm mid-afternoon sun in front of the camera; shadow box follows the camera target and fits the view */}
-      <SunLight color={SUN_COLOR} intensity={SUN_INTENSITY} offset={SUN_OFFSET} shadow={SUN_SHADOW} />
+      {/* Low, warm golden-hour sun ahead and right of the camera; shadow box follows the camera target and fits the view */}
+      <SunLight sun={lighting.sun} shadow={sunShadow} />
       {/* Shadowless fill from behind the camera: stands in for the sand and whitewash bounce the sky map lacks (#63) */}
-      <FillLight color={FILL_COLOR} intensity={FILL_INTENSITY} offset={FILL_OFFSET} />
+      <FillLight fill={lighting.fill} />
 
       {/* Ocean, coloured by depth from the same terrain height field: a grid
           of level-of-detail rings under the camera focus (oceanGrid.ts),
@@ -405,9 +390,9 @@ function Scene({
       {skyEnvironment && (
         <Ocean
           terrainField={terrainField}
-          sun={SUN_DIRECTION}
-          sunColor={SUN_COLOR}
-          sunIntensity={SUN_INTENSITY}
+          sun={lighting.sun.direction}
+          sunColor={lighting.sun.color}
+          sunIntensity={lighting.sun.intensity}
           sky={skyEnvironment.texture}
           skyHeight={skyEnvironment.textureHeight}
           skyIntensity={skyEnvironment.intensity}
@@ -536,16 +521,8 @@ function Scene({
         maxDistance={CAMERA_MAX_DISTANCE}
       />
 
-      {/* Post-processing effects */}
-      <EffectComposer>
-        <Bloom
-          intensity={BLOOM_INTENSITY}
-          luminanceThreshold={BLOOM_THRESHOLD}
-          luminanceSmoothing={BLOOM_SMOOTHING}
-        />
-        <Vignette darkness={VIGNETTE_DARKNESS} offset={VIGNETTE_OFFSET} />
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      </EffectComposer>
+      {/* Post-processing: bloom, vignette, ACES at the lighting's exposure, warm grade */}
+      <PostEffects lighting={lighting} />
     </>
     </SeaSurfaceContext.Provider>
   );
