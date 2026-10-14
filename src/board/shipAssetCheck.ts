@@ -45,6 +45,10 @@ export function shipAssetProblems(model: ShipModel, bytes: Uint8Array): string[]
   for (const name of model.tintedParts) {
     if (!parts.has(name)) problems.push(`${file}: no part named ${name} to take the owner's colour`);
   }
+  // A decal renamed in the generator would otherwise stay put as its sail moves in the wind (#204).
+  for (const name of model.sailDecals) {
+    if (!parts.has(name)) problems.push(`${file}: no part named ${name} on the sails`);
+  }
 
   const hull = parts.get(model.parts.hull);
   if (hull) {

@@ -176,6 +176,47 @@ export function glbPartPositions(glb: Glb, name: string): Vec3[] {
   return out;
 }
 
+const INDEX_READERS: Record<number, [number, (view: DataView, at: number) => number]> = {
+  5121: [1, (view, at) => view.getUint8(at)],
+  5123: [2, (view, at) => view.getUint16(at, true)],
+  5125: [4, (view, at) => view.getUint32(at, true)],
+};
+
+/** One SCALAR index accessor's values, read off the binary chunk. */
+const indices = (glb: Glb, index: number): number[] => {
+  const accessor = glb.json.accessors?.[index];
+  if (!accessor || accessor.bufferView === undefined) return [];
+  const reader = INDEX_READERS[accessor.componentType ?? 0];
+  if (!reader || accessor.type !== "SCALAR") throw new Error(`accessor ${index} is not an index accessor`);
+  const view = glb.json.bufferViews?.[accessor.bufferView];
+  if (!view) return [];
+  const [size, read] = reader;
+  const start = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const data = new DataView(glb.bin.buffer, glb.bin.byteOffset, glb.bin.byteLength);
+  return Array.from({ length: accessor.count }, (_, k) => read(data, start + k * size));
+};
+
+/**
+ * Every node named `name` as one triangle mesh in the model's frame: flat
+ * x, y, z positions and the triangles' vertex indices into them.
+ */
+export function glbPartMesh(glb: Glb, name: string): { positions: number[]; index: number[] } {
+  const positions: number[] = [];
+  const index: number[] = [];
+  for (const { node, toModel } of placedNodes(glb.json)) {
+    if (node.mesh === undefined || node.name !== name) continue;
+    for (const primitive of glb.json.meshes?.[node.mesh]?.primitives ?? []) {
+      if (primitive.attributes.POSITION === undefined) continue;
+      const base = positions.length / 3;
+      const points = vec3s(glb, primitive.attributes.POSITION);
+      for (const p of points) positions.push(...toModel(p));
+      const triangles = primitive.indices === undefined ? points.map((_, k) => k) : indices(glb, primitive.indices);
+      for (const k of triangles) index.push(base + k);
+    }
+  }
+  return { positions, index };
+}
+
 /** The triangles drawn: every mesh counted once per node that draws it. */
 export function glbTriangles(glb: Glb): number {
   let triangles = 0;

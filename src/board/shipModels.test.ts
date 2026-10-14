@@ -57,10 +57,14 @@ describe("ship model catalogue", () => {
   });
 
   it("names the parts the game relies on", () => {
-    expect(shipModel("Frigate")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
-    expect(shipModel("Galleon")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
-    expect(shipModel("Sloop")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
-    expect(shipModel("Flute")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger" });
+    expect(shipModel("Frigate")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger", pennant: "Pennant" });
+    expect(shipModel("Galleon")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger", pennant: "Pennant" });
+    expect(shipModel("Sloop")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger", pennant: "Pennant" });
+    expect(shipModel("Flute")!.parts).toEqual({ hull: "Hull", sails: "Sails", flag: "Jolly_Roger", pennant: "Pennant" });
+  });
+
+  it("lays the patches and the owner's band on every class's sails, to move with them in the wind (#204)", () => {
+    for (const shipClass of SHIP_CLASSES) expect(shipModel(shipClass)!.sailDecals).toEqual(["Sail_Patches", "Sail_Band"]);
   });
 
   it("tints every class's pennant, hull stripe and main-course band, the owner-colour parts (#134)", () => {

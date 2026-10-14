@@ -9,8 +9,9 @@ const MODEL: ShipModel = {
   depthMetres: 8,
   mastheadMetres: 30,
   draftMetres: 4,
-  parts: { hull: "Hull", sails: "Sails", flag: "Flag" },
+  parts: { hull: "Hull", sails: "Sails", flag: "Flag", pennant: "Flag" },
   tintedParts: ["Sails"],
+  sailDecals: [],
 };
 
 interface Part {
@@ -93,6 +94,12 @@ describe("shipAssetProblems", () => {
     const tinted: ShipModel = { ...MODEL, tintedParts: ["Sails", "Sail_Band"] };
     expect(shipAssetProblems(tinted, glb({ parts: SHIP })).join("\n")).toMatch(/Sail_Band/);
     expect(shipAssetProblems(tinted, glb({ parts: [...SHIP, { ...FLAG, name: "Sail_Band" }] }))).toEqual([]);
+  });
+
+  it("flags a part named as lying on the sails that is missing, so a renamed decal cannot stay put as its sail fills (#204)", () => {
+    const decked: ShipModel = { ...MODEL, sailDecals: ["Sail_Patches"] };
+    expect(shipAssetProblems(decked, glb({ parts: SHIP })).join("\n")).toMatch(/Sail_Patches/);
+    expect(shipAssetProblems(decked, glb({ parts: [...SHIP, { ...FLAG, name: "Sail_Patches" }] }))).toEqual([]);
   });
 
   it("flags a hull whose length along the bow axis is off the catalogue by more than a few percent", () => {
