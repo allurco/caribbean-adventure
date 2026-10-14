@@ -5,13 +5,11 @@
  * supabase-js, so the hotseat bundle never loads it.
  */
 
-/** A row of `public.profiles` (supabase/migrations). */
+/** A row of `public.profiles` (supabase/migrations): public fields only. */
 export interface ProfileRow {
   id: string;
   display_name: string;
   avatar_url: string | null;
-  provider: string | null;
-  provider_id: string | null;
   created_at: string;
   updated_at: string;
 }

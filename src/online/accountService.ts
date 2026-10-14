@@ -5,6 +5,7 @@
  * show what comes back.
  */
 import type { AccountClient, ProfileRow } from "./accountClient";
+import { safeAvatarUrl } from "./avatarUrl";
 import { validateDisplayName } from "./displayName";
 
 export type Result = { ok: true } | { ok: false; error: string };
@@ -13,6 +14,7 @@ export type Result = { ok: true } | { ok: false; error: string };
 export interface Profile {
   id: string;
   displayName: string;
+  /** Only ever a safe https URL (`safeAvatarUrl`), else null. */
   avatarUrl: string | null;
 }
 
@@ -82,7 +84,7 @@ export async function saveDisplayName(client: AccountClient, id: string, rawName
 }
 
 function toProfile(row: Pick<ProfileRow, "id" | "display_name" | "avatar_url">): Profile {
-  return { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url };
+  return { id: row.id, displayName: row.display_name, avatarUrl: safeAvatarUrl(row.avatar_url) };
 }
 
 function toAccountSession(session: { user: { id: string; email?: string } } | null): AccountSession | null {

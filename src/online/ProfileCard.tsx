@@ -1,14 +1,17 @@
 import type { Profile } from "./accountService";
+import { safeAvatarUrl } from "./avatarUrl";
 
 /**
  * A player's public face: avatar when the sign-in provider gave one (#106),
  * else a wax seal with their initial; and their display name.
  */
 export function ProfileCard({ profile }: { profile: Profile }) {
+  // Checked again where it is rendered: an <img> takes nothing but https.
+  const avatarUrl = safeAvatarUrl(profile.avatarUrl);
   return (
     <div className="flex items-center gap-4">
-      {profile.avatarUrl ? (
-        <img src={profile.avatarUrl} alt="" className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-black/30" />
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" referrerPolicy="no-referrer" className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-black/30" />
       ) : (
         <div
           aria-hidden

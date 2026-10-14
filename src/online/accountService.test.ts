@@ -9,8 +9,6 @@ function row(overrides: Partial<ProfileRow> = {}): ProfileRow {
     id: ID,
     display_name: "Captain 3f1c2b",
     avatar_url: null,
-    provider: "email",
-    provider_id: null,
     created_at: "2026-10-14T00:00:00Z",
     updated_at: "2026-10-14T00:00:00Z",
     ...overrides,
@@ -144,6 +142,15 @@ describe("fetchProfile", () => {
       profile: { id: ID, displayName: "Captain 3f1c2b", avatarUrl: null },
     });
     expect(calls.selects).toEqual([{ columns: "id, display_name, avatar_url", column: "id", value: ID }]);
+  });
+
+  it("drops an avatar URL that is not a safe https URL", async () => {
+    for (const avatar_url of ["javascript:alert(1)", "http://cdn.example/a.png", "data:image/png;base64,AAAA"]) {
+      const { client } = fakeClient({ select: { data: row({ avatar_url }), error: null } });
+      expect(await fetchProfile(client, ID)).toMatchObject({ ok: true, profile: { avatarUrl: null } });
+    }
+    const { client } = fakeClient({ select: { data: row({ avatar_url: "https://cdn.example/a.png" }), error: null } });
+    expect(await fetchProfile(client, ID)).toMatchObject({ ok: true, profile: { avatarUrl: "https://cdn.example/a.png" } });
   });
 
   it("is null for nobody", async () => {
