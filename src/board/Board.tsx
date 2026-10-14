@@ -71,6 +71,9 @@ import { reachClick, reachConfirm, selectionKey } from "./routeSelection";
 import { clipToWater, reachEdges, ribbonPositions, waterHexTriangles } from "./reachOutline";
 import { useRouteSailing } from "./useRouteSailing";
 import { RouteHint } from "./RouteHint";
+import { useTurnHandoff } from "./useTurnHandoff";
+import { controlsLocked, holdsNpcs } from "./turnHandoff";
+import { TurnEndedBanner } from "./TurnEndedBanner";
 import type { Point } from "./shipMotion";
 import { trackShipHeadings } from "./shipHeading";
 import { ShipTooltip } from "./ShipTooltip";
@@ -149,6 +152,7 @@ function Scene({
   focusView,
   sailing,
   plannedRoute,
+  locked,
   shipUnderway,
   selection,
   onSelect,
@@ -182,6 +186,8 @@ function Scene({
   sailing: boolean;
   /** The route being sailed, if any. */
   plannedRoute: Hex[] | null;
+  /** The turn is being handed over (#216): the next player's controls wait. */
+  locked: boolean;
   /** The current player's ship is still on its way: the reach waits until it settles. */
   shipUnderway: boolean;
   /** The hex whose route shows after a first click, with the `selectionKey` it was made for. */
@@ -381,7 +387,7 @@ function Scene({
   // The turn's reach (#213): every hex the ship can sail to with the moves
   // left, routed round land and ships, a port's docking hex ending a route.
   const stops = useMemo(() => dockingHexes(G.cells), [G.cells]);
-  const canMove = movesRemaining > 0 && !sailing && !shipUnderway && !attackMode && !spyglassMode;
+  const canMove = movesRemaining > 0 && !locked && !sailing && !shipUnderway && !attackMode && !spyglassMode;
   const reach = useMemo(() => {
     if (!currentShipState || !canMove) return null;
     return turnReach(currentShipState.position, movesRemaining, G.cells, G.wrap, {
@@ -425,7 +431,7 @@ function Scene({
     },
     onMiss: () => onSelect(null),
     onPortHover,
-    interactive: attackMode || spyglassMode || canMove,
+    interactive: !locked && (attackMode || spyglassMode || canMove),
     // A new turn starts with no hover, so the next player sees no stale preview
     resetKey: currentPlayer,
   });
@@ -570,6 +576,7 @@ function Scene({
           openWater={shipOpenWater}
           initialHeading={shipSpawnHeading(npc.id, npc.position)}
           foamId={copy === 0 ? npc.id : undefined}
+          onUnderway={copy === 0 ? (underway) => onShipUnderway(npc.id, underway) : undefined}
           onPointerEnter={() => onShipHover(npc.id)}
           onPointerLeave={() => onShipHover(null)}
           onClick={() => onShipClick(npc.id)}
@@ -700,6 +707,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   // Sound (#73): audio unlocks on the first click (the draft pick), then
   // every change of G plays the sounds its moves map to.
+  const prefersReducedMotion = usePrefersReducedMotion();
   useAudioUnlock();
   useGameSounds(G);
 
@@ -716,7 +724,6 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const [routeSelection, setRouteSelection] = useState<RouteSelection | null>(null);
 
   // Track previous player to detect turn changes
-  const prevPlayerRef = useRef<string | null>(null);
 
   // Track previous mission to detect completion (includes player ID to avoid false triggers on turn change)
   const prevMissionRef = useRef<{ mission: Mission | undefined; playerId: string } | null>(null);
@@ -776,11 +783,16 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     if (!currentShipState || ctx.phase === "draft") return;
 
     const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
-    const currentPortId = accessiblePort?.portName ?? null;
+    // Keyed by player: a new turn that starts in port is not an arrival (#216)
+    const currentPortId = `${currentPlayer}:${accessiblePort?.portName ?? ""}`;
     const prevPortId = prevPortRef.current;
+    if (prevPortId === null || !prevPortId.startsWith(`${currentPlayer}:`)) {
+      prevPortRef.current = currentPortId;
+      return;
+    }
 
     // If we just arrived at a new port (different from previous)
-    if (currentPortId && currentPortId !== prevPortId && accessiblePort) {
+    if (accessiblePort?.portName && currentPortId !== prevPortId) {
       // Defer to avoid synchronous setState in effect
       const timer = setTimeout(() => setDockingPort(accessiblePort), 0);
       prevPortRef.current = currentPortId;
@@ -788,28 +800,37 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     }
 
     prevPortRef.current = currentPortId;
-  }, [currentShipState?.position, G.cells, G.wrap, ctx.phase, currentShipState]);
+  }, [currentShipState?.position, G.cells, G.wrap, ctx.phase, currentShipState, currentPlayer]);
 
-  // Detect turn changes
+  // The hand-off between turns (#216): the outgoing ship arrives, a "turn
+  // ends" beat, the NPCs sail, and only then the next turn is announced
+  const shipsRef = useRef(G.ships);
   useEffect(() => {
-    if (ctx.phase === "draft") return;
-
-    const prevPlayer = prevPlayerRef.current;
-
-    // If player changed and we have a previous player (not first load)
-    if (currentPlayer !== prevPlayer && prevPlayer !== null) {
-      const timer = setTimeout(() => {
-        setShowTurnChange(true);
-        // Hotseat: fly to the new player's ship (networked clients stay put)
-        const view = turnChangeView({ ships: G.ships, currentPlayer, playerID: props.playerID });
-        if (view) setCameraFocusView(view);
-      }, 0);
-      prevPlayerRef.current = currentPlayer;
-      return () => clearTimeout(timer);
-    }
-
-    prevPlayerRef.current = currentPlayer;
-  }, [currentPlayer, ctx.phase, G.ships, props.playerID]);
+    shipsRef.current = G.ships;
+  }, [G.ships]);
+  const announceTurn = useCallback(
+    (player: string) => {
+      setShowTurnChange(true);
+      // Hotseat: fly to the new player's ship (networked clients stay put)
+      const view = turnChangeView({ ships: shipsRef.current, currentPlayer: player, playerID: props.playerID });
+      if (view) setCameraFocusView(view);
+    },
+    [props.playerID]
+  );
+  const { handoff, heldNpcs, markTurnShown } = useTurnHandoff({
+    currentPlayer,
+    active: ctx.phase !== "draft",
+    reducedMotion: prefersReducedMotion,
+    npcs: G.npcs,
+    underway,
+    onNextTurn: announceTurn,
+  });
+  const turnChangeDone = useCallback(() => {
+    setShowTurnChange(false);
+    markTurnShown();
+  }, [markTurnShown]);
+  const locked = controlsLocked(handoff);
+  const shownNpcs = holdsNpcs(handoff) && heldNpcs ? heldNpcs : G.npcs;
 
   // Detect mission completion
   useEffect(() => {
@@ -905,6 +926,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const movesRemaining = maxMoves - (ctx.numMoves ?? 0);
 
   const inCombat = ctx.phase === "combat" && G.combat;
+  // Until the next turn is announced, the HUD stays with the captain whose turn just ended (#216)
+  const hudPlayer =
+    handoff && handoff.phase !== "nextTurn" && handoff.phase !== "idle" && G.ships[handoff.from] ? handoff.from : currentPlayer;
+  const hudShip = G.ships[hudPlayer] ?? currentShipState;
 
   const handleHexClickForAttack = (hex: Hex) => {
     // First check if it's a player ship
@@ -976,7 +1001,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           attackTargetHexes={attackTargetHexes}
           spyglassTargetHexes={spyglassTargetHexes}
           sinkingShips={sinkingShips}
-          npcs={G.npcs}
+          npcs={shownNpcs}
+          locked={locked}
           hoveredShipId={hoveredShipId}
           hoveredPort={hoveredPort}
           scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
@@ -1028,11 +1054,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {!inCombat && currentShipState && (
         <HudTurnBar
           mapLabel={preset.label}
-          movesRemaining={movesRemaining}
-          maxMoves={maxMoves}
-          gold={currentShipState.gold}
-          glory={currentShipState.score}
-          onEndTurn={() => props.events.endTurn!()}
+          movesRemaining={hudPlayer === currentPlayer ? movesRemaining : 0}
+          maxMoves={hudShip ? getMaxMoves(hudShip) : maxMoves}
+          gold={hudShip.gold}
+          glory={hudShip.score}
+          onEndTurn={() => {
+            if (!locked) props.events.endTurn!();
+          }}
         />
       )}
 
@@ -1042,14 +1070,14 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {/* Bottom-left: captain and ship cards on parchment */}
       {currentShipState && (
         <HudParchmentPanel
-          ship={currentShipState}
-          playerIndex={currentPlayer}
-          playerColor={PLAYER_COLOURS[currentPlayer] ?? "#888"}
+          ship={hudShip}
+          playerIndex={hudPlayer}
+          playerColor={PLAYER_COLOURS[hudPlayer] ?? "#888"}
         />
       )}
 
       {/* Action buttons - only in main phase */}
-      {!inCombat && currentShipState && (hasAttackTargets || hasSpyglassTargets) && (
+      {!inCombat && !locked && currentShipState && (hasAttackTargets || hasSpyglassTargets) && (
         <div className="absolute bottom-4 right-4 flex gap-2">
           {/* Spyglass button */}
           {hasSpyglassTargets && (
@@ -1088,6 +1116,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
       {/* A route is selected (#213): how to sail it or let it go */}
       {!inCombat &&
+        !locked &&
         currentShipState &&
         !sailing &&
         !underway[currentPlayer] &&
@@ -1107,8 +1136,16 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         </div>
       )}
 
+      {/* The outgoing captain's turn ends (#216) */}
+      {handoff?.phase === "turnEnded" && G.ships[handoff.from] && (
+        <TurnEndedBanner
+          captainName={G.ships[handoff.from].captain?.name ?? `Player ${Number(handoff.from) + 1}`}
+          reducedMotion={handoff.reducedMotion}
+        />
+      )}
+
       {/* Right: Port panel - only in main phase when docked at a port */}
-      {!inCombat && currentShipState && (() => {
+      {!inCombat && !locked && currentShipState && (() => {
         const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
         if (!accessiblePort?.market) return null;
         return (
@@ -1164,7 +1201,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           playerIndex={currentPlayer}
           playerColor={PLAYER_COLOURS[currentPlayer] ?? "#888888"}
           captain={currentShipState.captain}
-          onComplete={() => setShowTurnChange(false)}
+          reducedMotion={prefersReducedMotion}
+          onComplete={turnChangeDone}
         />
       )}
 
