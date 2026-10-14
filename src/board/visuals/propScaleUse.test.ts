@@ -1,15 +1,17 @@
 /**
- * Every placement module draws at the 350 m hex (ADR 0003): props at
- * `PROP_SCALE`, buildings at `BUILDING_SCALE`, ships at `SHIP_SCALE`, with
- * their footprints, clearances and margins, and the derived props placed
- * `PROP_DENSITY` times as densely. The authored sizes are spelled out here
- * so a module that drops its factor fails.
+ * Every placement module draws at its family's factor (ADR 0006): props at
+ * `PROP_SCALE`, buildings at `BUILDING_SCALE`, landmarks at
+ * `LANDMARK_SCALE`, piers, quays and the town's clutter at
+ * `TOWN_PIECE_SCALE`, the town's palms at `VEGETATION_SCALE`, ships at
+ * `SHIP_SCALE`, with their footprints, clearances and margins, and the
+ * derived props placed `PROP_DENSITY` times as densely. The authored sizes
+ * are spelled out here so a module that drops its factor fails.
  */
 import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createWrap } from "../../game/hex";
-import { BUILDING_SCALE, METRES_PER_UNIT, PROP_DENSITY, PROP_SCALE, SHIP_SCALE } from "./worldScale";
+import { BUILDING_SCALE, LANDMARK_SCALE, METRES_PER_UNIT, PROP_DENSITY, PROP_SCALE, SHIP_SCALE, TOWN_PIECE_SCALE, VEGETATION_SCALE } from "./worldScale";
 import { HULL_FOAM_NOISE_SCALE } from "./hullFoam";
 import { PIER_LAND_OVERLAP } from "./pierPlacement";
 import { ROCK_SINK } from "./rockPlacement";
@@ -25,8 +27,8 @@ import {
 import { STONE_SCALE_RANGE, STONES_PER_GRASS_CELL, STONES_PER_SAND_CELL } from "./smallStones";
 import { QUAY_DEPTH_RANGE, QUAY_WIDTH_RANGE, quayAt, quayTopAt, portQuays } from "./quayPlacement";
 import { QUAY_BASE, QUAY_COPING_THICKNESS, QUAY_STEP_Z, QUAY_TOP } from "./quayGeometry";
-import { BUILDING_SINK, BUILDING_FOOTING_MARGIN, buildingGroundY, buildingMaxSpread, portBuildings, scaleRangeOf } from "./portSettlement";
-import { PORT_HOVER_MARGIN, PORT_HOVER_RADIUS, portHoverVolume } from "./portHover";
+import { BUILDING_SINK, BUILDING_FOOTING_MARGIN, buildingGroundY, buildingMaxSpread, portBuildings, PORT_BUILDING_SCALE_RANGE, scaleRangeOf } from "./portSettlement";
+import { PORT_HOVER_MARGIN, PORT_HOVER_RADIUS, PORT_MAX_BUILDING_HEIGHT, portHoverVolume } from "./portHover";
 import { BUILDING_MAX_HEIGHT } from "./buildingGeometry";
 import { decorationLayout } from "./decorationLayout";
 
@@ -84,40 +86,55 @@ describe("the generator's decorations at the 350 m hex", () => {
     }
   });
 
-  it("draws piers at PROP_SCALE and starts them PROP_SCALE as far inland", () => {
-    const pierScales = authored("pier").map((s) => s * PROP_SCALE);
+  it("draws piers at TOWN_PIECE_SCALE and starts them TOWN_PIECE_SCALE as far inland (#176)", () => {
+    const pierScales = authored("pier").map((s) => s * TOWN_PIECE_SCALE);
+    expect(layout.piers.length).toBeGreaterThan(0);
     for (const pier of layout.piers) expect(pierScales.some((s) => Math.abs(s - pier.scale) < 1e-12)).toBe(true);
-    expect(PIER_LAND_OVERLAP).toBe(0.12 * PROP_SCALE);
+    expect(PIER_LAND_OVERLAP).toBe(0.12 * TOWN_PIECE_SCALE);
+  });
+
+  it("draws the village at BUILDING_SCALE, its clutter at TOWN_PIECE_SCALE and its palms at VEGETATION_SCALE (#176)", () => {
+    const { buildings, clutter } = layout.village;
+    expect(buildings.length).toBeGreaterThan(0);
+    for (const b of buildings) {
+      expect(b.scale).toBeGreaterThanOrEqual(PORT_BUILDING_SCALE_RANGE[0] * BUILDING_SCALE - 1e-12);
+      expect(b.scale).toBeLessThanOrEqual(PORT_BUILDING_SCALE_RANGE[1] * BUILDING_SCALE + 1e-12);
+    }
+    expect(clutter.some((c) => c.kind === "palm")).toBe(true);
+    for (const c of clutter) expect(c.scale).toBe(c.kind === "palm" ? VEGETATION_SCALE : TOWN_PIECE_SCALE);
   });
 });
 
 describe("the port kit at the 350 m hex", () => {
   const drawn = landSurface(sharedTerrainField(cells, wrap, seed));
 
-  it("draws every quay at PROP_SCALE across, along and up", () => {
+  it("draws every quay at TOWN_PIECE_SCALE across, along and up (#176)", () => {
     const quays = portQuays(cells, drawn, seed);
     expect(quays.length).toBeGreaterThan(0);
+    const k = TOWN_PIECE_SCALE;
     for (const q of quays) {
-      expect(q.scaleX).toBeGreaterThanOrEqual(QUAY_WIDTH_RANGE[0] * PROP_SCALE - 1e-12);
-      expect(q.scaleX).toBeLessThanOrEqual(QUAY_WIDTH_RANGE[1] * PROP_SCALE + 1e-12);
-      expect(q.scaleZ).toBeGreaterThanOrEqual(QUAY_DEPTH_RANGE[0] * PROP_SCALE - 1e-12);
-      expect(q.scaleZ).toBeLessThanOrEqual(QUAY_DEPTH_RANGE[1] * PROP_SCALE + 1e-12);
-      expect(q.top - q.worldY).toBeCloseTo(QUAY_TOP * PROP_SCALE, 12);
+      expect(q.scaleX).toBeGreaterThanOrEqual(QUAY_WIDTH_RANGE[0] * k - 1e-12);
+      expect(q.scaleX).toBeLessThanOrEqual(QUAY_WIDTH_RANGE[1] * k + 1e-12);
+      expect(q.scaleZ).toBeGreaterThanOrEqual(QUAY_DEPTH_RANGE[0] * k - 1e-12);
+      expect(q.scaleZ).toBeLessThanOrEqual(QUAY_DEPTH_RANGE[1] * k + 1e-12);
+      expect(q.top - q.worldY).toBeCloseTo(QUAY_TOP * k, 12);
     }
     // On deep ground the body reaches down its scaled base; the rear step is its scaled coping lower.
-    const quay = quayAt({ sampleHeight: () => -1 }, { x: 0, z: 0 }, 0, { scaleX: PROP_SCALE, scaleZ: PROP_SCALE });
-    expect(quay.worldY + QUAY_BASE * PROP_SCALE).toBeCloseTo(-1, 12);
-    const rear = quayTopAt(quay, { x: quay.worldX, z: quay.worldZ + (QUAY_STEP_Z - 0.01) * PROP_SCALE });
-    expect(rear).toBeCloseTo(quay.top - QUAY_COPING_THICKNESS * PROP_SCALE, 12);
+    const quay = quayAt({ sampleHeight: () => -1 }, { x: 0, z: 0 }, 0, { scaleX: k, scaleZ: k });
+    expect(quay.worldY + QUAY_BASE * k).toBeCloseTo(-1, 12);
+    const rear = quayTopAt(quay, { x: quay.worldX, z: quay.worldZ + (QUAY_STEP_Z - 0.01) * k });
+    expect(rear).toBeCloseTo(quay.top - QUAY_COPING_THICKNESS * k, 12);
   });
 
-  it("draws every building (and so the tower's flag) at BUILDING_SCALE", () => {
+  it("draws the watchtower (and so its flag) and the church at LANDMARK_SCALE, the rest of the kit at BUILDING_SCALE (#176)", () => {
     const buildings = portBuildings(cells, drawn, seed);
     expect(buildings.some((b) => b.kind === "watchtower")).toBe(true);
+    expect(buildings.some((b) => b.kind === "church")).toBe(true);
     for (const b of buildings) {
       const [lo, hi] = scaleRangeOf(b.kind);
-      expect(b.scale).toBeGreaterThanOrEqual(lo * BUILDING_SCALE - 1e-12);
-      expect(b.scale).toBeLessThanOrEqual(hi * BUILDING_SCALE + 1e-12);
+      const family = b.kind === "watchtower" || b.kind === "church" ? LANDMARK_SCALE : BUILDING_SCALE;
+      expect(b.scale).toBeGreaterThanOrEqual(lo * family - 1e-12);
+      expect(b.scale).toBeLessThanOrEqual(hi * family + 1e-12);
     }
   });
 
@@ -126,9 +143,10 @@ describe("the port kit at the 350 m hex", () => {
     expect(buildingMaxSpread(0.1)).toBeCloseTo(0.1 - (BUILDING_SINK + BUILDING_FOOTING_MARGIN) * BUILDING_SCALE, 12);
   });
 
-  it("sizes the port hover's height and margin by BUILDING_SCALE, not its radius", () => {
+  it("sizes the port hover's height by the tallest building's family factor and its margin by BUILDING_SCALE, not its radius (#176)", () => {
     const volume = portHoverVolume({ x: 0, z: 0 }, 0, []);
-    expect(volume.top).toBeCloseTo((BUILDING_MAX_HEIGHT + PORT_HOVER_MARGIN) * BUILDING_SCALE, 12);
+    expect(PORT_MAX_BUILDING_HEIGHT).toBeGreaterThan(BUILDING_MAX_HEIGHT * BUILDING_SCALE);
+    expect(volume.top).toBeCloseTo(PORT_MAX_BUILDING_HEIGHT + PORT_HOVER_MARGIN * BUILDING_SCALE, 12);
     expect(volume.bottom).toBeCloseTo(-PORT_HOVER_MARGIN * BUILDING_SCALE, 12);
     expect(volume.radius).toBe(PORT_HOVER_RADIUS);
   });

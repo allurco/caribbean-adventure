@@ -423,23 +423,29 @@ export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACI
   };
   return {
     creasesWithin: (x, z, radius) => {
-      // The lattice vertices inside the disc...
+      // The creases of the town's refined triangles too (#176): they cut the
+      // lattice into `TOWN_REFINE` per edge, which is the same triangular
+      // lattice at a `TOWN_REFINE`th of the pitch (its odd rows shifted half
+      // a fine step), so its vertices and edges cover the coarse ones'.
+      const fineStep = step / N;
+      const fineRow = rowHeight / N;
+      // The fine lattice's vertices inside the disc...
       const points: { x: number; z: number }[] = [];
-      const j0 = Math.max(0, Math.ceil((z - radius - minZ) / rowHeight));
-      const j1 = Math.min(rows - 1, Math.floor((z + radius - minZ) / rowHeight));
+      const j0 = Math.max(0, Math.ceil((z - radius - minZ) / fineRow));
+      const j1 = Math.min((rows - 1) * N, Math.floor((z + radius - minZ) / fineRow));
       for (let j = j0; j <= j1; j++) {
-        const shift = j % 2 === 1 ? step / 2 : 0;
-        const vz = minZ + j * rowHeight;
-        const i0 = Math.ceil((x - radius - minX - shift) / step);
-        const i1 = Math.floor((x + radius - minX - shift) / step);
+        const shift = j % 2 === 1 ? fineStep / 2 : 0;
+        const vz = minZ + j * fineRow;
+        const i0 = Math.ceil((x - radius - minX - shift) / fineStep);
+        const i1 = Math.floor((x + radius - minX - shift) / fineStep);
         for (let i = i0; i <= i1; i++) {
-          const vx = minX + i * step + shift;
+          const vx = minX + i * fineStep + shift;
           if (Math.hypot(vx - x, vz - z) <= radius) points.push({ x: vx, z: vz });
         }
       }
-      // ...and where the lattice's edges cross its rim: the edges run along
-      // three families of parallel lines (the rows, and the two diagonals at
-      // 60° and 120°), each `rowHeight` apart, through the vertex (0, 0).
+      // ...and where its edges cross the rim: the edges run along three
+      // families of parallel lines (the rows, and the two diagonals at 60°
+      // and 120°), each a fine row apart, through the vertex (0, 0).
       const h = Math.sqrt(3) / 2;
       for (const f of [
         { n: [0, 1], d: [1, 0], c: minZ },
@@ -447,10 +453,10 @@ export function landSurface(field: TerrainHeightField, spacing = LAND_MESH_SPACI
         { n: [h, 0.5], d: [-0.5, h], c: h * minX + 0.5 * minZ },
       ]) {
         const centre = f.n[0] * x + f.n[1] * z;
-        const k0 = Math.ceil((centre - radius - f.c) / rowHeight);
-        const k1 = Math.floor((centre + radius - f.c) / rowHeight);
+        const k0 = Math.ceil((centre - radius - f.c) / fineRow);
+        const k1 = Math.floor((centre + radius - f.c) / fineRow);
         for (let k = k0; k <= k1; k++) {
-          const off = f.c + k * rowHeight - centre;
+          const off = f.c + k * fineRow - centre;
           const t = Math.sqrt(Math.max(0, radius * radius - off * off));
           const fx = x + f.n[0] * off;
           const fz = z + f.n[1] * off;

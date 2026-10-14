@@ -3,7 +3,9 @@ import {
   AUTHORED_HEX_METRES,
   BUILDING_ENLARGEMENT,
   BUILDING_SCALE,
+  BUILDING_TRUE_SCALE,
   HEX_METRES,
+  LANDMARK_ENLARGEMENT,
   LANDMARK_SCALE,
   METRES_PER_UNIT,
   PROP_DENSITY,
@@ -55,17 +57,26 @@ describe("the props' scale (ADR 0003, ADR 0006)", () => {
     expect(SHIP_SCALE).toBeCloseTo(1.511, 3);
   });
 
-  it("starts the other picture families at today's factors, each its own constant (ADR 0006)", () => {
-    // Each is flipped by its own slice of #158; until then they draw exactly as before.
+  it("starts vegetation at today's factor, until its own slice of #158 (ADR 0006)", () => {
     expect(VEGETATION_SCALE).toBe(PROP_SCALE);
-    expect(TOWN_PIECE_SCALE).toBe(PROP_SCALE);
-    expect(LANDMARK_SCALE).toBe(BUILDING_SCALE);
   });
 
-  it("draws buildings 1.125 times true scale", () => {
-    expect(BUILDING_ENLARGEMENT).toBe(1.125);
-    expect(BUILDING_SCALE).toBe((115 / 350) * 1.125);
-    expect(BUILDING_SCALE).toBeCloseTo(0.37, 3);
+  it("draws buildings 2.5 times ADR 0003's 1.125 × true scale (#176, ADR 0006)", () => {
+    expect(BUILDING_TRUE_SCALE).toBe(1.125);
+    expect(BUILDING_ENLARGEMENT).toBe(2.5);
+    expect(BUILDING_SCALE).toBe((115 / 350) * 1.125 * 2.5);
+    expect(BUILDING_SCALE).toBeCloseTo(0.924, 3);
+  });
+
+  it("draws the landmarks 1.6 times ADR 0003's buildings, smaller than the houses' 2.5 (#176)", () => {
+    expect(LANDMARK_ENLARGEMENT).toBe(1.6);
+    expect(LANDMARK_SCALE).toBe((115 / 350) * 1.125 * 1.6);
+    expect(LANDMARK_SCALE).toBeCloseTo(0.591, 3);
+    expect(LANDMARK_SCALE).toBeLessThan(BUILDING_SCALE);
+  });
+
+  it("draws the town's pieces (piers, quays, clutter) at the buildings' scale (#176)", () => {
+    expect(TOWN_PIECE_SCALE).toBe(BUILDING_SCALE);
   });
 
   it("places derived props by the inverse square of the prop scale, rounded and capped", () => {

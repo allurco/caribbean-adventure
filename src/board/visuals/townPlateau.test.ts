@@ -24,6 +24,8 @@ import {
   plateauPlanDistance,
   riserCentre,
   shoreKeep,
+  bankLift,
+  BANK_LIFT,
   streetCarveAt,
   type TownPlateau,
 } from "./townPlateau";
@@ -90,7 +92,8 @@ describe("town plateaus (#87)", () => {
       const plateaus = town.townPlateaus;
       let checked = 0;
       for (const [x, z, p] of aroundPlateaus(plateaus, 0.02)) {
-        if (plateauPlanDistance(p, x, z) > 0 || shoreKeep(plain.sampleHeight(x, z)) < 1) continue;
+        const natural = plain.sampleHeight(x, z);
+        if (plateauPlanDistance(p, x, z) > 0 || shoreKeep(natural) < 1) continue;
         const s = (x - p.x) * p.ux + (z - p.z) * p.uz;
         let level = -1;
         if (s < p.steps[0]) level = p.levels[0];
@@ -99,6 +102,8 @@ describe("town plateaus (#87)", () => {
           if (s >= p.steps[k] + p.ramp && s < next) level = p.levels[k + 1];
         }
         if (level < 0) continue;
+        // Nor where the terrace would stand over low ground as a cliff: there it meets the beach as a bank (#176).
+        if (level > natural + bankLift(natural)) continue;
         // Only where no other plateau reaches.
         if (plateaus.some((o) => o !== p && plateauPlanDistance(o, x, z) < o.blend)) continue;
         expect(town.sampleHeight(x, z)).toBeCloseTo(level - streetCarveAt(p, x, z) * p.carve, 12);
@@ -107,6 +112,23 @@ describe("town plateaus (#87)", () => {
       expect(checked).toBeGreaterThan(50);
     }
   });
+
+  it("never lifts the ground more than BANK_LIFT times its height over the shore band's bottom, so a terrace meets a beach as a bank (#176)", () => {
+    expect(bankLift(SHORE_KEEP_BOTTOM)).toBe(0);
+    expect(bankLift(SHORE_KEEP_BOTTOM + 0.01)).toBeCloseTo(BANK_LIFT * 0.01, 12);
+    let banked = 0;
+    for (const seed of SEEDS) {
+      const { plain, town } = fieldsOf(seed);
+      for (const [x, z] of aroundPlateaus(town.townPlateaus, 0.05)) {
+        const natural = plain.sampleHeight(x, z);
+        const lift = town.sampleHeight(x, z) - natural;
+        expect(lift).toBeLessThanOrEqual(bankLift(natural) + 1e-9);
+        if (lift > 0 && lift > bankLift(natural) - 1e-6) banked++;
+      }
+    }
+    // The bank binds somewhere: at ×2.5 the terraces reach low ground.
+    expect(banked).toBeGreaterThan(0);
+  }, 60_000);
 
   it("blends into the untouched terrain without a step", () => {
     for (const seed of SEEDS) {

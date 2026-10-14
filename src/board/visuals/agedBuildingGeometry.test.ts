@@ -85,7 +85,7 @@ describe("buildAgedBuildingGeometry", () => {
     }
   });
 
-  it("keeps the local-space contract: ground contact at the origin, a footing below, under the cap, the tower far tallest", () => {
+  it("keeps the local-space contract: ground contact at the origin, a footing below, under the cap but for the tower, the tower far tallest", () => {
     expect(BUILDING_MAX_HEIGHT).toBe(0.5);
     for (const kind of BUILDING_KINDS) {
       const g = built[kind];
@@ -100,7 +100,8 @@ describe("buildAgedBuildingGeometry", () => {
       }
       expect(minY).toBeCloseTo(-BUILDING_FOOTING, 6);
       expect(maxY).toBeCloseTo(AGED_BUILDING_HEIGHT[kind], 5);
-      expect(maxY).toBeLessThan(BUILDING_MAX_HEIGHT);
+      // The tower stands a stage taller (#176): drawn at LANDMARK_SCALE, under the houses' ×2.5, it still tops the town.
+      if (kind !== "watchtower") expect(maxY).toBeLessThan(BUILDING_MAX_HEIGHT);
       expect(reach).toBeLessThanOrEqual(AGED_BUILDING_HALF_DIAGONAL[kind] + 1e-6);
       expect(reach).toBeGreaterThan(AGED_BUILDING_HALF_DIAGONAL[kind] * 0.85);
       // The wider eaves and the lean grow the footprint a little past the faceted kind's.
@@ -111,8 +112,10 @@ describe("buildAgedBuildingGeometry", () => {
     for (const kind of BUILDING_KINDS) {
       if (kind !== "watchtower" && kind !== "church") expect(AGED_BUILDING_HEIGHT.watchtower).toBeGreaterThan(AGED_BUILDING_HEIGHT[kind] + 0.2);
     }
-    // The tower rises to within a hair of the cap.
-    expect(AGED_BUILDING_HEIGHT.watchtower).toBeGreaterThan(BUILDING_MAX_HEIGHT - 0.02);
+    // The tower rises a stage past the cap (#176): its stone base as before, a limewashed shaft over it.
+    expect(AGED_BUILDING_HEIGHT.watchtower).toBeGreaterThan(BUILDING_MAX_HEIGHT + 0.3);
+    expect(AGED_TOWER.stage).toBeCloseTo(0.36, 9);
+    expect(AGED_TOWER.bodyTop).toBeGreaterThan(2 * AGED_TOWER.stage);
   });
 
   it("raises the house and warehouse eaves (#59) so neither reads as a sunk hut, keeping each roof's pitch and the tavern as it was", () => {
@@ -303,7 +306,7 @@ describe("buildAgedBuildingGeometry", () => {
     }
   });
 
-  it("builds the tower in stone courses of many tones over a mortar body, with merlons and a pole under the cap", () => {
+  it("builds the tower's base in stone courses of many tones over a mortar body, a limewashed shaft over it, with merlons and a pole", () => {
     const g = built.watchtower;
     const tones = new Set<number>();
     let proud = 0;
@@ -312,7 +315,7 @@ describe("buildAgedBuildingGeometry", () => {
     for (let i = 0; i < g.vertexCount; i++) {
       const [x, y, z] = vertex(g, i);
       const c = color(g, i);
-      if (y > 0.05 && y < AGED_TOWER.bodyTop - 0.05 && luminance(c) > 0.15) {
+      if (y > 0.05 && y < AGED_TOWER.stage - 0.05 && luminance(c) > 0.15) {
         tones.add(Math.round(luminance(c) * 1e3));
         if (Math.hypot(x, z) > AGED_TOWER.halfBase - 0.002) proud++;
       }
@@ -323,8 +326,15 @@ describe("buildAgedBuildingGeometry", () => {
     expect(proud).toBeGreaterThan(50);
     expect(merlonTop).toBeCloseTo(AGED_TOWER.merlon.top, 6);
     expect(poleTop).toBeCloseTo(AGED_TOWER.pole.top, 6);
-    // The flag flies from the pole top, clear of the merlons and under the cap, within the tower's footprint.
-    expect(AGED_TOWER_FLAG_HOIST[1]).toBeLessThan(BUILDING_MAX_HEIGHT);
+    // The shaft is rendered in the tower's lime, bright, no stone courses on it.
+    const shaft = new Set<number>();
+    for (let i = 0; i < g.vertexCount; i++) {
+      const [x, y, z] = vertex(g, i);
+      if (y > AGED_TOWER.stage + 0.05 && y < AGED_TOWER.bodyTop - 0.05 && Math.hypot(x, z) > 0.06) shaft.add(Math.round(luminance(color(g, i)) * 1e3));
+    }
+    expect(Math.max(...shaft)).toBeGreaterThan(Math.max(...tones));
+    // The flag flies from the pole top, clear of the merlons, within the tower's footprint.
+    expect(AGED_TOWER_FLAG_HOIST[1]).toBeLessThan(AGED_TOWER.pole.top);
     expect(AGED_TOWER_FLAG_HOIST[1] - FLAG_HEIGHT).toBeGreaterThan(AGED_TOWER.merlon.top);
     expect(AGED_TOWER_FLAG_HOIST[0] + FLAG_WIDTH).toBeLessThan(AGED_BUILDING_HALF_DIAGONAL.watchtower);
   });

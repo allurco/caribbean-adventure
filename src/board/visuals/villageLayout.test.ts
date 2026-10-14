@@ -12,7 +12,7 @@ import { crossesRiser, plateauPlanDistance, RETAINING_WALL_DEPTH } from "./townP
 import { pieceClearRadius, TOWN_CLEAR_MARGIN, townWorks } from "./townDetailLayout";
 import { AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { VILLAGE_EAVE } from "./villageBuildingGeometry";
-import { BUILDING_SCALE } from "./worldScale";
+import { BUILDING_ENLARGEMENT, BUILDING_SCALE } from "./worldScale";
 import {
   overlaps,
   planPortTowns,
@@ -26,6 +26,8 @@ import {
   wallGround,
   BEACH_MAX_SPREAD,
   BEACH_TOP,
+  VILLAGE_HOUSES,
+  standingBuildings,
   VILLAGE_MAX_BURY,
   VILLAGE_MAX_FOOTING_SHOWN,
   type PlanRect,
@@ -57,12 +59,12 @@ describe("the port village (#87)", () => {
     const ports = cells.filter((c) => c.hasPort && c.decorations?.some((d) => d.type === "pier"));
     expect(village.ports).toHaveLength(ports.length);
     const kinds = new Set(village.buildings.map((b) => b.variant));
-    expect([...kinds].sort()).toEqual(["cottage", "leanTo", "merchant", "stoneHouse", "warehouse"]);
-    // About thirty houses round each square (ADR 0003).
-    for (const port of village.ports) expect(port.buildings.length).toBeGreaterThan(15);
-    const mean = village.buildings.length / village.ports.length;
-    expect(mean).toBeGreaterThan(22);
-    expect(mean).toBeLessThan(55);
+    // Every kind; the warehouse only where a merchant's house will not fit on the waterfront (#176).
+    for (const kind of ["cottage", "leanTo", "merchant", "stoneHouse", "townHouse"]) expect(kinds.has(kind as never), kind).toBe(true);
+    // About two dozen bigger houses round each square (#176), never more than the target.
+    for (const port of village.ports) expect(standingBuildings(port.buildings)).toBeLessThanOrEqual(VILLAGE_HOUSES);
+    const mean = village.ports.reduce((n, p) => n + standingBuildings(p.buildings), 0) / village.ports.length;
+    expect(mean).toBeGreaterThan(VILLAGE_HOUSES * 0.7);
   });
 
   it("keeps every building's walls off the streets and the risers, and its eaves off the kit, the quay, the pier and each other", () => {
@@ -205,6 +207,39 @@ describe("the village on its town's cells (#170)", () => {
     expect(spilled).toBeGreaterThan(0);
   });
 
+  it("thins a town that takes more than VILLAGE_HOUSES back to it, freeing the dropped houses' footprints (#176)", () => {
+    let thinned = 0;
+    for (const port of village.ports) {
+      thinned += port.dropped.thinned;
+      if (port.dropped.thinned > 0) expect(standingBuildings(port.buildings)).toBe(VILLAGE_HOUSES);
+      // Every footprint the plan keeps is the kit's, the quay's, the pier's or a standing building's eaves.
+      const kit = layout.buildings.filter((k) => Math.hypot(k.worldX - port.cx, k.worldZ - port.cz) < 1).length;
+      expect(port.footprints.length).toBe(kit + port.quays.length + 1 + port.buildings.length);
+    }
+    expect(thinned).toBeGreaterThan(0);
+  });
+
+  it("faces the water with two-storey merchants' houses either side of the pier root, a warehouse where one will not fit (#176)", () => {
+    let rows = 0;
+    let merchants = 0;
+    let warehouses = 0;
+    for (const port of village.ports) {
+      const front = port.buildings.filter((b) => b.waterfront);
+      if (front.length > 0) rows++;
+      for (const b of front) {
+        expect(["merchant", "warehouse"]).toContain(b.variant);
+        // Facing the water: turned as the pier is, or a warehouse's long side to it.
+        const turn = Math.abs(Math.atan2(Math.sin(b.yaw - port.pier.rotation), Math.cos(b.yaw - port.pier.rotation)));
+        expect(Math.min(turn, Math.abs(turn - Math.PI / 2))).toBeLessThan(0.1);
+        if (b.variant === "merchant") merchants++;
+        else warehouses++;
+      }
+    }
+    // Most ports have a waterfront row (a beach too steep or narrow by the pier has none), mostly merchants' houses.
+    expect(rows / village.ports.length).toBeGreaterThanOrEqual(0.6);
+    expect(merchants).toBeGreaterThan(warehouses);
+  });
+
   it("names the reason for every candidate it drops, and the hex edge is not one", () => {
     expect(DROP_REASONS as readonly string[]).not.toContain("hex edge");
     for (const port of village.ports) {
@@ -215,31 +250,31 @@ describe("the village on its town's cells (#170)", () => {
     }
   });
 
-  it("does not collapse as the buildings grow from ×1 to ×2.5 (#158's prototype fell from about 45 to about 4 houses a port)", () => {
+  it("does not collapse as the buildings grow from ×1 to ×2.5 (#158's prototype fell from about 45 to about 4 houses a port): it holds about its target", () => {
     const preset = getMapPreset("small");
     const wrap = createWrap(preset.columns);
-    const housesPerPort = (factor: number) => {
+    const housesPerPort = (k: number) => {
       let houses = 0;
       let ports = 0;
       for (const seed of [1, 2, 3, 4, 5]) {
         const mapCells = generateMap(preset, seed, wrap);
-        const k = BUILDING_SCALE * factor;
         // The field's plateaus planned at the village's building scale; no port kit in the way, as the kit keeps its own scale.
         const field = createTerrainHeightField(mapCells, seed, { wrap, buildingScale: k });
         const { piers, quays } = decorationLayout(mapCells, wrap, seed);
         const plans = planPortTowns(mapCells, landSurface(field), { buildings: [], quays, piers, plateaus: field.townPlateaus }, seed, { buildingScale: k });
         for (const p of plans.ports) {
-          houses += p.buildings.length;
+          houses += standingBuildings(p.buildings);
           ports++;
         }
       }
       return houses / ports;
     };
-    const at1 = housesPerPort(1);
-    const at25 = housesPerPort(2.5);
-    console.log(`village: ${at1.toFixed(1)} buildings a port at ×1, ${at25.toFixed(1)} at ×2.5`);
-    expect(at1).toBeGreaterThan(35);
-    expect(at25).toBeGreaterThan(15);
-    expect(at25 / at1).toBeGreaterThan(1 / 3);
+    // ADR 0003's buildings, and the drawn ×2.5.
+    const at1 = housesPerPort(BUILDING_SCALE / BUILDING_ENLARGEMENT);
+    const at25 = housesPerPort(BUILDING_SCALE);
+    console.log(`village: ${at1.toFixed(1)} standing buildings a port at ×1, ${at25.toFixed(1)} at ×2.5 (target ${VILLAGE_HOUSES})`);
+    expect(at1).toBeLessThanOrEqual(VILLAGE_HOUSES);
+    expect(at25).toBeGreaterThan(VILLAGE_HOUSES * 0.85);
+    expect(at25 / at1).toBeGreaterThan(0.85);
   }, 120_000);
 });

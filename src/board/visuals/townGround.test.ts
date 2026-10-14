@@ -5,7 +5,8 @@ import { createWrap } from "../../game/hex";
 import { createTerrainHeightField, SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
 import { buildLandMesh, landSurface, TOWN_FLAG_MARGIN } from "./landMesh";
 import { PAVING_TONE, pavingTone, townGround, TOWN_REFINE } from "./townGround";
-import { plateauPoint, streetDistance } from "./townPlateau";
+import { nearestCopyX, plateauPoint, streetDistance } from "./townPlateau";
+import { BUILDING_ENLARGEMENT } from "./worldScale";
 
 function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightField } {
   const preset = getMapPreset("small");
@@ -18,8 +19,15 @@ function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightF
   };
 }
 
-/** Edges of an unindexed triangle soup used by only one triangle, with both ends well above the sea (a crack, or a T-junction). */
-function openEdges(positions: Float32Array): number {
+/**
+ * Edges of an unindexed triangle soup used by only one triangle, with both
+ * ends well above the sea (a crack, or a T-junction), away from the wrap
+ * seam: there every copy's edge is open, and a town reaching the seam (at
+ * ×2.5 one can, #176) cuts its refined side's edge into collinear pieces
+ * that lie on the coarse edge across it.
+ */
+function openEdges(positions: Float32Array, seam: { minX: number; maxX: number } | null = null): number {
+  const atSeam = (i: number) => seam !== null && (positions[i * 3] < seam.minX + 0.2 || positions[i * 3] > seam.maxX - 0.2);
   const key = (i: number) => `${positions[i * 3]},${positions[i * 3 + 2]}`;
   const edges = new Map<string, number>();
   const triangles = positions.length / 9;
@@ -40,6 +48,7 @@ function openEdges(positions: Float32Array): number {
       const i = t * 3 + k;
       const j = t * 3 + ((k + 1) % 3);
       if (edges.get(edgeOf(i, j)) !== 1) continue;
+      if (atSeam(i) && atSeam(j)) continue;
       if (positions[i * 3 + 1] > SEA_LEVEL + 0.01 && positions[j * 3 + 1] > SEA_LEVEL + 0.01) open++;
     }
   }
@@ -51,6 +60,10 @@ describe("town ground (#87)", () => {
   const plateaus = town.townPlateaus;
   const coarse = buildLandMesh(plain);
   const fine = buildLandMesh(town);
+
+  it("cuts the town ground as many times per street and riser as ADR 0003's ten cuts did, the town being ×2.5 (#176)", () => {
+    expect(TOWN_REFINE).toBe(Math.round(10 / BUILDING_ENLARGEMENT));
+  });
 
   it("is absent without plateaus", () => {
     expect(townGround([], null, TOWN_FLAG_MARGIN)).toBeUndefined();
@@ -81,11 +94,12 @@ describe("town ground (#87)", () => {
     // Every land edge is shared by two land triangles, unless it is on the
     // waterline (shared with the seabed) or on the wrap seam: as many open
     // edges high on the land as the coarse mesh has, no more.
-    expect(openEdges(fine.land.positions)).toBe(openEdges(coarse.land.positions));
+    expect(openEdges(fine.land.positions, town.bounds)).toBe(openEdges(coarse.land.positions, town.bounds));
   });
 
   it("leaves the mesh away from the towns as it was", () => {
-    const far = (x: number, z: number) => plateaus.every((p) => Math.hypot(x - p.x, z - p.z) > p.reach + 0.5);
+    // In any world copy: a town by the wrap seam reaches across it.
+    const far = (x: number, z: number) => plateaus.every((p) => Math.hypot(nearestCopyX(p, x, town.periodX) - p.x, z - p.z) > p.reach + 0.5);
     const faces = (positions: Float32Array) => {
       const out = new Set<string>();
       for (let t = 0; t < positions.length / 9; t++) {
@@ -109,6 +123,9 @@ describe("town ground (#87)", () => {
       const cz = (positions[o + 2] + positions[o + 5] + positions[o + 8]) / 3;
       const surface = ground.surface(cx, cz);
       if (surface === "ground") continue;
+      // A face drawn flat (one colour on all three corners) is not the paving's: a street running down to the
+      // beach (at ×2.5 they reach it, #176) is only refined, and so paved, where the lattice stands clear of the sea.
+      if (colors[o] === colors[o + 3] && colors[o] === colors[o + 6] && colors[o + 1] === colors[o + 4] && colors[o + 1] === colors[o + 7]) continue;
       for (let k = 0; k < 3; k++) {
         const v = o + k * 3;
         const key = `${surface}:${positions[v].toFixed(5)},${positions[v + 2].toFixed(5)}`;

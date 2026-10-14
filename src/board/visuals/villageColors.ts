@@ -2,6 +2,7 @@
  * The village's colours (#87), linear RGB from the shared
  * palette: the aged kit's lime, tile, timber and stone, with the stone
  * house in its rough grey-brown, the merchant's house in an ochre lime, the
+ * town house in a pale rose lime, the
  * lean-to and warehouse in bleached plank; the clutter's weathered timber,
  * faded cloths and tarred hulls; the ground works' coral-limestone walls.
  */
@@ -36,6 +37,9 @@ export function villageColors(variant: VillageVariant): AgedColors {
       return { ...house, wall: mul(rgb("roughStone"), [0.92, 0.9, 0.86]), stone: mul(rgb("roughStone"), [1.05, 1.02, 0.95]) };
     case "merchant":
       return { ...house, wall: mul(rgb("limewash"), [1.0, 0.86, 0.62]) };
+    case "townHouse":
+      // A pale rose wash over a rough stone ground floor's footing.
+      return { ...house, wall: mul(rgb("limewash"), [1.0, 0.84, 0.78]), stone: mul(rgb("roughStone"), [1.05, 1.02, 0.95]) };
     case "leanTo":
     case "warehouse":
       return { ...house, wall: rgb("bleachedPlank") };

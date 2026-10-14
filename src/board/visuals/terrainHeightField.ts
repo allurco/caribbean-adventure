@@ -27,7 +27,7 @@ import { SEED_FEATURES, type SeedFeature } from "./seedFeatures";
 import { stream, subSeed } from "./subSeed";
 import { seamStrip, withSeamImages, wrapIntoStrip } from "./seamStrip";
 import { seabedDepth } from "./seabedProfile";
-import { BUILDING_SCALE, PROP_SCALE, metresToUnits, unitsToMetres } from "./worldScale";
+import { BUILDING_SCALE, TOWN_PIECE_SCALE, metresToUnits, unitsToMetres } from "./worldScale";
 import { applyTownPlateaus, planTownPlateau, plateauLookup, type PlateauLookup, type TownPlateau } from "./townPlateau";
 import { portTownCells } from "./townCells";
 import { mapCellId } from "./islands";
@@ -567,7 +567,7 @@ export function createTerrainHeightField(
       const [px, , pz] = hexToWorld(cell.hex);
       planned.push(
         planTownPlateau({ x: px, z: pz, toWater: pier.rotation }, (sx, sz) => sampleHeight(inStrip(sx), sz), options.buildingScale ?? BUILDING_SCALE, {
-          pierScale: PROP_SCALE,
+          pierScale: TOWN_PIECE_SCALE,
           town: towns.get(mapCellId(cell)),
         })
       );

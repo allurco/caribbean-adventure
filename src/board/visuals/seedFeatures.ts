@@ -43,6 +43,8 @@ export const SEED_FEATURES = {
   townSpill: "townSpill",
   /** A port's village houses (`villageLayout.ts`), per port. */
   village: "village",
+  /** Which of a port's village houses are thinned back to the target (`villageLayout.ts`, #176), per port. */
+  villageThinning: "villageThinning",
   /** A port's town clutter (`townDetailLayout.ts`), per port. */
   townClutter: "townClutter",
   /** The stones of a town's retaining walls, per port, riser and wall segment. */

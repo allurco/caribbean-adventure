@@ -6,14 +6,16 @@ import { createWrap, hexToWorld } from "../../game/hex";
 import { sharedTerrainField } from "./sharedTerrainField";
 import { landSurface } from "./landMesh";
 import { groundTopY } from "./groundPlacement";
-import { portBuildings, PORT_SETTLEMENT_RADIUS, type PortBuilding } from "./portSettlement";
+import { familyScaleOf, portBuildings, PORT_BUILDING_SCALE_RANGE, PORT_SETTLEMENT_RADIUS, scaleRangeOf, type PortBuilding } from "./portSettlement";
 import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT } from "./agedBuildingGeometry";
-import { BUILDING_MAX_HEIGHT } from "./buildingGeometry";
-import { PORT_GROUND_PROBE_RADIUS, PORT_HOVER_MARGIN, PORT_HOVER_RADIUS, portHoverVolume } from "./portHover";
-import { BUILDING_SCALE } from "./worldScale";
+import { BUILDING_KINDS } from "./buildingGeometry";
+import { VILLAGE_HEIGHT, VILLAGE_VARIANTS } from "./villageBuildingGeometry";
+import { buildingTopOf, PORT_GROUND_PROBE_RADIUS, PORT_HOVER_MARGIN, PORT_HOVER_RADIUS, PORT_MAX_BUILDING_HEIGHT, portHoverVolume } from "./portHover";
+import type { VillageBuilding } from "./villageLayout";
+import { BUILDING_SCALE, LANDMARK_SCALE } from "./worldScale";
 
-/** The building cap and the margin, at the buildings' scale. */
-const CAP = BUILDING_MAX_HEIGHT * BUILDING_SCALE;
+/** The cap (the tallest building any port can stand, derived, #176) and the margin, at the buildings' scale. */
+const CAP = PORT_MAX_BUILDING_HEIGHT;
 const MARGIN = PORT_HOVER_MARGIN * BUILDING_SCALE;
 
 const SAMPLES: readonly [MapSizeId, number][] = [
@@ -23,6 +25,23 @@ const SAMPLES: readonly [MapSizeId, number][] = [
   ["medium", 1],
   ["large", 1],
 ];
+
+describe("the tallest port building (#176)", () => {
+  it("is derived from every kit kind at its family's factor and every village house at BUILDING_SCALE, each at its largest scale", () => {
+    const kit = BUILDING_KINDS.map((k) => AGED_BUILDING_HEIGHT[k] * scaleRangeOf(k)[1] * familyScaleOf(k));
+    const village = VILLAGE_VARIANTS.map((v) => VILLAGE_HEIGHT[v] * PORT_BUILDING_SCALE_RANGE[1] * BUILDING_SCALE);
+    expect(PORT_MAX_BUILDING_HEIGHT).toBe(Math.max(...kit, ...village));
+    // The watchtower, at LANDMARK_SCALE, is it.
+    expect(PORT_MAX_BUILDING_HEIGHT).toBe(AGED_BUILDING_HEIGHT.watchtower * scaleRangeOf("watchtower")[1] * LANDMARK_SCALE);
+  });
+
+  it("measures a village house by its own model, a kit building by its kind", () => {
+    const kit: PortBuilding = { kind: "house", worldX: 0, worldY: 0.2, worldZ: 0, yaw: 0, scale: 0.9, tint: 1 };
+    const townHouse: VillageBuilding = { ...kit, variant: "townHouse", roofTone: 0.5 };
+    expect(buildingTopOf(kit)).toBeCloseTo(0.2 + AGED_BUILDING_HEIGHT.house * 0.9, 12);
+    expect(buildingTopOf(townHouse)).toBeCloseTo(0.2 + VILLAGE_HEIGHT.townHouse * 0.9, 12);
+  });
+});
 
 describe("portHoverVolume", () => {
   it("covers the settlement's envelope: every building's foot and top, out to the settlement radius", () => {
@@ -46,6 +65,8 @@ describe("portHoverVolume", () => {
         expect(volume.top).toBeGreaterThanOrEqual(groundY + CAP);
         if (volume.top > groundY + CAP + MARGIN + 1e-9 || volume.bottom < groundY - MARGIN - 1e-9) followsBuildings++;
         const own = buildings.filter((b) => Math.hypot(b.worldX - x, b.worldZ - z) <= PORT_HOVER_RADIUS);
+        // The derived cap over the probed ground covers every building any port can stand.
+        expect(volume.top).toBeGreaterThanOrEqual(groundY + PORT_MAX_BUILDING_HEIGHT);
         expect(own.length).toBeGreaterThan(0);
         for (const b of own) {
           const top = b.worldY + AGED_BUILDING_HEIGHT[b.kind] * b.scale;
@@ -66,6 +87,12 @@ describe("portHoverVolume", () => {
     expect(volume.bottom).toBeCloseTo(0.2 - MARGIN, 9);
     expect(volume.top).toBeCloseTo(0.2 + CAP + MARGIN, 9);
     expect(volume.radius).toBe(PORT_HOVER_RADIUS);
+  });
+
+  it("reaches over a tall village house standing on high ground (#176)", () => {
+    const house: VillageBuilding = { kind: "house", variant: "townHouse", worldX: 0.3, worldY: 0.5, worldZ: 0, yaw: 0, scale: BUILDING_SCALE, tint: 1, roofTone: 0 };
+    const volume = portHoverVolume({ x: 0, z: 0 }, 0.1, [house]);
+    expect(volume.top).toBeCloseTo(0.5 + VILLAGE_HEIGHT.townHouse * BUILDING_SCALE + MARGIN, 9);
   });
 
   it("ignores another port's buildings (farther than the settlement radius)", () => {

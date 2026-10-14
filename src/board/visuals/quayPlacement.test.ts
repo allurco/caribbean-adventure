@@ -31,7 +31,7 @@ import {
   type QuayPlacement,
 } from "./quayPlacement";
 import { createTerrainHeightField, SEA_LEVEL } from "./terrainHeightField";
-import { PROP_SCALE } from "./worldScale";
+import { TOWN_PIECE_SCALE } from "./worldScale";
 
 const flat = (height: number): GroundField => ({ sampleHeight: () => height });
 const centre = { x: 3, z: -2 };
@@ -45,7 +45,7 @@ const port: MapCell = {
 };
 const seed = 0x1234abcd;
 /** The quay is drawn at the props' scale: its plan through its size, its heights through `quayAt`. */
-const k = PROP_SCALE;
+const k = TOWN_PIECE_SCALE;
 const unit = { scaleX: k, scaleZ: k };
 
 /** World (x, z) of a point given in the quay's local frame (unscaled). */

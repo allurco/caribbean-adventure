@@ -3,7 +3,10 @@
  * floating or buried buildings, none askew on the beach (#91), no building (the port kit's included)
  * across a terrace riser, nothing on a street's running surface, the quay
  * or the pier, no kit building on a street, a lane or their kerbs, and no
- * kerb or edge stone inside a building's walls.
+ * kerb or edge stone inside a building's walls. At ×2.5 (#176): 20 to 30
+ * buildings a port (the village's standing houses and the kit), never more
+ * than 30, houses about 0.08 of a hex across, and every pier reaching out
+ * over the water.
  */
 import { beforeEach, describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
@@ -12,14 +15,17 @@ import { createWrap, hexToWorld } from "../../game/hex";
 import type { MapCell } from "../../game/types";
 import { createTerrainHeightField } from "./terrainHeightField";
 import { landSurface } from "./landMesh";
-import { pierOrigin } from "./pierPlacement";
+import { PIER_END_DEPTH, PIER_MAX_REACH, pierOrigin, pierStretch } from "./pierPlacement";
 import { portBuildings, planFootprint, type PlanFootprint } from "./portSettlement";
 import { portQuays } from "./quayPlacement";
 import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH } from "./townPlateau";
 import { pieceClearRadius, streetEdgeStones, townClutter } from "./townDetailLayout";
 import { AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
 import { BUILDING_FOOTING } from "./buildingGeometry";
-import { BUILDING_SCALE, PROP_SCALE } from "./worldScale";
+import { BUILDING_SCALE, TOWN_PIECE_SCALE } from "./worldScale";
+import { PIER_LENGTH } from "./pierGeometry";
+import { SEA_LEVEL } from "./terrainHeightField";
+import { VILLAGE_PLAN } from "./villageBuildingGeometry";
 import { VILLAGE_EAVE } from "./villageBuildingGeometry";
 import { townCellsRule } from "./townBound";
 import { townCellsBound } from "./townCells";
@@ -35,6 +41,8 @@ import {
   BEACH_MAX_SPREAD,
   BEACH_TOP,
   VILLAGE_DRY_HEIGHT,
+  VILLAGE_HOUSES,
+  standingBuildings,
   VILLAGE_MAX_BURY,
   VILLAGE_MAX_FOOTING_SHOWN,
   type PlanRect,
@@ -49,17 +57,25 @@ const SEEDS = 200;
 const SEEDS_PER_TEST = 20;
 /** Slack for probes between the placement's own, world units (about 13 cm at 65 m per unit). */
 const SLACK = 0.002;
+/** Buildings a port stands at ×2.5, the village's and the kit's (#176): the band most ports fall in, and the most any does. */
+const PORT_BUILDINGS: readonly [number, number] = [20, 30];
+/** Share of ports in a run of seeds whose building count falls in the band: a port on a narrow islet has room for fewer. */
+const IN_BAND_SHARE = 0.85;
+/** A house's width over a hex's (vertex to vertex, 2 units), on average over a run of seeds (#158's target). */
+const HOUSE_WIDTH_OF_HEX: readonly [number, number] = [0.07, 0.09];
+
 
 /** The piers as `decorationLayout` places them: from where the drawn beach meets the water. */
 function piersOf(cells: readonly MapCell[], drawn: ReturnType<typeof landSurface>) {
-  const piers: { worldX: number; worldZ: number; rotation: number; scale: number }[] = [];
+  const piers: { worldX: number; worldZ: number; rotation: number; scale: number; stretch: number }[] = [];
   for (const cell of cells) {
     const [x, , z] = hexToWorld(cell.hex);
     for (const deco of cell.decorations ?? []) {
       if (deco.type !== "pier") continue;
-      const scale = (deco.scale ?? 1) * PROP_SCALE;
-      const origin = pierOrigin(drawn, { x: x + deco.position[0], z: z + deco.position[2] }, deco.rotation);
-      piers.push({ worldX: origin.x, worldZ: origin.z, rotation: deco.rotation, scale });
+      const scale = (deco.scale ?? 1) * TOWN_PIECE_SCALE;
+      const centre = { x: x + deco.position[0], z: z + deco.position[2] };
+      const origin = pierOrigin(drawn, centre, deco.rotation);
+      piers.push({ worldX: origin.x, worldZ: origin.z, rotation: deco.rotation, scale, stretch: pierStretch(drawn, centre, origin, deco.rotation, scale) });
     }
   }
   return piers;
@@ -72,6 +88,10 @@ interface Tally {
   maps: number;
   ports: number;
   houses: number;
+  /** Per port: its village's standing buildings and its kit's. */
+  perPort: number[];
+  /** Every standing village house's width over the hex's. */
+  widths: number[];
   clutter: number;
   kit: number;
   stones: number;
@@ -79,7 +99,7 @@ interface Tally {
 }
 
 function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
-  const tally: Tally = { maps: 0, ports: 0, houses: 0, clutter: 0, kit: 0, stones: 0, failures: [] };
+  const tally: Tally = { maps: 0, ports: 0, houses: 0, perPort: [], widths: [], clutter: 0, kit: 0, stones: 0, failures: [] };
   const fail = (seed: number, what: string) => {
     if (tally.failures.length < 20) tally.failures.push(`${size} seed ${seed}: ${what}`);
   };
@@ -94,7 +114,7 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
     const kit = portBuildings(cells, drawn, terrainSeed, field.townPlateaus);
     const quays = portQuays(cells, drawn, terrainSeed);
     const { ports } = planPortTowns(cells, drawn, { buildings: kit, quays, piers, plateaus: field.townPlateaus }, terrainSeed);
-    const clutter = townClutter(ports, drawn, BUILDING_SCALE, terrainSeed);
+    const clutter = townClutter(ports, drawn, TOWN_PIECE_SCALE, terrainSeed);
     tally.maps++;
     tally.ports += ports.length;
     tally.clutter += clutter.length;
@@ -104,6 +124,18 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
       const harbour: PlanRect[] = [pierRect(port.pier), ...port.quays.map(quayRect)];
       // Every building's walls: the kit's here, the village's below; no kerb or edge stone may stand in one.
       const walls: PlanRect[] = port.buildings.map(villageWalls);
+      // The pier runs out past the beach and ends over the water, short of a ship docked in the hex it faces.
+      const deck = PIER_LENGTH * port.pier.scale * (port.pier.stretch ?? 1);
+      const endX = port.pier.worldX + Math.sin(port.pier.rotation) * deck;
+      const endZ = port.pier.worldZ + Math.cos(port.pier.rotation) * deck;
+      const seaEnd = drawn.sampleHeight(endX, endZ);
+      if (seaEnd > SEA_LEVEL - PIER_END_DEPTH) fail(seed, `pier ends on ground ${seaEnd.toFixed(4)} high`);
+      if (Math.hypot(endX - port.cx, endZ - port.cz) > PIER_MAX_REACH + 1e-9) fail(seed, "pier reaches into the docking hex");
+      const kitHere = kit.filter((b) => Math.hypot(b.worldX - port.cx, b.worldZ - port.cz) <= 1).length;
+      const standing = standingBuildings(port.buildings);
+      if (standing > VILLAGE_HOUSES) fail(seed, `${standing} village buildings, over the target`);
+      tally.perPort.push(standing + kitHere);
+      for (const b of port.buildings) if (b.variant !== "leanTo" && b.variant !== "warehouse") tally.widths.push((2 * VILLAGE_PLAN[b.variant].halfW * b.scale) / 2);
       // The kit's walls keep off the risers too, and off the streets, the lanes and their kerbs.
       for (const b of kit) {
         if (Math.hypot(b.worldX - port.cx, b.worldZ - port.cz) > 1) continue;
@@ -183,8 +215,20 @@ describe("village placement over 200 seeds per map size (#87)", () => {
             `${(tally.clutter / tally.ports).toFixed(1)} clutter pieces, ${(tally.kit / tally.ports).toFixed(2)} kit buildings and ` +
             `${(tally.stones / tally.ports).toFixed(0)} kerb and edge stones per port, in ${((performance.now() - started) / 1000).toFixed(1)} s`
         );
+        const inBand = tally.perPort.filter((n) => n >= PORT_BUILDINGS[0] && n <= PORT_BUILDINGS[1]).length;
+        const mean = tally.perPort.reduce((a, b) => a + b, 0) / tally.perPort.length;
+        const width = tally.widths.reduce((a, b) => a + b, 0) / tally.widths.length;
+        console.log(
+          `  ${size} ${first}-${last}: buildings a port mean ${mean.toFixed(1)}, ${((100 * inBand) / tally.perPort.length).toFixed(0)} % in ${PORT_BUILDINGS.join("–")}, ` +
+            `least ${Math.min(...tally.perPort)}, most ${Math.max(...tally.perPort)}; house width ${width.toFixed(4)} of a hex`
+        );
         expect(tally.failures).toEqual([]);
-        expect(tally.houses / tally.ports).toBeGreaterThan(20);
+        expect(mean).toBeGreaterThanOrEqual(PORT_BUILDINGS[0]);
+        expect(mean).toBeLessThanOrEqual(PORT_BUILDINGS[1]);
+        expect(Math.max(...tally.perPort)).toBeLessThanOrEqual(PORT_BUILDINGS[1]);
+        expect(inBand / tally.perPort.length).toBeGreaterThanOrEqual(IN_BAND_SHARE);
+        expect(width).toBeGreaterThanOrEqual(HOUSE_WIDTH_OF_HEX[0]);
+        expect(width).toBeLessThanOrEqual(HOUSE_WIDTH_OF_HEX[1]);
         // The watchtower and church, and most of the tavern, warehouse and house, at every port; the kerbs drawn.
         expect(tally.kit / tally.ports).toBeGreaterThan(2.5);
         expect(tally.stones / tally.ports).toBeGreaterThan(50);

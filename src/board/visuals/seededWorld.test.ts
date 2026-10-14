@@ -121,6 +121,8 @@ const REACH: Readonly<Partial<Record<SeedFeature, readonly Output[]>>> = {
   [SEED_FEATURES.portBuildings]: ["buildings", "villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
   [SEED_FEATURES.quay]: ["quays", "buildings", "villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
   [SEED_FEATURES.village]: ["villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
+  // Which houses a crowded town thins away (#176): the village, and the clutter and props round the footprints it frees.
+  [SEED_FEATURES.villageThinning]: ["villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
   // The spill moves the town's cells and so the plateau it bounds, and everything in the town (#170).
   [SEED_FEATURES.townSpill]: ["townPlans", "buildings", "quays", "villageBuildings", "clutter", "works", ...KEEP_OUT],
   [SEED_FEATURES.townClutter]: ["clutter", ...KEEP_OUT],

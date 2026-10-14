@@ -5,7 +5,7 @@ import type { Rgb } from "./palmGeometry";
 import { buildQuayGeometry, type QuayColors } from "./quayGeometry";
 import type { QuayPlacement } from "./quayPlacement";
 import { SEABED_LAYER } from "./seabedPrepass";
-import { PROP_SCALE } from "./worldScale";
+import { TOWN_PIECE_SCALE } from "./worldScale";
 
 const rgb = (name: PaletteName): Rgb => {
   const c = paletteColor(name);
@@ -65,7 +65,7 @@ export function Quays({ quays }: { quays: readonly QuayPlacement[] }) {
       tempObject.position.set(quay.worldX, quay.worldY, quay.worldZ);
       tempObject.rotation.set(0, quay.yaw, 0);
       // Heights at the props' scale; the plan's is in scaleX and scaleZ.
-      tempObject.scale.set(quay.scaleX, PROP_SCALE, quay.scaleZ);
+      tempObject.scale.set(quay.scaleX, TOWN_PIECE_SCALE, quay.scaleZ);
       tempObject.updateMatrix();
       mesh.setMatrixAt(i, tempObject.matrix);
     });

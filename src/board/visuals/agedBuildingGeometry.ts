@@ -6,15 +6,16 @@
  * and streaked under the windows and eave corners, with worn corners and a
  * lean of a degree or two; tiled roofs in uneven rows under a sagging
  * ridge; planked doors and shutters hanging open; and the watchtower, now
- * the port's landmark: a tapering body of rough-cut stone courses under a
- * string course, a parapet with merlons, and a flagpole flying the owning
- * nation's flag (`nationFlagGeometry.ts`, drawn as its own mesh with the
- * tower's matrix). Clearly the tallest thing in the settlement, up to the
- * height cap.
+ * the port's landmark: a tapering body, a base of rough-cut stone courses
+ * and a limewashed shaft over it (#176), under a string course, a parapet
+ * with merlons, and a flagpole flying the owning nation's flag
+ * (`nationFlagGeometry.ts`, drawn as its own mesh with the tower's matrix).
+ * Clearly the tallest thing in the town: drawn at `LANDMARK_SCALE`, under
+ * the houses' `BUILDING_SCALE`, it stands a stage taller than the rest.
  *
  * Same local-space contract as the faceted pieces (`buildingGeometry.ts`):
  * ground contact at the origin, the door on +z, a footing below ground,
- * under `BUILDING_MAX_HEIGHT`. Footprints match the faceted kinds so the
+ * under `BUILDING_MAX_HEIGHT` but for the tower. Footprints match the faceted kinds so the
  * settlement layout is unchanged in plan.
  */
 import { BUILDING_FOOTING, BUILDING_KINDS, WINDOW_EAVE_MARGIN, type BuildingKind } from "./buildingGeometry";
@@ -122,15 +123,23 @@ export const AGED_CHURCH = {
   quoin: { length: 0.03, courseHeight: 0.026, courses: 5, proud: 0.003 },
 } as const;
 
-/** The landmark tower at scale 1: a tapering body, a string course, a parapet with merlons, the pole. */
+/**
+ * How much taller than ADR 0003's tower the shaft stands (#176): with the
+ * town at ×2.5 and the landmarks at ×1.6, the old tower stood under the
+ * town houses' roofs; a limewashed stage over its stone base lifts it clear.
+ */
+const TOWER_SHAFT = 0.42;
+/** The landmark tower at scale 1: a tapering body (its stone base up to `stage`, a rendered shaft over it), a string course, a parapet with merlons, the pole. */
 export const AGED_TOWER = {
   halfBase: 0.1,
   halfTop: 0.085,
-  bodyTop: 0.36,
-  ledge: { bottom: 0.36, top: 0.372, half: 0.098 },
-  parapet: { bottom: 0.372, top: 0.405, half: 0.092 },
-  merlon: { top: 0.428, width: 0.032, depth: 0.018, offset: 0.045 },
-  pole: { radius: 0.006, topRadius: 0.0045, top: 0.49 },
+  stage: 0.36,
+  bodyTop: 0.36 + TOWER_SHAFT,
+  band: { half: 0.006, height: 0.012 },
+  ledge: { bottom: 0.36 + TOWER_SHAFT, top: 0.372 + TOWER_SHAFT, half: 0.098 },
+  parapet: { bottom: 0.372 + TOWER_SHAFT, top: 0.405 + TOWER_SHAFT, half: 0.092 },
+  merlon: { top: 0.428 + TOWER_SHAFT, width: 0.032, depth: 0.018, offset: 0.045 },
+  pole: { radius: 0.006, topRadius: 0.0045, top: 0.49 + TOWER_SHAFT },
 } as const;
 
 /** Each kind leans this much, x and z per unit of height (about 1.5° for the houses, under 1° for the tower). */
@@ -244,10 +253,11 @@ export const AGED_BUILDING_TRIANGLE_BUDGET = 1000;
  * 8 corner facets, two gables of 3, four eave streaks of 2, the roof
  * (`agedRoofTriangles`: 280 house, 288 warehouse, 364 tavern), a door 50,
  * and its windows (62 each), hatch (22) or sign (10). The tower is its
- * footing 10 and plinth course 18, body 16, the blocks (about 370, varying
- * with the courses the hash lays), slit recesses and streaks 20, ledge 28,
- * parapet 36, eight merlons 80, pole 18 and door 50; its flag (36) is a
- * separate mesh. The church is its footing 10 and plinth course 18, walls
+ * footing 10 and plinth course 18, base body 16, the blocks on it (about
+ * 370, varying with the courses the hash lays), slit recesses and streaks
+ * 20, the limewashed shaft, its five slits and the band under it (#176,
+ * 116), ledge 28, parapet 36, eight merlons 80, pole 18 and door 50; its
+ * flag (36) is a separate mesh. The church is its footing 10 and plinth course 18, walls
  * 80, back gable 3, eave streaks 8, the bell-gable facade 100 (base 18,
  * shoulders 8, screen foot 4, piers, reveals and sills 24, arch spandrels
  * 32, band 4, sides 4, pediment 6), the roof 388, cross 22, two bells 48,
@@ -258,7 +268,7 @@ export const AGED_BUILDING_TRIANGLES: Readonly<Record<BuildingKind, number>> = {
   warehouse: 510,
   tavern: 670,
   house: 502,
-  watchtower: 580,
+  watchtower: 696,
   church: 843,
 };
 
@@ -421,17 +431,28 @@ function addAgedTower(b: FacetBuilder, colors: AgedColors) {
   const bottomCuts = wornCuts(kindSeed(kind, 1));
   const topCuts = wornCuts(kindSeed(kind, 2));
   const cutAt = (k: number, y: number) => bottomCuts[k] + (topCuts[k] - bottomCuts[k]) * (y / t.bodyTop);
+  const stageCuts: typeof bottomCuts = [cutAt(0, t.stage), cutAt(1, t.stage), cutAt(2, t.stage), cutAt(3, t.stage)];
 
-  // The stone plinth, then the tapering mortar body the blocks lie on.
+  // The stone plinth, then the tapering mortar body the base's blocks lie on, and the limewashed shaft over it.
   const bodyFrom = b.vertexCount();
   plinth(b, t.halfBase, t.halfBase, colors.stone);
+  const stageHalf = halfAt(t.stage);
   wornPrism(
     b,
     { hw: t.halfBase, hd: t.halfBase, y: 0, cuts: bottomCuts },
-    { hw: t.halfTop, hd: t.halfTop, y: t.bodyTop, cuts: topCuts },
+    { hw: stageHalf, hd: stageHalf, y: t.stage, cuts: stageCuts },
     mortar,
     { faces: { bottom: false, top: false } }
   );
+  const shaftFrom = b.vertexCount();
+  wornPrism(
+    b,
+    { hw: stageHalf, hd: stageHalf, y: t.stage, cuts: stageCuts },
+    { hw: t.halfTop, hd: t.halfTop, y: t.bodyTop, cuts: topCuts },
+    colors.wall,
+    { faces: { bottom: false, top: false }, panel: { cols: 2, rows: 3, cellTint: flakingTint(kindSeed(kind, 20)) }, seed: kindSeed(kind, 21) }
+  );
+  b.jitterColors(0.04, kindSeed(kind, 22), shaftFrom, b.vertexCount());
   // Blocks on each face, leaving the door and the slits as recesses.
   const faces: WallFace[] = ["front", "right", "back", "left"];
   const door = { s0: t.halfBase - DOOR.halfWidth - 0.01, s1: t.halfBase + DOOR.halfWidth + 0.01, y0: 0, y1: DOOR.height + 0.016 };
@@ -451,7 +472,7 @@ function addAgedTower(b: FacetBuilder, colors: AgedColors) {
     ];
     stoneCourses(
       b,
-      { frame, widthAt: (y) => ({ left: cl(y), right: 2 * halfAt(y) - cr(y) }), y0: 0, y1: t.bodyTop, openings },
+      { frame, widthAt: (y) => ({ left: cl(y), right: 2 * halfAt(y) - cr(y) }), y0: 0, y1: t.stage - t.band.height / 2, openings },
       colors.stone,
       kindSeed(kind, 10 + i)
     );
@@ -461,7 +482,25 @@ function addAgedTower(b: FacetBuilder, colors: AgedColors) {
       streak(b, frame, s, o.y0, SLIT.height * 0.8, SLIT.halfWidth * 1.5, colors.stone);
     }
   });
-  tintGrime(b, bodyFrom, b.vertexCount(), GRIME_BAND * t.bodyTop, 0.25);
+  // Slits up the shaft, dark recesses in the render.
+  const shaftSlits: Record<string, number[]> = { front: [0.5, 0.64], right: [0.56], back: [0.6], left: [0.52] };
+  faces.forEach((face) => {
+    const frame = taperedFace(face, halfAt, 0, t.bodyTop);
+    for (const y0 of shaftSlits[face]) {
+      const s = halfAt(y0 + SLIT.height / 2);
+      faceQuad(b, frame, s - SLIT.halfWidth, s + SLIT.halfWidth, y0, y0 + SLIT.height, 0.0008, shadeRgb(colors.stone, 0.1));
+    }
+  });
+  tintGrime(b, bodyFrom, b.vertexCount(), GRIME_BAND * t.stage, 0.25);
+  // The band between the stone base and the shaft.
+  const bandCuts = wornCuts(kindSeed(kind, 23));
+  const bandHalf = stageHalf + t.band.half;
+  wornPrism(
+    b,
+    { hw: bandHalf, hd: bandHalf, y: t.stage - t.band.height / 2, cuts: bandCuts },
+    { hw: bandHalf, hd: bandHalf, y: t.stage + t.band.height / 2, cuts: bandCuts },
+    shadeRgb(colors.stone, 1.05)
+  );
 
   // The string course, the parapet (its top the walkway) and the merlons.
   const ledgeCuts = wornCuts(kindSeed(kind, 3));

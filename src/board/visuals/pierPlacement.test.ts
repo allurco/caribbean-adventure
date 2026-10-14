@@ -7,12 +7,15 @@ import { createTerrainHeightField, SEA_LEVEL } from "./terrainHeightField";
 import { PIER_DECK_TOP, PIER_LENGTH } from "./pierGeometry";
 import {
   pierOrigin,
+  pierStretch,
+  PIER_END_DEPTH,
+  PIER_MAX_REACH,
   PIER_LAND_OVERLAP,
   PIER_SHORE_HEIGHT,
   PIER_SHORE_MAX,
   PIER_SHORE_MIN,
 } from "./pierPlacement";
-import { PROP_SCALE } from "./worldScale";
+import { TOWN_PIECE_SCALE } from "./worldScale";
 import { SHIP_HULL_BOXES } from "../shipHull";
 
 const flat = (height: number): GroundField => ({ sampleHeight: () => height });
@@ -22,8 +25,8 @@ describe("pierOrigin", () => {
   it("keeps the search band inside the port hex and leaves room for a docked ship", () => {
     expect(PIER_SHORE_MIN).toBeGreaterThanOrEqual(0.4);
     expect(PIER_SHORE_MIN).toBeLessThan(PIER_SHORE_MAX);
-    // The docking hex centre is √3 away and a galleon's hull reaches half its length back from it; the pier is drawn at PROP_SCALE.
-    expect(PIER_SHORE_MAX - PIER_LAND_OVERLAP + PIER_LENGTH * PROP_SCALE).toBeLessThanOrEqual(Math.sqrt(3) - SHIP_HULL_BOXES.Galleon[2] / 2 + 1e-9);
+    // The docking hex centre is √3 away and a galleon's hull reaches half its length back from it; the pier is drawn at TOWN_PIECE_SCALE (#176).
+    expect(PIER_SHORE_MAX - PIER_LAND_OVERLAP + PIER_LENGTH * TOWN_PIECE_SCALE).toBeLessThanOrEqual(Math.sqrt(3) - SHIP_HULL_BOXES.Galleon[2] / 2 + 1e-9);
     expect(PIER_LAND_OVERLAP).toBeGreaterThan(0);
     expect(PIER_SHORE_HEIGHT).toBeGreaterThan(SEA_LEVEL);
     expect(PIER_SHORE_HEIGHT).toBeLessThan(PIER_DECK_TOP);
@@ -54,6 +57,22 @@ describe("pierOrigin", () => {
     expect(Math.hypot(sea.x - centre.x, sea.z - centre.z)).toBeCloseTo(PIER_SHORE_MIN - PIER_LAND_OVERLAP, 6);
   });
 
+  it("stretches a pier over a wide beach until its sea end stands in water, never past the docked ship (#176)", () => {
+    const k = TOWN_PIECE_SCALE;
+    const deck = PIER_LENGTH * k;
+    expect(PIER_MAX_REACH).toBeCloseTo(Math.sqrt(3) - SHIP_HULL_BOXES.Galleon[2] / 2, 12);
+    // Water from 0.9 out along +z: an origin at 0.6 needs the deck to reach 0.3 + a hair.
+    const shelf = (edge: number): GroundField => ({ sampleHeight: (_x, z) => (z - centre.z < edge ? 0.01 : SEA_LEVEL - 2 * PIER_END_DEPTH) });
+    const origin = { x: centre.x, z: centre.z + 0.6 };
+    expect(pierStretch(shelf(0.9), centre, origin, 0, k)).toBe(1);
+    const far = 0.6 + deck * 1.2;
+    const s = pierStretch(shelf(far), centre, origin, 0, k);
+    expect(deck * s).toBeGreaterThanOrEqual(far - 0.6);
+    expect(deck * (s - 0.05)).toBeLessThan(far - 0.6);
+    // No water within reach: as far as the docked ship allows, no further.
+    expect(0.6 + deck * pierStretch(shelf(5), centre, origin, 0, k)).toBeCloseTo(PIER_MAX_REACH, 9);
+  });
+
   it("on a generated map, every pier starts on the beach and ends over the water", () => {
     for (const seed of [11, 23, 47]) {
       const cells = generateMap(getMapPreset("small"), seed);
@@ -67,11 +86,12 @@ describe("pierOrigin", () => {
         const origin = pierOrigin(field, { x: hx, z: hz }, rotation);
         const dir = { x: Math.sin(rotation), z: Math.cos(rotation) };
         const landEnd = field.sampleHeight(origin.x, origin.z);
-        const seaEnd = field.sampleHeight(origin.x + dir.x * PIER_LENGTH, origin.z + dir.z * PIER_LENGTH);
+        const length = PIER_LENGTH * TOWN_PIECE_SCALE;
+        const seaEnd = field.sampleHeight(origin.x + dir.x * length, origin.z + dir.z * length);
         // The land end never floats clear of the beach by more than the toe allows.
         expect(landEnd).toBeGreaterThan(SEA_LEVEL - 1e-6);
-        // The sea end is over water (or the very edge of the shallows), under the deck.
-        expect(seaEnd).toBeLessThan(PIER_DECK_TOP);
+        // The sea end is out over the water.
+        expect(seaEnd).toBeLessThan(SEA_LEVEL);
       }
     }
   });

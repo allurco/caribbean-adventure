@@ -5,6 +5,7 @@ import { createReefMask } from "./reefMask";
 import { generateMap } from "../../game/mapGenerator";
 import { getMapPreset } from "../../game/mapConfig";
 import { createTerrainHeightField } from "./terrainHeightField";
+import { TOWN_REFINE } from "./townGround";
 import {
   buildLandMesh,
   landFaceColor,
@@ -678,15 +679,19 @@ describe("landSurfaceHeight", () => {
     expect(first).toBeLessThan(points.length * 1.5);
   });
 
-  it("creasesWithin lists the lattice vertices inside a disc and the lattice edges' crossings of its rim: where the drawn surface bends", () => {
+  it("creasesWithin lists the refined lattice's vertices inside a disc and its edges' crossings of its rim: where the drawn surface bends, a town's refined triangles included (#176)", () => {
     const field = createTerrainHeightField(cells, 11);
     const surface = landSurface(field);
-    const rowHeight = LAND_MESH_SPACING * (Math.sqrt(3) / 2);
+    // The town's refined triangles cut the lattice TOWN_REFINE times per edge: the same lattice at a finer pitch.
+    const coarseRow = LAND_MESH_SPACING * (Math.sqrt(3) / 2);
+    const rowHeight = coarseRow / TOWN_REFINE;
     const { minX, minZ } = field.bounds;
     const h = Math.sqrt(3) / 2;
-    /** Distance from a point to the nearest line of each lattice family (rows, 60° and 120° diagonals). */
-    const offLine = (p: { x: number; z: number }) =>
-      [p.z - minZ, -h * (p.x - minX) + 0.5 * (p.z - minZ), h * (p.x - minX) + 0.5 * (p.z - minZ)].map((c) => Math.abs(c / rowHeight - Math.round(c / rowHeight)) * rowHeight);
+    /** Distance from a point to the nearest line of each lattice family (rows, 60° and 120° diagonals), at a row height. */
+    const offLineAt = (p: { x: number; z: number }, row: number) =>
+      [p.z - minZ, -h * (p.x - minX) + 0.5 * (p.z - minZ), h * (p.x - minX) + 0.5 * (p.z - minZ)].map((c) => Math.abs(c / row - Math.round(c / row)) * row);
+    const offLine = (p: { x: number; z: number }) => offLineAt(p, rowHeight);
+    const offLineCoarse = (p: { x: number; z: number }) => offLineAt(p, coarseRow);
     let vertices = 0;
     let crossings = 0;
     for (const cell of cells) {
@@ -706,18 +711,19 @@ describe("landSurfaceHeight", () => {
           expect(Math.min(...off)).toBeLessThan(1e-6);
           onRim++;
         } else {
-          // Inside: a lattice vertex, on a line of every family, where the drawn surface and the field agree.
+          // Inside: a vertex of the fine lattice, on a line of every family; at a coarse one the drawn surface and the field agree.
           for (const o of off) expect(o).toBeLessThan(1e-6);
-          expect(surface.sampleHeight(p.x, p.z)).toBeCloseTo(field.sampleHeight(p.x, p.z), 9);
+          if (offLineCoarse(p).every((o) => o < 1e-6)) expect(surface.sampleHeight(p.x, p.z)).toBeCloseTo(field.sampleHeight(p.x, p.z), 9);
           inside++;
         }
       }
-      // A disc of radius 0.21 on a 0.15 lattice holds about 0.21² π / (0.15² √3 / 2) ≈ 7 vertices,
-      // and each family has about 2 × 0.21 / 0.13 ≈ 3 lines crossing it, twice each.
-      expect(inside).toBeGreaterThanOrEqual(5);
-      expect(inside).toBeLessThanOrEqual(10);
-      expect(onRim).toBeGreaterThanOrEqual(12);
-      expect(onRim).toBeLessThanOrEqual(24);
+      // A disc of radius 0.21 on a 0.15 lattice holds about 0.21² π / (0.15² √3 / 2) ≈ 7 vertices, TOWN_REFINE² as many
+      // on the fine one; and each family has about 2 × 0.21 / 0.13 ≈ 3 lines crossing it, twice each, TOWN_REFINE times as many fine.
+      const n = TOWN_REFINE;
+      expect(inside).toBeGreaterThanOrEqual(5 * n * n);
+      expect(inside).toBeLessThanOrEqual(10 * n * n);
+      expect(onRim).toBeGreaterThanOrEqual(12 * n);
+      expect(onRim).toBeLessThanOrEqual(24 * n);
       vertices += inside;
       crossings += onRim;
     }

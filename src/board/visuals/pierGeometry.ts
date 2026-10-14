@@ -18,8 +18,12 @@ export interface PierColors {
 
 export type PierGeometryData = FacetGeometryData;
 
-/** Deck length from the land end to the sea end, world units. */
-export const PIER_LENGTH = 0.6;
+/**
+ * Deck length from the land end to the sea end, at scale 1. Drawn at
+ * `TOWN_PIECE_SCALE` (#176) it runs about half a unit, out past the beach
+ * into water, and stops short of a Galleon docked in the hex it faces.
+ */
+export const PIER_LENGTH = 0.5;
 export const PIER_WIDTH = 0.16;
 /** Top of the deck planks, above sea level (0). */
 export const PIER_DECK_TOP = 0.07;

@@ -175,7 +175,8 @@ describe("terrainHeightField", () => {
     it("orders every cell centre by elevation on generated maps", () => {
       for (const seed of [1, 42, 2024]) {
         const cells = generateMap(getMapPreset("medium"), seed);
-        const field = createTerrainHeightField(cells, seed);
+        // The natural land: a town plateau levels its port's cells and the ones it spills onto (#170, #176), tested on its own.
+        const field = createTerrainHeightField(cells, seed, { towns: false });
         const heights: Record<number, number[]> = { 1: [], 2: [], 3: [] };
         for (const cell of cells) {
           if (!isLand(cell)) continue;

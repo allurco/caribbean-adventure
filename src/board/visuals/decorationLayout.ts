@@ -11,7 +11,7 @@ import { placeOnGround, type GroundPlacementOptions, type GroundSpot } from "./g
 import { ROCK_UNIT_RADIUS } from "./rockGeometry";
 import { placeRock } from "./rockPlacement";
 import { smallStones } from "./smallStones";
-import { pierOrigin } from "./pierPlacement";
+import { pierOrigin, pierStretch } from "./pierPlacement";
 import { portBuildings, type PortBuilding } from "./portSettlement";
 import { portQuays, type QuayPlacement } from "./quayPlacement";
 import { landSurface } from "./landMesh";
@@ -21,7 +21,7 @@ import { mapCellId } from "./islands";
 import { SEED_FEATURES } from "./seedFeatures";
 import { stream, subSeed } from "./subSeed";
 import { lerpRange } from "./variationStream";
-import { BUILDING_SCALE, PROP_DENSITY, PROP_SCALE } from "./worldScale";
+import { PROP_DENSITY, PROP_SCALE, TOWN_PIECE_SCALE } from "./worldScale";
 import { planPortTowns, type PortTownPlan, type VillageBuilding } from "./villageLayout";
 import { townClutter, townKeepOut, type PiecePlacement } from "./townDetailLayout";
 import { SHRUB_FOOTPRINT_RADIUS } from "./shrubGeometry";
@@ -83,6 +83,8 @@ export interface DecorationData {
    * `rockVariation`): keyed by its cell and indices (ADR 0007). 0 on a pier, whose look is fixed.
    */
   seed: number;
+  /** A pier's deck length over its authored one, so it reaches the water (`pierStretch`, #176); 1 when absent. */
+  stretch?: number;
 }
 
 /** Where every decoration stands, worked out once per map and shared by every world copy. */
@@ -179,16 +181,18 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap, world
         }
         // The fort becomes a watchtower among the port buildings (`portBuildings`, below).
         case "pier": {
-          // Piers sit at water level; the land end starts where the drawn beach meets the water.
+          // Piers sit at water level; the land end starts where the drawn beach meets the water. A pier is a town piece (#176).
           const origin = pierOrigin(drawn, own, deco.rotation);
+          const pierScale = (deco.scale ?? 1) * TOWN_PIECE_SCALE;
           piers.push({
             type: deco.type,
             worldX: origin.x,
             worldY: 0,
             worldZ: origin.z,
             rotation: deco.rotation,
-            scale,
+            scale: pierScale,
             seed: 0,
+            stretch: pierStretch(drawn, own, origin, deco.rotation, pierScale),
           });
           break;
         }
@@ -201,7 +205,7 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap, world
   const quays = portQuays(cells, drawn, worldSeed);
   // The village gathers round the port kit on its town plateau (#87), and its clutter round both.
   const town = planPortTowns(cells, drawn, { buildings, quays, piers, plateaus }, worldSeed);
-  const clutter = townClutter(town.ports, drawn, BUILDING_SCALE, worldSeed);
+  const clutter = townClutter(town.ports, drawn, TOWN_PIECE_SCALE, worldSeed);
   const village: VillageLayout = { buildings: town.buildings, clutter, ports: town.ports };
   // Trees, rocks, stones, shrubs and boulders stay out of the town's plan, its buildings and its clutter.
   const inTown = townKeepOut(town.ports, clutter, field.periodX);

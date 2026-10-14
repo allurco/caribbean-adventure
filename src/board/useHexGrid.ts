@@ -10,9 +10,8 @@ import { gridLineData, useWaterGridLines, type WaterGridLines, type WaterGridLin
 import { NO_HOVER, type SharedHover } from "./sharedHover";
 import { perMapCache } from "./visuals/perMapCache";
 import { decorationLayoutOf } from "./visuals/decorationLayout";
-import { PORT_GROUND_PROBE_RADIUS, portHoverVolumeAt, portOwnBuildings, type PortHoverVolume } from "./visuals/portHover";
+import { PORT_GROUND_PROBE_RADIUS, portHoverVolumeAt, portOwnBuildings, type PortHoverVolume, type TownBuilding } from "./visuals/portHover";
 import { portLabelAnchor } from "./visuals/portLabel";
-import type { PortBuilding } from "./visuals/portSettlement";
 
 // Minimum outline opacity for hexes the player is acting on. These ignore the
 // distance fade, so targets stay crisp anywhere on the map.
@@ -26,14 +25,15 @@ export interface PortSite {
   hover: PortHoverVolume;
   /** Where the name label stands across the ground: over the middle of the town (#151). */
   labelAnchor: { x: number; z: number };
-  /** The port's own buildings, which the label's baseline clears as the camera sees them (#75, `portLabelLiftOver`). */
-  ownBuildings: readonly PortBuilding[];
+  /** The port's own buildings, its village's houses among them (#176), which the label's baseline clears as the camera sees them (#75, `portLabelLiftOver`). */
+  ownBuildings: readonly TownBuilding[];
 }
 
 const portSitesOf = perMapCache((cells, wrap, worldSeed): PortSite[] => {
   const field = sharedTerrainField(cells, wrap, worldSeed);
-  // The buildings as placed (the same layout the board draws), so the hover volume follows them.
-  const { buildings } = decorationLayoutOf(cells, wrap, worldSeed);
+  // The buildings as placed (the same layout the board draws), so the hover volume follows them: the kit and the village's houses.
+  const { buildings, village } = decorationLayoutOf(cells, wrap, worldSeed);
+  const town: readonly TownBuilding[] = [...buildings, ...village.buildings];
   return cells
     .filter((c) => c.hasPort)
     .map((cell) => {
@@ -42,9 +42,9 @@ const portSitesOf = perMapCache((cells, wrap, worldSeed): PortSite[] => {
       return {
         cell,
         groundY,
-        hover: portHoverVolumeAt(cell.hex, groundY, buildings),
+        hover: portHoverVolumeAt(cell.hex, groundY, town),
         labelAnchor: portLabelAnchor({ x, z }, buildings),
-        ownBuildings: portOwnBuildings({ x, z }, buildings),
+        ownBuildings: portOwnBuildings({ x, z }, town),
       };
     });
 });
