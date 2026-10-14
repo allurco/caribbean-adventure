@@ -40,6 +40,12 @@
     25%, 70% { opacity: 1; transform: translateY(0); }
     100% { opacity: 0; transform: translateY(-4px); }
   }
+  /* A camera cut under reduced motion (#229): the scene shows through a veil that lifts. Opacity only. */
+  --animate-camera-cut: camera-cut 0.35s ease-out forwards;
+  @keyframes camera-cut {
+    0% { opacity: 0.6; }
+    100% { opacity: 0; }
+  }
   --animate-turn-ended-still: turn-ended-still 0.5s ease-in-out forwards;
   @keyframes turn-ended-still {
     0% { opacity: 0; }
