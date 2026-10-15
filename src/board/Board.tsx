@@ -71,6 +71,13 @@ import { reachClick, reachConfirm, selectionKey } from "./routeSelection";
 import { clipToWater, reachEdges, ribbonPositions, waterHexTriangles } from "./reachOutline";
 import { useRouteSailing } from "./useRouteSailing";
 import { RouteHint } from "./RouteHint";
+import { RegionBorders } from "./RegionBorders";
+import { RegionTooltip } from "./RegionTooltip";
+import { useRegionBorders } from "./useRegionBorders";
+import { regionAt } from "./regionMap";
+import { placeRegionNames } from "./regionNamePlacement";
+import { DEFAULT_REGION_BORDER_MODE, type RegionBorderMode } from "./regionBorderMode";
+import { useRegionChart } from "./visuals/useRegionChart";
 import { useTurnHandoff } from "./useTurnHandoff";
 import { controlsLocked, holdsNpcs } from "./turnHandoff";
 import { TurnEndedBanner } from "./TurnEndedBanner";
@@ -80,9 +87,29 @@ import { PortTooltip } from "./PortTooltip";
 import { ShipDetailsPanel } from "./ShipDetailsPanel";
 import { PortPanel } from "./PortPanel";
 import { DraftScreen } from "./DraftScreen";
+import { sceneStateFor } from "./draftScene";
+import { HudGloryBoard } from "./HudGloryBoard";
+import {
+  combatWaitingFor,
+  choosingCaptain,
+  draftView,
+  fightBystander,
+  fightWatched,
+  gloryScoreboard,
+  hudSeat,
+  hudShip,
+  viewerSeat,
+  seatMayAct,
+  seatMayActInCombat,
+  seatName,
+  waitingFor,
+} from "./seat";
 import { HudParchmentPanel } from "./HudParchmentPanel";
+import { HudShipLost } from "./HudShipLost";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
+import { gaugeLine } from "./combatGauge";
+import { SCENE_WIND } from "./visuals/sceneWind";
 import { GameOverScreen } from "./GameOverScreen";
 import { DockingAnimation } from "./DockingAnimation";
 import { TurnChangeAnimation } from "./TurnChangeAnimation";
@@ -96,6 +123,9 @@ import { DevSeedControl } from "./DevSeedControl";
 import { PLAYER_COLOURS } from "./shipOwnerColour";
 import { npcShipLook, playerShipLook } from "./shipLook";
 import { GallerySnapshot } from "../lab/GallerySnapshot";
+import { BoardLoadingVeil } from "./BoardLoadingVeil";
+import { SceneReadinessProbe } from "./SceneReadinessProbe";
+import { useSceneReadiness } from "./useSceneReadiness";
 import { STARTER_SHIP_CLASSES } from "../game/types";
 import { createRenderStatsFeed } from "./renderStats";
 import { useAudioUnlock } from "../audio/useAudioUnlock";
@@ -104,7 +134,7 @@ import { useCombatFx } from "./combatFx/useCombatFx";
 import { CombatEffects } from "./combatFx/CombatEffects";
 import { CombatBanner } from "./combatFx/CombatBanner";
 import type { CombatDirector } from "./combatFx/combatDirector";
-import type { DepartedShip } from "./combatFx/departedShips";
+import type { DepartedShipView } from "./combatFx/useCombatFx";
 import type { Mission } from "../game/types";
 
 
@@ -131,6 +161,7 @@ interface RouteSelection {
 function Scene({
   G,
   currentPlayer,
+  viewerSeatId,
   cam,
   movesRemaining,
   attackMode,
@@ -144,6 +175,7 @@ function Scene({
   hoveredPort,
   scoutedPlayerIds,
   focusView,
+  focusCut,
   sailing,
   plannedRoute,
   locked,
@@ -160,9 +192,13 @@ function Scene({
   onPortHover,
   onCameraCut,
   seaBuoys,
+  regionBorder,
+  onReady,
 }: {
   G: CaribbeanState;
   currentPlayer: string;
+  /** The viewer's seat (`viewerSeat`, #110), whose ship is "yours": the seat's, or in hotseat the current player's. */
+  viewerSeatId: string;
   /** The first target. */
   cam: { target: [number, number, number] };
   movesRemaining: number;
@@ -171,7 +207,7 @@ function Scene({
   attackTargetHexes: Hex[];
   spyglassTargetHexes: Hex[];
   /** Ships that left G the fight still shows: going down, or a prize alongside (#263). */
-  sinkingShips: DepartedShip[];
+  sinkingShips: DepartedShipView[];
   /** Plays the fight's beats: its effects, its sounds, and where it holds the ships (#263). */
   combatDirector: CombatDirector;
   npcs: Record<string, NPCShip>;
@@ -180,6 +216,8 @@ function Scene({
   scoutedPlayerIds: string[];
   /** Where to fly the camera: a new view starts a flight. */
   focusView: CameraView | null;
+  /** Go to `focusView` at once instead of flying (the opening view once the draft is over). */
+  focusCut: boolean;
   /** A planned route is being sailed: no reach, no moves (#213). */
   sailing: boolean;
   /** The route being sailed, if any. */
@@ -197,7 +235,8 @@ function Scene({
   /** Sail a planned route, one move per hex (#213). */
   onSailRoute: (route: Hex[]) => void;
   onHexClick: (hex: Hex) => void;
-  onSinkingComplete: (id: string) => void;
+  /** A departed ship, by its key, is done. */
+  onSinkingComplete: (key: string) => void;
   onShipHover: (id: string | null) => void;
   onShipClick: (id: string) => void;
   onPortHover: (cell: MapCell | null) => void;
@@ -205,6 +244,10 @@ function Scene({
   onCameraCut: () => void;
   /** Dev: buoys on the CPU sea surface (#141). */
   seaBuoys: boolean;
+  /** How the region borders are drawn: seams in the water or lines (dev, #239). */
+  regionBorder: RegionBorderMode;
+  /** Reports the loading gate's tasks done here: "world" once built, "sky" once baked (useSceneReadiness.ts). */
+  onReady: (task: string) => void;
 }) {
   const currentShipState = G.ships[currentPlayer];
   const controlsRef = useRef<MapControlsType>(null);
@@ -220,6 +263,12 @@ function Scene({
   // Physical sky as image-based lighting for the whole scene (replaces the old
   // hemisphere and fill lights) and as the sea's reflection.
   const skyEnvironment = useSkyEnvironment(lighting);
+  // The loading gate: the sky is baked, and the sea that waits on it is mounted
+  useEffect(() => {
+    if (skyEnvironment) onReady("sky");
+  }, [skyEnvironment, onReady]);
+  // Children commit before their parent's effects run, so by now the world (terrain, decorations, ports) is built and placed
+  useEffect(() => onReady("world"), [onReady]);
   // The sea's wave slopes, rebuilt on the GPU each frame (frozen under
   // reduced motion). The water shades its surface with them and the seabed
   // focuses its sunlight through them (#38 step 6), so they live here; the
@@ -344,9 +393,9 @@ function Scene({
       // Within the zoom limits, or the controls would hold it off forever
       targetDistance.current = Math.min(CAMERA_MAX_DISTANCE, Math.max(CAMERA_MIN_DISTANCE, focusView.distance));
       isAnimating.current = true;
-      flight.current = null;
+      flight.current = focusCut ? { kind: "cut" } : null;
     }
-  }, [focusView]);
+  }, [focusView, focusCut]);
 
   // A fight asks the camera to frame its ships (#263; never under reduced motion)
   useFrame(() => {
@@ -427,6 +476,11 @@ function Scene({
     () => ({ displacements: waves.displacements, terrainField }),
     [waves.displacements, terrainField]
   );
+  // The regions (#239): each one's name written into its open water, and
+  // the borders between them as a seam in the water or a faint line
+  const regionBorderLines = useRegionBorders(G.cells, G.wrap, waveSurface);
+  const regionNames = useMemo(() => placeRegionNames(G.cells, G.regions ?? [], G.wrap), [G.cells, G.regions, G.wrap]);
+  const regionChart = useRegionChart(G.cells, regionNames, terrainField, regionBorder === "water");
   const grid = useHexGrid({
     surface: waveSurface,
     cells: G.cells,
@@ -455,6 +509,12 @@ function Scene({
   // The route to the selected hex, else the hovered one, as dots on the water
   const hovered = reach && grid.hoveredHex && reachCost(reach, grid.hoveredHex) !== undefined ? grid.hoveredHex : null;
   const previewTarget = selected ?? hovered;
+  // The region of whatever sea hex is under the pointer, for its tooltip (#239)
+  const hoveredRegion = useMemo(() => {
+    const hex = grid.hoveredSeaHex;
+    const region = hex ? regionAt(G.cells, G.regions ?? [], hex) : undefined;
+    return hex && region ? { region, position: hexToWorld(hex) } : null;
+  }, [grid.hoveredSeaHex, G.cells, G.regions]);
   // The reach as an outline, cost rings and a light tint one move out, all on the water (reachOutline.ts)
   const reachShapes = useMemo(() => {
     if (!reach) return null;
@@ -538,6 +598,8 @@ function Scene({
           waveSlopes={waveSlopes}
           waveWhitecaps={waves.whitecaps}
           waveDisplacements={waves.displacements}
+          regionChart={regionChart}
+          regionSeams={regionBorder === "water"}
         />
       )}
 
@@ -555,6 +617,9 @@ function Scene({
       <TerrainDecorations layout={decorations} waveSlopes={waveSlopes} />
 
       <HexGrid grid={grid} copy={copy} />
+
+      {/* The regions' borders as lines, when they are not seams in the water (#239) */}
+      {regionBorder === "line" && <RegionBorders lines={regionBorderLines} />}
 
       {/* The turn's reach and the previewed route (#213) */}
       <ReachOverlay reach={reachShapes} target={targetShape} dots={routeDotPoints} />
@@ -603,7 +668,7 @@ function Scene({
 
       {sinkingShips.map((ship) => (
         <SinkingShip
-          key={`sinking-${ship.id}`}
+          key={`sinking-${ship.key}`}
           combatId={ship.id}
           report={copy === 0}
           sinks={ship.sinks}
@@ -612,7 +677,7 @@ function Scene({
           shipClass={ship.shipClass}
           flag={ship.flag}
           heading={ship.heading}
-          onComplete={() => onSinkingComplete(ship.id)}
+          onComplete={() => onSinkingComplete(ship.key)}
         />
       ))}
       </>
@@ -631,7 +696,7 @@ function Scene({
           position={position}
           ship={G.ships[hoveredShipId] ?? npcs[hoveredShipId]}
           isNPC={!!npcs[hoveredShipId]}
-          isPlayer={hoveredShipId === currentPlayer}
+          isPlayer={hoveredShipId === viewerSeatId}
           playerIndex={G.ships[hoveredShipId] ? hoveredShipId : undefined}
           isScouted={
             npcs[hoveredShipId]
@@ -650,16 +715,24 @@ function Scene({
       })()}
 
       {/* Port Tooltip, likewise */}
-      {hoveredPort && !hoveredShipId && G.ships[currentPlayer] && (
+      {hoveredPort && !hoveredShipId && G.ships[viewerSeatId] && (
         <PointerCopy x={hexToWorld(hoveredPort.hex)[0]} period={period}>
         <PortTooltip
           position={hexToWorld(hoveredPort.hex)}
           nation={hoveredPort.nation}
           portName={hoveredPort.portName}
           hasShipyard={hoveredPort.hasShipyard}
-          ship={G.ships[currentPlayer]}
+          ship={G.ships[viewerSeatId]}
           market={hoveredPort.market}
+          regionName={regionAt(G.cells, G.regions ?? [], hoveredPort.hex)?.name}
         />
+        </PointerCopy>
+      )}
+
+      {/* The region of the hovered sea hex (#239) */}
+      {hoveredRegion && !hoveredShipId && !hoveredPort && (
+        <PointerCopy x={hoveredRegion.position[0]} period={period}>
+          <RegionTooltip position={hoveredRegion.position} region={hoveredRegion.region} />
         </PointerCopy>
       )}
 
@@ -696,6 +769,8 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   cameraDistance?: number;
   /** Float buoys on the CPU sea surface round the camera focus (dev, #141). */
   seaBuoys?: boolean;
+  /** How the region borders are drawn (dev, #239): `DEFAULT_REGION_BORDER_MODE` when left out. */
+  regionBorder?: RegionBorderMode;
   /** Show the fps, draw calls and triangles readout (dev, #162); ignored in production builds. */
   renderStats?: boolean;
   /** A seed-gallery shot (dev, #161): the draft picks itself and the frame is posted to the gallery; ignored in production builds. */
@@ -703,7 +778,7 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, renderStats, gallerySnapshot } = props;
+  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, regionBorder, renderStats, gallerySnapshot } = props;
   const snapshot = import.meta.env.DEV && gallerySnapshot === true;
   // Dev seed gallery (#161): each seat takes its first captain and starter ship, so the shot reaches the main phase.
   const { pickCaptain } = props.moves;
@@ -712,6 +787,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   }, [snapshot, ctx.phase, ctx.currentPlayer, pickCaptain]);
   // Dev `stats=1` (#162): the probe in the Canvas reports to the overlay through this feed.
   const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
+  // The loading gate: the board shows once every asset, shader and a few frames are ready
+  const portNames = useMemo(() => G.cells.flatMap((c) => (c.portName ? [c.portName] : [])).join(""), [G.cells]);
+  const readiness = useSceneReadiness(portNames);
+  // The scene is mounted from the start, under the loading screen and then the draft (draftScene.ts)
+  const drafting = ctx.phase === "draft";
+  const sceneG = useMemo(() => sceneStateFor(G, ctx.phase), [G, ctx.phase]);
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
   const [hoveredShipId, setHoveredShipId] = useState<string | null>(null);
@@ -724,12 +805,35 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const cameraCut = useCallback(() => setCameraCuts((n) => n + 1), []);
   const [completedMission, setCompletedMission] = useState<Mission | null>(null);
   const [cameraFocusView, setCameraFocusView] = useState<CameraView | null>(null);
+  const [cameraFocusCut, setCameraFocusCut] = useState(false);
+  // Once the draft is over the camera cuts to the opening view, the viewer's own ship
+  const wasDrafting = useRef(drafting);
+  useEffect(() => {
+    if (!wasDrafting.current || drafting) return;
+    wasDrafting.current = false;
+    const mapCam = computeCameraConfig(getMapPreset(G.mapSize));
+    setCameraFocusView(
+      openingView({
+        ships: G.ships,
+        currentPlayer: ctx.currentPlayer,
+        playerID: props.playerID,
+        mapView: { target: mapCam.target, distance: mapCam.isoDistance },
+        pins: { target: cameraTarget, distance: cameraDistance },
+      })
+    );
+    setCameraFocusCut(true);
+  }, [drafting, G.ships, G.mapSize, ctx.currentPlayer, props.playerID, cameraTarget, cameraDistance]);
   // The first view, taken once when the main phase starts: MapControls
   // re-aims at its `target` prop whenever that changes.
   const [firstView, setFirstView] = useState<CameraView | null>(null);
 
   const currentPlayer = ctx.currentPlayer;
   const currentShipState = G.ships[currentPlayer];
+  // The client's seat (#110): with one, the board acts only on that seat's
+  // turn and shows that seat's own ship; hotseat (no seat) is as before.
+  const turn = { playerID: props.playerID, currentPlayer };
+  const viewer = viewerSeat(turn);
+  const viewerShip = G.ships[viewer];
 
   // Sound (#73): audio unlocks on the first click (the draft pick), then
   // every change of G plays the sounds its moves map to.
@@ -761,15 +865,15 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const combatFx = useCombatFx(G, prefersReducedMotion);
   const combatDirector = combatFx.director;
 
-  // Detect when current player docks at a new port
+  // Detect when the viewer's own ship docks at a new port
   useEffect(() => {
-    if (!currentShipState || ctx.phase === "draft") return;
+    if (!viewerShip || ctx.phase === "draft") return;
 
-    const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
+    const accessiblePort = findAccessiblePort(viewerShip.position, G.cells, G.wrap);
     // Keyed by player: a new turn that starts in port is not an arrival (#216)
-    const currentPortId = `${currentPlayer}:${accessiblePort?.portName ?? ""}`;
+    const currentPortId = `${viewer}:${accessiblePort?.portName ?? ""}`;
     const prevPortId = prevPortRef.current;
-    if (prevPortId === null || !prevPortId.startsWith(`${currentPlayer}:`)) {
+    if (prevPortId === null || !prevPortId.startsWith(`${viewer}:`)) {
       prevPortRef.current = currentPortId;
       return;
     }
@@ -783,7 +887,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     }
 
     prevPortRef.current = currentPortId;
-  }, [currentShipState?.position, G.cells, G.wrap, ctx.phase, currentShipState, currentPlayer]);
+  }, [viewerShip?.position, G.cells, G.wrap, ctx.phase, viewerShip, viewer]);
 
   // The hand-off between turns (#216): the outgoing ship arrives, a "turn
   // ends" beat, the NPCs sail, and only then the next turn is announced
@@ -799,7 +903,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       // Hotseat: fly to the new player's ship (networked clients stay put);
       // in a fight the camera stays on the two ships the fight framed (#263)
       const view = inFightRef.current || combatDirector.holding() ? null : turnChangeView({ ships: shipsRef.current, currentPlayer: player, playerID: props.playerID });
-      if (view) setCameraFocusView(view);
+      if (view) {
+        setCameraFocusView(view);
+        setCameraFocusCut(false);
+      }
     },
     [props.playerID, combatDirector]
   );
@@ -816,18 +923,21 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     markTurnShown();
   }, [markTurnShown]);
   const locked = controlsLocked(handoff);
+  // The board takes this client's moves now: its seat's turn (#110), and no hand-off under way (#216)
+  const boardActive = seatMayAct(turn) && !locked;
   const shownNpcs = holdsNpcs(handoff) && heldNpcs ? heldNpcs : G.npcs;
 
   // Detect mission completion
   useEffect(() => {
     const prev = prevMissionRef.current;
-    const currentMission = currentShipState?.activeMission;
+    // The viewer's own: a rival's mission is hidden from a seat (playerView, #109)
+    const currentMission = viewerShip?.activeMission;
 
     // Only detect completion if we're still the same player
     // This prevents false triggers when turn changes to a different player
     if (
       prev &&
-      prev.playerId === currentPlayer &&
+      prev.playerId === viewer &&
       prev.mission &&
       prev.mission.status === "ACTIVE" &&
       !currentMission
@@ -836,12 +946,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       const timer = setTimeout(() => {
         setCompletedMission({ ...completedMissionData, status: "COMPLETED" });
       }, 0);
-      prevMissionRef.current = { mission: currentMission, playerId: currentPlayer };
+      prevMissionRef.current = { mission: currentMission, playerId: viewer };
       return () => clearTimeout(timer);
     }
 
-    prevMissionRef.current = { mission: currentMission, playerId: currentPlayer };
-  }, [currentShipState?.activeMission, currentPlayer]);
+    prevMissionRef.current = { mission: currentMission, playerId: viewer };
+  }, [viewerShip?.activeMission, viewer]);
 
 
   // Calculate potential attack targets (players + NPCs) - must be before early return
@@ -877,18 +987,6 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   const hasSpyglassTargets = spyglassTargets.players.length > 0 || spyglassTargets.npcs.length > 0;
 
-  if (ctx.phase === "draft") {
-    return (
-      <DraftScreen
-        G={G}
-        currentPlayer={ctx.currentPlayer}
-        onPickCaptain={(index, shipClass) =>
-          props.moves.pickCaptain(index, shipClass)
-        }
-      />
-    );
-  }
-
   const preset = getMapPreset(G.mapSize);
   const cam = computeCameraConfig(preset);
   // The first view: the viewer's own ship at ship zoom (the map's middle from
@@ -898,7 +996,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const start =
     firstView ??
     openingView({
-      ships: G.ships,
+      ships: sceneG.ships,
       currentPlayer,
       playerID: props.playerID,
       mapView: { target: cam.target, distance: cam.isoDistance },
@@ -911,9 +1009,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   const inCombat = ctx.phase === "combat" && G.combat;
   // Until the next turn is announced, the HUD stays with the captain whose turn just ended (#216)
-  const hudPlayer =
-    handoff && handoff.phase !== "nextTurn" && handoff.phase !== "idle" && G.ships[handoff.from] ? handoff.from : currentPlayer;
-  const hudShip = G.ships[hudPlayer] ?? currentShipState;
+  // A seat's HUD shows its own ship always: a rival's purse reaches it emptied (#110)
+  const hudPlayer = hudSeat({ ...turn, handoff, ships: G.ships });
+  // Null once the seat's ship is gone: the HUD shows the loss, never a rival's ship in its place
+  const shownShip = hudShip(G, hudPlayer);
 
   const handleHexClickForAttack = (hex: Hex) => {
     // First check if it's a player ship
@@ -976,22 +1075,27 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         style={{ background: '#0a1929' }}
       >
         <Scene
-          G={G}
+          G={sceneG}
           currentPlayer={currentPlayer}
+          viewerSeatId={viewer}
           cam={{ target: start.target }}
           movesRemaining={movesRemaining}
           attackMode={attackMode}
           spyglassMode={spyglassMode}
           attackTargetHexes={attackTargetHexes}
-          spyglassTargetHexes={spyglassTargetHexes}
+          // Another seat's scouting reach is not this seat's to offer (#110)
+          spyglassTargetHexes={boardActive ? spyglassTargetHexes : []}
           sinkingShips={combatFx.departed}
           combatDirector={combatFx.director}
           npcs={shownNpcs}
-          locked={locked}
+          // Another seat's turn locks the board like a hand-off does (#110)
+          locked={!boardActive || drafting}
           hoveredShipId={hoveredShipId}
           hoveredPort={hoveredPort}
-          scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
+          // The viewer's spyglass: a rival's scouting reveals nothing to this seat (#110)
+          scoutedPlayerIds={viewerShip?.scoutedShips ?? []}
           focusView={cameraFocusView}
+          focusCut={cameraFocusCut}
           sailing={sailing}
           plannedRoute={plannedRoute}
           shipUnderway={Boolean(underway[currentPlayer])}
@@ -1004,19 +1108,47 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onSinkingComplete={combatFx.finishDeparted}
           onShipHover={setHoveredShipId}
           onShipClick={(id) => {
-            if (id === currentPlayer) {
+            if (id === viewer) {
               setShowDetailsPanel(true);
             }
           }}
           onPortHover={setHoveredPort}
           onCameraCut={cameraCut}
           seaBuoys={seaBuoys ?? false}
+          regionBorder={regionBorder ?? DEFAULT_REGION_BORDER_MODE}
+          onReady={readiness.complete}
+        />
+        <SceneReadinessProbe
+          compileShaders={readiness.view.compileShaders}
+          shadersCompiled={readiness.view.stage === "frames"}
+          countFrames={readiness.view.stage === "frames" && !readiness.view.ready}
+          complete={readiness.complete}
+          fail={readiness.fail}
+          frame={readiness.frame}
         />
         {/* Dev: fps, draw calls and triangles (#162); the DEV guard drops it from production builds */}
         {import.meta.env.DEV && renderStatsFeed && <RenderStatsProbe onStats={renderStatsFeed.publish} />}
         {/* Dev: a seed-gallery shot (#161); the DEV guard drops it from production builds */}
-        {import.meta.env.DEV && snapshot && <GallerySnapshot />}
+        {import.meta.env.DEV && snapshot && <GallerySnapshot ready={readiness.view.ready && !drafting} />}
       </Canvas>
+
+      {/* The captain draft, over the finished scene once the loading screen has gone; and a new captain for a lost ship (#265) */}
+      {choosingCaptain(G, ctx.phase, ctx.currentPlayer) && (
+        <div className="absolute inset-0 z-[55]">
+          <DraftScreen
+            view={draftView(G, turn)}
+            drafting={seatName(G, ctx.currentPlayer)}
+            onPickCaptain={(index, shipClass) => props.moves.pickCaptain(index, shipClass)}
+          />
+        </div>
+      )}
+
+      {/* The loading screen from page load until every asset, shader and a few frames are ready, then faded out */}
+      <BoardLoadingVeil view={readiness.view} />
+
+      {/* The HUD and panels, once the draft is over */}
+      {!drafting && (
+      <>
 
       {/* A camera cut (reduced motion, #229) fades in from a veil rather than jumping */}
       {cameraCuts > 0 && (
@@ -1041,6 +1173,11 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onRollFleeAttempt={() => props.moves.rollFleeAttempt()}
           onRollCannons={() => props.moves.rollCannons()}
           onApplyResolution={() => props.moves.applyResolution()}
+          // Only the seat whose step it is presses it (the attacker the draw, then the faster ship)
+          mayAct={seatMayActInCombat({ playerID: props.playerID, combat: G.combat })}
+          waitingLine={combatWaitingFor(G, { playerID: props.playerID, combat: G.combat })}
+          watchingLine={fightBystander(props.playerID, G.combat) ? fightWatched(G, G.combat) : null}
+          gaugeLine={gaugeLine(G, G.combat, SCENE_WIND)}
         />
       )}
 
@@ -1049,12 +1186,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         <HudTurnBar
           mapLabel={preset.label}
           movesRemaining={hudPlayer === currentPlayer ? movesRemaining : 0}
-          maxMoves={hudShip ? getMaxMoves(hudShip) : maxMoves}
-          turnOpen={hudPlayer === currentPlayer}
-          gold={hudShip.gold}
-          glory={hudShip.score}
+          maxMoves={shownShip ? getMaxMoves(shownShip) : maxMoves}
+          turnOpen={boardActive && hudPlayer === currentPlayer}
+          gold={shownShip?.gold ?? null}
+          glory={shownShip?.score ?? null}
+          waitingLine={waitingFor(G, turn)}
           onEndTurn={() => {
-            if (!locked) props.events.endTurn!();
+            if (boardActive) props.events.endTurn!();
           }}
         />
       )}
@@ -1062,17 +1200,25 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {/* Sound: mute and volume, under the turn bar */}
       {currentShipState && <HudSoundControl />}
 
+      {/* Every captain's glory, which is public (#110) */}
+      {!inCombat && currentShipState && (
+        <HudGloryBoard rows={gloryScoreboard(G, hudPlayer)} colours={PLAYER_COLOURS} />
+      )}
+
       {/* Bottom-left: captain and ship cards on parchment */}
-      {currentShipState && (
+      {currentShipState && shownShip && (
         <HudParchmentPanel
-          ship={hudShip}
+          ship={shownShip}
           playerIndex={hudPlayer}
           playerColor={PLAYER_COLOURS[hudPlayer] ?? "#888"}
         />
       )}
+      {currentShipState && !shownShip && (
+        <HudShipLost name={seatName(G, hudPlayer)} playerColor={PLAYER_COLOURS[hudPlayer] ?? "#888"} />
+      )}
 
       {/* Action buttons - only in main phase */}
-      {!inCombat && !locked && currentShipState && (hasAttackTargets || hasSpyglassTargets) && (
+      {!inCombat && boardActive && currentShipState && (hasAttackTargets || hasSpyglassTargets) && (
         <div className="absolute bottom-4 right-4 flex gap-2">
           {/* Spyglass button */}
           {hasSpyglassTargets && (
@@ -1111,7 +1257,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
       {/* A route is selected (#213): how to sail it or let it go */}
       {!inCombat &&
-        !locked &&
+        boardActive &&
         currentShipState &&
         !sailing &&
         !underway[currentPlayer] &&
@@ -1140,7 +1286,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* Right: Port panel - only in main phase when docked at a port */}
-      {!inCombat && !locked && currentShipState && (() => {
+      {!inCombat && boardActive && currentShipState && (() => {
         const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
         if (!accessiblePort?.market) return null;
         return (
@@ -1173,11 +1319,11 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       })()}
 
       {/* Ship Details Panel */}
-      {showDetailsPanel && currentShipState && (
+      {showDetailsPanel && viewerShip && (
         <ShipDetailsPanel
-          ship={currentShipState}
+          ship={viewerShip}
           onClose={() => setShowDetailsPanel(false)}
-          onStashGold={(amount) => props.moves.stashGold(amount)}
+          onStashGold={boardActive ? (amount) => props.moves.stashGold(amount) : undefined}
         />
       )}
 
@@ -1219,6 +1365,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           score={ctx.gameover.score}
           onPlayAgain={() => window.location.reload()}
         />
+      )}
+      </>
       )}
     </div>
   );

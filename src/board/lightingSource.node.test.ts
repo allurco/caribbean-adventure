@@ -80,6 +80,7 @@ describe("one source of light (#169)", () => {
       "Board.tsx",
       "PropViewer.tsx",
       "combatFx/PuffLayer.tsx",
+      "useRegionBorders.ts",
       "useWaterGridLines.ts",
       "visuals/ShoreBoulderMeshes.tsx",
     ]);

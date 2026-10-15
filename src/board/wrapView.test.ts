@@ -170,17 +170,17 @@ describe("the game's camera on a wrapping map", () => {
     expect(d * (footprint.maxZ - footprint.minZ)).toBeGreaterThan(band.maxZ - band.minZ);
   });
 
-  it("draws five copies of the small map at full zoom-out on a 16:9 screen, three of the others", () => {
+  it("draws three copies of each map at full zoom-out on a 16:9 screen", () => {
     // The view is symmetric about the focus (the camera looks due north), so
-    // the copies are too: ~68 units of view plus the margin just exceeds two
-    // widths of the small map (36).
+    // the copies are too: ~68 units of view plus the margin stays within two
+    // widths of even the small map (39, since it grew for the regions, #239).
     const footprint = groundFootprint(CAMERA_DIRECTION, CAMERA_FOV, SIXTEEN_NINE)!;
     const margin = 3; // WRAP_COPY_MARGIN in Board.tsx
     const ranges = MAP_PRESETS.map((preset) =>
       wrapCopyRange(footprint, CAMERA_MAX_DISTANCE, 1.5 * preset.columns, margin)
     );
     expect(ranges).toEqual([
-      { from: -2, to: 2 },
+      { from: -1, to: 1 },
       { from: -1, to: 1 },
       { from: -1, to: 1 },
     ]);

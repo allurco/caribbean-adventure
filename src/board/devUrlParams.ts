@@ -1,6 +1,7 @@
 import type { CaribbeanSetupData } from "../game/types";
 import type { MapSizeId } from "../game/mapConfig";
 import { isValidMapSeed } from "../game/mapSeed";
+import { REGION_BORDER_MODES, type RegionBorderMode } from "./regionBorderMode";
 
 /**
  * Dev-only URL parameters (#74), so a URL alone reproduces a map and a view
@@ -21,12 +22,16 @@ export interface DevUrlParams {
   soundLab?: true;
   /** `?buoys=1`: buoys on the CPU sea surface around the camera focus, to check it rides the drawn water (#141). */
   seaBuoys?: true;
+  /** `?regionBorder=water|line`: the region borders as a soft seam in the water or as the old line (#239); the default is `DEFAULT_REGION_BORDER_MODE`. */
+  regionBorder?: RegionBorderMode;
   /** `?stats=1`: a corner readout of fps, draw calls and triangles (#162), in dev builds only. */
   renderStats?: true;
   /** `?seedGallery=1`: the 12-seed contact sheet instead of the game (#161), in dev builds only. */
   seedGallery?: true;
   /** `?snapshot=1`: one gallery shot (#161): the draft picks itself and the board posts its picture to the gallery, in dev builds only. */
   gallerySnapshot?: true;
+  /** `?seats=1`: every seat of the match on one page, through boardgame.io's local transport, one seat shown at a time (#110), in dev builds only. */
+  localSeats?: true;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -53,13 +58,27 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   if (params.get("view") === "sound") out.soundLab = true;
   if (params.get("buoys") === "1") out.seaBuoys = true;
   if (params.get("stats") === "1") out.renderStats = true;
+  const regionBorder = params.get("regionBorder");
+  const mode = REGION_BORDER_MODES.find((m) => m === regionBorder);
+  if (mode) out.regionBorder = mode;
   // Dev-only routes (#161): the DEV guard drops even their names from production builds.
   if (import.meta.env.DEV) {
     if (params.get("seedGallery") === "1") out.seedGallery = true;
     if (params.get("snapshot") === "1") out.gallerySnapshot = true;
+    if (params.get("seats") === "1") out.localSeats = true;
   }
 
   return out;
+}
+
+/**
+ * Whether the game client shows boardgame.io's debug panel, the one place
+ * that decides: not in a gallery shot, where it would cover the right of the
+ * picture, nor for the seats on one page, where even folded its tab covers
+ * End Turn and the turn bar (#110; the seat switcher plays every seat).
+ */
+export function showsDebugPanel(params: DevUrlParams): boolean {
+  return params.gallerySnapshot !== true && params.localSeats !== true;
 }
 
 function parseSetupData(size: string | null, seed: string | null): CaribbeanSetupData | undefined {

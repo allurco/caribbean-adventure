@@ -5,14 +5,14 @@
  * players drafts through the real `pickCaptain` move, and no two ships may
  * share a hex, nor sit anywhere but on water.
  */
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { createCaptainDeck, dealHands } from "./captains";
 import { createShipState } from "./economy";
-import { createWrap, hex, hexEquals } from "./hex";
+import { createWrap, hex, hexEquals, wrappedDistance } from "./hex";
 import { getMapPreset, type MapSizeId } from "./mapConfig";
 import { generateMapFor } from "./mapRequest";
 import { STARTER_SHIP_CLASSES } from "./types";
@@ -35,7 +35,7 @@ function mulberry32(seed: number): () => number {
 
 /** The ships after six players draft on map `seed` of `mapSize`, each taking the first captain of their hand. */
 function draftedShips(mapSize: MapSizeId, mapSeed: number) {
-  const cells = generateMapFor({ mapSize, mapSeed });
+  const { cells, regions } = generateMapFor({ mapSize, mapSeed });
   const { hands, remaining } = dealHands(createCaptainDeck(mulberry32(mapSeed)), PLAYERS);
   const ships: CaribbeanState["ships"] = {};
   for (let i = 0; i < PLAYERS; i++) ships[String(i)] = createShipState(hex(0, 0));
@@ -43,6 +43,7 @@ function draftedShips(mapSize: MapSizeId, mapSeed: number) {
     ...Caribbean,
     setup: () => ({
       cells,
+      regions,
       ships,
       npcs: {},
       mapSize,
@@ -59,25 +60,45 @@ function draftedShips(mapSize: MapSizeId, mapSeed: number) {
   for (let i = 0; i < PLAYERS; i++) client.moves.pickCaptain(0, STARTER_SHIP_CLASSES[i % STARTER_SHIP_CLASSES.length]);
   const { G, ctx } = client.getState()!;
   client.stop();
-  return { G, phase: ctx.phase, cells };
+  return { G, phase: ctx.phase, cells, regions };
 }
 
-describe(`the draft's ship placement over ${SEEDS} seeds per map size (#166)`, () => {
+/**
+ * Seeds per test: a whole size in one block runs long enough on a CI runner to
+ * starve the worker past vitest's 60 s RPC timeout, so it runs in short tests
+ * with a macrotask yield before each (as villagePlacement.test.ts does).
+ */
+const SEEDS_PER_TEST = 20;
+
+describe(`the draft's ship placement over ${SEEDS} seeds per map size (#166, #239)`, () => {
+  // Tests in a file chain on microtasks, so without this the worker never reaches
+  // its message queue between them and vitest's onTaskUpdate RPC times out.
+  beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
   for (const mapSize of SIZES) {
-    it(`never draws two ships on one hex centre on ${mapSize} maps`, () => {
-      for (let seed = 1; seed <= SEEDS; seed++) {
-        const { G, phase, cells } = draftedShips(mapSize, seed);
-        expect(phase, `seed ${seed}`).toBe("main");
-        const positions = Object.values(G.ships).map((ship) => ship.position);
-        expect(positions, `seed ${seed}`).toHaveLength(PLAYERS);
-        positions.forEach((p, i) => {
-          const cell = cells.find((c) => hexEquals(c.hex, p));
-          expect(cell?.terrain, `seed ${seed}: ship ${i} at (${p.q}, ${p.r})`).toBe("water");
-          for (let j = 0; j < i; j++) {
-            expect(hexEquals(p, positions[j]), `seed ${seed}: ships ${j} and ${i} share (${p.q}, ${p.r})`).toBe(false);
+    for (let first = 1; first <= SEEDS; first += SEEDS_PER_TEST) {
+      const last = Math.min(SEEDS, first + SEEDS_PER_TEST - 1);
+      it(`never draws two ships on one hex centre, and starts every captain at a home port in their nation's region, on ${mapSize} maps, seeds ${first} to ${last}`, () => {
+        for (let seed = first; seed <= last; seed++) {
+          const { G, phase, cells, regions } = draftedShips(mapSize, seed);
+          expect(phase, `seed ${seed}`).toBe("main");
+          const positions = Object.values(G.ships).map((ship) => ship.position);
+          expect(positions, `seed ${seed}`).toHaveLength(PLAYERS);
+          positions.forEach((p, i) => {
+            const cell = cells.find((c) => hexEquals(c.hex, p));
+            expect(cell?.terrain, `seed ${seed}: ship ${i} at (${p.q}, ${p.r})`).toBe("water");
+            for (let j = 0; j < i; j++) {
+              expect(hexEquals(p, positions[j]), `seed ${seed}: ships ${j} and ${i} share (${p.q}, ${p.r})`).toBe(false);
+            }
+          });
+          // Home in the captain's nation's waters (#239), starting beside the port.
+          for (const [id, ship] of Object.entries(G.ships)) {
+            const home = cells.find((c) => ship.homePortHex && hexEquals(c.hex, ship.homePortHex));
+            expect(home?.hasPort, `seed ${seed}: ship ${id} has a home port`).toBe(true);
+            expect(regions[home!.region!].nation, `seed ${seed}: ship ${id}`).toBe(ship.captain!.nation);
+            expect(wrappedDistance(ship.position, home!.hex, G.wrap), `seed ${seed}: ship ${id}`).toBe(1);
           }
-        });
-      }
-    }, 300_000);
+        }
+      }, 120_000);
+    }
   }
 });

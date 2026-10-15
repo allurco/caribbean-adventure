@@ -22,8 +22,8 @@ export async function generateMapOffThread(
 ): Promise<GeneratedMap> {
   if (!runWorker) return onMainThread(request);
   try {
-    const cells = readMapWorkerResponse(await runWorker({ request }));
-    if (cells) return { ...request, cells };
+    const world = readMapWorkerResponse(await runWorker({ request }));
+    if (world) return { ...request, ...world };
     console.warn("The map worker could not generate the map; generating it on the main thread.");
   } catch (error) {
     console.warn("The map worker failed; generating the map on the main thread.", error);
@@ -32,5 +32,5 @@ export async function generateMapOffThread(
 }
 
 function onMainThread(request: MapRequest): GeneratedMap {
-  return { ...request, cells: generateMapFor(request) };
+  return { ...request, ...generateMapFor(request) };
 }

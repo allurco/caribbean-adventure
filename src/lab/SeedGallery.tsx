@@ -12,9 +12,10 @@ import {
   galleryShots,
   isSeedGalleryMessage,
 } from "./seedGalleryShots";
+import { READINESS_TIMEOUT_MS } from "../board/sceneReadiness";
 
-/** How long one shot may take before the gallery gives up on it and moves on. */
-const SHOT_TIMEOUT_MS = 60000;
+/** How long one shot may take before the gallery gives up on it and moves on: past the board's own loading timeout, plus the map and the draft. */
+const SHOT_TIMEOUT_MS = READINESS_TIMEOUT_MS + 30000;
 
 type ShotResult = { image: string } | { failed: true };
 
@@ -27,7 +28,7 @@ type ShotResult = { image: string } | { failed: true };
  */
 export default function SeedGallery({ mapSize = SEED_GALLERY_DEFAULT_SIZE }: { mapSize?: MapSizeId }) {
   const shots = useMemo(() => {
-    const cellsBySeed = new Map(SEED_GALLERY_SEEDS.map((mapSeed) => [mapSeed, generateMapFor({ mapSize, mapSeed })]));
+    const cellsBySeed = new Map(SEED_GALLERY_SEEDS.map((mapSeed) => [mapSeed, generateMapFor({ mapSize, mapSeed }).cells]));
     return galleryShots(mapSize).map((shot) => {
       const view = galleryShotView(shot.view, mapSize, cellsBySeed.get(shot.mapSeed) ?? []);
       return {

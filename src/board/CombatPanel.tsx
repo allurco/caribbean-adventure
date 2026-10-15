@@ -1,4 +1,5 @@
 import type { CombatState, ShipState, CombatAction, NPCShip } from "../game/types";
+import { npcKind } from "./npcName";
 
 interface CombatPanelProps {
   combat: CombatState;
@@ -9,6 +10,14 @@ interface CombatPanelProps {
   onRollFleeAttempt: () => void;
   onRollCannons: () => void;
   onApplyResolution: () => void;
+  /** This client presses the fight's current step (`seatMayActInCombat`, #110); else its controls are off. */
+  mayAct: boolean;
+  /** Who and what this client waits on while another seat presses (`combatWaitingFor`). */
+  waitingLine?: string | null;
+  /** The line a seat watching someone else's fight sees (`fightWatched`). */
+  watchingLine?: string | null;
+  /** Who holds the weather gauge (`gaugeLine`, #264). */
+  gaugeLine?: string | null;
 }
 
 function ShipCombatStats({ ship, label }: { ship: ShipState; label: string }) {
@@ -91,12 +100,19 @@ export function CombatPanel({
   onRollFleeAttempt,
   onRollCannons,
   onApplyResolution,
+  mayAct,
+  waitingLine,
+  watchingLine,
+  gaugeLine,
 }: CombatPanelProps) {
   const attacker = ships[combat.attackerId];
   const defender = combat.isNPCCombat
     ? npcs[combat.defenderId]
     : ships[combat.defenderId];
   const isNPC = combat.isNPCCombat;
+  const npcLabel = isNPC && defender ? npcKind(defender as NPCShip) : "Merchant";
+  // Seats count from 1 on the board, as everywhere else (#110)
+  const seatLabel = (id: string | null) => Number(id) + 1;
 
   return (
     <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-xl overflow-hidden border border-red-800/50 bg-gradient-to-br from-stone-900/95 via-red-950/90 to-stone-950/95 shadow-2xl shadow-black/50 backdrop-blur-md text-white p-4 text-sm w-96">
@@ -106,13 +122,13 @@ export function CombatPanel({
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         {attacker && (
-          <ShipCombatStats ship={attacker} label={`Attacker (P${combat.attackerId})`} />
+          <ShipCombatStats ship={attacker} label={`Attacker (P${seatLabel(combat.attackerId)})`} />
         )}
         {defender && (
           isNPC ? (
-            <NPCCombatStats npc={defender as NPCShip} label="Defender (Merchant)" />
+            <NPCCombatStats npc={defender as NPCShip} label={`Defender (${npcLabel})`} />
           ) : (
-            <ShipCombatStats ship={defender as ShipState} label={`Defender (P${combat.defenderId})`} />
+            <ShipCombatStats ship={defender as ShipState} label={`Defender (P${seatLabel(combat.defenderId)})`} />
           )
         )}
       </div>
@@ -120,6 +136,10 @@ export function CombatPanel({
       <div className="text-center text-xs text-amber-400/70 mb-2">
         Distance: {combat.distance} hex{combat.distance > 1 ? "es" : ""}
       </div>
+      {gaugeLine && <div className="text-center text-xs text-sky-200/80 mb-2">{gaugeLine}</div>}
+
+      {watchingLine && <div className="text-center text-xs italic text-amber-200/90 mb-1">{watchingLine}</div>}
+      {waitingLine && <div className="text-center text-xs italic text-amber-200/90 mb-2">{waitingLine}</div>}
 
       {combat.stage === "seamanship" && (
         <div className="text-center space-y-2">
@@ -129,6 +149,7 @@ export function CombatPanel({
           <ActionButton
             label="Roll Seamanship"
             onClick={onRollSeamanship}
+            disabled={!mayAct}
             primary
           />
         </div>
@@ -140,12 +161,12 @@ export function CombatPanel({
             <div className="text-amber-400 text-xs mb-1">Seamanship Winner</div>
             <div className="text-lg font-heading text-amber-100">
               {isNPC && combat.seamanshipWinner === combat.defenderId
-                ? "Merchant"
-                : `Player ${combat.seamanshipWinner}`}
+                ? npcLabel
+                : `Player ${seatLabel(combat.seamanshipWinner)}`}
             </div>
             <div className="text-[10px] text-amber-400/60 mt-1">
-              Rolls: P{combat.attackerId}: {combat.seamanshipRolls[combat.attackerId]} |
-              {isNPC ? " NPC" : ` P${combat.defenderId}`}: {combat.seamanshipRolls[combat.defenderId]}
+              Rolls: P{seatLabel(combat.attackerId)}: {combat.seamanshipRolls[combat.attackerId]} |
+              {isNPC ? " NPC" : ` P${seatLabel(combat.defenderId)}`}: {combat.seamanshipRolls[combat.defenderId]}
             </div>
           </div>
 
@@ -153,22 +174,24 @@ export function CombatPanel({
             <div className="text-amber-100/80 text-xs text-center">
               {isNPC
                 ? "Choose your action:"
-                : `Player ${combat.seamanshipWinner}, choose your action:`}
+                : `Player ${seatLabel(combat.seamanshipWinner)}, choose your action:`}
             </div>
             <div className="flex gap-2 justify-center">
               <ActionButton
                 label="Fire!"
                 onClick={() => onChooseAction("fire")}
+                disabled={!mayAct}
                 primary
               />
               <ActionButton
                 label="Board"
                 onClick={() => onChooseAction("board")}
-                disabled={combat.distance > 1}
+                disabled={!mayAct || combat.distance > 1}
               />
               <ActionButton
                 label="Flee"
                 onClick={() => onChooseAction("flee")}
+                disabled={!mayAct}
               />
             </div>
             {combat.distance > 1 && (
@@ -188,14 +211,15 @@ export function CombatPanel({
               {combat.seamanshipWinner === combat.attackerId
                 ? "You are attempting to escape!"
                 : isNPC
-                  ? "The merchant is trying to flee!"
-                  : `Player ${combat.seamanshipWinner} is attempting to flee!`}
+                  ? `The ${npcLabel.toLowerCase()} is trying to flee!`
+                  : `Player ${seatLabel(combat.seamanshipWinner)} is attempting to flee!`}
             </div>
           </div>
           <div className="text-center">
             <ActionButton
               label="Roll Pursuit Check"
               onClick={onRollFleeAttempt}
+              disabled={!mayAct}
               primary
             />
           </div>
@@ -226,6 +250,7 @@ export function CombatPanel({
           <ActionButton
             label={combat.fleeOutcome === "caught" ? "Fire Parting Shot!" : "Fire Cannons!"}
             onClick={onRollCannons}
+            disabled={!mayAct}
             primary
           />
         </div>
@@ -251,6 +276,7 @@ export function CombatPanel({
             <ActionButton
               label="Apply Damage"
               onClick={onApplyResolution}
+              disabled={!mayAct}
               primary
             />
           </div>

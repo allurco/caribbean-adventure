@@ -195,6 +195,12 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(combatBeatsFrom(before, after)).toEqual([expect.objectContaining({ kind: "sink", shipId: "1", shooterId: "0" })]);
   });
 
+  it("a seat's fresh ship after its captain was lost (#277) is not a sinking, nor anything else", () => {
+    const lost = makeState({ ships: { "0": makeShip("Frigate") } });
+    const back = makeState({ ships: { "0": makeShip("Frigate"), "1": makeShip("Sloop", { position: hex(7, 7) }) } });
+    expect(combatBeatsFrom(lost, back)).toEqual([]);
+  });
+
   it("an NPC sunk in a fight sinks too", () => {
     const npc = makeNpc();
     const before = makeState({ npcs: { [npc.id]: npc }, combat: makeCombat({ stage: "resolution", defenderId: npc.id, isNPCCombat: true }) });

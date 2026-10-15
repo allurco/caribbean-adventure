@@ -191,6 +191,29 @@ export interface MapCell {
   dockingHex?: Hex; // Water hex where ships dock to access this port
   elevation: Elevation; // 0=Water, 1=Beach, 2=Jungle, 3=Mountain
   biome?: Biome; // Only for land hexes: SAND, GRASS, or ROCK
+  /**
+   * The region this hex lies in (#239): an id into `CaribbeanState.regions`.
+   * Land, reef and water alike; set on every cell by the generator. Optional
+   * only so hand-built cells in tests can leave it out.
+   */
+  region?: RegionId;
+}
+
+/** A region's id: its index in `CaribbeanState.regions`. */
+export type RegionId = number;
+
+/**
+ * A region (#239): one nation's waters, or the Pirates' (`nation` "Pirate").
+ * Its islands were generated as one cluster, every port in it was founded
+ * under its flag, and open sea separates it from the others.
+ */
+export interface Region {
+  id: RegionId;
+  nation: PortNation;
+  /** Its name on the board, e.g. "the Spanish Main". */
+  name: string;
+  /** The regions whose waters touch this one's, by id, ascending. */
+  neighbours: RegionId[];
 }
 
 /**
@@ -204,6 +227,12 @@ export interface CaribbeanSetupData {
 
 export interface CaribbeanState {
   cells: MapCell[];
+  /**
+   * The map's regions (#239), indexed by id; each cell names its own. Always
+   * set by `setup()`; optional only so hand-built states in tests can leave
+   * it out.
+   */
+  regions?: Region[];
   ships: Record<string, ShipState>;
   npcs: Record<string, NPCShip>;
   mapSize: MapSizeId;
@@ -226,8 +255,9 @@ export interface CaribbeanState {
   npcIdCounter: number;
   /**
    * The players who have turned pirate, by player id (#201). Kept on the
-   * player rather than the ship, so it outlives a sunk or replaced ship;
-   * entries are added once and never removed. Read it through
+   * player rather than the ship, so it outlives a sunk ship; an entry is
+   * removed only when the player's captain is replaced (#265: the new
+   * captain starts clean). Read it through
    * `isPlayerPirate`. Always set by `setup()`; optional only so hand-built
    * states in tests can leave it out (missing means nobody is a pirate).
    */
@@ -245,6 +275,28 @@ export interface CaribbeanState {
    * states in tests can leave it out (missing means none used).
    */
   movesUsed?: number;
+  /**
+   * The seats whose ship is lost and whose captain died with it (#265), by
+   * player id: from the loss until the seat picks a new captain at the
+   * start of its next turn (`captainDeath.ts`). Their ship is gone from
+   * `ships`, so what the player keeps waits here. Optional for the same
+   * reason as `pirates` (missing means no seat is waiting).
+   */
+  lostShips?: Record<string, LostShip>;
+}
+
+/** How a player's ship was lost: sunk, or (#258) taken by boarding. */
+export type ShipLossCause = "sunk" | "taken";
+
+/** A seat whose ship is lost (#265): the dead captain, and what the player keeps for the next. */
+export interface LostShip {
+  cause: ShipLossCause;
+  /** The captain who died with the ship. */
+  captain?: Captain;
+  /** The player's glory, kept. */
+  score: number;
+  /** The player's stashed gold, kept; private to the seat like a ship's stash. */
+  stashedGold: number;
 }
 
 /** How a player turned pirate: by sinking or by boarding an NPC merchant. */

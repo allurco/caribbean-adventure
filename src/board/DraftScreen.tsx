@@ -1,12 +1,15 @@
 import { useState } from "react";
-import type { Captain, CaribbeanState, ShipClass } from "../game/types";
+import type { Captain, ShipClass } from "../game/types";
 import { STARTER_SHIP_CLASSES } from "../game/types";
 import { SHIP_SPECS } from "../game/constants";
 import { NationFlag } from "./NationFlag";
+import type { DraftView } from "./seat";
 
 interface DraftScreenProps {
-  G: CaribbeanState;
-  currentPlayer: string;
+  /** What this screen shows: a hand to pick from or a line to wait on (`draftView`, #110). */
+  view: DraftView;
+  /** Whoever is drafting, as the board names them ("Player n"). */
+  drafting: string;
   onPickCaptain: (index: number, shipClass: ShipClass) => void;
 }
 
@@ -108,26 +111,26 @@ function ShipClassCard({
 }
 
 export function DraftScreen({
-  G,
-  currentPlayer,
+  view,
+  drafting,
   onPickCaptain,
 }: DraftScreenProps) {
   const [showInterstitial, setShowInterstitial] = useState(false);
   const [selectedCaptainIndex, setSelectedCaptainIndex] = useState<
     number | null
   >(null);
-  const hand = G.draftHands[currentPlayer] ?? [];
+  const hand = view.kind === "pick" ? view.hand : [];
 
   // Interstitial: pass the device
   if (showInterstitial) {
     return (
-      <div className="w-screen h-screen bg-[#0a0e17] flex flex-col items-center justify-center font-body">
+      <div className="w-screen h-screen bg-[#0a0e17]/80 flex flex-col items-center justify-center font-body">
         <div className="rounded-xl border border-amber-700/30 bg-gradient-to-b from-stone-900/95 to-amber-950/90 backdrop-blur-sm p-12 text-center max-w-md shadow-2xl shadow-black/50">
           <h2 className="font-heading text-2xl font-bold text-amber-100 mb-3 tracking-wide">
             Pass the Helm
           </h2>
           <p className="text-amber-300/50 text-sm mb-8 leading-relaxed">
-            Hand the device to <span className="text-amber-200 font-semibold">Player {currentPlayer}</span>.<br />
+            Hand the device to <span className="text-amber-200 font-semibold">{drafting}</span>.<br />
             No peeking at the next captain's hand!
           </p>
           <button
@@ -144,16 +147,16 @@ export function DraftScreen({
     );
   }
 
-  // Waiting
-  if (hand.length === 0) {
+  // Waiting: another seat drafts (its hand is never shown here, #110)
+  if (view.kind === "waiting") {
     return (
-      <div className="w-screen h-screen bg-[#0a0e17] flex items-center justify-center font-body">
+      <div className="w-screen h-screen bg-[#0a0e17]/80 flex items-center justify-center font-body">
         <div className="text-center">
           <div className="font-heading text-amber-500/40 text-sm uppercase tracking-[0.3em] mb-3">
             Awaiting Orders
           </div>
           <div className="text-amber-200/50 text-lg italic">
-            Waiting for other players...
+            {view.line}
           </div>
         </div>
       </div>
@@ -164,7 +167,7 @@ export function DraftScreen({
   if (selectedCaptainIndex !== null) {
     const chosenCaptain = hand[selectedCaptainIndex];
     return (
-      <div className="w-screen h-screen bg-[#0a0e17] flex flex-col items-center justify-center font-body">
+      <div className="w-screen h-screen bg-[#0a0e17]/80 flex flex-col items-center justify-center font-body">
         <div className="max-w-2xl w-full px-6">
           {/* Header */}
           <div className="text-center mb-10">
@@ -174,7 +177,7 @@ export function DraftScreen({
             <div className="flex items-center justify-center gap-3 mb-1">
               <div className="h-px flex-1 max-w-16 bg-gradient-to-r from-transparent to-amber-700/40" />
               <span className="text-amber-500/50 text-xs uppercase tracking-[0.2em] font-medium">
-                Player {currentPlayer}
+                {drafting}
               </span>
               <div className="h-px flex-1 max-w-16 bg-gradient-to-l from-transparent to-amber-700/40" />
             </div>
@@ -193,7 +196,9 @@ export function DraftScreen({
                 shipClass={cls}
                 onSelect={() => {
                   onPickCaptain(selectedCaptainIndex, cls);
-                  setShowInterstitial(true);
+                  // Hotseat passes the device; a seat simply waits for the others
+                  if (view.passDevice) setShowInterstitial(true);
+                  else setSelectedCaptainIndex(null);
                 }}
               />
             ))}
@@ -215,7 +220,7 @@ export function DraftScreen({
 
   // Step 1: Captain selection
   return (
-    <div className="w-screen h-screen bg-[#0a0e17] flex flex-col items-center justify-center font-body">
+    <div className="w-screen h-screen bg-[#0a0e17]/80 flex flex-col items-center justify-center font-body">
       <div className="max-w-2xl w-full px-6">
         {/* Header */}
         <div className="text-center mb-10">
@@ -225,7 +230,7 @@ export function DraftScreen({
           <div className="flex items-center justify-center gap-3">
             <div className="h-px flex-1 max-w-16 bg-gradient-to-r from-transparent to-amber-700/40" />
             <span className="text-amber-500/50 text-xs uppercase tracking-[0.2em] font-medium">
-              Player {currentPlayer}
+              {drafting}
             </span>
             <div className="h-px flex-1 max-w-16 bg-gradient-to-l from-transparent to-amber-700/40" />
           </div>

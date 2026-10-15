@@ -25,7 +25,7 @@ const REQUESTS: MapRequest[] = [
 describe("generateMapOffThread", () => {
   it("returns exactly the main-thread map for every size and several seeds", async () => {
     for (const request of REQUESTS) {
-      expect(await generateMapOffThread(request, fakeWorker)).toEqual({ ...request, cells: generateMapFor(request) });
+      expect(await generateMapOffThread(request, fakeWorker)).toEqual({ ...request, ...generateMapFor(request) });
     }
   });
 
@@ -37,7 +37,7 @@ describe("generateMapOffThread", () => {
 
   describe("falls back to the main thread", () => {
     const request: MapRequest = { mapSize: "small", mapSeed: 99 };
-    const expected = { ...request, cells: generateMapFor(request) };
+    const expected = { ...request, ...generateMapFor(request) };
     const quiet = () => vi.spyOn(console, "warn").mockImplementation(() => {});
 
     it("where workers are unavailable", async () => {

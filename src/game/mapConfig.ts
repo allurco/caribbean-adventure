@@ -17,7 +17,7 @@ export interface MapPreset extends MapDimensions {
 
 /** About the hex counts of the old hexagonal maps of radius 12, 18 and 25. */
 export const MAP_PRESETS: readonly MapPreset[] = [
-  { id: "small", label: "Small", columns: 24, rows: 18 },
+  { id: "small", label: "Small", columns: 26, rows: 20 },
   { id: "medium", label: "Medium", columns: 36, rows: 28 },
   { id: "large", label: "Large", columns: 50, rows: 38 },
 ] as const;

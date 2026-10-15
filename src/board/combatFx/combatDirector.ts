@@ -210,7 +210,12 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
   /** The fight's hold on ship `id`, taken the first time a cue needs it. */
   function shipFx(id: string): ShipFx | null {
     let fx = ships.get(id);
-    if (fx) return fx;
+    if (fx && !fx.held.gone) return fx;
+    if (fx) {
+      // That ship went down; this is a seat's fresh one under the same id (#277).
+      poses.release(id);
+      ships.delete(id);
+    }
     const reported = poses.reported(id);
     if (!reported) return null;
     director.copyX = reported.copyX;

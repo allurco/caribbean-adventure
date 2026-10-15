@@ -1,6 +1,6 @@
-import type { Game } from "boardgame.io";
+import type { Game, MoveFn } from "boardgame.io";
 import { INVALID_MOVE } from "boardgame.io/core";
-import { hex, hexEquals, canonicalHex, createWrap, wrappedDistance, wrappedNeighbors } from "./hex";
+import { hex, hexEquals, canonicalHex, createWrap, wrappedDistance } from "./hex";
 import type { MapWrap } from "./hex";
 import { getMapPreset } from "./mapConfig";
 import { generateMapFor, resolveMapRequest } from "./mapRequest";
@@ -31,7 +31,6 @@ import {
   createLootFromNPC,
   getEffectiveCannons,
 } from "./combat";
-import { SHIP_SPECS } from "./constants";
 import { movesLeft, spendMove, turnRunsOut } from "./turnMoves";
 import {
   createShipState,
@@ -46,7 +45,8 @@ import {
   canJuryRig,
   applyJuryRig,
 } from "./economy";
-import { createCaptainDeck, dealHands, findHomePort } from "./captains";
+import { createCaptainDeck, dealHands, takeCommand } from "./captains";
+import { awaitingCaptain, dealReplacementHand, loseShip, replaceCaptain } from "./captainDeath";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
@@ -106,16 +106,19 @@ export function withGeneratedMap(game: Game<CaribbeanState>, map: GeneratedMap):
   return { ...game, setup: ({ random }) => createInitialState(map, random.Number) };
 }
 
+/** The seats a match is set up for. Every client's `numPlayers` must match it. */
+export const PLAYER_COUNT = 2;
+
 /**
  * The state a match starts in, on `map`: the players' ships, the captain draft, no NPCs yet.
  * `random` is boardgame.io's setup `random.Number`, so the match's seed reproduces the draft (#160).
  */
-function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: () => number): CaribbeanState {
+function createInitialState({ mapSize, mapSeed, cells, regions }: GeneratedMap, random: () => number): CaribbeanState {
   // The map is a rectangle that wraps east–west, a cylinder as wide as its
   // columns (#36); the generator and G share the wrap.
   const wrap: MapWrap = createWrap(getMapPreset(mapSize).columns);
 
-  const numPlayers = 2;
+  const numPlayers = PLAYER_COUNT;
   const deck = createCaptainDeck(random);
   const { hands, remaining } = dealHands(deck, numPlayers);
 
@@ -126,6 +129,7 @@ function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: (
 
   return {
     cells,
+    regions,
     ships,
     npcs: {},
     mapSize,
@@ -155,6 +159,20 @@ const movesBudgetTurn = {
   endIf: ({ G, ctx }: { G: CaribbeanState; ctx: { currentPlayer: string } }) => turnRunsOut(G, ctx.currentPlayer),
 };
 
+/**
+ * The main phase's moves, each refused (INVALID_MOVE) while the current
+ * player has no ship: between a lost ship and the pick of a new captain
+ * (#265), only `pickCaptain` may be played.
+ */
+function needingAShip(moves: Record<string, MoveFn<CaribbeanState>>): Record<string, MoveFn<CaribbeanState>> {
+  return Object.fromEntries(
+    Object.entries(moves).map(([name, move]): [string, MoveFn<CaribbeanState>] => [
+      name,
+      (context, ...args) => (context.G.ships[context.ctx.currentPlayer] ? move(context, ...args) : INVALID_MOVE),
+    ])
+  );
+}
+
 export const Caribbean: Game<CaribbeanState> = {
   name: "caribbean",
 
@@ -176,7 +194,7 @@ export const Caribbean: Game<CaribbeanState> = {
   setup: ({ random }, setupData?: CaribbeanSetupData) => {
     // The provided size and seed, else random ones (see resolveMapRequest).
     const request = resolveMapRequest(setupData, random.Number);
-    return createInitialState({ ...request, cells: generateMapFor(request) }, random.Number);
+    return createInitialState({ ...request, ...generateMapFor(request) }, random.Number);
   },
 
   // Top-level moves/turn serve as defaults when tests override phases
@@ -287,42 +305,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const ship = G.ships[playerId];
           if (ship.captain) return INVALID_MOVE;
 
-          const chosen = hand[captainIndex];
-          ship.captain = chosen;
-          ship.shipClass = shipClass;
-          const stats = structuredClone(SHIP_SPECS[shipClass]);
-          ship.stats = stats;
-          ship.maxCargo = stats.cargo;
-
-          // Find home port matching the captain's nation
-          const occupiedHexes = Object.entries(G.ships)
-            .filter(([id, s]) => id !== playerId && s.captain !== undefined)
-            .map(([, s]) => s.position);
-          const port = findHomePort(chosen.nation, G.cells, occupiedHexes);
-          if (port && port.dockingHex) {
-            // Validate that dockingHex is actually a water hex
-            const dockingCell = G.cells.find((c) => hexEquals(c.hex, port.dockingHex!));
-            if (dockingCell && dockingCell.terrain === "water") {
-              // Ship spawns at the docking water hex, not the port island
-              ship.position = port.dockingHex;
-              // homePortHex is the actual port (for display/scoring)
-              ship.homePortHex = port.hex;
-              // homeDockingHex is where the ship docks to access home port
-              ship.homeDockingHex = port.dockingHex;
-            } else {
-              // Fallback: find any water hex adjacent to the port
-              const portNeighbors = wrappedNeighbors(port.hex, G.wrap);
-              const waterNeighbor = portNeighbors.find((n) => {
-                const cell = G.cells.find((c) => hexEquals(c.hex, n));
-                return cell && cell.terrain === "water" && !occupiedHexes.some((o) => hexEquals(o, n));
-              });
-              if (waterNeighbor) {
-                ship.position = waterNeighbor;
-                ship.homePortHex = port.hex;
-                ship.homeDockingHex = waterNeighbor;
-              }
-            }
-          }
+          takeCommand(G, playerId, ship, hand[captainIndex], shipClass);
 
           // Clear the player's draft hand
           G.draftHands[playerId] = [];
@@ -338,6 +321,25 @@ export const Caribbean: Game<CaribbeanState> = {
     main: {
       turn: {
         ...movesBudgetTurn,
+        // A player whose ship was lost is dealt a new captain's hand as their turn begins (#265)
+        onBegin: ({ G, ctx }) => {
+          movesBudgetTurn.onBegin({ G });
+          dealReplacementHand(G, ctx.currentPlayer);
+        },
+        order: {
+          // boardgame.io's default order, except that a seat which has just
+          // lost its ship (no hand dealt yet) is passed over once: its turn
+          // ended with the fight that lost it, and its next turn deals it a
+          // new captain's hand (#265). Never a seat stuck with no ship.
+          first: ({ G, ctx }) => {
+            const seats = ctx.playOrder.length;
+            const first = ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % seats;
+            const seat = ctx.playOrder[first];
+            const justLost = awaitingCaptain(G, seat) && (G.draftHands[seat]?.length ?? 0) === 0;
+            return justLost ? (first + 1) % seats : first;
+          },
+          next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.playOrder.length,
+        },
         onEnd: ({ G, random }) => {
           // Don't move NPCs if combat is starting
           if (G.combat) return;
@@ -352,6 +354,10 @@ export const Caribbean: Game<CaribbeanState> = {
         },
       },
       moves: {
+        // A player whose ship was lost picks a new captain from the hand their turn dealt (#265), on the draft's screen
+        pickCaptain: ({ G, ctx }, captainIndex: number, shipClass: ShipClass) =>
+          replaceCaptain(G, ctx.currentPlayer, captainIndex, shipClass) ? undefined : INVALID_MOVE,
+        ...needingAShip({
         moveShip: ({ G, ctx }, q: number, r: number) => {
           const ship = G.ships[ctx.currentPlayer];
           if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
@@ -573,6 +579,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
           events.setPhase("combat");
         },
+        }),
       },
     },
 
@@ -880,7 +887,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
               const loot = createLootFromShip(defenderShip);
               G.floatingLoot.push(loot);
-              delete G.ships[G.combat.defenderId];
+              // The ship leaves G.ships here, and its captain dies with it (#265)
+              loseShip(G, G.combat.defenderId, "sunk");
               combatEnded = true;
             } else if (isDerelict(defenderShip)) {
               defenderShip.isDerelict = true;
@@ -900,7 +908,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
             const loot = createLootFromShip(attacker);
             G.floatingLoot.push(loot);
-            delete G.ships[G.combat.attackerId];
+            // The ship leaves G.ships here, and its captain dies with it (#265)
+            loseShip(G, G.combat.attackerId, "sunk");
             combatEnded = true;
           } else if (isDerelict(attacker)) {
             attacker.isDerelict = true;

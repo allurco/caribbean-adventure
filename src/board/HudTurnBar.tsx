@@ -7,8 +7,11 @@ interface HudTurnBarProps {
   maxMoves: number;
   /** The shown captain's turn is still on, so they may end it, moves left or not (docked on the last one, #227). */
   turnOpen: boolean;
-  gold: number;
-  glory: number;
+  /** The shown seat's purse and glory; null when its ship is gone (`hudShip`), so the bar shows no zeros for it. */
+  gold: number | null;
+  glory: number | null;
+  /** Another seat's turn (#110): "Waiting for <captain>" in place of End Turn. */
+  waitingLine?: string | null;
   onEndTurn: () => void;
 }
 
@@ -19,6 +22,7 @@ export function HudTurnBar({
   turnOpen,
   gold,
   glory,
+  waitingLine,
   onEndTurn,
 }: HudTurnBarProps) {
   return (
@@ -32,52 +36,56 @@ export function HudTurnBar({
           {mapLabel}
         </div>
 
-        {/* Center: Glory + Gold + Moves */}
-        <div className="flex items-center gap-6">
-          {/* Glory Counter - Prominent */}
-          <div className="flex items-center gap-2 px-3 py-1 bg-amber-900/40 rounded-lg border border-amber-700/30">
-            <span className="text-amber-400 text-[10px] uppercase tracking-widest font-heading">
-              Glory
-            </span>
-            <span className="text-amber-200 text-lg font-bold tabular-nums">
-              {glory}
-            </span>
-            <span className="text-amber-500/60 text-sm">/ {WIN_SCORE}</span>
-          </div>
+        {/* Center: Glory + Gold + Moves (none once the seat's ship is gone) */}
+        {gold !== null && glory !== null ? (
+          <div className="flex items-center gap-6">
+            {/* Glory Counter - Prominent */}
+            <div className="flex items-center gap-2 px-3 py-1 bg-amber-900/40 rounded-lg border border-amber-700/30">
+              <span className="text-amber-400 text-[10px] uppercase tracking-widest font-heading">
+                Glory
+              </span>
+              <span className="text-amber-200 text-lg font-bold tabular-nums">
+                {glory}
+              </span>
+              <span className="text-amber-500/60 text-sm">/ {WIN_SCORE}</span>
+            </div>
 
-          {/* Divider */}
-          <div className="w-px h-4 bg-amber-700/30" />
+            {/* Divider */}
+            <div className="w-px h-4 bg-amber-700/30" />
 
-          {/* Gold */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-yellow-500 text-sm">&#9672;</span>
-            <span className="text-amber-200 text-sm font-semibold tabular-nums">
-              {gold}
-            </span>
-          </div>
+            {/* Gold */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-yellow-500 text-sm">&#9672;</span>
+              <span className="text-amber-200 text-sm font-semibold tabular-nums">
+                {gold}
+              </span>
+            </div>
 
-          {/* Divider */}
-          <div className="w-px h-4 bg-amber-700/30" />
+            {/* Divider */}
+            <div className="w-px h-4 bg-amber-700/30" />
 
-          {/* Move pips */}
-          <div className="flex items-center gap-2">
-            <span className="text-amber-400/50 text-[10px] uppercase tracking-widest font-medium">
-              Moves
-            </span>
-            <div className="flex gap-1">
-              {Array.from({ length: maxMoves }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
-                    i < movesRemaining
-                      ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]"
-                      : "bg-amber-900/40 ring-1 ring-amber-800/30"
-                  }`}
-                />
-              ))}
+            {/* Move pips */}
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400/50 text-[10px] uppercase tracking-widest font-medium">
+                Moves
+              </span>
+              <div className="flex gap-1">
+                {Array.from({ length: maxMoves }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2.5 h-2.5 rounded-full transition-all duration-200 ${
+                      i < movesRemaining
+                        ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]"
+                        : "bg-amber-900/40 ring-1 ring-amber-800/30"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div />
+        )}
 
         {/* Right: End Turn */}
         <div className="pointer-events-auto">
@@ -89,8 +97,8 @@ export function HudTurnBar({
               End Turn
             </button>
           ) : (
-            <span className="text-amber-600/40 text-[11px] uppercase tracking-widest font-medium italic">
-              Waiting...
+            <span className="text-amber-200/90 text-[11px] uppercase tracking-widest font-medium italic">
+              {waitingLine ?? "Waiting..."}
             </span>
           )}
         </div>

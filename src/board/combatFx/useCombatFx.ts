@@ -7,12 +7,17 @@ import { combatBeatsFrom } from "./combatTimeline";
 import { combatShipPoses } from "./combatShipPoses";
 import { departedShips, type DepartedShip } from "./departedShips";
 
+/** A departed ship as the board draws it, under a key of its own: a seat's id can sink, come back (#277) and sink again. */
+export interface DepartedShipView extends DepartedShip {
+  key: string;
+}
+
 export interface CombatFx {
   director: CombatDirector;
   /** Ships that left `G` the fight still shows (sinking, or a prize alongside). */
-  departed: DepartedShip[];
-  /** A departed ship is done. */
-  finishDeparted: (id: string) => void;
+  departed: DepartedShipView[];
+  /** A departed ship (by its key) is done. */
+  finishDeparted: (key: string) => void;
   /** A word over the fight (escaped, caught), or null. */
   banner: string | null;
 }
@@ -32,7 +37,8 @@ export function useCombatFx(G: CaribbeanState, reducedMotion: boolean): CombatFx
       onBanner: setBanner,
     })
   );
-  const [departed, setDeparted] = useState<DepartedShip[]>([]);
+  const [departed, setDeparted] = useState<DepartedShipView[]>([]);
+  const departures = useRef(0);
   const prev = useRef<CaribbeanState | undefined>(undefined);
 
   useEffect(() => {
@@ -52,9 +58,12 @@ export function useCombatFx(G: CaribbeanState, reducedMotion: boolean): CombatFx
     }
     director.enqueue(beats, classes);
     const gone = departedShips(before, G, beats, (id) => combatShipPoses.reported(id)?.heading ?? 0);
-    if (gone.length > 0) setDeparted((list) => [...list.filter((d) => !gone.some((g) => g.id === d.id)), ...gone]);
+    if (gone.length > 0) {
+      const views = gone.map((g) => ({ ...g, key: `${g.id}#${++departures.current}` }));
+      setDeparted((list) => [...list.filter((d) => !gone.some((g) => g.id === d.id)), ...views]);
+    }
   }, [G, director, reducedMotion]);
 
-  const finishDeparted = useCallback((id: string) => setDeparted((list) => list.filter((d) => d.id !== id)), []);
+  const finishDeparted = useCallback((key: string) => setDeparted((list) => list.filter((d) => d.key !== key)), []);
   return { director, departed, finishDeparted, banner };
 }

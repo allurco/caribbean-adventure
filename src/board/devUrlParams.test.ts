@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDevUrlParams } from "./devUrlParams";
+import { parseDevUrlParams, showsDebugPanel } from "./devUrlParams";
 
 describe("parseDevUrlParams", () => {
   it("pins nothing for a bare URL", () => {
@@ -84,11 +84,28 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?seedGallery=0&snapshot=yes")).toEqual({});
   });
 
+  it("opens every seat on one page through the local transport (#110)", () => {
+    expect(parseDevUrlParams("?seats=1")).toEqual({ localSeats: true });
+    expect(parseDevUrlParams("?seats=1&size=small&seed=7")).toEqual({
+      localSeats: true,
+      setupData: { mapSize: "small", mapSeed: 7 },
+    });
+    expect(parseDevUrlParams("?seats=0")).toEqual({});
+    expect(parseDevUrlParams("?seats=yes")).toEqual({});
+  });
+
   it("shows the render stats overlay", () => {
     expect(parseDevUrlParams("?stats=1")).toEqual({ renderStats: true });
     expect(parseDevUrlParams("?stats=0")).toEqual({});
     expect(parseDevUrlParams("?stats=true")).toEqual({});
     expect(parseDevUrlParams("?stats")).toEqual({});
+  });
+
+  it("picks how the region borders are drawn: in the water or as a line (#239)", () => {
+    expect(parseDevUrlParams("?regionBorder=water")).toEqual({ regionBorder: "water" });
+    expect(parseDevUrlParams("?regionBorder=line")).toEqual({ regionBorder: "line" });
+    expect(parseDevUrlParams("?regionBorder=dotted")).toEqual({});
+    expect(parseDevUrlParams("?regionBorder=")).toEqual({});
   });
 
   it("reads every parameter from one URL", () => {
@@ -98,5 +115,20 @@ describe("parseDevUrlParams", () => {
       cameraDistance: 4.3,
       renderStats: true,
     });
+  });
+});
+
+describe("showsDebugPanel", () => {
+  it("keeps boardgame.io's debug panel for the ordinary dev game", () => {
+    expect(showsDebugPanel(parseDevUrlParams("?size=small&seed=1"))).toBe(true);
+  });
+
+  it("hides it for a gallery shot, so it covers nothing in the picture", () => {
+    expect(showsDebugPanel(parseDevUrlParams("?size=small&seed=1&snapshot=1"))).toBe(false);
+  });
+
+  it("hides it for the seats on one page, so its tab does not cover End Turn or the turn bar (#110)", () => {
+    expect(showsDebugPanel(parseDevUrlParams("?seats=1&size=small&seed=1"))).toBe(false);
+    expect(showsDebugPanel(parseDevUrlParams("?seats=1&snapshot=1"))).toBe(false);
   });
 });
