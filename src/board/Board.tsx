@@ -81,7 +81,7 @@ import type { GpuCheck, RenderOff } from "./devUrlParams";
 import { PlainRender } from "./visuals/PlainRender";
 import { canvasSetup } from "./canvasSetup";
 import { GpuInfoProbe } from "./GpuInfoProbe";
-import { createGpuInfoFeed } from "./gpuInfo";
+import { createGpuInfoFeed, gpuSetupLines } from "./gpuInfo";
 import { GpuInfoOverlay } from "./GpuInfoOverlay";
 import { useRegionChart } from "./visuals/useRegionChart";
 import { useTurnHandoff } from "./useTurnHandoff";
@@ -1199,10 +1199,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {gpuInfoFeed && (
         <GpuInfoOverlay
           feed={gpuInfoFeed}
-          setupLines={[
-            `switches: ${window.location.search || "(none)"}`,
-            `asked: dpr ${Array.isArray(setup.dpr) ? setup.dpr.join("–") : setup.dpr}  shadows ${setup.shadows ? "on" : "off"}  composer multisampling ${renderOff?.postProcessing ? "(no composer)" : setup.composerMultisampling}`,
-          ]}
+          setupLines={gpuSetupLines(gpu ?? NO_GPU_CHECK, renderOff ?? NOTHING_OFF, setup)}
         />
       )}
       {/* Dev: the seed control (#161); the DEV guard drops it from production builds */}

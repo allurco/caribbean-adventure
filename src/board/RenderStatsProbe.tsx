@@ -1,39 +1,11 @@
-import { useEffect, useRef } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
-import type { WebGLInfo } from "three";
-import { EMPTY_STATS_WINDOW, addFrame, isWindowFull, windowStats, type RenderStats } from "./renderStats";
+import type { RenderStats } from "./renderStats";
+import { useFrameStats } from "./useFrameStats";
 
 /**
- * Dev `stats=1` (#162): reads `renderer.info` once a frame, inside the
- * Canvas, and hands `onStats` a window's averages (renderStats.ts) every
- * half second. The renderer's counters are reset here rather than by each
- * render, so every pass of a frame counts (shadows, the wave cascades,
- * postprocessing), not only the last.
+ * Dev `stats=1` (#162): hands `onStats` the frame's averages every half
+ * second (useFrameStats.ts), counting every pass of a frame. Draws nothing.
  */
 export function RenderStatsProbe({ onStats }: { onStats: (stats: RenderStats) => void }) {
-  const gl = useThree((state) => state.gl);
-  const pending = useRef(EMPTY_STATS_WINDOW);
-
-  useEffect(() => {
-    countEveryPass(gl.info, true);
-    return () => countEveryPass(gl.info, false);
-  }, [gl]);
-
-  useFrame((_, delta) => {
-    const { calls, triangles } = gl.info.render;
-    gl.info.reset();
-    pending.current = addFrame(pending.current, { seconds: delta, calls, triangles });
-    if (!isWindowFull(pending.current)) return;
-    const stats = windowStats(pending.current);
-    pending.current = EMPTY_STATS_WINDOW;
-    if (stats) onStats(stats);
-  });
-
+  useFrameStats(onStats);
   return null;
-}
-
-/** Whether the renderer's counters run on across a frame's passes (reset by the probe) or restart with each render (three's default). */
-function countEveryPass(info: WebGLInfo, on: boolean) {
-  info.autoReset = !on;
-  info.reset();
 }

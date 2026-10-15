@@ -8,7 +8,7 @@ import type { GpuCheck, RenderOff } from "./devUrlParams";
  */
 export const CANVAS_DPR: [number, number] = [1, 1.5];
 /** The composer's multisampling, @react-three/postprocessing's default. */
-const COMPOSER_MULTISAMPLING = 8;
+export const COMPOSER_MULTISAMPLING = 8;
 
 /** What the board's Canvas and EffectComposer are set up with. */
 export interface CanvasSetup {

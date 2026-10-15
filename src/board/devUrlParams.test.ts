@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDevUrlParams, seatCount, showsDebugPanel } from "./devUrlParams";
+import { renderSwitches, parseDevUrlParams, seatCount, showsDebugPanel } from "./devUrlParams";
 
 describe("parseDevUrlParams", () => {
   it("pins nothing for a bare URL", () => {
@@ -142,6 +142,14 @@ describe("parseDevUrlParams", () => {
       gpu: { info: true, dpr1: true },
       renderOff: { msaa: true, combatFx: true },
     });
+  });
+
+  it("writes the A/B switches in effect back out as the URL spells them, and nothing else", () => {
+    const search = "?fx=0&ink=0&bloom=0&post=0&shadows=0&aa=0&ocean=0&land=0&dpr=1&power=low&pdb=1&gpuinfo=1";
+    const { renderOff, gpu } = parseDevUrlParams(`${search}&seed=7&email=someone`);
+    expect(renderSwitches(renderOff ?? {}, gpu ?? {})).toEqual(search.slice(1).split("&"));
+    expect(parseDevUrlParams(`?${renderSwitches(renderOff ?? {}, gpu ?? {}).join("&")}`)).toEqual({ renderOff, gpu });
+    expect(renderSwitches({}, {})).toEqual([]);
   });
 
   it("reads every parameter from one URL", () => {

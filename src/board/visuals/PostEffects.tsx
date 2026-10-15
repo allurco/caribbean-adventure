@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useThree } from "@react-three/fiber";
 import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
+import { COMPOSER_MULTISAMPLING } from "../canvasSetup";
 import { BlendFunction, Effect, ToneMappingMode } from "postprocessing";
 import { Uniform, Vector3, type WebGLRenderer } from "three";
 import type { Lighting } from "./lighting";
@@ -26,7 +27,7 @@ interface PostEffectsProps {
   lighting: Lighting;
   /** Leave the bloom out (`?bloom=0`, an A/B check on a real GPU). */
   withoutBloom?: boolean;
-  /** The composer's multisampling (`?aa=0` gives 0); @react-three/postprocessing's default, 8, when left out. */
+  /** The composer's multisampling (`?aa=0` gives 0); `COMPOSER_MULTISAMPLING` when left out. */
   multisampling?: number;
 }
 
@@ -36,7 +37,7 @@ interface PostEffectsProps {
  * into one effect pass after the render pass (bloom's blur runs its own
  * mip chain), so the grade adds no pass.
  */
-export function PostEffects({ lighting, withoutBloom = false, multisampling = 8 }: PostEffectsProps) {
+export function PostEffects({ lighting, withoutBloom = false, multisampling = COMPOSER_MULTISAMPLING }: PostEffectsProps) {
   const gl = useThree((state) => state.gl);
   const { bloom, vignette, grade } = lighting;
 

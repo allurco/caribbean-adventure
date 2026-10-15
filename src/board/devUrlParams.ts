@@ -70,6 +70,37 @@ export interface GpuCheck {
   info?: true;
 }
 
+/** Each `RenderOff` switch: its URL parameter, set to `0`. */
+const RENDER_OFF_SWITCHES: readonly (readonly [string, keyof RenderOff])[] = [
+  ["fx", "combatFx"],
+  ["ink", "regionInk"],
+  ["bloom", "bloom"],
+  ["post", "postProcessing"],
+  ["shadows", "shadows"],
+  ["aa", "msaa"],
+  ["ocean", "ocean"],
+  ["land", "land"],
+];
+/** Each `GpuCheck` switch: its URL parameter and the value that turns it on. */
+const GPU_SWITCHES: readonly (readonly [string, string, keyof GpuCheck])[] = [
+  ["dpr", "1", "dpr1"],
+  ["power", "low", "lowPower"],
+  ["pdb", "1", "preserveDrawingBuffer"],
+  ["gpuinfo", "1", "info"],
+];
+
+/**
+ * The A/B switches in effect, as the URL spells them (`fx=0`, `pdb=1`, …):
+ * what `?gpuinfo=1` shows instead of the whole query, which may carry
+ * other things.
+ */
+export function renderSwitches(off: RenderOff, gpu: GpuCheck): string[] {
+  return [
+    ...RENDER_OFF_SWITCHES.filter(([, key]) => off[key]).map(([name]) => `${name}=0`),
+    ...GPU_SWITCHES.filter(([, , key]) => gpu[key]).map(([name, value]) => `${name}=${value}`),
+  ];
+}
+
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
 
 /** The parameters in `search` (`window.location.search`, with its leading `?`). */
@@ -98,20 +129,10 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   const mode = REGION_BORDER_MODES.find((m) => m === regionBorder);
   if (mode) out.regionBorder = mode;
   const renderOff: RenderOff = {};
-  if (params.get("fx") === "0") renderOff.combatFx = true;
-  if (params.get("ink") === "0") renderOff.regionInk = true;
-  if (params.get("bloom") === "0") renderOff.bloom = true;
-  if (params.get("post") === "0") renderOff.postProcessing = true;
-  if (params.get("shadows") === "0") renderOff.shadows = true;
-  if (params.get("aa") === "0") renderOff.msaa = true;
-  if (params.get("ocean") === "0") renderOff.ocean = true;
-  if (params.get("land") === "0") renderOff.land = true;
+  for (const [name, key] of RENDER_OFF_SWITCHES) if (params.get(name) === "0") renderOff[key] = true;
   if (Object.keys(renderOff).length > 0) out.renderOff = renderOff;
   const gpu: GpuCheck = {};
-  if (params.get("dpr") === "1") gpu.dpr1 = true;
-  if (params.get("power") === "low") gpu.lowPower = true;
-  if (params.get("pdb") === "1") gpu.preserveDrawingBuffer = true;
-  if (params.get("gpuinfo") === "1") gpu.info = true;
+  for (const [name, value, key] of GPU_SWITCHES) if (params.get(name) === value) gpu[key] = true;
   if (Object.keys(gpu).length > 0) out.gpu = gpu;
   // Dev-only routes (#161): the DEV guard drops even their names from production builds.
   if (import.meta.env.DEV) {

@@ -1,4 +1,6 @@
-import { formatCount } from "./renderStats";
+import { formatCount, type RenderStats } from "./renderStats";
+import { renderSwitches, type GpuCheck, type RenderOff } from "./devUrlParams";
+import type { CanvasSetup } from "./canvasSetup";
 
 /**
  * `?gpuinfo=1`: what the board's GL context is and what its frames cost,
@@ -55,11 +57,16 @@ interface DebugRendererInfo {
 
 const text = (value: unknown): string => (typeof value === "string" ? value : String(value ?? ""));
 
-export function readGpuContext(gl: GlContextPort, { webgl2, dpr }: { webgl2: boolean; dpr: number }): GpuContextInfo {
+/**
+ * A reader of `gl`'s description: the strings, attributes and limits are
+ * read once, here, as they are fixed for the context; each call reads only
+ * the drawing buffer's size and takes the `dpr` in use.
+ */
+export function createGpuContextReader(gl: GlContextPort, webgl2: boolean): (dpr: number) => GpuContextInfo {
   const debug = gl.getExtension("WEBGL_debug_renderer_info") as DebugRendererInfo | null;
   const attributes = gl.getContextAttributes() ?? {};
   const samples = webgl2 ? gl.getParameter(MAX_SAMPLES) : null;
-  return {
+  const fixed = {
     renderer: text(gl.getParameter(gl.RENDERER)),
     vendor: text(gl.getParameter(gl.VENDOR)),
     unmaskedRenderer: debug ? text(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : null,
@@ -68,10 +75,38 @@ export function readGpuContext(gl: GlContextPort, { webgl2, dpr }: { webgl2: boo
     antialias: attributes.antialias === true,
     powerPreference: attributes.powerPreference ?? "default",
     preserveDrawingBuffer: attributes.preserveDrawingBuffer === true,
-    dpr,
-    drawingBuffer: [gl.drawingBufferWidth, gl.drawingBufferHeight],
     maxSamples: typeof samples === "number" ? samples : null,
   };
+  return (dpr) => ({ ...fixed, dpr, drawingBuffer: [gl.drawingBufferWidth, gl.drawingBufferHeight] });
+}
+
+/** The parts of three's `renderer.info` read here. */
+export interface RendererInfoPort {
+  memory: { geometries: number; textures: number };
+  programs?: readonly unknown[] | null;
+}
+
+/** The live numbers: a window's frame averages, the renderer's memory and programs, and the context's losses and restores. */
+export function gpuLiveInfo(stats: RenderStats, info: RendererInfoPort, losses: { lost: number; restored: number }): GpuLiveInfo {
+  return {
+    ...stats,
+    geometries: info.memory.geometries,
+    textures: info.memory.textures,
+    programs: info.programs?.length ?? 0,
+    contextLost: losses.lost,
+    contextRestored: losses.restored,
+  };
+}
+
+/** The readout's last lines: the switches in effect (`renderSwitches`, not the whole query) and the set-up they asked for. */
+export function gpuSetupLines(gpu: GpuCheck, off: RenderOff, setup: CanvasSetup): string[] {
+  const switches = renderSwitches(off, gpu);
+  const dpr = Array.isArray(setup.dpr) ? setup.dpr.join("–") : `${setup.dpr}`;
+  const composer = off.postProcessing ? "(no composer)" : `${setup.composerMultisampling}`;
+  return [
+    `switches: ${switches.length > 0 ? switches.join(" ") : "(none)"}`,
+    `asked: dpr ${dpr}  shadows ${setup.shadows ? "on" : "off"}  composer multisampling ${composer}`,
+  ];
 }
 
 const yesNo = (on: boolean) => (on ? "yes" : "no");
