@@ -251,7 +251,7 @@ describe("Caribbean.setup", () => {
       return { draftHands, captainDeck };
     };
     const inSetup = withSetupData(Caribbean, request);
-    const ahead = withGeneratedMap(Caribbean, { ...request, cells: generateMapFor(request) });
+    const ahead = withGeneratedMap(Caribbean, { ...request, ...generateMapFor(request) });
 
     it("deals the same hands and deck again for the same seed, in setup and on a map generated ahead", () => {
       for (const seed of ["draft-a", "draft-b"]) {
@@ -278,12 +278,13 @@ describe("Caribbean.setup", () => {
       { mapSize: "medium", mapSeed: -42 },
       { mapSize: "large", mapSeed: 31337 },
     ] as const) {
-      const ahead = start(withGeneratedMap(Caribbean, { ...request, cells: generateMapFor(request) }));
+      const ahead = start(withGeneratedMap(Caribbean, { ...request, ...generateMapFor(request) }));
       const inSetup = start(withSetupData(Caribbean, request));
       expect(ahead.mapSize).toBe(request.mapSize);
       expect(ahead.mapSeed).toBe(request.mapSeed);
       expect(ahead.wrap).toEqual(inSetup.wrap);
       expect(ahead.cells).toEqual(inSetup.cells);
+      expect(ahead.regions).toEqual(inSetup.regions);
       expect(Object.keys(ahead.ships)).toEqual(Object.keys(inSetup.ships));
     }
   });

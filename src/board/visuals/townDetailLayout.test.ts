@@ -10,9 +10,9 @@ import { BUILDING_SCALE } from "./worldScale";
 
 const preset = getMapPreset("small");
 const wrap = createWrap(preset.columns);
-const field = sharedTerrainField(generateMap(preset, 1, wrap), wrap, 1);
+const field = sharedTerrainField(generateMap(preset, 2, wrap), wrap, 2);
 /** Any town will do for the kerbs' shape: the stream only varies them. */
-const TOWN: TownSeed = { worldSeed: 1, portId: "0,0" };
+const TOWN: TownSeed = { worldSeed: 2, portId: "0,0" };
 const ground = landSurface(field);
 
 describe("street edge stones (#91)", () => {

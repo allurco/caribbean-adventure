@@ -62,7 +62,7 @@ function* aroundPlateaus(plateaus: readonly TownPlateau[], step: number): Genera
   }
 }
 
-const SEEDS = [1, 2, 3];
+const SEEDS = [2, 3, 5];
 const built = new Map(SEEDS.map((seed) => [seed, fields(seed)]));
 const fieldsOf = (seed: number) => built.get(seed) ?? fields(seed);
 

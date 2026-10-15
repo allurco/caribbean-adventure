@@ -7,7 +7,8 @@ import type { MapCell } from "../game/types";
 import { sharedTerrainField } from "./visuals/sharedTerrainField";
 import { groundTopY } from "./visuals/groundPlacement";
 import { gridLineData, useWaterGridLines, type WaterGridLines, type WaterGridLinesOptions } from "./useWaterGridLines";
-import { NO_HOVER, type SharedHover } from "./sharedHover";
+import { NO_HOVER } from "./sharedHover";
+import { NO_WATER_HOVER, type WaterHover } from "./waterHover";
 import { perMapCache } from "./visuals/perMapCache";
 import { decorationLayoutOf } from "./visuals/decorationLayout";
 import { PORT_GROUND_PROBE_RADIUS, portHoverVolumeAt, portOwnBuildings, type PortHoverVolume, type TownBuilding } from "./visuals/portHover";
@@ -81,9 +82,11 @@ export interface HexGridState {
   hoveredPos: [number, number, number] | null;
   /** The target hex under the pointer, in any copy. */
   hoveredHex: Hex | null;
+  /** Any water hex under the pointer, in any copy, whatever is clickable and whoever's turn it is (the region tooltip, #239). */
+  hoveredSeaHex: Hex | null;
   isHoveredAttackTarget: boolean;
   lines: WaterGridLines;
-  setHover: Dispatch<SetStateAction<SharedHover>>;
+  setHover: Dispatch<SetStateAction<WaterHover>>;
   onHexClick: (hex: Hex) => void;
   /** A click on water that is not a target. */
   onMiss?: () => void;
@@ -106,15 +109,15 @@ export function useHexGrid({
   resetKey,
   surface,
 }: HexGridProps): HexGridState {
-  // Hovered water-cell index and the copy it is hovered in (land is rendered and hit-tested elsewhere)
-  const [hover, setHover] = useState<SharedHover>(NO_HOVER);
-  // A new turn drops the hover (state adjusted while rendering, as React's docs advise for a changed prop)
+  // Hovered water-cell indices and the copy each is hovered in: the target, and any sea hex (land is rendered and hit-tested elsewhere)
+  const [hover, setHover] = useState<WaterHover>(NO_WATER_HOVER);
+  // A new turn drops the target hover (state adjusted while rendering, as React's docs advise for a changed prop)
   const [hoverResetKey, setHoverResetKey] = useState(resetKey);
   if (hoverResetKey !== resetKey) {
     setHoverResetKey(resetKey);
-    setHover(NO_HOVER);
+    setHover((h) => ({ ...h, target: NO_HOVER }));
   }
-  const hoveredId = hoverResetKey === resetKey ? hover.id : NO_HOVER.id;
+  const hoveredId = hoverResetKey === resetKey ? hover.target.id : NO_HOVER.id;
   // The hovered port, kept here as well as passed on, so its label can stay readable (#75)
   const [hoveredPort, setHoveredPort] = useState<MapCell | null>(null);
   const handlePortHover = useCallback(
@@ -208,6 +211,7 @@ export function useHexGrid({
     attackTargetPositions,
     hoveredPos,
     hoveredHex: hoveredCell?.hex ?? null,
+    hoveredSeaHex: hover.sea.id === null ? null : (waterCells[hover.sea.id]?.hex ?? null),
     isHoveredAttackTarget,
     lines,
     setHover,

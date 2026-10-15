@@ -27,7 +27,7 @@ type ShotResult = { image: string } | { failed: true };
  */
 export default function SeedGallery({ mapSize = SEED_GALLERY_DEFAULT_SIZE }: { mapSize?: MapSizeId }) {
   const shots = useMemo(() => {
-    const cellsBySeed = new Map(SEED_GALLERY_SEEDS.map((mapSeed) => [mapSeed, generateMapFor({ mapSize, mapSeed })]));
+    const cellsBySeed = new Map(SEED_GALLERY_SEEDS.map((mapSeed) => [mapSeed, generateMapFor({ mapSize, mapSeed }).cells]));
     return galleryShots(mapSize).map((shot) => {
       const view = galleryShotView(shot.view, mapSize, cellsBySeed.get(shot.mapSeed) ?? []);
       return {

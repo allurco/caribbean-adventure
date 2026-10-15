@@ -24,7 +24,7 @@ import {
 import { hexEquals, hexToWorld } from "../game/hex";
 import type { MapCell } from "../game/types";
 import { WaterHexOutlines } from "./WaterHexOutlines";
-import { hoverEnter, hoverLeave } from "./sharedHover";
+import { waterPointerMove, waterPointerOut } from "./waterHover";
 import type { HexGridState, PortSite } from "./useHexGrid";
 import { PORT_HOVER_RADIUS } from "./visuals/portHover";
 
@@ -230,14 +230,15 @@ export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
 
   const handleWaterPointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      if (!interactive) return;
       const id = e.instanceId;
-      if (id !== undefined && allWaterInteractive.has(id)) {
+      if (id === undefined) return;
+      // The sea hover follows the pointer always; the target hover only while interactive (#239)
+      setHover((h) => waterPointerMove(h, id, copy, allWaterInteractive, interactive));
+      if (!interactive) return;
+      if (allWaterInteractive.has(id)) {
         e.stopPropagation();
-        setHover((h) => (h.id === id && h.copy === copy ? h : hoverEnter(h, id, copy)));
         document.body.style.cursor = attackWaterIndices.has(id) ? "crosshair" : "pointer";
       } else {
-        setHover((h) => hoverLeave(h, copy));
         document.body.style.cursor = "auto";
       }
     },
@@ -245,7 +246,7 @@ export function HexGrid({ grid, copy }: { grid: HexGridState; copy: number }) {
   );
 
   const handlePointerOut = useCallback(() => {
-    setHover((h) => hoverLeave(h, copy));
+    setHover((h) => waterPointerOut(h, copy));
     document.body.style.cursor = "auto";
   }, [setHover, copy]);
 

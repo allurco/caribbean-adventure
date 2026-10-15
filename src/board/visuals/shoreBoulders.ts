@@ -206,6 +206,8 @@ export function shoreBoulders(
         // Along the edge (its tangent is the normal turned a quarter), then out along the normal.
         const x = edge.mx - edge.uz * along + edge.ux * offset;
         const z = edge.mz + edge.ux * along + edge.uz * offset;
+        // Near a corner of the edge beside the pier's, a candidate can still sit in front of the pier.
+        if (docking && ((x - cx) * docking[0] + (z - cz) * docking[1]) / Math.hypot(x - cx, z - cz) >= COS_DOCKING_EDGE) continue;
         const coastDistance = field.sampleCoastDistance(x, z);
         if (coastDistance < SHORE_BAND[0] || coastDistance > SHORE_BAND[1]) continue;
 

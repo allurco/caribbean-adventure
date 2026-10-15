@@ -48,3 +48,12 @@ When an agent reports screenshots, it states for the batch:
 - **View:** map size and seed (URL parameters) and roughly where the camera was.
 
 That is enough to answer "which PR is this from?" later without guessing.
+
+## Screenshot batches
+
+### 2026-10-15: region borders and labels (#239, PR #255)
+
+- **Branch and commit:** `feat/239-regions` at `715fc44`.
+- **Renderer:** headless software (SwiftShader, ANGLE/Vulkan), 1440×900, `snapshot=1`.
+- **View:** `size=small&seed=1`, `size=small&seed=4`, `size=medium&seed=7`, `size=large&seed=3`; the camera at full zoom-out (distance 28) over the map's middle, plus distances 10, 8 and 6, and a hover on a reachable sea hex. Some shots recoloured the border lines red or hid the grid at runtime, to tell the two apart; those are marked as such.
+- **Findings:** borders follow the channels and open sea separates every region on all four maps; the region tooltip shows on hover. Where the water grid shows at full strength, the parchment border at 30% reads as one more grid line. Some labels run over islands and port names. Colour, opacity and label size are judgement calls for a real GPU, not this renderer.

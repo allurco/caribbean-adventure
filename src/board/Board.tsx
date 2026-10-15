@@ -71,6 +71,11 @@ import { reachClick, reachConfirm, selectionKey } from "./routeSelection";
 import { clipToWater, reachEdges, ribbonPositions, waterHexTriangles } from "./reachOutline";
 import { useRouteSailing } from "./useRouteSailing";
 import { RouteHint } from "./RouteHint";
+import { RegionBorders } from "./RegionBorders";
+import { RegionLabels } from "./RegionLabels";
+import { RegionTooltip } from "./RegionTooltip";
+import { useRegionBorders } from "./useRegionBorders";
+import { regionAt, regionLabels } from "./regionMap";
 import { useTurnHandoff } from "./useTurnHandoff";
 import { controlsLocked, holdsNpcs } from "./turnHandoff";
 import { TurnEndedBanner } from "./TurnEndedBanner";
@@ -439,6 +444,9 @@ function Scene({
     () => ({ displacements: waves.displacements, terrainField }),
     [waves.displacements, terrainField]
   );
+  // The regions (#239): faint borders on the water and each region's name
+  const regionBorderLines = useRegionBorders(G.cells, G.wrap, waveSurface);
+  const regionNames = useMemo(() => regionLabels(G.cells, G.regions ?? [], G.wrap), [G.cells, G.regions, G.wrap]);
   const grid = useHexGrid({
     surface: waveSurface,
     cells: G.cells,
@@ -467,6 +475,12 @@ function Scene({
   // The route to the selected hex, else the hovered one, as dots on the water
   const hovered = reach && grid.hoveredHex && reachCost(reach, grid.hoveredHex) !== undefined ? grid.hoveredHex : null;
   const previewTarget = selected ?? hovered;
+  // The region of whatever sea hex is under the pointer, for its tooltip (#239)
+  const hoveredRegion = useMemo(() => {
+    const hex = grid.hoveredSeaHex;
+    const region = hex ? regionAt(G.cells, G.regions ?? [], hex) : undefined;
+    return hex && region ? { region, position: hexToWorld(hex) } : null;
+  }, [grid.hoveredSeaHex, G.cells, G.regions]);
   // The reach as an outline, cost rings and a light tint one move out, all on the water (reachOutline.ts)
   const reachShapes = useMemo(() => {
     if (!reach) return null;
@@ -568,6 +582,10 @@ function Scene({
 
       <HexGrid grid={grid} copy={copy} />
 
+      {/* The regions' borders and names (#239) */}
+      <RegionBorders lines={regionBorderLines} />
+      <RegionLabels labels={regionNames} />
+
       {/* The turn's reach and the previewed route (#213) */}
       <ReachOverlay reach={reachShapes} target={targetShape} dots={routeDotPoints} />
 
@@ -663,7 +681,15 @@ function Scene({
           hasShipyard={hoveredPort.hasShipyard}
           ship={G.ships[viewerSeatId]}
           market={hoveredPort.market}
+          regionName={regionAt(G.cells, G.regions ?? [], hoveredPort.hex)?.name}
         />
+        </PointerCopy>
+      )}
+
+      {/* The region of the hovered sea hex (#239) */}
+      {hoveredRegion && !hoveredShipId && !hoveredPort && (
+        <PointerCopy x={hoveredRegion.position[0]} period={period}>
+          <RegionTooltip position={hoveredRegion.position} region={hoveredRegion.region} />
         </PointerCopy>
       )}
 

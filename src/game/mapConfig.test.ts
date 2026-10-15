@@ -20,8 +20,8 @@ describe("MAP_PRESETS", () => {
     expect(MAP_PRESETS[2].id).toBe("large");
   });
 
-  it("are rectangles of 24×18, 36×28 and 50×38 hexes", () => {
-    expect(getMapPreset("small")).toMatchObject({ columns: 24, rows: 18 });
+  it("are rectangles of 26×20, 36×28 and 50×38 hexes", () => {
+    expect(getMapPreset("small")).toMatchObject({ columns: 26, rows: 20 });
     expect(getMapPreset("medium")).toMatchObject({ columns: 36, rows: 28 });
     expect(getMapPreset("large")).toMatchObject({ columns: 50, rows: 38 });
   });
@@ -125,10 +125,11 @@ describe("computeCameraConfig", () => {
     expect(large.maxDistance).toBeGreaterThan(small.maxDistance);
   });
 
-  it("frames the same world size as the old hexagons (diameter 36, 54, 75)", () => {
+  it("frames the map's width: 39 units for the small map (#239), the old hexagons' 54 and 75 for the others", () => {
     // The old radius-R hexagon spanned 3R world units east–west; the rectangles
-    // are 1.5 units per column wide, so the camera keeps its old framing.
-    expect(computeCameraConfig(getMapPreset("small")).isoDistance).toBeCloseTo(36 * 0.66);
+    // are 1.5 units per column wide, so medium and large keep their old framing.
+    // The small map grew to 26 columns to fit five regions (#239).
+    expect(computeCameraConfig(getMapPreset("small")).isoDistance).toBeCloseTo(39 * 0.66);
     expect(computeCameraConfig(getMapPreset("medium")).isoDistance).toBeCloseTo(54 * 0.66);
     expect(computeCameraConfig(getMapPreset("large")).isoDistance).toBeCloseTo(75 * 0.66);
   });
