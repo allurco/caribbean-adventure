@@ -38,8 +38,6 @@ export function useTurnHandoff({
   // The turn the board last showed, and the NPCs as it last showed them
   const [turnOf, setTurnOf] = useState<ShownTurn | null>(active ? { player: currentPlayer, turn } : null);
   const [lastNpcs, setLastNpcs] = useState(npcs);
-  // Whether the board last showed a fight: the turn it ended passes with it over
-  const [lastFight, setLastFight] = useState(fight);
 
   // State adjusted while rendering (React's pattern for a changed prop), so
   // the hand-off holds from the first render of the new turn
@@ -48,11 +46,10 @@ export function useTurnHandoff({
     setTurnOf({ player: currentPlayer, turn });
     if (turnOf !== null) {
       setHandoff(startHandoff(turnOf.player, currentPlayer, null, reducedMotion));
-      setHeldNpcs(heldNpcsFor(lastNpcs, npcs, lastFight));
+      setHeldNpcs(heldNpcsFor(lastNpcs, npcs, turnOf, { player: currentPlayer, turn }));
     }
   }
   if (lastNpcs !== npcs) setLastNpcs(npcs);
-  if (lastFight !== fight) setLastFight(fight);
 
   const current = useRef(handoff);
   const seen = useRef({ underway, npcs, onNextTurn });

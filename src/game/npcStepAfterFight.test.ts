@@ -21,11 +21,16 @@ const PORT = hex(-4, 0);
 const DOCK = hex(-3, 0);
 const WITNESS_START = hex(5, -5);
 
-/** Open water, with one English port on the west side. */
+/** A second port, to the south, so a new merchant has somewhere to sail. */
+const HAVANA = hex(0, 5);
+
+/** Open water, with an English port on the west side and a Spanish one to the south. */
 const cells: MapCell[] = hexGrid(5).map((h) =>
   hexEquals(h, PORT)
     ? { hex: h, terrain: "island", hasPort: true, nation: "England", portName: "Port Royal", dockingHex: DOCK, elevation: 1 }
-    : { hex: h, terrain: "water", hasPort: false, elevation: 0 }
+    : hexEquals(h, HAVANA)
+      ? { hex: h, terrain: "island", hasPort: true, nation: "Spain", portName: "Havana", dockingHex: hex(0, 4), elevation: 1 }
+      : { hex: h, terrain: "water", hasPort: false, elevation: 0 }
 );
 
 const captain = (id: string): Captain => ({ id, name: id, nation: "England", ability: "" });
@@ -70,16 +75,20 @@ function merchant(id: string, at: Hex, speed: number): NPCShip {
   };
 }
 
+/** Seeds found to give the rolls a test needs: a flight caught, a merchant spawned after the fight. */
+const CAUGHT_SEED = "s2";
+const SPAWN_SEED = "s10";
+
 /** The merchant to attack, beside seat 0, and the witness far off. */
 const npcs = (): Record<string, NPCShip> => ({
   prey: merchant("prey", hex(-1, 0), 0),
   witness: merchant("witness", WITNESS_START, 1),
 });
 
-function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanState> = {}) {
+function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanState> = {}, seed = "npc-step-after-fight-288") {
   const game: Game<CaribbeanState> = {
     ...Caribbean,
-    seed: "npc-step-after-fight-288",
+    seed,
     phases: {
       main: { ...(Caribbean.phases?.main ?? {}), start: true },
       combat: Caribbean.phases!.combat!,
@@ -207,19 +216,44 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     expect(npcSteps(client)).toBe(1);
   });
 
-  it("a flight from the fight, escaped or caught: the NPCs sail once", () => {
+  it("a flight from the fight, escaped: the NPCs sail once", () => {
+    // The attacker, far the better sailor, wins seamanship and gets clean away
     const client = startGame(twoSeats());
     client.moves.attackShip("1");
     client.moves.rollSeamanship();
     client.moves.chooseCombatAction("flee");
     client.moves.rollFleeAttempt();
-    if (stateOf(client).G.combat) {
-      // Caught: the pursuer's parting shot ends the fight
-      client.moves.rollCannons();
-      client.moves.applyResolution();
-    }
     expectFightOver(client);
     expect(npcSteps(client)).toBe(1);
+  });
+
+  it("a flight from the fight, caught: the parting shot ends it, and the NPCs sail once", () => {
+    // Evenly matched sailors; this seed's rolls catch the one who flees
+    const seats = twoSeats();
+    seats["1"].stats!.maneuverability = seats["0"].stats!.maneuverability;
+    const client = startGame(seats, {}, CAUGHT_SEED);
+    client.moves.attackShip("1");
+    client.moves.rollSeamanship();
+    client.moves.chooseCombatAction("flee");
+    client.moves.rollFleeAttempt();
+    expect(stateOf(client).G.combat?.fleeOutcome).toBe("caught");
+    client.moves.rollCannons();
+    expect(npcSteps(client)).toBe(0);
+    client.moves.applyResolution();
+    expectFightOver(client);
+    expect(npcSteps(client)).toBe(1);
+  });
+
+  it("a new merchant can put to sea in the step after a fight", () => {
+    // This seed's spawn roll comes up as the fight ends
+    const client = startGame(twoSeats(), {}, SPAWN_SEED);
+    client.moves.attackNPC("prey");
+    fireToTheEnd(client);
+    expectFightOver(client);
+    expect(npcSteps(client)).toBe(1);
+    const spawned = Object.keys(stateOf(client).G.npcs).filter((id) => id !== "witness");
+    expect(spawned).toHaveLength(1);
+    expect(stateOf(client).G.npcs[spawned[0]].role).toBe("MERCHANT");
   });
 
   it("both ships sunk: the NPCs sail once", () => {

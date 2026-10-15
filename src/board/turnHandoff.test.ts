@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { NPCShip } from "../game/types";
-import { controlsLocked, HANDOFF_TIMING as T, heldNpcsFor, holdsNpcs, startHandoff, turnsInPlay, stepHandoff, turnPassed, type Handoff, type HandoffSignals } from "./turnHandoff";
+import { controlsLocked, endedInFight, HANDOFF_TIMING as T, heldNpcsFor, holdsNpcs, startHandoff, turnsInPlay, stepHandoff, turnPassed, type Handoff, type HandoffSignals } from "./turnHandoff";
 
 const calm = (now: number, over: Partial<HandoffSignals> = {}): HandoffSignals => ({
   now,
@@ -123,23 +123,42 @@ describe("turnsInPlay", () => {
   });
 });
 
+describe("a turn that ended in a fight (#288)", () => {
+  // A fight is a turn of its own in boardgame.io: combat starts one, and main another as it ends
+  it("is one the board's turn number jumped two or more across", () => {
+    expect(endedInFight({ player: "0", turn: 4 }, { player: "1", turn: 6 })).toBe(true);
+  });
+
+  it("is not a turn that passed on by one", () => {
+    expect(endedInFight({ player: "0", turn: 4 }, { player: "1", turn: 5 })).toBe(false);
+  });
+
+  it("solo: is told from the turn number, the seat being the same", () => {
+    expect(endedInFight({ player: "0", turn: 4 }, { player: "0", turn: 6 })).toBe(true);
+    expect(endedInFight({ player: "0", turn: 4 }, { player: "0", turn: 5 })).toBe(false);
+  });
+});
+
 describe("the NPCs a hand-off holds (#288)", () => {
   // Only what the helper reads: which NPCs, and where each stood
   const npc = (id: string, q: number): NPCShip => ({ id, position: { q, r: 0, s: -q } }) as NPCShip;
   const before = { prey: npc("prey", 1), witness: npc("witness", 5) };
+  const shown = { player: "0", turn: 4 };
+  const passedOn = { player: "1", turn: 5 };
+  const afterAFight = { player: "1", turn: 6 };
 
   it("after a turn without a fight: the NPCs as they stood, even one gone since (a merchant home in port)", () => {
     const after = { witness: npc("witness", 4) };
-    expect(heldNpcsFor(before, after, false)).toBe(before);
+    expect(heldNpcsFor(before, after, shown, passedOn)).toBe(before);
   });
 
   it("after a fight: not the NPC sunk or captured in it, the rest where they stood", () => {
     const after = { witness: npc("witness", 4) };
-    expect(heldNpcsFor(before, after, true)).toEqual({ witness: npc("witness", 5) });
+    expect(heldNpcsFor(before, after, shown, afterAFight)).toEqual({ witness: npc("witness", 5) });
   });
 
   it("after a fight that took no NPC: the NPCs as they stood", () => {
     const after = { prey: npc("prey", 1), witness: npc("witness", 4) };
-    expect(heldNpcsFor(before, after, true)).toEqual(before);
+    expect(heldNpcsFor(before, after, shown, afterAFight)).toEqual(before);
   });
 });

@@ -11,7 +11,7 @@ export const MERCHANT_SPAWN_CHANCE = 0.1;
  * NPCs hold still, so each turn steps them exactly once whichever way it
  * ends. Run by both the main and the combat phase's turn `onEnd`.
  */
-export function npcsSailAsTurnEnds(G: CaribbeanState, randomNumber: () => number): void {
+export function npcTurnEndStep(G: CaribbeanState, randomNumber: () => number): void {
   if (G.combat) return;
   moveAllNPCs(G);
   if (randomNumber() < MERCHANT_SPAWN_CHANCE) spawnMerchant(G, randomNumber);

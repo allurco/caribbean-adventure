@@ -115,19 +115,33 @@ export function stepHandoff(h: Handoff, s: HandoffSignals): Handoff {
 export const holdsNpcs = (h: Handoff | null): boolean => h !== null && (h.phase === "sailing" || h.phase === "turnEnded");
 
 /**
- * The NPCs a hand-off holds while the outgoing turn plays out: as the board
- * last showed them (`before`), not yet where the turn's NPC step sent them
- * (`after`). After a fight, `before` is the fight's last picture, so an NPC
- * sunk or captured in it, gone from `after`, is left out, never to reappear
- * (#288). After any other turn the NPCs are held as they stood: a merchant
- * the step took home to port goes when the NPCs sail.
+ * Whether the turn the board showed (`from`) ended in a fight, now that
+ * `to` has come. A fight is a turn of its own in boardgame.io: the attack
+ * starts the combat phase's turn and the fight's end starts main's next, so
+ * the turn number jumps by two or more. Read from the turn numbers, not from
+ * whether the board drew the fight: online, the attack and its outcome can
+ * arrive in one update (#288). A seat out of the game, whose turn passes at
+ * once, jumps it too; holding fewer NPCs then costs nothing worse than a
+ * merchant leaving port a beat early.
+ */
+export const endedInFight = (from: ShownTurn, to: ShownTurn): boolean => to.turn - from.turn >= 2;
+
+/**
+ * The NPCs a hand-off holds while the turn `from` plays out into `to`: as
+ * the board last showed them (`before`), not yet where the turn's NPC step
+ * sent them (`after`). After a fight, every NPC gone from `after` is left
+ * out: the one sunk or captured in the fight, never to reappear (#288), and
+ * also any merchant the step after the fight sent home to port, which so
+ * leaves a beat early. After any other turn the NPCs are held as they stood,
+ * and a merchant home in port goes when the NPCs sail.
  */
 export function heldNpcsFor(
   before: Record<string, NPCShip>,
   after: Record<string, NPCShip>,
-  afterFight: boolean,
+  from: ShownTurn,
+  to: ShownTurn,
 ): Record<string, NPCShip> {
-  if (!afterFight) return before;
+  if (!endedInFight(from, to)) return before;
   return Object.fromEntries(Object.entries(before).filter(([id]) => id in after));
 }
 
