@@ -62,6 +62,12 @@ export function watchSession(client: AccountClient, onChange: (session: AccountS
   };
 }
 
+/** The signed-in player's current access token, for `/api`; null when signed out. */
+export async function accessToken(client: AccountClient): Promise<string | null> {
+  const { data, error } = await client.auth.getSession();
+  return error ? null : (data.session?.access_token ?? null);
+}
+
 export async function fetchProfile(client: AccountClient, id: string): Promise<ProfileResult> {
   const { data, error } = await client.from("profiles").select(PROFILE_COLUMNS).eq("id", id).maybeSingle();
   if (error) return { ok: false, error: error.message };

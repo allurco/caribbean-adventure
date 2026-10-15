@@ -35,6 +35,8 @@ export const ASSET_LOADER_SITES: Readonly<Record<string, string>> = {
   "src/board/SceneReadinessProbe.tsx": "loads the ship models through the same useGLTF cache Ship.tsx draws from",
   "src/board/useSceneReadiness.ts": "the port labels' font (troika preloadFont), a `font:labels` task",
   "src/audio/audioEngine.ts": "sounds: every registry sound is a `sound:` task, prefetched by useSceneReadiness",
+  "src/online/roomApi.ts": "no file: calls to /api from the online pages (#112), never the board",
+  "src/online/useRoomApi.ts": "no file: the browser fetch the /api clients use (#112), never the board",
 };
 
 /** The URL of every file the board waits on, under the app's base path. */
