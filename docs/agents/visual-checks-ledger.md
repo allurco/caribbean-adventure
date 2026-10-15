@@ -98,6 +98,28 @@ That is enough to answer "which PR is this from?" later without guessing.
 - **Not checked:** a true solo game (needs main's #278 merged in; the all-out ending is the same `endIf` path). Deleting a seat's ship mid-turn without ending it shows the "Awaiting orders" overlay; a staging artifact, real losses end the turn.
 - **For the maintainer:** the out seat is listed as "Player 2", not its last captain's name; the all-out game-over card reads "VICTORY! … has conquered the Caribbean!" on every seat's board, though no one reached the winning glory.
 
+### 2026-10-15: captain death on main (#265, PR #277)
+
+- **Branch and commit:** detached `origin/main` at `894edb4` (after #276, #277 and #279 merged).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1280×800.
+- **View:** `?seats=1&size=small&seed=1`, camera left where each seat's board puts it. Fights staged by writing a deep copy of the local transport's stored match state (the stored state is frozen, so it must be copied, edited and set back, then synced): seat 1 moved next to seat 0, hulls and cannons set so one side sinks. "Attack!" pressed, then the `attackShip` move sent from the client (no canvas hex click). Seat 0's End Turn was sent to the shared master as seat 0's event while seat 1's board was mounted, so seat 1 could be watched as its turn came.
+- **Findings:** seat 1 sunk: "Your ship is lost" card, the sinking ship lists and goes under, seat 0 sees "Waiting for Player 2 to pick a new captain"; on seat 1's turn the captain screen comes up, the new captain's sloop is at that captain's home port with 4 moves and sails. The glory board keeps the lost seat's glory ("Player 2 3"). A sunk attacker passes the turn on. A mutual sinking (both ships lost) passed the turn too.
+- **For the maintainer:** on seat 1's turn the "<rival>'s turn ends" banner shows dimmed under the captain screen, across its title; no "Your turn" banner shows for the new captain, and after the pick the camera stays on the map overview instead of going to the new ship. In combat the turn banner announces the defender ("Your turn, <defender>") on the attacker's board, as the combat phase makes the defender current.
+
+### 2026-10-15: region names in the sea (#239, PR #279)
+
+- **Branch and commit:** detached `origin/main` at `894edb4`.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1440×900, `snapshot=1` added to each URL.
+- **View:** the eight views in PR #279's description (small 1, medium 7, large 3; distances 26/28, 11 to 13, and 5), each with the default `regionBorder=water` and with `regionBorder=line`.
+- **Findings:** no region name and no seam can be seen in any shot, even with the contrast pushed. The chart is drawn (all five names and the seams, in the canvas), uploaded, and `regionNameInk` reaches 0.42 at distance 20 and over. With the ink forced to full in the shader (a request intercept, no source change) the names and seams show, in the water, off the land and the port labels, readable on the large map. So the pipeline works and the shipped strength is too weak: the ink darkens only the water body, and from this pitch the sky's reflection is most of what the sea shows. At distance 5 nothing shows, as intended. The `line` borders were not seen to stand out from the grid either.
+
+### 2026-10-15: wind in the game, weather gauge (#264, PR #276)
+
+- **Branch and commit:** detached `origin/main` at `894edb4`, against `81901b4` (main before #276) for the comparison.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1440×900 (1280×800 for the fight).
+- **View:** `?size=small&seed=1&snapshot=1` at `cx=18.75&cz=16.9&dist=26`, and at `cx=3.6&cz=19.2&dist=3.2` (Thornwood Bay: a sloop, palms, reef foam); `?seats=1&size=small&seed=1` for the fight, staged as in the captain-death entry.
+- **Findings:** waves, palms, reef foam, sails and flags look the same before and after; the only difference in the overview is #255's floating region labels, gone with #279. The combat panel shows "Weather gauge: …" under "Distance: 1 hex", both as a captain's name and as "neither, square to the wind".
+
 ### 2026-10-15: region borders and labels (#239, PR #255)
 
 - **Branch and commit:** `feat/239-regions` at `715fc44`.
