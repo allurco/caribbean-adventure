@@ -31,6 +31,16 @@ Wait for the board's loading screen to go (the progress bar `[role=progressbar]`
 
 Reports still being chased. Move an entry to "Investigated, not a bug" or close it with its fix once it ends.
 
+### 2026-10-15: the black flicker pinned to the bloom (follow-up to the entry below)
+
+- **Symptom:** the black frames on camera motion stop with `?bloom=0` on the reporter's machine, so they come from the bloom pass. The earlier "all switches at 0 still flicker" was likely a stale preview.
+- **Branch and commit:** `fix/bloom-flicker` off `d4b29af` (main, after PR #296).
+- **Renderer:** headless Chromium on a real GPU (ANGLE on Metal) at 1280 × 800, DPR 1 and 1.5.
+- **View:** `?size=medium&seed=7&skipLogin=1`, also `?size=small&seed=1` and `?size=medium&seed=42`, with the first captain and ship picked; the camera on a scripted path (the target circling 0.08 units a frame, the distance swinging between 1 and 11) for 120 to 300 frames.
+- **Measured:** a readback of the composer's input buffer (the scene before the bloom) after every frame found no NaN or Infinity and nothing over about 40, but a few negative pixels per frame, down to about −3, on silhouettes (one found on an instanced, vertex-coloured standard-material prop, with every input positive and with the lights, environment and fog each off). With `?aa=0` there were none: under MSAA a fragment on an edge is shaded at the pixel centre outside its triangle, so its varyings are extrapolated. How far they go depends on the GPU's rasteriser; a NaN or Infinity there would black out the whole frame through the bloom's blur.
+- **Changed:** a pass directly before the bloom sanitizes its input (NaN to black, each channel held to `[0, 8192]`, found from the float's bits); a readback after it found no negative, NaN or Infinity, and the same highlights. A/B switches: `?bloomsan=0` (no sanitize pass), `?bloommip=0` (Kawase blur instead of the mipmap blur), `?bloomhalf=0` (full float buffers).
+- **Open:** whether the sanitize pass stops the flicker on the reporter's machine, and if not, which of `bloommip=0`, `bloomhalf=0` or `aa=0` does. A fix at the source (centroid interpolation of the varyings) is left for later.
+
 ### 2026-10-15: the 3D view flickers black whenever the camera moves (a reporter's machine only)
 
 - **Symptom:** on a reporter's machine, whole 3D frames alternate between a normal render and pure black (0, 0, 0) on any pan, zoom or turn, and stop when the camera stops. The HUD is untouched and the console is empty (no context loss, no GL or shader errors). Medium map, docked at a port, `line` region borders.
@@ -41,7 +51,7 @@ Reports still being chased. Move an entry to "Investigated, not a bug" or close 
 - **Measured, `894edb4` → `a04f058`, medium map, 1440 × 900 at DPR 2, same camera path:** GPU memory the same (about 650 MB: textures 317, buffers 72, renderbuffers 260) and no growth over repeated camera motion or hover. Per frame, about 6 more draw calls and about 440 k more triangles: #281's idle combat layers (shot, splinters, grapples), drawn at zero size even with no fight.
 - **Changed in PR #292:** idle instanced layers are not drawn and cast no shadow; the sun glint and the sea's output are held finite; the canvas DPR is capped at 1.5 (about 650 → 480 MB; frame time median 13.4 → 10.1 ms on the test GPU); switches `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`.
 - **Changed in PR #296:** the idle combat layers stay in the scene, empty, while the loading screen is up, so their shaders still compile behind it; NaN and Infinity in the sea's colour are found from the float's bits (fast-math can fold `isnan` and `isinf` away), and the glint's cap is raised to 4096 so no real sparkle is dimmed. More switches for the base scene and the GL context: `?shadows=0`, `?aa=0` (canvas and composer), `?ocean=0`, `?land=0`, `?dpr=1`, `?power=low`, `?pdb=1`, and `?gpuinfo=1`, an on-screen readout of the context, the frame and context losses.
-- **Ruled out by the reporter:** the flicker survives `fx=0&ink=0&bloom=0` (and `post=0`), so the combat effects, the region ink and the post-processing are not the cause.
+- **Ruled out by the reporter:** the flicker survives `fx=0&ink=0&bloom=0` (and `post=0`), so the combat effects, the region ink and the post-processing are not the cause. **Superseded for the post-processing:** a later check found the flicker stops with `?bloom=0`, so the bloom is the cause after all (see "the black flicker pinned to the bloom" above; the all-switches result was likely a stale preview).
 - **Open:** which of PR #296's switches, if any, stops the reporter's flicker, and what `?gpuinfo=1` shows on that machine.
 
 ## Investigated, not a bug

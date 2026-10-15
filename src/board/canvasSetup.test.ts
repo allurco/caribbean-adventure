@@ -8,6 +8,7 @@ describe("canvasSetup: the canvas and composer the A/B switches ask for", () => 
       gl: { antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: false },
       shadows: true,
       composerMultisampling: 8,
+      composerFrameBuffer: "half",
     });
   });
 
@@ -26,5 +27,9 @@ describe("canvasSetup: the canvas and composer the A/B switches ask for", () => 
     expect(setup.gl.antialias).toBe(false);
     expect(setup.composerMultisampling).toBe(0);
     expect(setup.shadows).toBe(false);
+  });
+
+  it("gives the composer full float buffers instead of half floats under ?bloomhalf=0", () => {
+    expect(canvasSetup({}, { halfFloatBuffers: true }).composerFrameBuffer).toBe("float");
   });
 });

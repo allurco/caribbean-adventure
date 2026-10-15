@@ -132,6 +132,13 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?shadows=no&aa=1&ocean=&land=false")).toEqual({});
   });
 
+  it("tries the bloom without its input sanitized, without its mipmap blur, or on full float buffers", () => {
+    expect(parseDevUrlParams("?bloomsan=0")).toEqual({ renderOff: { bloomSanitize: true } });
+    expect(parseDevUrlParams("?bloommip=0")).toEqual({ renderOff: { bloomMipmapBlur: true } });
+    expect(parseDevUrlParams("?bloomhalf=0")).toEqual({ renderOff: { halfFloatBuffers: true } });
+    expect(parseDevUrlParams("?bloomsan=1&bloommip=&bloomhalf=no")).toEqual({});
+  });
+
   it("sets up the GL context for a check on a real GPU, and shows what it got, in production builds too", () => {
     expect(parseDevUrlParams("?dpr=1")).toEqual({ gpu: { dpr1: true } });
     expect(parseDevUrlParams("?power=low")).toEqual({ gpu: { lowPower: true } });
@@ -145,7 +152,7 @@ describe("parseDevUrlParams", () => {
   });
 
   it("writes the A/B switches in effect back out as the URL spells them, and nothing else", () => {
-    const search = "?fx=0&ink=0&bloom=0&post=0&shadows=0&aa=0&ocean=0&land=0&dpr=1&power=low&pdb=1&gpuinfo=1";
+    const search = "?fx=0&ink=0&bloom=0&post=0&shadows=0&aa=0&ocean=0&land=0&bloomsan=0&bloommip=0&bloomhalf=0&dpr=1&power=low&pdb=1&gpuinfo=1";
     const { renderOff, gpu } = parseDevUrlParams(`${search}&seed=7&email=someone`);
     expect(renderSwitches(renderOff ?? {}, gpu ?? {})).toEqual(search.slice(1).split("&"));
     expect(parseDevUrlParams(`?${renderSwitches(renderOff ?? {}, gpu ?? {}).join("&")}`)).toEqual({ renderOff, gpu });
