@@ -105,6 +105,7 @@ import {
 } from "./seat";
 import { HudParchmentPanel } from "./HudParchmentPanel";
 import { HudShipLost } from "./HudShipLost";
+import { isEliminated } from "../game/captainDeath";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
 import { GameOverScreen } from "./GameOverScreen";
@@ -1224,7 +1225,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         />
       )}
       {currentShipState && !shownShip && (
-        <HudShipLost name={seatName(G, hudPlayer)} playerColor={PLAYER_COLOURS[hudPlayer] ?? "#888"} />
+        <HudShipLost name={seatName(G, hudPlayer)} playerColor={PLAYER_COLOURS[hudPlayer] ?? "#888"} out={isEliminated(G, hudPlayer)} />
       )}
 
       {/* Action buttons - only in main phase */}

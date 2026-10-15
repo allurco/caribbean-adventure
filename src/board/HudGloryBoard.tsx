@@ -31,7 +31,8 @@ export function HudGloryBoard({ rows, colours }: HudGloryBoardProps) {
               className="w-2 h-2 rounded-sm shrink-0 ring-1 ring-black/40"
               style={{ backgroundColor: colours[row.seat] ?? "#888888" }}
             />
-            <span className="flex-1 truncate">{row.name}</span>
+            <span className={`flex-1 truncate ${row.out ? "line-through opacity-60" : ""}`}>{row.name}</span>
+            {row.out && <span className="text-[10px] uppercase tracking-wider text-amber-500/60">out</span>}
             <span className="tabular-nums">{row.glory}</span>
           </li>
         ))}

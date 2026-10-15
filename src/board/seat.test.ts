@@ -211,10 +211,10 @@ describe("gloryScoreboard: every seat's captain and glory, which is public", () 
     G.ships["3"].score = 3;
     G.ships["3"].captain = captain("d", "Calico Jack");
     expect(gloryScoreboard(G, "2")).toEqual([
-      { seat: "1", name: "Player 2", glory: 7, viewer: false },
-      { seat: "2", name: "Player 3", glory: 3, viewer: true },
-      { seat: "3", name: "Calico Jack", glory: 3, viewer: false },
-      { seat: "0", name: "Anne Bonny", glory: 0, viewer: false },
+      { seat: "1", name: "Player 2", glory: 7, viewer: false, out: false },
+      { seat: "2", name: "Player 3", glory: 3, viewer: true, out: false },
+      { seat: "3", name: "Calico Jack", glory: 3, viewer: false, out: false },
+      { seat: "0", name: "Anne Bonny", glory: 0, viewer: false, out: false },
     ]);
   });
 
@@ -341,6 +341,12 @@ describe("choosingCaptain: when the captain screen is up", () => {
     expect(choosingCaptain(G, "main", "0")).toBe(false);
     expect(choosingCaptain(G, "combat", "1")).toBe(false);
   });
+
+  it("never for a seat out of the game", () => {
+    const G = lostSeatTable();
+    G.lostShips!["1"].eliminated = true;
+    expect(choosingCaptain(G, "main", "1")).toBe(false);
+  });
 });
 
 describe("draftView: a new captain for a lost ship (#265)", () => {
@@ -362,8 +368,14 @@ describe("draftView: a new captain for a lost ship (#265)", () => {
 describe("gloryScoreboard: a seat that lost its ship (#265)", () => {
   it("keeps its glory on the board while it waits for a new captain", () => {
     expect(gloryScoreboard(lostSeatTable(), "0")).toEqual([
-      { seat: "1", name: "Player 2", glory: 5, viewer: false },
-      { seat: "0", name: "Anne Bonny", glory: 0, viewer: true },
+      { seat: "1", name: "Player 2", glory: 5, viewer: false, out: false },
+      { seat: "0", name: "Anne Bonny", glory: 0, viewer: true, out: false },
     ]);
+  });
+
+  it("marks a seat out of the game, keeping its glory", () => {
+    const G = lostSeatTable();
+    G.lostShips!["1"].eliminated = true;
+    expect(gloryScoreboard(G, "0")[0]).toEqual({ seat: "1", name: "Player 2", glory: 5, viewer: false, out: true });
   });
 });
