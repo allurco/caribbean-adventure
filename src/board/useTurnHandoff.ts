@@ -13,6 +13,7 @@ import { startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } f
 export function useTurnHandoff({
   currentPlayer,
   turn,
+  fight,
   active,
   reducedMotion,
   npcs,
@@ -22,6 +23,8 @@ export function useTurnHandoff({
   currentPlayer: string;
   /** boardgame.io's turn number: a new one hands off even to the same seat (solo, #278). */
   turn: number;
+  /** A fight is under way: played within the attacker's turn, it hands off only when it ends (#284). */
+  fight: boolean;
   /** Turns are being played (not the draft). */
   active: boolean;
   reducedMotion: boolean;
@@ -39,7 +42,7 @@ export function useTurnHandoff({
   // State adjusted while rendering (React's pattern for a changed prop), so
   // the hand-off holds from the first render of the new turn
   if (!active && turnOf !== null) setTurnOf(null);
-  if (active && (turnOf === null || turnPassed(turnOf, { player: currentPlayer, turn }))) {
+  if (active && (turnOf === null || turnPassed(turnOf, { player: currentPlayer, turn, fight }))) {
     setTurnOf({ player: currentPlayer, turn });
     if (turnOf !== null) {
       setHandoff(startHandoff(turnOf.player, currentPlayer, null, reducedMotion));

@@ -58,9 +58,12 @@ export interface ShownTurn {
 /**
  * Whether a new turn has begun since the board last showed `shown`: the turn
  * number moved on. Not the player alone: solo (#278) every turn is the same
- * seat's, and its turns still end and hand off.
+ * seat's, and its turns still end and hand off. Not while `now` is a `fight`:
+ * boardgame.io counts the combat phase as a turn of its own, but the fight is
+ * played within the attacker's turn, and ending it hands off (#284).
  */
-export const turnPassed = (shown: ShownTurn | null, now: ShownTurn): boolean => shown !== null && shown.turn !== now.turn;
+export const turnPassed = (shown: ShownTurn | null, now: ShownTurn & { readonly fight?: boolean }): boolean =>
+  shown !== null && !now.fight && shown.turn !== now.turn;
 
 /**
  * A hand-off from `from` to `to`, the outgoing ship still sailing. Started

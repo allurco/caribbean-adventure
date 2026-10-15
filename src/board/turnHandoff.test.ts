@@ -96,6 +96,14 @@ describe("turnPassed", () => {
     expect(turnPassed({ player: "0", turn: 3 }, { player: "0", turn: 4 })).toBe(true);
   });
 
+  it("is not as a fight begins: the fight is played within the attacker's turn (#284)", () => {
+    expect(turnPassed({ player: "0", turn: 3 }, { player: "0", turn: 4, fight: true })).toBe(false);
+  });
+
+  it("is once the fight ends and the turn moves on, from the attacker (#284)", () => {
+    expect(turnPassed({ player: "0", turn: 3 }, { player: "1", turn: 5 })).toBe(true);
+  });
+
   it("is not while the same turn goes on, nor before a turn has been shown", () => {
     expect(turnPassed({ player: "0", turn: 3 }, { player: "0", turn: 3 })).toBe(false);
     expect(turnPassed(null, { player: "0", turn: 1 })).toBe(false);
