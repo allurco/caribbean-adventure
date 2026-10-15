@@ -112,10 +112,15 @@ describe("gpuInfo: what the GL context is, read from the screen (?gpuinfo=1)", (
     expect(gpuSetupLines({ dpr1: true, info: true }, { msaa: true, shadows: true }, setup)).toEqual([
       "switches: shadows=0 aa=0 dpr=1 gpuinfo=1",
       "asked: dpr 1  shadows off  composer multisampling 0",
+      "bloom: input sanitized  mipmap blur  buffers half float",
     ]);
     expect(gpuSetupLines({ info: true }, { postProcessing: true }, canvasSetup({ info: true }, { postProcessing: true }))).toEqual([
       "switches: post=0 gpuinfo=1",
       "asked: dpr 1–1.5  shadows on  composer multisampling (no composer)",
+      "bloom: (no composer)",
     ]);
+    const bloomOff = { bloomSanitize: true, bloomMipmapBlur: true, halfFloatBuffers: true } as const;
+    expect(gpuSetupLines({}, bloomOff, canvasSetup({}, bloomOff))[2]).toBe("bloom: input not sanitized  no mipmap blur  buffers float");
+    expect(gpuSetupLines({}, { bloom: true }, canvasSetup({}, { bloom: true }))[2]).toBe("bloom: off  buffers half float");
   });
 });

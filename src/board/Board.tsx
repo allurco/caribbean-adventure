@@ -206,6 +206,7 @@ function Scene({
   regionBorder,
   renderOff,
   composerMultisampling,
+  composerFrameBuffer,
   onReady,
   warmUp,
 }: {
@@ -264,6 +265,8 @@ function Scene({
   renderOff: RenderOff;
   /** The composer's multisampling: 0 under `?aa=0` (canvasSetup.ts). */
   composerMultisampling: number;
+  /** The composer's buffers: half floats, or full floats under `?bloomhalf=0` (canvasSetup.ts). */
+  composerFrameBuffer: "half" | "float";
   /** Reports the loading gate's tasks done here: "world" once built, "sky" once baked (useSceneReadiness.ts). */
   onReady: (task: string) => void;
   /** The loading gate is still open: idle layers stay in the scene so their shaders compile behind it. */
@@ -776,7 +779,14 @@ function Scene({
       />
 
       {/* Post-processing: bloom, vignette, ACES at the lighting's exposure, warm grade */}
-      {renderOff.postProcessing ? <PlainRender /> : <PostEffects lighting={lighting} withoutBloom={renderOff.bloom === true} multisampling={composerMultisampling} />}
+      {renderOff.postProcessing ? <PlainRender /> : <PostEffects
+          lighting={lighting}
+          withoutBloom={renderOff.bloom === true}
+          multisampling={composerMultisampling}
+          sanitizeBloomInput={!renderOff.bloomSanitize}
+          mipmapBlur={!renderOff.bloomMipmapBlur}
+          frameBuffer={composerFrameBuffer}
+        />}
     </>
     </SeaSurfaceContext.Provider>
   );
@@ -1153,6 +1163,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           regionBorder={regionBorder ?? DEFAULT_REGION_BORDER_MODE}
           renderOff={renderOff ?? NOTHING_OFF}
           composerMultisampling={setup.composerMultisampling}
+          composerFrameBuffer={setup.composerFrameBuffer}
           onReady={readiness.complete}
           warmUp={!readiness.view.ready}
         />

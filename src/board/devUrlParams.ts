@@ -33,7 +33,7 @@ export interface DevUrlParams {
   gallerySnapshot?: true;
   /** `?seats=1`: every seat of the match on one page, through boardgame.io's local transport, one seat shown at a time (#110), in dev builds only. */
   localSeats?: true;
-  /** `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`, `?shadows=0`, `?aa=0`, `?ocean=0`, `?land=0`: parts of the picture left out, to tell on a real GPU which one a rendering fault comes from; read in production builds too. */
+  /** `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`, `?shadows=0`, `?aa=0`, `?ocean=0`, `?land=0`, `?bloomsan=0`, `?bloommip=0`, `?bloomhalf=0`: parts of the picture left out, to tell on a real GPU which one a rendering fault comes from; read in production builds too. */
   renderOff?: RenderOff;
   /** `?dpr=1`, `?power=low`, `?pdb=1`, `?gpuinfo=1`: how the GL context is set up, and a readout of what it got, for the same checks; read in production builds too. */
   gpu?: GpuCheck;
@@ -41,7 +41,7 @@ export interface DevUrlParams {
   players?: number;
 }
 
-/** Parts of the picture left out (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`, `?shadows=0`, `?aa=0`, `?ocean=0`, `?land=0`). */
+/** Parts of the picture left out (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`, `?shadows=0`, `?aa=0`, `?ocean=0`, `?land=0`, `?bloomsan=0`, `?bloommip=0`, `?bloomhalf=0`). */
 export interface RenderOff {
   combatFx?: true;
   regionInk?: true;
@@ -56,6 +56,12 @@ export interface RenderOff {
   ocean?: true;
   /** `?land=0`: no land mesh and none of its decorations. */
   land?: true;
+  /** `?bloomsan=0`: the bloom's input is not sanitized (bloomSanitize.ts). */
+  bloomSanitize?: true;
+  /** `?bloommip=0`: the bloom blurs with its Kawase blur instead of its mipmap blur. */
+  bloomMipmapBlur?: true;
+  /** `?bloomhalf=0`: the composer's buffers are full floats instead of half floats. */
+  halfFloatBuffers?: true;
 }
 
 /** How the GL context is set up for a check on a real GPU (`?dpr=1`, `?power=low`, `?pdb=1`), and `?gpuinfo=1`. */
@@ -80,6 +86,9 @@ const RENDER_OFF_SWITCHES: readonly (readonly [string, keyof RenderOff])[] = [
   ["aa", "msaa"],
   ["ocean", "ocean"],
   ["land", "land"],
+  ["bloomsan", "bloomSanitize"],
+  ["bloommip", "bloomMipmapBlur"],
+  ["bloomhalf", "halfFloatBuffers"],
 ];
 /** Each `GpuCheck` switch: its URL parameter and the value that turns it on. */
 const GPU_SWITCHES: readonly (readonly [string, string, keyof GpuCheck])[] = [
