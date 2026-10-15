@@ -19,7 +19,10 @@
 --   id is never passed on. Never the state itself, the invite code or the seeds.
 -- * Names come from `profiles`; only user ids are stored in seats.
 
--- The result's columns change, so the function is dropped and made again.
+-- The result's columns change, which `create or replace` refuses ("cannot
+-- change return type of existing function"), so the function is dropped and
+-- made again. A migration runs in one transaction, so no caller sees it gone;
+-- the revoke and the grant are stated again below.
 drop function public.list_voyages(uuid, integer);
 
 -- Up to `p_limit` (at most 50) of `p_user`'s rooms, the most recently changed
