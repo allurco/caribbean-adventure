@@ -15,6 +15,7 @@ import type {
 } from "./types";
 import { SHIP_CLASSES, STARTER_SHIP_CLASSES } from "./types";
 import { playerViewFor } from "./playerView";
+import { MAX_SEATS, MIN_SEATS, isValidSeatCount } from "./seats";
 import {
   canAttack,
   canAttackNPC,
@@ -103,22 +104,26 @@ export function withHotseatView(game: Game<CaribbeanState>): Game<CaribbeanState
  * its size and seed.
  */
 export function withGeneratedMap(game: Game<CaribbeanState>, map: GeneratedMap): Game<CaribbeanState> {
-  return { ...game, setup: ({ random }) => createInitialState(map, random.Number) };
+  return { ...game, setup: ({ ctx, random }) => createInitialState(map, ctx.numPlayers, random.Number) };
 }
 
-/** The seats a match is set up for. Every client's `numPlayers` must match it. */
-export const PLAYER_COUNT = 2;
-
 /**
- * The state a match starts in, on `map`: the players' ships, the captain draft, no NPCs yet.
+ * The state a match of `numPlayers` seats (the match's `ctx.numPlayers`, 1 to
+ * 4, #278) starts in, on `map`: a ship and a captain hand per seat, no NPCs yet.
  * `random` is boardgame.io's setup `random.Number`, so the match's seed reproduces the draft (#160).
  */
-function createInitialState({ mapSize, mapSeed, cells, regions }: GeneratedMap, random: () => number): CaribbeanState {
+function createInitialState(
+  { mapSize, mapSeed, cells, regions }: GeneratedMap,
+  numPlayers: number,
+  random: () => number
+): CaribbeanState {
+  if (!isValidSeatCount(numPlayers)) {
+    throw new Error(`A match has ${MIN_SEATS} to ${MAX_SEATS} seats, not ${numPlayers}`);
+  }
   // The map is a rectangle that wraps east–west, a cylinder as wide as its
   // columns (#36); the generator and G share the wrap.
   const wrap: MapWrap = createWrap(getMapPreset(mapSize).columns);
 
-  const numPlayers = PLAYER_COUNT;
   const deck = createCaptainDeck(random);
   const { hands, remaining } = dealHands(deck, numPlayers);
 
@@ -176,6 +181,10 @@ function needingAShip(moves: Record<string, MoveFn<CaribbeanState>>): Record<str
 export const Caribbean: Game<CaribbeanState> = {
   name: "caribbean",
 
+  // The seats come from the match (#278): solo against the NPCs, up to four captains.
+  minPlayers: MIN_SEATS,
+  maxPlayers: MAX_SEATS,
+
   // Each seat sees only its own hidden information; a client with no seat is a spectator (#109).
   playerView: ({ G, playerID }) => playerViewFor(G, playerID),
 
@@ -191,10 +200,10 @@ export const Caribbean: Game<CaribbeanState> = {
     }
   },
 
-  setup: ({ random }, setupData?: CaribbeanSetupData) => {
+  setup: ({ ctx, random }, setupData?: CaribbeanSetupData) => {
     // The provided size and seed, else random ones (see resolveMapRequest).
     const request = resolveMapRequest(setupData, random.Number);
-    return createInitialState({ ...request, ...generateMapFor(request) }, random.Number);
+    return createInitialState({ ...request, ...generateMapFor(request) }, ctx.numPlayers, random.Number);
   },
 
   // Top-level moves/turn serve as defaults when tests override phases

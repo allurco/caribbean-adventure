@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NPCShip } from "../game/types";
-import { startHandoff, stepHandoff, type Handoff } from "./turnHandoff";
+import { startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } from "./turnHandoff";
 
 /**
  * Plays the hand-off between turns (turnHandoff.ts, #216) each frame from
@@ -12,6 +12,7 @@ import { startHandoff, stepHandoff, type Handoff } from "./turnHandoff";
  */
 export function useTurnHandoff({
   currentPlayer,
+  turn,
   active,
   reducedMotion,
   npcs,
@@ -19,6 +20,8 @@ export function useTurnHandoff({
   onNextTurn,
 }: {
   currentPlayer: string;
+  /** boardgame.io's turn number: a new one hands off even to the same seat (solo, #278). */
+  turn: number;
   /** Turns are being played (not the draft). */
   active: boolean;
   reducedMotion: boolean;
@@ -29,17 +32,17 @@ export function useTurnHandoff({
 }): { handoff: Handoff | null; heldNpcs: Record<string, NPCShip> | null; markTurnShown: () => void } {
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [heldNpcs, setHeldNpcs] = useState<Record<string, NPCShip> | null>(null);
-  // The player whose turn the board last showed, and the NPCs as it last showed them
-  const [turnOf, setTurnOf] = useState<string | null>(active ? currentPlayer : null);
+  // The turn the board last showed, and the NPCs as it last showed them
+  const [turnOf, setTurnOf] = useState<ShownTurn | null>(active ? { player: currentPlayer, turn } : null);
   const [lastNpcs, setLastNpcs] = useState(npcs);
 
   // State adjusted while rendering (React's pattern for a changed prop), so
   // the hand-off holds from the first render of the new turn
   if (!active && turnOf !== null) setTurnOf(null);
-  if (active && turnOf !== currentPlayer) {
-    setTurnOf(currentPlayer);
+  if (active && (turnOf === null || turnPassed(turnOf, { player: currentPlayer, turn }))) {
+    setTurnOf({ player: currentPlayer, turn });
     if (turnOf !== null) {
-      setHandoff(startHandoff(turnOf, currentPlayer, null, reducedMotion));
+      setHandoff(startHandoff(turnOf.player, currentPlayer, null, reducedMotion));
       setHeldNpcs(lastNpcs);
     }
   }

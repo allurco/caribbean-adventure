@@ -912,6 +912,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   );
   const { handoff, heldNpcs, markTurnShown } = useTurnHandoff({
     currentPlayer,
+    turn: ctx.turn,
     active: ctx.phase !== "draft",
     reducedMotion: prefersReducedMotion,
     npcs: G.npcs,

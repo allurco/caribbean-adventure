@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { controlsLocked, HANDOFF_TIMING as T, holdsNpcs, startHandoff, stepHandoff, type Handoff, type HandoffSignals } from "./turnHandoff";
+import { controlsLocked, HANDOFF_TIMING as T, holdsNpcs, startHandoff, stepHandoff, turnPassed, type Handoff, type HandoffSignals } from "./turnHandoff";
 
 const calm = (now: number, over: Partial<HandoffSignals> = {}): HandoffSignals => ({
   now,
@@ -87,5 +87,17 @@ describe("turn hand-off", () => {
     expect(controlsLocked(at("nextTurn"))).toBe(true);
     expect(controlsLocked(at("idle"))).toBe(false);
     expect(controlsLocked(null)).toBe(false);
+  });
+});
+
+describe("turnPassed", () => {
+  it("is a new turn when the turn number moves on, to another seat or, solo, the same one (#278)", () => {
+    expect(turnPassed({ player: "0", turn: 3 }, { player: "1", turn: 4 })).toBe(true);
+    expect(turnPassed({ player: "0", turn: 3 }, { player: "0", turn: 4 })).toBe(true);
+  });
+
+  it("is not while the same turn goes on, nor before a turn has been shown", () => {
+    expect(turnPassed({ player: "0", turn: 3 }, { player: "0", turn: 3 })).toBe(false);
+    expect(turnPassed(null, { player: "0", turn: 1 })).toBe(false);
   });
 });
