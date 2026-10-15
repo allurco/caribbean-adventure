@@ -14,8 +14,10 @@ export interface RoomView {
   mapSize: MapSizeId;
   mapSeed: number;
   turnTimerSeconds: number;
-  status: "open" | "started" | "finished";
+  status: "open" | "starting" | "started" | "finished";
   isHost: boolean;
+  /** The host's seat (from the room's host, not seat 0); null once the host's account is gone. */
+  hostSeat: number | null;
   yourSeat: number | null;
   seats: { index: number; userId: string; displayName: string | null }[];
   matchId: string | null;
@@ -24,10 +26,13 @@ export interface RoomView {
 export interface NewRoomSettings {
   seats: number;
   mapSize: MapSizeId;
+  /** Absent: the server picks one. */
+  mapSeed?: number;
   turnTimerSeconds: number;
 }
 
-export type ApiResult<T> = ({ ok: true } & T) | { ok: false; status: number; error: string };
+/** A refusal: `code` is the server's stable code (`ApiErrorCode` in server/http.ts), or `network`; `error` a sentence to show. */
+export type ApiResult<T> = ({ ok: true } & T) | { ok: false; status: number; code: string; error: string };
 export type RoomResult = ApiResult<{ room: RoomView }>;
 
 export interface RequestInitLike {
@@ -44,40 +49,53 @@ export interface ApiDeps {
   accessToken: () => Promise<string | null>;
 }
 
-const MESSAGES: Record<string, string> = {
-  "room full": "Every seat in that room is taken.",
-  "match already started": "That match has already set sail.",
-  "seats still free": "Wait until every seat is taken.",
-  "no such room": "No room behind that link. Ask its host for a fresh one.",
-  "too many rooms: try again within the hour": "Too many rooms in an hour. Try again later.",
-  "only the host starts the match": "Only the host can start the match.",
-  "sign in first": "Sign in first.",
+/** What to show for each of the server's codes; a code not listed reads as a generic failure. */
+export type Messages = Readonly<Record<string, string>>;
+
+const COMMON: Messages = {
+  unauthorized: "Sign in first.",
+  network: "Could not reach the harbour. Check your connection.",
+};
+
+const ROOM_MESSAGES: Messages = {
+  room_full: "Every seat in that room is taken.",
+  match_started: "That match has already set sail.",
+  match_starting: "The match is being started. Give it a moment.",
+  seats_free: "Wait until every seat is taken.",
+  not_found: "No room behind that link. Ask its host for a fresh one.",
+  rate_limited: "Too many rooms in an hour. Try again later.",
+  not_host: "Only the host can start the match.",
 };
 
 /** Calls one `/api` route as the signed-in player; shared by the rooms and match clients. */
-export async function callApi<T>(deps: ApiDeps, method: string, url: string, body?: unknown): Promise<ApiResult<T>> {
+export async function callApi<T>(deps: ApiDeps, messages: Messages, method: string, url: string, body?: unknown): Promise<ApiResult<T>> {
+  const refuse = (status: number, code: string) => ({
+    ok: false as const,
+    status,
+    code,
+    error: messages[code] ?? COMMON[code] ?? `Something went wrong (${status}). Try again.`,
+  });
   const token = await deps.accessToken();
-  if (!token) return { ok: false, status: 401, error: MESSAGES["sign in first"] };
+  if (!token) return refuse(401, "unauthorized");
   const headers: Record<string, string> = { authorization: `Bearer ${token}` };
   if (body !== undefined) headers["content-type"] = "application/json";
   let res: Response;
   try {
     res = await deps.fetch(url, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
   } catch {
-    return { ok: false, status: 0, error: "Could not reach the harbour. Check your connection." };
+    return refuse(0, "network");
   }
-  const payload = (await res.json().catch(() => null)) as ({ ok?: boolean; error?: string } & T) | null;
+  const payload = (await res.json().catch(() => null)) as ({ ok?: boolean; code?: string } & T) | null;
   if (res.ok && payload?.ok) return { ...payload, ok: true };
-  const error = (payload?.error && MESSAGES[payload.error]) || `Something went wrong (${res.status}). Try again.`;
-  return { ok: false, status: res.status, error };
+  return refuse(res.status, typeof payload?.code === "string" ? payload.code : "internal");
 }
 
 export function createRoomApi(deps: ApiDeps) {
   return {
-    createRoom: (settings: NewRoomSettings) => callApi<{ room: RoomView }>(deps, "POST", "/api/rooms", settings),
-    joinRoom: (inviteCode: string) => callApi<{ room: RoomView }>(deps, "POST", "/api/rooms/join", { inviteCode }),
-    getRoom: (id: string) => callApi<{ room: RoomView }>(deps, "GET", `/api/rooms/${encodeURIComponent(id)}`),
-    startRoom: (id: string) => callApi<{ room: RoomView }>(deps, "POST", `/api/rooms/${encodeURIComponent(id)}/start`),
+    createRoom: (settings: NewRoomSettings) => callApi<{ room: RoomView }>(deps, ROOM_MESSAGES, "POST", "/api/rooms", settings),
+    joinRoom: (inviteCode: string) => callApi<{ room: RoomView }>(deps, ROOM_MESSAGES, "POST", "/api/rooms/join", { inviteCode }),
+    getRoom: (id: string) => callApi<{ room: RoomView }>(deps, ROOM_MESSAGES, "GET", `/api/rooms/${encodeURIComponent(id)}`),
+    startRoom: (id: string) => callApi<{ room: RoomView }>(deps, ROOM_MESSAGES, "POST", `/api/rooms/${encodeURIComponent(id)}/start`),
   };
 }
 

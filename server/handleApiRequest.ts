@@ -27,6 +27,8 @@ export interface ApiServices {
   newInviteCode(): string;
   /** A map seed for a room that names none. */
   newMapSeed(): number;
+  /** A new match's random seed: unguessable (128 random bits). */
+  newMatchSeed(): string;
 }
 
 type Route = (request: Request, userId: string, services: ApiServices) => Promise<Response>;
@@ -41,7 +43,13 @@ interface RouteEntry {
 const exact = (want: string) => (path: string) => (path === want ? [] : null);
 const pattern = (re: RegExp) => (path: string) => {
   const m = re.exec(path);
-  return m ? m.slice(1).map(decodeURIComponent) : null;
+  if (!m) return null;
+  try {
+    return m.slice(1).map(decodeURIComponent);
+  } catch {
+    // A malformed escape (`%ZZ`) names nothing: no such route.
+    return null;
+  }
 };
 
 const ROUTES: RouteEntry[] = [
@@ -64,20 +72,19 @@ export async function handleApiRequest(request: Request, env: ServerEnv, service
     return json(health(env));
   }
 
-  const route = findRoute(request.method, path);
-  if (route === "not found") return fail(404, "not found");
-  if (route === "method not allowed") return fail(405, "method not allowed");
-  if (!services) return fail(503, "online play is not configured");
-
   try {
+    const route = findRoute(request.method, path);
+    if (route === "not found") return fail(404, "not_found", "not found");
+    if (route === "method not allowed") return fail(405, "method_not_allowed", "method not allowed");
+    if (!services) return fail(503, "not_configured", "online play is not configured");
     const token = bearerToken(request);
     const userId = token ? await services.auth(token) : null;
-    if (!userId) return fail(401, "sign in first");
+    if (!userId) return fail(401, "unauthorized", "sign in first");
     return await route(request, userId, services);
   } catch (error) {
     // The details stay in the function's log, never in the response.
     console.error(error);
-    return fail(500, "something went wrong");
+    return fail(500, "internal", "something went wrong");
   }
 }
 

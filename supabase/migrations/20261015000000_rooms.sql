@@ -35,8 +35,10 @@ create table public.rooms (
   map_seed integer not null,
   turn_timer_seconds integer not null default 86400
     constraint rooms_turn_timer_check check (turn_timer_seconds between 60 and 604800),
+  -- 'starting': the host's start is claimed and /api is building the match.
   status text not null default 'open'
-    constraint rooms_status_check check (status in ('open', 'started', 'finished')),
+    constraint rooms_status_check check (status in ('open', 'starting', 'started', 'finished')),
+  start_claimed_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -108,6 +110,13 @@ alter table public.rooms enable row level security;
 alter table public.seats enable row level security;
 alter table public.matches enable row level security;
 alter table public.rate_counters enable row level security;
+-- Even the tables' owner goes through the policies (the service role still
+-- bypasses them). Not `seats`: `is_room_member` reads it as its owner, and
+-- forcing the policies there would send that read back through the policy
+-- that calls it. Nobody but the server writes `seats` either way.
+alter table public.rooms force row level security;
+alter table public.matches force row level security;
+alter table public.rate_counters force row level security;
 
 create policy "Members read their rooms"
   on public.rooms for select
@@ -157,14 +166,19 @@ begin
 end;
 $$;
 
--- A new private room with its host in seat 0. Returns the room's id.
+-- A new private room with its host in seat 0, counted against the host's
+-- allowance (`p_limit` rooms in each window of `p_window_seconds`) in the same
+-- transaction, so a creation that fails costs nothing. Returns the room's id,
+-- or null when the allowance is used up.
 create function public.create_room(
   p_host uuid,
   p_invite_code text,
   p_seat_count integer,
   p_map_size text,
   p_map_seed integer,
-  p_turn_timer_seconds integer
+  p_turn_timer_seconds integer,
+  p_limit integer,
+  p_window_seconds integer
 )
 returns uuid
 language plpgsql
@@ -173,6 +187,9 @@ as $$
 declare
   v_room uuid;
 begin
+  if not public.consume_rate_limit(p_host, 'create_room', p_limit, p_window_seconds) then
+    return null;
+  end if;
   insert into public.rooms (host_id, invite_code, seat_count, map_size, map_seed, turn_timer_seconds)
   values (p_host, p_invite_code, p_seat_count, p_map_size, p_map_seed, p_turn_timer_seconds)
   returning id into v_room;
@@ -218,9 +235,46 @@ begin
 end;
 $$;
 
--- Starts the room's match with the state the server built. Returns
--- (outcome, match_id): 'started', 'not_found', 'not_host', 'not_full', or
--- 'already_started' (with the existing match's id).
+-- Claims the room's start for its host before /api builds the match, so a
+-- second start is refused without building another. Returns 'claimed',
+-- 'not_found', 'not_host', 'not_full', 'starting' (a start in progress) or
+-- 'already_started'. A claim older than two minutes is stale (the function
+-- building it died) and may be claimed again.
+create function public.claim_start(p_room uuid, p_user uuid)
+returns text
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_room public.rooms%rowtype;
+  v_seated integer;
+  v_stale boolean;
+begin
+  select * into v_room from public.rooms r where r.id = p_room for update;
+  if not found then
+    return 'not_found';
+  end if;
+  v_stale := v_room.status = 'starting' and v_room.start_claimed_at < now() - interval '120 seconds';
+  if v_room.status = 'starting' and not v_stale then
+    return 'starting';
+  end if;
+  if v_room.status <> 'open' and not v_stale then
+    return 'already_started';
+  end if;
+  if v_room.host_id is distinct from p_user then
+    return 'not_host';
+  end if;
+  select count(*) into v_seated from public.seats s where s.room_id = p_room;
+  if v_seated < v_room.seat_count then
+    return 'not_full';
+  end if;
+  update public.rooms set status = 'starting', start_claimed_at = now() where id = p_room;
+  return 'claimed';
+end;
+$$;
+
+-- Stores the match of a start the host claimed, and marks the room started.
+-- Returns (outcome, match_id): 'started', 'not_found' or 'not_claimed'.
 create function public.start_match(p_room uuid, p_user uuid, p_state jsonb, p_state_id integer, p_phase text)
 returns table (outcome text, match_id uuid)
 language plpgsql
@@ -228,7 +282,6 @@ set search_path = ''
 as $$
 declare
   v_room public.rooms%rowtype;
-  v_seated integer;
   v_match uuid;
 begin
   select * into v_room from public.rooms r where r.id = p_room for update;
@@ -236,33 +289,36 @@ begin
     return query select 'not_found'::text, null::uuid;
     return;
   end if;
-  if v_room.status <> 'open' then
-    select m.id into v_match from public.matches m where m.room_id = p_room;
-    return query select 'already_started'::text, v_match;
-    return;
-  end if;
-  if v_room.host_id is distinct from p_user then
-    return query select 'not_host'::text, null::uuid;
-    return;
-  end if;
-  select count(*) into v_seated from public.seats s where s.room_id = p_room;
-  if v_seated < v_room.seat_count then
-    return query select 'not_full'::text, null::uuid;
+  if v_room.status <> 'starting' or v_room.host_id is distinct from p_user then
+    return query select 'not_claimed'::text, null::uuid;
     return;
   end if;
   insert into public.matches (room_id, state, state_id, phase)
   values (p_room, p_state, p_state_id, p_phase)
   returning id into v_match;
-  update public.rooms set status = 'started' where id = p_room;
+  update public.rooms set status = 'started', start_claimed_at = null where id = p_room;
   return query select 'started'::text, v_match;
 end;
 $$;
 
+-- Gives a claimed start back when building the match failed.
+create function public.release_start(p_room uuid)
+returns void
+language sql
+set search_path = ''
+as $$
+  update public.rooms set status = 'open', start_claimed_at = null where id = p_room and status = 'starting';
+$$;
+
 revoke execute on function public.consume_rate_limit(uuid, text, integer, integer) from public, anon, authenticated;
-revoke execute on function public.create_room(uuid, text, integer, text, integer, integer) from public, anon, authenticated;
+revoke execute on function public.create_room(uuid, text, integer, text, integer, integer, integer, integer) from public, anon, authenticated;
 revoke execute on function public.join_room(text, uuid) from public, anon, authenticated;
+revoke execute on function public.claim_start(uuid, uuid) from public, anon, authenticated;
 revoke execute on function public.start_match(uuid, uuid, jsonb, integer, text) from public, anon, authenticated;
+revoke execute on function public.release_start(uuid) from public, anon, authenticated;
 grant execute on function public.consume_rate_limit(uuid, text, integer, integer) to service_role;
-grant execute on function public.create_room(uuid, text, integer, text, integer, integer) to service_role;
+grant execute on function public.create_room(uuid, text, integer, text, integer, integer, integer, integer) to service_role;
 grant execute on function public.join_room(text, uuid) to service_role;
+grant execute on function public.claim_start(uuid, uuid) to service_role;
 grant execute on function public.start_match(uuid, uuid, jsonb, integer, text) to service_role;
+grant execute on function public.release_start(uuid) to service_role;

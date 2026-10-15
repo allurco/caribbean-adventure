@@ -24,6 +24,7 @@ export function servicesFromEnv(env: ServerEnv): ApiServices | null {
     store: createSupabaseOnlineStore(service),
     newInviteCode,
     newMapSeed,
+    newMatchSeed,
   };
 }
 
@@ -35,4 +36,13 @@ export function newInviteCode(): string {
 /** A random int32 map seed (`isValidMapSeed`). */
 export function newMapSeed(): number {
   return randomInt(-(2 ** 31), 2 ** 31 - 1);
+}
+
+/**
+ * A new match's random seed (#112 review): 128 random bits. boardgame.io's own
+ * default is the clock in base 36, which a player could guess from the
+ * match's creation time and replay to learn every hand and die roll.
+ */
+export function newMatchSeed(): string {
+  return randomBytes(16).toString("hex");
 }

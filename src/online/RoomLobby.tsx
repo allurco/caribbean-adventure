@@ -1,14 +1,10 @@
 import { useState } from "react";
 import type { RoomApi, RoomView } from "./roomApi";
+import { seatRole, turnTimerLabel } from "./roomLabels";
 import { BTN_BRASS, BTN_INK, INPUT, LABEL } from "./shellStyles";
 import { useRoom } from "./useRoom";
 
 const MAP_LABELS: Record<RoomView["mapSize"], string> = { small: "Small", medium: "Medium", large: "Large" };
-
-function turnTimerLabel(seconds: number): string {
-  if (seconds % 3600 === 0) return seconds === 3600 ? "an hour a turn" : `${seconds / 3600} hours a turn`;
-  return seconds % 60 === 0 ? `${seconds / 60} minutes a turn` : `${seconds} seconds a turn`;
-}
 
 /** `?view=room&id=…`: the room's captains, its invite link, and the host's Start. */
 export function RoomLobby({ api, id }: { api: RoomApi; id: string | null }) {
@@ -47,12 +43,9 @@ export function RoomLobby({ api, id }: { api: RoomApi; id: string | null }) {
         {Array.from({ length: room.seatCount }, (_, index) => {
           const seat = room.seats.find((s) => s.index === index);
           return (
-            <li key={index} className="flex justify-between border-b border-[#7a5c3a]/25 pb-1">
+            <li key={index} className="flex justify-between border-b border-shell-ink-soft/25 pb-1">
               <span>{seat ? (seat.displayName ?? "A captain") : <em className="text-shell-ink-soft">An empty berth</em>}</span>
-              <span className="text-[14px] text-shell-ink-soft">
-                {index === room.yourSeat ? "you" : ""}
-                {index === 0 ? (index === room.yourSeat ? ", host" : "host") : ""}
-              </span>
+              <span className="text-[14px] text-shell-ink-soft">{seatRole(index, room)}</span>
             </li>
           );
         })}
@@ -88,8 +81,12 @@ export function RoomLobby({ api, id }: { api: RoomApi; id: string | null }) {
           {starting ? "Raising the anchor…" : full ? "Start match" : "Waiting for captains…"}
         </button>
       )}
-      {room.status === "open" && !room.isHost && <p role="status">Waiting for the host to start the match…</p>}
-      {room.status !== "open" && <p role="status">The match has set sail.</p>}
+      {room.status === "open" && !room.isHost && room.hostSeat !== null && <p role="status">Waiting for the host to start the match…</p>}
+      {room.status === "open" && room.hostSeat === null && (
+        <p role="status">This room's host has left, so its match cannot be started. Open a new room.</p>
+      )}
+      {room.status === "starting" && <p role="status">The host is starting the match…</p>}
+      {(room.status === "started" || room.status === "finished") && <p role="status">The match has set sail.</p>}
       {error && (
         <p role="alert" className="text-shell-ink-wax">
           {error}

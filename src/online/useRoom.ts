@@ -6,10 +6,10 @@ export const ROOM_POLL_MS = 5000;
 
 export type RoomState = { status: "loading" } | { status: "error"; error: string } | { status: "ready"; room: RoomView };
 
-/** The room, refetched every `ROOM_POLL_MS` while it waits for captains; `replace` sets it from a response. */
+/** The room, refetched every `ROOM_POLL_MS` while it waits for captains or its start; `replace` sets it from a response. */
 export function useRoom(api: RoomApi, id: string | null): [RoomState, (room: RoomView) => void] {
   const [state, setState] = useState<RoomState>(id ? { status: "loading" } : { status: "error", error: "That room link is not complete." });
-  const open = state.status === "ready" && state.room.status === "open";
+  const open = state.status === "ready" && (state.room.status === "open" || state.room.status === "starting");
   const loading = state.status === "loading";
 
   useEffect(() => {

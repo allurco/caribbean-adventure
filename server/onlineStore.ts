@@ -7,7 +7,8 @@
  */
 import type { MapSizeId } from "../src/game/mapConfig";
 
-export type RoomStatus = "open" | "started" | "finished";
+/** `starting`: the host's start is claimed and the match is being built (#112). */
+export type RoomStatus = "open" | "starting" | "started" | "finished";
 
 export interface NewRoom {
   hostId: string;
@@ -42,7 +43,17 @@ export interface RoomRecord {
 }
 
 export type JoinOutcome = "seated" | "not_found" | "full" | "started";
-export type StartOutcome = "started" | "not_found" | "not_host" | "not_full" | "already_started";
+export type ClaimOutcome = "claimed" | "not_found" | "not_host" | "not_full" | "starting" | "already_started";
+export type StartOutcome = "started" | "not_found" | "not_claimed";
+
+/** A claimed start not finished in this long can be claimed again: the function building it died. */
+export const STALE_START_SECONDS = 120;
+
+/** A per-user allowance: at most `limit` uses in each fixed window of `windowSeconds`. */
+export interface RateLimit {
+  limit: number;
+  windowSeconds: number;
+}
 
 /** A match's first snapshot: boardgame.io's whole state, secrets included. */
 export interface InitialMatch {
@@ -54,11 +65,23 @@ export interface InitialMatch {
 export interface OnlineStore {
   /** Counts one use of `action` by `userId` in the current fixed window; false once over `limit`. */
   consumeRateLimit(userId: string, action: string, limit: number, windowSeconds: number): Promise<boolean>;
-  /** Creates the room with its host in seat 0; resolves to the room's id. */
-  createRoom(room: NewRoom): Promise<string>;
+  /**
+   * Counts the creation against the host's allowance and creates the room
+   * with its host in seat 0, in one transaction: the room's id, or null when
+   * the allowance is used up. A creation that fails costs nothing.
+   */
+  createRoom(room: NewRoom, allowance: RateLimit): Promise<string | null>;
   /** Seats the player at the lowest free seat of the room with this invite code. */
   joinRoom(inviteCode: string, userId: string): Promise<{ outcome: JoinOutcome; roomId: string | null }>;
   getRoom(roomId: string): Promise<RoomRecord | null>;
-  /** Stores the match and marks the room started, if `userId` hosts it and every seat is taken. */
+  /**
+   * Claims the room's start for its host (open, or a start gone stale, to
+   * `starting`), if every seat is taken: before the match is built, so a
+   * second start is refused without building another.
+   */
+  claimStart(roomId: string, userId: string): Promise<{ outcome: ClaimOutcome }>;
+  /** Stores the match of a claimed start and marks the room started. */
   startMatch(roomId: string, userId: string, match: InitialMatch): Promise<{ outcome: StartOutcome; matchId: string | null }>;
+  /** Gives a claimed start back (building the match failed), so the host can try again. */
+  releaseStart(roomId: string): Promise<void>;
 }

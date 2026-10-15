@@ -11,17 +11,22 @@ import type { OnlineStore, RoomRecord } from "./onlineStore";
 import { parseRoomSettings } from "./roomSettings";
 
 /** PRD #104: five rooms an hour per player, counted in Postgres. */
-export const ROOM_CREATION_LIMIT = 5;
-export const ROOM_CREATION_WINDOW_SECONDS = 60 * 60;
+export const ROOM_CREATION_LIMIT = { limit: 5, windowSeconds: 60 * 60 };
 
 export interface RoomServices {
   store: OnlineStore;
   newInviteCode(): string;
   newMapSeed(): number;
+  newMatchSeed(): string;
 }
 
-/** A room as its members see it. */
+/**
+ * A room as its members see it. `hostSeat` is the seat of the room's host
+ * (`host_id`); null once the host's account is gone, when nobody can start
+ * the room any more.
+ */
 export function roomView(room: RoomRecord, userId: string) {
+  const host = room.seats.find((s) => s.userId === room.hostId);
   return {
     id: room.id,
     inviteCode: room.inviteCode,
@@ -32,6 +37,7 @@ export function roomView(room: RoomRecord, userId: string) {
     turnTimerSeconds: room.turnTimerSeconds,
     status: room.status,
     isHost: room.hostId === userId,
+    hostSeat: host?.index ?? null,
     yourSeat: room.seats.find((s) => s.userId === userId)?.index ?? null,
     seats: room.seats.map(({ index, userId: seatUser, displayName }) => ({ index, userId: seatUser, displayName })),
     matchId: room.matchId,
@@ -47,15 +53,14 @@ async function memberRoom(store: OnlineStore, roomId: string, userId: string): P
 
 export async function createRoom(request: Request, userId: string, services: RoomServices): Promise<Response> {
   const body = await readJsonObject(request);
-  if (!body) return fail(400, "expected a JSON object");
+  if (!body) return fail(400, "bad_request", "expected a JSON object");
   const parsed = parseRoomSettings(body);
-  if (!parsed.ok) return fail(400, parsed.error);
+  if (!parsed.ok) return fail(400, "bad_request", parsed.error);
   const { store } = services;
-  if (!(await store.consumeRateLimit(userId, "create_room", ROOM_CREATION_LIMIT, ROOM_CREATION_WINDOW_SECONDS))) {
-    return fail(429, "too many rooms: try again within the hour");
-  }
   const { mapSeed = services.newMapSeed(), ...settings } = parsed.settings;
-  const roomId = await store.createRoom({ hostId: userId, inviteCode: services.newInviteCode(), mapSeed, ...settings });
+  // The allowance is counted in the same transaction as the room: a failed creation costs nothing.
+  const roomId = await store.createRoom({ hostId: userId, inviteCode: services.newInviteCode(), mapSeed, ...settings }, ROOM_CREATION_LIMIT);
+  if (!roomId) return fail(429, "rate_limited", "too many rooms: try again within the hour");
   const room = await store.getRoom(roomId);
   return json({ ok: true, room: roomView(room!, userId) }, 201);
 }
@@ -64,41 +69,44 @@ export async function joinRoom(request: Request, userId: string, { store }: Room
   const body = await readJsonObject(request);
   const inviteCode = body?.inviteCode;
   if (typeof inviteCode !== "string" || inviteCode.length === 0 || inviteCode.length > 64) {
-    return fail(400, "expected an inviteCode");
+    return fail(400, "bad_request", "expected an inviteCode");
   }
   const { outcome, roomId } = await store.joinRoom(inviteCode, userId);
-  if (outcome === "not_found") return fail(404, "no such room");
-  if (outcome === "full") return fail(409, "room full");
-  if (outcome === "started") return fail(409, "match already started");
+  if (outcome === "not_found") return fail(404, "not_found", "no such room");
+  if (outcome === "full") return fail(409, "room_full", "room full");
+  if (outcome === "started") return fail(409, "match_started", "match already started");
   const room = await store.getRoom(roomId!);
   return json({ ok: true, room: roomView(room!, userId) });
 }
 
 export async function getRoom(roomId: string, userId: string, { store }: RoomServices): Promise<Response> {
   const room = await memberRoom(store, roomId, userId);
-  if (!room) return fail(404, "no such room");
+  if (!room) return fail(404, "not_found", "no such room");
   return json({ ok: true, room: roomView(room, userId) });
 }
 
-export async function startRoom(roomId: string, userId: string, { store }: RoomServices): Promise<Response> {
+export async function startRoom(roomId: string, userId: string, services: RoomServices): Promise<Response> {
+  const { store } = services;
   const room = await memberRoom(store, roomId, userId);
-  if (!room) return fail(404, "no such room");
-  // Cheap checks first: building a match generates its map. The store checks
-  // them again, atomically, as it writes.
-  if (room.status !== "open") return fail(409, "match already started");
-  if (room.hostId !== userId) return fail(403, "only the host starts the match");
-  if (room.seats.length < room.seatCount) return fail(409, "seats still free");
+  if (!room) return fail(404, "not_found", "no such room");
+  // Claim the start first, atomically: building a match generates its map,
+  // so a second start must be refused before it builds another.
+  const { outcome: claim } = await store.claimStart(roomId, userId);
+  if (claim === "not_found") return fail(404, "not_found", "no such room");
+  if (claim === "not_host") return fail(403, "not_host", "only the host starts the match");
+  if (claim === "not_full") return fail(409, "seats_free", "seats still free");
+  if (claim === "starting") return fail(409, "match_starting", "the match is being started");
+  if (claim === "already_started") return fail(409, "match_started", "match already started");
 
-  const state = createMatchState(room.seatCount, { mapSize: room.mapSize, mapSeed: room.mapSeed });
-  const { outcome } = await store.startMatch(roomId, userId, {
-    state,
-    stateId: state._stateID,
-    phase: state.ctx.phase ?? null,
-  });
-  if (outcome === "not_found") return fail(404, "no such room");
-  if (outcome === "not_host") return fail(403, "only the host starts the match");
-  if (outcome === "not_full") return fail(409, "seats still free");
-  if (outcome === "already_started") return fail(409, "match already started");
+  let outcome;
+  try {
+    const state = createMatchState(room.seatCount, { mapSize: room.mapSize, mapSeed: room.mapSeed }, services.newMatchSeed());
+    ({ outcome } = await store.startMatch(roomId, userId, { state, stateId: state._stateID, phase: state.ctx.phase ?? null }));
+  } catch (error) {
+    await store.releaseStart(roomId);
+    throw error;
+  }
+  if (outcome !== "started") return fail(409, "match_started", "match already started");
   const started = await store.getRoom(roomId);
   return json({ ok: true, room: roomView(started!, userId) }, 201);
 }

@@ -7,9 +7,28 @@ export function json(body: unknown, status = 200, headers: Record<string, string
   });
 }
 
-export function fail(status: number, error: string, extra: Record<string, unknown> = {}): Response {
-  return json({ ok: false, error, ...extra }, status);
+/**
+ * A refusal: `code` is stable, for clients to act on (`ApiErrorCode`);
+ * `error` is a sentence for people and logs, and may change.
+ */
+export function fail(status: number, code: ApiErrorCode, error: string, extra: Record<string, unknown> = {}): Response {
+  return json({ ok: false, code, error, ...extra }, status);
 }
+
+export type ApiErrorCode =
+  | "bad_request"
+  | "unauthorized"
+  | "forbidden"
+  | "not_found"
+  | "method_not_allowed"
+  | "rate_limited"
+  | "room_full"
+  | "match_started"
+  | "match_starting"
+  | "seats_free"
+  | "not_host"
+  | "not_configured"
+  | "internal";
 
 /** The bearer token of the request's Authorization header, if any. */
 export function bearerToken(request: Request): string | null {
@@ -28,8 +47,4 @@ export async function readJsonObject(request: Request): Promise<Record<string, u
   }
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function isUuid(value: string): boolean {
-  return UUID.test(value);
-}
+export { isUuid } from "../src/online/uuid";

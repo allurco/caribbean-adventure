@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleApiRequest, type ApiServices } from "./handleApiRequest";
 import { createMemoryOnlineStore } from "./memoryOnlineStore";
 import type { OnlineStore } from "./onlineStore";
+import { newMatchSeed } from "./services";
 
 // The rooms API (#112) through its one public seam, handleApiRequest, with
 // the database replaced by the in-memory store and sign-in by a token table.
@@ -14,16 +15,23 @@ const NAMES: Record<string, string> = { [ANNE]: "Anne Bonny", [JACK]: "Calico Ja
 let store: OnlineStore;
 let services: ApiServices;
 let codes: number;
+let seeds: number;
 
 beforeEach(() => {
   store = createMemoryOnlineStore({ displayName: (id) => NAMES[id] ?? null });
   codes = 0;
+  seeds = 0;
   services = {
     auth: async (token) => TOKENS[token] ?? null,
     store,
     newInviteCode: () => `invite-code-${String(++codes).padStart(10, "0")}`,
     newMapSeed: () => 4242,
+    newMatchSeed: () => `match-seed-${++seeds}`,
   };
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 function call(method: string, path: string, token?: string, body?: unknown): Promise<Response> {
@@ -47,6 +55,7 @@ interface RoomBody {
   turnTimerSeconds: number;
   status: string;
   isHost: boolean;
+  hostSeat: number | null;
   yourSeat: number;
   seats: { index: number; userId: string; displayName: string | null }[];
   matchId: string | null;
@@ -73,6 +82,7 @@ describe("POST /api/rooms", () => {
       turnTimerSeconds: 120,
       status: "open",
       isHost: true,
+      hostSeat: 0,
       yourSeat: 0,
       matchId: null,
       seats: [{ index: 0, userId: ANNE, displayName: "Anne Bonny" }],
@@ -112,6 +122,23 @@ describe("POST /api/rooms", () => {
     // Another player's allowance is their own.
     await createRoom("jack-token");
   });
+
+  it("does not count a room that failed to be created against the player's five", async () => {
+    const memory = store;
+    let failures = 1;
+    store = {
+      ...memory,
+      createRoom: async (room, limit) => {
+        if (failures-- > 0) throw new Error("insert failed");
+        return memory.createRoom(room, limit);
+      },
+    };
+    services.store = store;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect((await call("POST", "/api/rooms", "anne-token", { seats: 2 })).status).toBe(500);
+    for (let i = 0; i < 5; i++) await createRoom("anne-token");
+    expect((await call("POST", "/api/rooms", "anne-token", { seats: 2 })).status).toBe(429);
+  });
 });
 
 describe("POST /api/rooms/join", () => {
@@ -120,7 +147,7 @@ describe("POST /api/rooms/join", () => {
     const res = await call("POST", "/api/rooms/join", "jack-token", { inviteCode: room.inviteCode });
     expect(res.status).toBe(200);
     const joined = ((await res.json()) as { room: RoomBody }).room;
-    expect(joined).toMatchObject({ id: room.id, yourSeat: 1, isHost: false });
+    expect(joined).toMatchObject({ id: room.id, yourSeat: 1, isHost: false, hostSeat: 0 });
     expect(joined.seats.map((s) => [s.index, s.userId])).toEqual([
       [0, ANNE],
       [1, JACK],
@@ -141,7 +168,7 @@ describe("POST /api/rooms/join", () => {
     await call("POST", "/api/rooms/join", "jack-token", { inviteCode: room.inviteCode });
     const res = await call("POST", "/api/rooms/join", "mary-token", { inviteCode: room.inviteCode });
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ ok: false, error: "room full" });
+    expect(await res.json()).toMatchObject({ ok: false, code: "room_full" });
   });
 
   it("answers 404 for an unknown invite, and needs a signed-in player", async () => {
@@ -164,6 +191,13 @@ describe("GET /api/rooms/:id", () => {
     expect((await call("GET", `/api/rooms/${room.id}`, "jack-token")).status).toBe(404);
     expect((await call("GET", `/api/rooms/${room.id}`)).status).toBe(401);
     expect((await call("GET", "/api/rooms/not-a-uuid", "anne-token")).status).toBe(404);
+  });
+
+  it("answers 404 to a malformed path instead of failing", async () => {
+    for (const path of ["/api/rooms/%ZZ", "/api/rooms/%E0%A4%A/start"]) {
+      const res = await call(path.endsWith("start") ? "POST" : "GET", path, "anne-token");
+      expect(res.status, path).toBe(404);
+    }
   });
 });
 
@@ -191,6 +225,53 @@ describe("POST /api/rooms/:id/start", () => {
     expect(match!.phase).toBe("draft");
   });
 
+  it("seeds the match's dice and deck with the server's random seed, never the clock", async () => {
+    services.newMatchSeed = newMatchSeed;
+    vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 15, 12, 0, 0));
+    const seedsOf = async () => {
+      const room = await fullRoom();
+      const started = ((await (await call("POST", `/api/rooms/${room.id}/start`, "anne-token")).json()) as { room: RoomBody }).room;
+      const match = await (store as ReturnType<typeof createMemoryOnlineStore>).peekMatch(started.matchId!);
+      return (match!.state as { plugins: { random: { data: { seed: string } } } }).plugins.random.data.seed;
+    };
+    const [a, b] = [await seedsOf(), await seedsOf()];
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
+    expect(b).toMatch(/^[0-9a-f]{32}$/);
+    expect(a).not.toBe(b);
+  });
+
+  it("claims the start before building the match, so a second start is refused at once", async () => {
+    const room = await fullRoom();
+    const memory = store;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    store = {
+      ...memory,
+      startMatch: async (...args) => {
+        await held;
+        return memory.startMatch(...args);
+      },
+    };
+    services.store = store;
+    const first = call("POST", `/api/rooms/${room.id}/start`, "anne-token");
+    const second = await call("POST", `/api/rooms/${room.id}/start`, "anne-token");
+    expect(second.status).toBe(409);
+    expect(await second.json()).toMatchObject({ code: "match_starting" });
+    release();
+    expect((await first).status).toBe(201);
+  });
+
+  it("lets the host start again if a start was claimed and never finished", async () => {
+    let now = Date.UTC(2026, 9, 15, 12, 0, 0);
+    store = createMemoryOnlineStore({ now: () => now });
+    services.store = store;
+    const room = await fullRoom();
+    expect((await store.claimStart(room.id, ANNE)).outcome).toBe("claimed");
+    expect((await call("POST", `/api/rooms/${room.id}/start`, "anne-token")).status).toBe(409);
+    now += 3 * 60 * 1000;
+    expect((await call("POST", `/api/rooms/${room.id}/start`, "anne-token")).status).toBe(201);
+  });
+
   it("lets only the host start", async () => {
     const room = await fullRoom();
     expect((await call("POST", `/api/rooms/${room.id}/start`, "jack-token")).status).toBe(403);
@@ -202,7 +283,7 @@ describe("POST /api/rooms/:id/start", () => {
     await call("POST", "/api/rooms/join", "jack-token", { inviteCode: room.inviteCode });
     const res = await call("POST", `/api/rooms/${room.id}/start`, "anne-token");
     expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ error: "seats still free" });
+    expect(await res.json()).toMatchObject({ code: "seats_free" });
   });
 
   it("starts a room once: a second start answers 409, and nobody joins after", async () => {
@@ -211,7 +292,7 @@ describe("POST /api/rooms/:id/start", () => {
     expect((await call("POST", `/api/rooms/${room.id}/start`, "anne-token")).status).toBe(409);
     const late = await call("POST", "/api/rooms/join", "mary-token", { inviteCode: room.inviteCode });
     expect(late.status).toBe(409);
-    expect(await late.json()).toMatchObject({ error: "match already started" });
+    expect(await late.json()).toMatchObject({ code: "match_started" });
   });
 });
 

@@ -3,12 +3,23 @@
  * the SQL functions in `supabase/migrations/*_rooms.sql`, which the database
  * tests in `supabase/tests/` hold to the real thing. Not used in production.
  */
-import type { InitialMatch, JoinOutcome, NewRoom, OnlineStore, RoomRecord, StartOutcome } from "./onlineStore";
+import {
+  STALE_START_SECONDS,
+  type ClaimOutcome,
+  type InitialMatch,
+  type JoinOutcome,
+  type NewRoom,
+  type OnlineStore,
+  type RoomRecord,
+  type StartOutcome,
+} from "./onlineStore";
 
 interface StoredMatch extends InitialMatch {
   id: string;
   roomId: string;
 }
+
+type StoredRoom = Omit<RoomRecord, "seats" | "matchId"> & { startClaimedAt: number | null };
 
 export interface MemoryOnlineStore extends OnlineStore {
   /** The stored match, whole state included: for tests only. */
@@ -19,7 +30,7 @@ export function createMemoryOnlineStore({
   displayName = () => null,
   now = () => Date.now(),
 }: { displayName?: (userId: string) => string | null; now?: () => number } = {}): MemoryOnlineStore {
-  const rooms = new Map<string, Omit<RoomRecord, "seats" | "matchId">>();
+  const rooms = new Map<string, StoredRoom>();
   const seats = new Map<string, Map<number, string>>();
   const matches = new Map<string, StoredMatch>();
   const counters = new Map<string, number>();
@@ -29,28 +40,35 @@ export function createMemoryOnlineStore({
   function record(roomId: string): RoomRecord | null {
     const room = rooms.get(roomId);
     if (!room) return null;
+    const { startClaimedAt: _claimed, ...rest } = room;
+    void _claimed;
     const taken = [...(seats.get(roomId) ?? new Map<number, string>()).entries()].sort(([a], [b]) => a - b);
     const match = [...matches.values()].find((m) => m.roomId === roomId);
     return {
-      ...room,
+      ...rest,
       seats: taken.map(([index, userId]) => ({ index, userId, displayName: displayName(userId) })),
       matchId: match?.id ?? null,
     };
   }
 
+  function consume(userId: string, action: string, limit: number, windowSeconds: number, commit: boolean): boolean {
+    const key = `${userId}|${action}|${Math.floor(now() / 1000 / windowSeconds)}`;
+    const count = (counters.get(key) ?? 0) + 1;
+    if (commit) counters.set(key, count);
+    return count <= limit;
+  }
+
   return {
     async consumeRateLimit(userId, action, limit, windowSeconds) {
-      const window = Math.floor(now() / 1000 / windowSeconds);
-      const key = `${userId}|${action}|${window}`;
-      const count = (counters.get(key) ?? 0) + 1;
-      counters.set(key, count);
-      return count <= limit;
+      return consume(userId, action, limit, windowSeconds, true);
     },
 
-    async createRoom(room: NewRoom) {
+    async createRoom(room: NewRoom, { limit, windowSeconds }) {
+      // As in the SQL function: the count and the room commit together.
+      if (!consume(room.hostId, "create_room", limit, windowSeconds, true)) return null;
       const id = newId();
       const { hostId, ...settings } = room;
-      rooms.set(id, { id, hostId, status: "open", ...settings });
+      rooms.set(id, { id, hostId, status: "open", startClaimedAt: null, ...settings });
       seats.set(id, new Map([[0, hostId]]));
       return id;
     },
@@ -74,16 +92,35 @@ export function createMemoryOnlineStore({
       return record(roomId);
     },
 
+    async claimStart(roomId, userId): Promise<{ outcome: ClaimOutcome }> {
+      const room = rooms.get(roomId);
+      if (!room) return { outcome: "not_found" };
+      const stale = room.status === "starting" && now() - room.startClaimedAt! >= STALE_START_SECONDS * 1000;
+      if (room.status === "starting" && !stale) return { outcome: "starting" };
+      if (room.status !== "open" && !stale) return { outcome: "already_started" };
+      if (room.hostId !== userId) return { outcome: "not_host" };
+      if (seats.get(roomId)!.size < room.seatCount) return { outcome: "not_full" };
+      room.status = "starting";
+      room.startClaimedAt = now();
+      return { outcome: "claimed" };
+    },
+
     async startMatch(roomId, userId, match): Promise<{ outcome: StartOutcome; matchId: string | null }> {
       const room = rooms.get(roomId);
       if (!room) return { outcome: "not_found", matchId: null };
-      if (room.status !== "open") return { outcome: "already_started", matchId: record(roomId)!.matchId };
-      if (room.hostId !== userId) return { outcome: "not_host", matchId: null };
-      if (seats.get(roomId)!.size < room.seatCount) return { outcome: "not_full", matchId: null };
+      if (room.status !== "starting" || room.hostId !== userId) return { outcome: "not_claimed", matchId: null };
       const id = newId();
       matches.set(id, { id, roomId, ...structuredClone(match) });
       room.status = "started";
       return { outcome: "started", matchId: id };
+    },
+
+    async releaseStart(roomId) {
+      const room = rooms.get(roomId);
+      if (room?.status === "starting") {
+        room.status = "open";
+        room.startClaimedAt = null;
+      }
     },
 
     async peekMatch(matchId) {
