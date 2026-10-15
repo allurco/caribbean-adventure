@@ -211,3 +211,48 @@ describe("a ship sunk in combat (#265)", () => {
     expect(stateOf(client).G.draftHands["1"]).toEqual([captain("drake"), captain("morgan")]);
   });
 });
+
+describe("a solo player's only ship sunk (#265, #278)", () => {
+  /** One seat, sunk on its own turn by the flotilla it attacked. */
+  function sunkSolo() {
+    const client = startGame({ "0": ship(0, 0, "blackbeard", false) }, { npcs: { flotilla: flotilla(1, 0) } });
+    client.moves.attackNPC("flotilla");
+    fireOnce(client);
+    return client;
+  }
+
+  it("the turn comes straight back to the one seat, its new captain's hand dealt", () => {
+    const client = sunkSolo();
+    const { G, ctx } = stateOf(client);
+    expect(G.ships["0"]).toBeUndefined();
+    expect(ctx.phase).toBe("main");
+    expect(ctx.currentPlayer).toBe("0");
+    expect(ctx.gameover).toBeUndefined();
+    expect(G.draftHands["0"]).toEqual([captain("drake"), captain("morgan")]);
+  });
+
+  it("picks a new captain and sails from the home port, turn after turn", () => {
+    const client = sunkSolo();
+    client.moves.pickCaptain(0, "Sloop");
+    expect(stateOf(client).G.ships["0"].captain).toEqual(captain("drake"));
+    expect(hexEquals(stateOf(client).G.ships["0"].position, DOCK)).toBe(true);
+    client.moves.moveShip(-2, 0);
+    expect(hexEquals(stateOf(client).G.ships["0"].position, hex(-2, 0))).toBe(true);
+
+    const turn = stateOf(client).ctx.turn;
+    client.events.endTurn!();
+    client.events.endTurn!();
+    expect(stateOf(client).ctx).toMatchObject({ currentPlayer: "0", phase: "main", turn: turn + 2 });
+  });
+
+  it("does not stall if the turn ends before the pick: the hand waits for the next", () => {
+    const client = sunkSolo();
+    const turn = stateOf(client).ctx.turn;
+    client.events.endTurn!();
+    const { G, ctx } = stateOf(client);
+    expect(ctx).toMatchObject({ currentPlayer: "0", phase: "main", turn: turn + 1 });
+    expect(G.draftHands["0"]).toEqual([captain("drake"), captain("morgan")]);
+    client.moves.pickCaptain(1, "Flute");
+    expect(stateOf(client).G.ships["0"].captain).toEqual(captain("morgan"));
+  });
+});

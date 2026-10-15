@@ -1,18 +1,20 @@
 import { useState, type ComponentProps } from "react";
 import { GameClientLoader } from "./GameClientLoader";
-import { PLAYER_COUNT } from "./game/Game";
 
-type LocalSeatsProps = Omit<ComponentProps<typeof GameClientLoader>, "playerID">;
-
-const SEATS = Array.from({ length: PLAYER_COUNT }, (_, i) => String(i));
+type LocalSeatsProps = Omit<ComponentProps<typeof GameClientLoader>, "playerID"> & {
+  /** The match's seat count (`seatCount`, #278), as the client was created with. */
+  seats: number;
+};
 
 /**
  * Every seat of one match on one page (dev `?seats=1`, #110), one board at a
  * time: the switcher picks whose board shows. The match lives in the local
  * transport, so switching seats keeps it; each board is that seat's own.
+ * As many seats as the match has (`?players=`, solo without it, #278).
  */
-export function LocalSeats(props: LocalSeatsProps) {
-  const [seat, setSeat] = useState(SEATS[0]);
+export function LocalSeats({ seats, ...props }: LocalSeatsProps) {
+  const ids = Array.from({ length: seats }, (_, i) => String(i));
+  const [seat, setSeat] = useState(ids[0]);
   return (
     <>
       <GameClientLoader key={seat} {...props} playerID={seat} />
@@ -22,7 +24,7 @@ export function LocalSeats(props: LocalSeatsProps) {
         className="absolute top-16 right-4 z-[70] flex items-center gap-1 px-2 py-1 rounded bg-black/60 text-white font-mono text-xs"
       >
         <span className="opacity-70 mr-1">seat</span>
-        {SEATS.map((id) => (
+        {ids.map((id) => (
           <button
             key={id}
             aria-pressed={id === seat}

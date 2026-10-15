@@ -1,6 +1,6 @@
 # Project Caribbean
 
-A turn-based naval strategy game for up to four players, set in the age of sail. Captain a ship, trade between ports, take on missions, and fight rival captains and NPC flotillas on a procedurally generated archipelago.
+A turn-based naval strategy game for one to four players, set in the age of sail: sail solo against the NPC merchants and flotillas, or with up to three rivals. Captain a ship, trade between ports, take on missions, and fight rival captains and NPC flotillas on a procedurally generated archipelago.
 
 Inspired by classic age-of-sail board games, rebuilt as a 3D browser game.
 
@@ -41,7 +41,7 @@ npm run dev
 
 Then open the URL Vite prints (usually http://localhost:5173).
 
-The game currently runs as a single local client: all players take turns on one screen. Online play is being built on Vercel and Supabase (#104); with no Supabase settings the app stays the local game. Deployment and local backend set-up: [docs/deploy.md](docs/deploy.md).
+The game currently runs as a single local client, solo by default: you draft your own captain and play against the NPCs. On the dev server `?players=2` (up to 4) makes it a hotseat game, every seat taking turns on one screen. Online play is being built on Vercel and Supabase (#104); with no Supabase settings the app stays the local game. Deployment and local backend set-up: [docs/deploy.md](docs/deploy.md).
 
 ## Scripts
 
@@ -69,12 +69,13 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `view=sound` | The sound lab instead of the game: every registered sound with play/stop, a loop toggle, its volume and its source, for approving sounds by ear |
 | `view=account` | The sign-in page, or your own captain once signed in (#105). Only with a Supabase backend configured ([docs/deploy.md](docs/deploy.md)); otherwise the game |
 | `view=profile&id=<uuid>` | A player's public profile (#105). Only with a Supabase backend configured |
-| `skipLogin=1` | Straight to the local hotseat game, past the sign-in screen. With a Supabase backend configured the root URL is the sign-in screen and the game opens once you are signed in; this is the temporary way past it until the online entry (#125). Works in every build, as only deployed builds have a backend |
+| `skipLogin=1` | Straight to the local game, past the sign-in screen. With a Supabase backend configured the root URL is the sign-in screen and the game opens once you are signed in; this is the temporary way past it until the online entry (#125). Works in every build, as only deployed builds have a backend |
 | `stats=1` | A corner readout of fps, draw calls and triangles per frame (every pass: shadows, wave cascades, postprocessing), averaged over half a second, for the numbers each visual slice reports in its PR (#162). Dev server only: production builds leave it out |
 | `buoys=1` | Small orange buoys on the CPU sea surface, on a 9 × 9 grid round the camera focus, to check by eye that it rides the drawn swell (#141) |
 | `regionBorder=water\|line` | How the borders between regions are drawn (#239): `water`, a soft seam written into the sea with the regions' names (the default), or `line`, the faint parchment line on the water grid |
 | `seedGallery=1` | The 12-seed contact sheet instead of the game (#161): every seed in `SEED_GALLERY_SEEDS` at map zoom and at ship zoom over the port nearest the map's middle (`SEED_GALLERY_VIEWS`, both in `src/lab/seedGalleryShots.ts`), one row a seed. With `size=medium\|large` for that size (small otherwise). The shots render one at a time (about 5 s each); click one to open its view, or **save PNG** for the whole sheet. Dev server only |
-| `seats=1` | Every seat of the match on one page, through boardgame.io's local transport (#110): each seat gets only its own view (`playerView`) and acts only on its own turn. A switcher at the top right shows one seat's board at a time. Dev server only |
+| `players=1..4` | The match's seats (#278): solo (1) without it; 2 to 4 for a hotseat game, each seat drafting its own captain and taking turns on one screen. Dev server only |
+| `seats=1` | Every seat of the match on one page (as many as `players=`, one without it), through boardgame.io's local transport (#110): each seat gets only its own view (`playerView`) and acts only on its own turn. A switcher at the top right shows one seat's board at a time. Dev server only |
 | `snapshot=1` | One gallery shot: the draft picks itself and the board posts its frame to the gallery. The gallery adds it; you should not need it by hand. Dev server only |
 
 **Seed control.** On the dev server the board shows the map's size and seed at the bottom of the screen. `[` and `]` reload on seed − 1 and seed + 1, `\` on a random seed, each keeping the size and every other parameter (the camera's `cx`, `cz`, `dist`, `stats`, …); **copy URL** copies a URL that reproduces the map on screen. Production builds leave the control out.

@@ -17,6 +17,7 @@ describe("createAudioEngine before unlock", () => {
     const engine = createAudioEngine(undefined, "/");
     expect(engine.isUnlocked()).toBe(false);
     expect(engine.play("ui-click")).toBeNull();
+    expect(engine.play("cannon-fire", { at: [1, 0.1, 2] })).toBeNull();
   });
 
   it("shares settings with subscribers and saves them", () => {
