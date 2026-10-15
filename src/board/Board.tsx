@@ -72,10 +72,12 @@ import { clipToWater, reachEdges, ribbonPositions, waterHexTriangles } from "./r
 import { useRouteSailing } from "./useRouteSailing";
 import { RouteHint } from "./RouteHint";
 import { RegionBorders } from "./RegionBorders";
-import { RegionLabels } from "./RegionLabels";
 import { RegionTooltip } from "./RegionTooltip";
 import { useRegionBorders } from "./useRegionBorders";
-import { regionAt, regionLabels } from "./regionMap";
+import { regionAt } from "./regionMap";
+import { placeRegionNames } from "./regionNamePlacement";
+import { DEFAULT_REGION_BORDER_MODE, type RegionBorderMode } from "./regionBorderMode";
+import { useRegionChart } from "./visuals/useRegionChart";
 import { useTurnHandoff } from "./useTurnHandoff";
 import { controlsLocked, holdsNpcs } from "./turnHandoff";
 import { TurnEndedBanner } from "./TurnEndedBanner";
@@ -188,6 +190,7 @@ function Scene({
   onPortHover,
   onCameraCut,
   seaBuoys,
+  regionBorder,
 }: {
   G: CaribbeanState;
   currentPlayer: string;
@@ -232,6 +235,8 @@ function Scene({
   onCameraCut: () => void;
   /** Dev: buoys on the CPU sea surface (#141). */
   seaBuoys: boolean;
+  /** How the region borders are drawn: seams in the water or lines (dev, #239). */
+  regionBorder: RegionBorderMode;
 }) {
   const currentShipState = G.ships[currentPlayer];
   const controlsRef = useRef<MapControlsType>(null);
@@ -444,9 +449,11 @@ function Scene({
     () => ({ displacements: waves.displacements, terrainField }),
     [waves.displacements, terrainField]
   );
-  // The regions (#239): faint borders on the water and each region's name
+  // The regions (#239): each one's name written into its open water, and
+  // the borders between them as a seam in the water or a faint line
   const regionBorderLines = useRegionBorders(G.cells, G.wrap, waveSurface);
-  const regionNames = useMemo(() => regionLabels(G.cells, G.regions ?? [], G.wrap), [G.cells, G.regions, G.wrap]);
+  const regionNames = useMemo(() => placeRegionNames(G.cells, G.regions ?? [], G.wrap), [G.cells, G.regions, G.wrap]);
+  const regionChart = useRegionChart(G.cells, regionNames, terrainField, regionBorder === "water");
   const grid = useHexGrid({
     surface: waveSurface,
     cells: G.cells,
@@ -564,6 +571,8 @@ function Scene({
           waveSlopes={waveSlopes}
           waveWhitecaps={waves.whitecaps}
           waveDisplacements={waves.displacements}
+          regionChart={regionChart}
+          regionSeams={regionBorder === "water"}
         />
       )}
 
@@ -582,9 +591,8 @@ function Scene({
 
       <HexGrid grid={grid} copy={copy} />
 
-      {/* The regions' borders and names (#239) */}
-      <RegionBorders lines={regionBorderLines} />
-      <RegionLabels labels={regionNames} />
+      {/* The regions' borders as lines, when they are not seams in the water (#239) */}
+      {regionBorder === "line" && <RegionBorders lines={regionBorderLines} />}
 
       {/* The turn's reach and the previewed route (#213) */}
       <ReachOverlay reach={reachShapes} target={targetShape} dots={routeDotPoints} />
@@ -726,6 +734,8 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   cameraDistance?: number;
   /** Float buoys on the CPU sea surface round the camera focus (dev, #141). */
   seaBuoys?: boolean;
+  /** How the region borders are drawn (dev, #239): `DEFAULT_REGION_BORDER_MODE` when left out. */
+  regionBorder?: RegionBorderMode;
   /** Show the fps, draw calls and triangles readout (dev, #162); ignored in production builds. */
   renderStats?: boolean;
   /** A seed-gallery shot (dev, #161): the draft picks itself and the frame is posted to the gallery; ignored in production builds. */
@@ -733,7 +743,7 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, renderStats, gallerySnapshot } = props;
+  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, regionBorder, renderStats, gallerySnapshot } = props;
   const snapshot = import.meta.env.DEV && gallerySnapshot === true;
   // Dev seed gallery (#161): each seat takes its first captain and starter ship, so the shot reaches the main phase.
   const { pickCaptain } = props.moves;
@@ -1097,6 +1107,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onPortHover={setHoveredPort}
           onCameraCut={cameraCut}
           seaBuoys={seaBuoys ?? false}
+          regionBorder={regionBorder ?? DEFAULT_REGION_BORDER_MODE}
         />
         {/* Dev: fps, draw calls and triangles (#162); the DEV guard drops it from production builds */}
         {import.meta.env.DEV && renderStatsFeed && <RenderStatsProbe onStats={renderStatsFeed.publish} />}

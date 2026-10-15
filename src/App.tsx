@@ -102,6 +102,7 @@ function Game() {
         cameraTarget={devParams.cameraTarget}
         cameraDistance={devParams.cameraDistance}
         seaBuoys={devParams.seaBuoys}
+        regionBorder={devParams.regionBorder}
         renderStats={devParams.renderStats}
         gallerySnapshot={devParams.gallerySnapshot}
       />

@@ -1406,6 +1406,26 @@ displace.
   under a tenth of the shadow box's caster and receiver margins
   (`atmosphere.test.ts`), so `shadowFit.ts` is unchanged.
 
+**Region names in the water (#239).** The regions' names are not a second
+surface over the sea (ADR 0004) but ink in it, like the lettering on a sea
+chart. `regionNamePlacement.ts` places each name, pure and tested: on the
+region's own water hexes, clear of land and reefs by `REGION_NAME_MARGIN`
+past the noisy coast, outside the band each port's floating name label
+covers seen down the camera's pitch, off the map's outer rows while there is
+room inside, in the most open water first, level or turned up to 30° along a
+diagonal stretch, shrunk and then split onto two lines where the sea is
+narrow. `useRegionChart.ts` draws the names in IM Fell English SC onto a
+canvas in world XZ over the terrain field's bounds (`regionChart.ts`: R the
+names, G the seams between regions when the borders are drawn in the water,
+`?regionBorder=water|line`), so the ocean reads it with `terrainFieldUv` and
+tiles it across the seam like the field. The fragment stage samples it at
+the displaced surface point nudged by the drawn slope, so the letters ride
+the swell and waver with it; the ink calms the slope it shades with (a
+slick) and darkens only the light from the water body, so the sky's
+reflection, the glint and the foam lie over it as over any water. The names'
+strength fades with camera distance (`regionNameStrength`, gone at ship
+zoom); the seams do not.
+
 ---
 
 ## 4. Sun Shadows (SunLight.tsx, shadowFit.ts)
