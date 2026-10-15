@@ -56,6 +56,14 @@ export interface ShownTurn {
 }
 
 /**
+ * Whether turns are being played, so a new one hands off: in the main phase
+ * or a fight, not the draft, and not once the game is over. A fight that wins
+ * the game leaves the phase gone and the turn number moved on (#284).
+ */
+export const turnsInPlay = ({ phase, gameover }: { phase: string | null; gameover?: unknown }): boolean =>
+  phase !== "draft" && gameover === undefined;
+
+/**
  * Whether a new turn has begun since the board last showed `shown`: the turn
  * number moved on. Not the player alone: solo (#278) every turn is the same
  * seat's, and its turns still end and hand off. Not while `now` is a `fight`:

@@ -79,7 +79,7 @@ import { placeRegionNames } from "./regionNamePlacement";
 import { DEFAULT_REGION_BORDER_MODE, type RegionBorderMode } from "./regionBorderMode";
 import { useRegionChart } from "./visuals/useRegionChart";
 import { useTurnHandoff } from "./useTurnHandoff";
-import { controlsLocked, holdsNpcs } from "./turnHandoff";
+import { controlsLocked, holdsNpcs, turnsInPlay } from "./turnHandoff";
 import { TurnEndedBanner } from "./TurnEndedBanner";
 import type { Point } from "./shipMotion";
 import { ShipTooltip } from "./ShipTooltip";
@@ -915,7 +915,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     currentPlayer,
     turn: ctx.turn,
     fight: ctx.phase === "combat",
-    active: ctx.phase !== "draft",
+    active: turnsInPlay(ctx),
     reducedMotion: prefersReducedMotion,
     npcs: G.npcs,
     underway,

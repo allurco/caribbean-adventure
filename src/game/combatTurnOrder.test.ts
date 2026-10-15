@@ -3,7 +3,7 @@ import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { hex, hexEquals, hexGrid } from "./hex";
 import type { MapCell } from "./mapGenerator";
-import type { Captain, CaribbeanState, ShipState } from "./types";
+import type { Captain, CaribbeanState, NPCShip, ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
 
@@ -34,6 +34,35 @@ function ship(q: number, r: number, id: string, guns: boolean): ShipState {
   s.stats!.hull = guns ? { current: 40, max: 40 } : { current: 1, max: 1 };
   s.captain = captain(id);
   return s;
+}
+
+/** An unarmed merchant at (q, r): one exchange of fire sinks it. */
+function merchant(q: number, r: number): NPCShip {
+  return {
+    id: "merchant",
+    position: hex(q, r),
+    cargo: { Wood: 0, Sugar: 0, Rum: 0, Spice: 0 },
+    gold: 0,
+    shipClass: "Flute",
+    stats: {
+      maneuverability: 0,
+      scouting: 1,
+      cannons: 0,
+      crew: { current: 1, max: 1 },
+      hull: { current: 1, max: 1 },
+      cargo: 8,
+      shallowDraft: false,
+    },
+    damage: { hull: 0, crew: 0, masts: 0 },
+    nation: "Spain",
+    aiBehavior: "MERCHANT_ROUTE",
+    destinationPortHex: PORT,
+    spawnPortHex: PORT,
+    isIdentified: false,
+    bounty: 0,
+    role: "MERCHANT",
+    huntingTargetId: null,
+  };
 }
 
 /** Three seats side by side: seat 0 next to both seats 1 and 2. */
@@ -209,5 +238,29 @@ describe("the turn after a fight, with three seats (#284)", () => {
 
     expect(current(client)).toBe("0");
     expect(nextTurns(client, 2)).toEqual(["2", "0"]);
+  });
+
+  it("a fight with an NPC ends the attacker's turn too: the next seat plays", () => {
+    const client = startGame(threeSeats(), { npcs: { merchant: merchant(-1, 0) } });
+    client.moves.attackNPC("merchant");
+    expect(current(client)).toBe("0");
+    fireOnce(client);
+
+    expect(stateOf(client).G.npcs.merchant).toBeUndefined();
+    expect(current(client)).toBe("1");
+    expect(nextTurns(client, 3)).toEqual(["2", "0", "1"]);
+  });
+
+  it("solo: a fight with an NPC ends the turn, and the next is the one seat's again", () => {
+    const client = startGame({ "0": ship(0, 0, "blackbeard", true) }, { npcs: { merchant: merchant(-1, 0) } });
+    const turn = stateOf(client).ctx.turn;
+    client.moves.attackNPC("merchant");
+    expect(current(client)).toBe("0");
+    fireOnce(client);
+
+    const { ctx } = stateOf(client);
+    expect(ctx).toMatchObject({ currentPlayer: "0", phase: "main" });
+    expect(ctx.turn).toBeGreaterThan(turn);
+    expect(stateOf(client).G.movesUsed).toBe(0);
   });
 });
