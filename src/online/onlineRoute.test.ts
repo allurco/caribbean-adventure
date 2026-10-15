@@ -6,7 +6,7 @@ const CODE = "AbC-_0123456789xyzXYZ0";
 
 describe("parseOnlineRoute", () => {
   it("reads the new-room, room and join views", () => {
-    expect(parseOnlineRoute("?view=rooms")).toEqual({ kind: "newRoom" });
+    expect(parseOnlineRoute("?view=rooms")).toEqual({ kind: "harbour" });
     expect(parseOnlineRoute(`?view=room&id=${ID.toUpperCase()}`)).toEqual({ kind: "room", id: ID });
     expect(parseOnlineRoute(`?view=join&invite=${CODE}`)).toEqual({ kind: "join", inviteCode: CODE });
     expect(parseOnlineRoute(`?view=match&id=${ID}`)).toEqual({ kind: "match", id: ID });
@@ -27,7 +27,7 @@ describe("parseOnlineRoute", () => {
   });
 
   it("round-trips its own paths", () => {
-    expect(parseOnlineRoute(newRoomPath().slice(1))).toEqual({ kind: "newRoom" });
+    expect(parseOnlineRoute(newRoomPath().slice(1))).toEqual({ kind: "harbour" });
     expect(parseOnlineRoute(roomPath(ID).slice(1))).toEqual({ kind: "room", id: ID });
     expect(parseOnlineRoute(joinPath(CODE).slice(1))).toEqual({ kind: "join", inviteCode: CODE });
     expect(parseOnlineRoute(matchPath(ID).slice(1))).toEqual({ kind: "match", id: ID });
@@ -36,8 +36,8 @@ describe("parseOnlineRoute", () => {
   it("carries the word that a match was left and saved, back to the harbour", () => {
     expect(harbourPath({ saved: true })).toBe("/?view=rooms&saved=1");
     expect(harbourPath()).toBe(newRoomPath());
-    expect(parseOnlineRoute("?view=rooms&saved=1")).toEqual({ kind: "newRoom", saved: true });
-    expect(parseOnlineRoute("?view=rooms&saved=0")).toEqual({ kind: "newRoom" });
-    expect(parseOnlineRoute(harbourPath({ saved: true }).slice(1))).toEqual({ kind: "newRoom", saved: true });
+    expect(parseOnlineRoute("?view=rooms&saved=1")).toEqual({ kind: "harbour", saved: true });
+    expect(parseOnlineRoute("?view=rooms&saved=0")).toEqual({ kind: "harbour" });
+    expect(parseOnlineRoute(harbourPath({ saved: true }).slice(1))).toEqual({ kind: "harbour", saved: true });
   });
 });

@@ -6,6 +6,7 @@
  * race (taking a seat, starting a match) is one call, atomic in the database.
  */
 import type { MapSizeId } from "../src/game/mapConfig";
+import type { CombatState } from "../src/game/types";
 
 /** `starting`: the host's start is claimed and the match is being built (#112). */
 export type RoomStatus = "open" | "starting" | "started" | "finished";
@@ -96,10 +97,16 @@ export interface MatchUpdate {
 }
 
 /**
+ * The fight on in a match, as public as `G.combat` already is to every seat
+ * (`playerView.ts`): only what says whose step it is (`combatActor`).
+ */
+export type VoyageFight = Pick<CombatState, "stage" | "attackerId" | "seamanshipWinner" | "isNPCCombat">;
+
+/**
  * One of a player's rooms, for their list of voyages: what the list shows,
- * never the match's state. `currentSeat` is the seat whose turn it is in a
- * match under way (boardgame.io's `currentPlayer`), else null; `turn` its
- * turn number.
+ * never the match's state. The store owns the rule that `currentSeat`,
+ * `phase` and `fight` are said only of a match under way (status `started`):
+ * null otherwise.
  */
 export interface VoyageRecord {
   roomId: string;
@@ -109,9 +116,12 @@ export interface VoyageRecord {
   /** Sorted by index. */
   seats: SeatRecord[];
   matchId: string | null;
+  /** boardgame.io's `currentPlayer`: in a fight, still the attacker. */
   currentSeat: number | null;
-  /** boardgame.io's turn number (`ctx.turn`) of a match under way, else null. */
-  turn: number | null;
+  /** boardgame.io's phase (`draft`, `main`, `combat`). */
+  phase: string | null;
+  /** The fight on (`G.combat`), if any. */
+  fight: VoyageFight | null;
   /** When the match last moved, or the room was opened: ISO 8601. */
   updatedAt: string;
 }

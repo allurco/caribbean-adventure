@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { harbourVoyages, type VoyageView } from "./voyageList";
+import type { VoyageView } from "./roomApi";
+import { harbourVoyages } from "./voyageList";
 
 const ROOM_A = "00000000-0000-4000-9000-00000000000a";
 const ROOM_B = "00000000-0000-4000-9000-00000000000b";
@@ -21,25 +22,25 @@ const voyage = (over: Partial<VoyageView>): VoyageView => ({
   seats: [ANNE],
   yourSeat: 0,
   currentSeat: null,
-  turn: null,
+  drafting: false,
   yourTurn: false,
   updatedAt: "2026-10-15T12:00:00.000Z",
   ...over,
 });
 
-const underWay = (over: Partial<VoyageView>) => voyage({ matchId: MATCH, status: "started", seats: [ANNE, JACK], turn: 1, ...over });
+const underWay = (over: Partial<VoyageView>) => voyage({ matchId: MATCH, status: "started", seats: [ANNE, JACK], ...over });
 
 describe("harbourVoyages", () => {
   it("has nothing to show with no voyages", () => {
     expect(harbourVoyages([])).toEqual({ lead: null, others: [] });
   });
 
-  it("leads with the match waiting on the player: its captains, round, seats and map, and Take your turn", () => {
-    const { lead, others } = harbourVoyages([underWay({ roomId: ROOM_B, currentSeat: 0, yourTurn: true, turn: 5 })]);
+  it("leads with the match waiting on the player: its captains, seats and map, and Take your turn", () => {
+    const { lead, others } = harbourVoyages([underWay({ roomId: ROOM_B, currentSeat: 0, yourTurn: true, drafting: false })]);
     expect(lead).toEqual({
       roomId: ROOM_B,
       name: "Anne Bonny and Calico Jack",
-      line: "Round 3, 2 captains, small map.",
+      line: "2 captains, small map.",
       link: { href: `/?view=match&id=${MATCH}`, label: "Take your turn" },
     });
     expect(others).toEqual([]);
@@ -53,8 +54,8 @@ describe("harbourVoyages", () => {
     ]);
     expect(lead?.roomId).toBe(ROOM_B);
     expect(others.map((o) => [o.roomId, o.line, o.yourTurn, o.link.label])).toEqual([
-      [ROOM_C, "Round 1, 2 captains, small map. Your turn.", true, "Open"],
-      [ROOM_A, "Round 1, 2 captains, small map. Waiting on Calico Jack.", false, "Open"],
+      [ROOM_C, "2 captains, small map. Your turn.", true, "Open"],
+      [ROOM_A, "2 captains, small map. Waiting on Calico Jack.", false, "Open"],
     ]);
   });
 
@@ -63,14 +64,14 @@ describe("harbourVoyages", () => {
       voyage({ roomId: ROOM_A, status: "finished", matchId: MATCH, seats: [ANNE, JACK] }),
       voyage({ roomId: ROOM_B, status: "open", seatCount: 3 }),
       voyage({ roomId: ROOM_C, status: "starting", seats: [ANNE, JACK] }),
-      underWay({ roomId: ROOM_D, currentSeat: 1, turn: 4 }),
+      underWay({ roomId: ROOM_D, currentSeat: 1 }),
     ]);
     expect(lead).toBeNull();
     expect(others).toEqual([
       {
         roomId: ROOM_D,
         name: "Anne Bonny and Calico Jack",
-        line: "Round 2, 2 captains, small map. Waiting on Calico Jack.",
+        line: "2 captains, small map. Waiting on Calico Jack.",
         yourTurn: false,
         link: { href: `/?view=match&id=${MATCH}`, label: "Open" },
       },
@@ -100,16 +101,23 @@ describe("harbourVoyages", () => {
 
   it("names three or more captains in a list, and one whose profile is gone", () => {
     const { others } = harbourVoyages([
-      underWay({ roomId: ROOM_A, seatCount: 3, seats: [ANNE, { index: 1, displayName: null }, MARY], currentSeat: 1, turn: 7 }),
+      underWay({ roomId: ROOM_A, seatCount: 3, seats: [ANNE, { index: 1, displayName: null }, MARY], currentSeat: 1 }),
     ]);
     expect(others[0]).toMatchObject({
       name: "Anne Bonny, a captain and Mary Read",
-      line: "Round 3, 3 captains, small map. Waiting on a captain.",
+      line: "3 captains, small map. Waiting on a captain.",
     });
   });
 
-  it("leaves out what it does not know: the round before the server says, and whose turn", () => {
-    const { others } = harbourVoyages([underWay({ roomId: ROOM_E, mapSize: "large", turn: null, currentSeat: null })]);
+  it("leaves out what it does not know: whose turn, before the server says", () => {
+    const { others } = harbourVoyages([underWay({ roomId: ROOM_E, mapSize: "large", currentSeat: null })]);
     expect(others[0].line).toBe("2 captains, large map.");
+  });
+
+  it("says a match is drafting its captains, as the lead and among the others", () => {
+    const drafting = harbourVoyages([underWay({ roomId: ROOM_B, currentSeat: 0, yourTurn: true, drafting: true })]);
+    expect(drafting.lead?.line).toBe("Drafting captains, 2 captains, small map.");
+    const waiting = harbourVoyages([underWay({ roomId: ROOM_B, currentSeat: 1, drafting: true })]);
+    expect(waiting.others[0].line).toBe("Drafting captains, 2 captains, small map. Waiting on Calico Jack.");
   });
 });

@@ -4,10 +4,13 @@
 -- Security model, as in 20261015000000_rooms.sql:
 -- * `list_voyages` is the server's: executable by the service role only. /api
 --   passes the signed-in caller's id, checked with Supabase Auth.
--- * It returns only rooms `p_user` holds a seat in, and of each match no more
---   than whose turn it is and the turn's number (`ctx.currentPlayer`,
---   `ctx.turn`, while the room is started):
---   never the state itself, the invite code or the seeds.
+-- * It returns only rooms `p_user` holds a seat in, and of each match under
+--   way (status `started`; null otherwise) no more than whose turn it is
+--   (`ctx.currentPlayer`), its phase, and of a fight on only what says whose
+--   step it is (`G.combat`'s stage, attacker, draw winner and whether the foe
+--   is an NPC; `combatActor` in src/game/combatActor.ts). `G.combat` is shown
+--   to every seat already (src/game/playerView.ts), so this leaks nothing.
+--   Never the state itself, the invite code or the seeds.
 -- * Names come from `profiles`; only user ids are stored in seats.
 
 -- Up to `p_limit` (at most 50) of `p_user`'s rooms, the most recently changed
@@ -20,7 +23,8 @@ returns table (
   map_size text,
   match_id uuid,
   current_seat integer,
-  turn integer,
+  phase text,
+  fight jsonb,
   updated_at timestamptz,
   seats jsonb
 )
@@ -38,9 +42,23 @@ as $$
       when r.status = 'started' and (m.state -> 'ctx' ->> 'currentPlayer') ~ '^[0-9]$'
         then (m.state -> 'ctx' ->> 'currentPlayer')::integer
     end,
+    case when r.status = 'started' then m.phase end,
     case
-      when r.status = 'started' and (m.state -> 'ctx' ->> 'turn') ~ '^[0-9]{1,9}$'
-        then (m.state -> 'ctx' ->> 'turn')::integer
+      when r.status = 'started'
+        and jsonb_typeof(m.state -> 'G' -> 'combat') = 'object'
+        and (m.state -> 'G' -> 'combat' ->> 'stage') in ('seamanship', 'chooseAction', 'fleeAttempt', 'cannons', 'resolution')
+        and (m.state -> 'G' -> 'combat' ->> 'attackerId') ~ '^[0-9]$'
+        and jsonb_typeof(m.state -> 'G' -> 'combat' -> 'isNPCCombat') = 'boolean'
+        then jsonb_build_object(
+          'stage', m.state -> 'G' -> 'combat' ->> 'stage',
+          'attacker_id', m.state -> 'G' -> 'combat' ->> 'attackerId',
+          -- An NPC's id is no seat: only a seat's id is passed on.
+          'seamanship_winner', case
+            when (m.state -> 'G' -> 'combat' ->> 'seamanshipWinner') ~ '^[0-9]$'
+              then m.state -> 'G' -> 'combat' ->> 'seamanshipWinner'
+          end,
+          'is_npc_combat', (m.state -> 'G' -> 'combat' ->> 'isNPCCombat')::boolean
+        )
     end,
     coalesce(m.updated_at, r.created_at),
     (

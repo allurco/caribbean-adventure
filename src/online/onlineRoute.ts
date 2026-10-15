@@ -10,7 +10,7 @@ import { isUuid } from "./uuid";
 
 export type OnlineRoute =
   /** `saved`: the player just left a match, which is saved (`?saved=1`). */
-  | { kind: "newRoom"; saved?: true }
+  | { kind: "harbour"; saved?: true }
   | { kind: "room"; id: string | null }
   | { kind: "join"; inviteCode: string | null }
   | { kind: "match"; id: string | null };
@@ -23,7 +23,7 @@ export function parseOnlineRoute(search: string): OnlineRoute | null {
   const params = new URLSearchParams(search);
   switch (params.get("view")) {
     case "rooms":
-      return params.get("saved") === "1" ? { kind: "newRoom", saved: true } : { kind: "newRoom" };
+      return params.get("saved") === "1" ? { kind: "harbour", saved: true } : { kind: "harbour" };
     case "room": {
       const id = params.get("id");
       return { kind: "room", id: id !== null && isUuid(id) ? id.toLowerCase() : null };
