@@ -95,6 +95,27 @@ export interface MatchUpdate {
   move: MoveEntry;
 }
 
+/**
+ * One of a player's rooms, for their list of voyages: what the list shows,
+ * never the match's state. `currentSeat` is the seat whose turn it is in a
+ * match under way (boardgame.io's `currentPlayer`), else null; `turn` its
+ * turn number.
+ */
+export interface VoyageRecord {
+  roomId: string;
+  status: RoomStatus;
+  seatCount: number;
+  mapSize: MapSizeId;
+  /** Sorted by index. */
+  seats: SeatRecord[];
+  matchId: string | null;
+  currentSeat: number | null;
+  /** boardgame.io's turn number (`ctx.turn`) of a match under way, else null. */
+  turn: number | null;
+  /** When the match last moved, or the room was opened: ISO 8601. */
+  updatedAt: string;
+}
+
 export interface OnlineStore {
   /** Counts one use of `action` by `userId` in the current fixed window; false once over `limit`. */
   consumeRateLimit(userId: string, action: string, limit: number, windowSeconds: number): Promise<boolean>;
@@ -117,6 +138,11 @@ export interface OnlineStore {
   startMatch(roomId: string, userId: string, match: InitialMatch): Promise<{ outcome: StartOutcome; matchId: string | null }>;
   /** Gives a claimed start back (building the match failed), so the host can try again. */
   releaseStart(roomId: string): Promise<void>;
+  /**
+   * The rooms `userId` holds a seat in, most recently changed first, at most
+   * `limit`. Nobody else's rooms, and no match state beyond whose turn it is.
+   */
+  listVoyages(userId: string, limit: number): Promise<VoyageRecord[]>;
   getMatch(matchId: string): Promise<MatchRecord | null>;
   /** The match without its state: its id, state id and seats. For the cheap `?since=` check. */
   getMatchHead(matchId: string): Promise<Omit<MatchRecord, "state"> | null>;

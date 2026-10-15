@@ -6,6 +6,7 @@ import { OnlineSheet } from "./OnlineSheet";
 import type { OnlineRoute } from "./onlineRoute";
 import { RoomLobby } from "./RoomLobby";
 import { useRoomApi } from "./useRoomApi";
+import { YourVoyages } from "./YourVoyages";
 
 /** One online view for the signed-in player, in its sheet. */
 export function OnlineView({ client, route }: { client: AccountClient; route: OnlineRoute }) {
@@ -13,8 +14,16 @@ export function OnlineView({ client, route }: { client: AccountClient; route: On
   switch (route.kind) {
     case "newRoom":
       return (
-        <OnlineSheet title="A private room" subtitle="Invite your friends with a link; start once every seat is taken.">
-          <NewRoomForm api={api} />
+        <OnlineSheet title="The harbour" subtitle="Your voyages, and a private room for a new one.">
+          {route.saved && <p role="status">Your voyage is saved. Resume it below whenever you like.</p>}
+          <YourVoyages api={api} />
+          <section aria-labelledby="new-room-title" className="space-y-3">
+            <h2 id="new-room-title" className="font-fell text-[22px] leading-tight">
+              A private room
+            </h2>
+            <p className="text-[15px] text-shell-ink-soft">Invite your friends with a link; start once every seat is taken.</p>
+            <NewRoomForm api={api} />
+          </section>
         </OnlineSheet>
       );
     case "room":

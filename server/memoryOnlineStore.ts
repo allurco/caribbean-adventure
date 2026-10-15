@@ -13,14 +13,16 @@ import {
   type OnlineStore,
   type RoomRecord,
   type StartOutcome,
+  type VoyageRecord,
 } from "./onlineStore";
 
 interface StoredMatch extends InitialMatch {
   id: string;
   roomId: string;
+  updatedAt: number;
 }
 
-type StoredRoom = Omit<RoomRecord, "seats" | "matchId"> & { startClaimedAt: number | null };
+type StoredRoom = Omit<RoomRecord, "seats" | "matchId"> & { startClaimedAt: number | null; createdAt: number };
 
 export interface MemoryOnlineStore extends OnlineStore {
   /** The stored match, whole state included: for tests only. */
@@ -44,8 +46,9 @@ export function createMemoryOnlineStore({
   function record(roomId: string): RoomRecord | null {
     const room = rooms.get(roomId);
     if (!room) return null;
-    const { startClaimedAt: _claimed, ...rest } = room;
+    const { startClaimedAt: _claimed, createdAt: _created, ...rest } = room;
     void _claimed;
+    void _created;
     const taken = [...(seats.get(roomId) ?? new Map<number, string>()).entries()].sort(([a], [b]) => a - b);
     const match = [...matches.values()].find((m) => m.roomId === roomId);
     return {
@@ -72,7 +75,7 @@ export function createMemoryOnlineStore({
       if (!consume(room.hostId, "create_room", limit, windowSeconds, true)) return null;
       const id = newId();
       const { hostId, ...settings } = room;
-      rooms.set(id, { id, hostId, status: "open", startClaimedAt: null, ...settings });
+      rooms.set(id, { id, hostId, status: "open", startClaimedAt: null, createdAt: now(), ...settings });
       seats.set(id, new Map([[0, hostId]]));
       return id;
     },
@@ -114,9 +117,33 @@ export function createMemoryOnlineStore({
       if (!room) return { outcome: "not_found", matchId: null };
       if (room.status !== "starting" || room.hostId !== userId) return { outcome: "not_claimed", matchId: null };
       const id = newId();
-      matches.set(id, { id, roomId, ...structuredClone(match) });
+      matches.set(id, { id, roomId, updatedAt: now(), ...structuredClone(match) });
       room.status = "started";
       return { outcome: "started", matchId: id };
+    },
+
+    async listVoyages(userId, limit) {
+      const voyages: VoyageRecord[] = [];
+      for (const [roomId, taken] of seats) {
+        if (![...taken.values()].includes(userId)) continue;
+        const room = rooms.get(roomId)!;
+        const match = [...matches.values()].find((m) => m.roomId === roomId);
+        const ctx = (match?.state as { ctx?: { currentPlayer?: string; turn?: number } } | undefined)?.ctx;
+        const underWay = room.status === "started" && ctx !== undefined;
+        voyages.push({
+          roomId,
+          status: room.status,
+          seatCount: room.seatCount,
+          mapSize: room.mapSize,
+          seats: record(roomId)!.seats,
+          matchId: match?.id ?? null,
+          currentSeat: underWay && ctx.currentPlayer !== undefined ? Number(ctx.currentPlayer) : null,
+          turn: underWay && ctx.turn !== undefined ? ctx.turn : null,
+          updatedAt: new Date(match?.updatedAt ?? room.createdAt).toISOString(),
+        });
+      }
+      // Newest first; a tie keeps the later room first, as the SQL orders by creation too.
+      return voyages.reverse().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, limit);
     },
 
     async getMatch(matchId) {
@@ -137,6 +164,7 @@ export function createMemoryOnlineStore({
       match.state = structuredClone(update.state);
       match.stateId = update.stateId;
       match.phase = update.phase;
+      match.updatedAt = now();
       if (update.finished) rooms.get(match.roomId)!.status = "finished";
       moves.set(match.id, [...(moves.get(match.id) ?? []), { ...structuredClone(update.move), at: new Date(now()).toISOString() }]);
       return true;

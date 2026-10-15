@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinPath, matchPath, newRoomPath, parseOnlineRoute, roomPath } from "./onlineRoute";
+import { harbourPath, joinPath, matchPath, newRoomPath, parseOnlineRoute, roomPath } from "./onlineRoute";
 
 const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const CODE = "AbC-_0123456789xyzXYZ0";
@@ -31,5 +31,13 @@ describe("parseOnlineRoute", () => {
     expect(parseOnlineRoute(roomPath(ID).slice(1))).toEqual({ kind: "room", id: ID });
     expect(parseOnlineRoute(joinPath(CODE).slice(1))).toEqual({ kind: "join", inviteCode: CODE });
     expect(parseOnlineRoute(matchPath(ID).slice(1))).toEqual({ kind: "match", id: ID });
+  });
+
+  it("carries the word that a match was left and saved, back to the harbour", () => {
+    expect(harbourPath({ saved: true })).toBe("/?view=rooms&saved=1");
+    expect(harbourPath()).toBe(newRoomPath());
+    expect(parseOnlineRoute("?view=rooms&saved=1")).toEqual({ kind: "newRoom", saved: true });
+    expect(parseOnlineRoute("?view=rooms&saved=0")).toEqual({ kind: "newRoom" });
+    expect(parseOnlineRoute(harbourPath({ saved: true }).slice(1))).toEqual({ kind: "newRoom", saved: true });
   });
 });
