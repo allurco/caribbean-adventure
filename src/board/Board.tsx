@@ -124,6 +124,7 @@ import { MissionCompleteToast } from "./MissionCompleteToast";
 import { CameraAudioListener } from "./CameraAudioListener";
 import { AmbienceBedDriver } from "./AmbienceBedDriver";
 import { HudSoundControl } from "./HudSoundControl";
+import { HudSaveLeave } from "./HudSaveLeave";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { RenderStatsOverlay } from "./RenderStatsOverlay";
 import { DevSeedControl } from "./DevSeedControl";
@@ -799,6 +800,8 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   renderStats?: boolean;
   /** A seed-gallery shot (dev, #161): the draft picks itself and the frame is posted to the gallery; ignored in production builds. */
   gallerySnapshot?: boolean;
+  /** Saves the hotseat game and goes back to its start screen (#300); the HUD offers it only when given. */
+  onSaveAndLeave?: () => void;
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
@@ -1245,6 +1248,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
       {/* Sound: mute and volume, under the turn bar */}
       {currentShipState && <HudSoundControl />}
+      {props.onSaveAndLeave && <HudSaveLeave onSaveAndLeave={props.onSaveAndLeave} />}
 
       {/* Every captain's glory, which is public (#110) */}
       {!inCombat && currentShipState && (

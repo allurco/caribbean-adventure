@@ -82,4 +82,29 @@ describe("loading the game client", () => {
     const hotseat = (await loadGameClient(undefined, true, 2)) as unknown as { game: Game<CaribbeanState> };
     expect(hotseat.game.phases!.combat.moves).toBe(Caribbean.phases!.combat.moves);
   });
+
+  it("continues a saved voyage on its seats, saving every state it reaches (#300)", async () => {
+    const { loadGameClient } = await import("./loadGameClient");
+    const { saveHotseat } = await import("./hotseatSave/hotseatSave");
+    const map = { mapSize: "small", mapSeed: 1, cells: [] } as const;
+    // A two-seat match, then saved, on the mocked map
+    const before = (await loadGameClient(undefined, true, 2)) as unknown as { game: Game<CaribbeanState> };
+    const played = HeadlessClient<CaribbeanState>({ game: before.game, numPlayers: 2 });
+    played.moves.pickCaptain(1, "Sloop");
+    const save = JSON.parse(JSON.stringify(saveHotseat(played.store.getState(), { ...map, cells: [], regions: [] }, 0)));
+
+    const states: unknown[] = [];
+    const options = (await loadGameClient(undefined, true, 1, { restore: save, onState: (state) => states.push(state) })) as unknown as {
+      game: Game<CaribbeanState>;
+      numPlayers: number;
+      enhancer: Parameters<typeof HeadlessClient>[0]["enhancer"];
+    };
+    expect(options.numPlayers).toBe(2);
+    const continued = HeadlessClient<CaribbeanState>({ game: options.game, numPlayers: options.numPlayers, enhancer: options.enhancer });
+    expect(continued.getState()!.ctx.currentPlayer).toBe("1");
+    expect(continued.getState()!.G.ships["0"].captain).toEqual(played.getState()!.G.ships["0"].captain);
+    expect(states).toHaveLength(1);
+    continued.moves.pickCaptain(0, "Sloop");
+    expect(states.length).toBeGreaterThan(1);
+  });
 });
