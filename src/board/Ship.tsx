@@ -1,6 +1,7 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
+import { ErrorBoundary } from "react-error-boundary";
 import { Mesh, MathUtils, Group, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
 import { type ShipFoamSource, shipFoamSources } from "./shipFoamSources";
@@ -22,6 +23,9 @@ const modelUrl = (model: ShipModel) => shipModelUrl(model, import.meta.env.BASE_
 
 // Fetch the models as the board loads, not when the first ship of a class appears.
 for (const model of Object.values(SHIP_MODELS)) if (model) useGLTF.preload(modelUrl(model), false, false);
+
+const logModelFailure = (model: ShipModel, error: unknown) =>
+  console.warn(`[ship] model ${model.file} failed to load; drawing the hull box`, error);
 
 /** Each loaded model merged once (#136), however many ships draw it. */
 const mergedModels = new WeakMap<Object3D, Group>();
@@ -221,9 +225,12 @@ export function Ship({
           <meshBasicMaterial visible={false} />
         </mesh>
         {model ? (
-          <Suspense fallback={box}>
-            <ShipModelMesh model={model} colour={color} flag={flag} heading={heading} />
-          </Suspense>
+          // A model that fails to load leaves the hull box, not a broken scene
+          <ErrorBoundary fallback={box} onError={(error) => logModelFailure(model, error)}>
+            <Suspense fallback={box}>
+              <ShipModelMesh model={model} colour={color} flag={flag} heading={heading} />
+            </Suspense>
+          </ErrorBoundary>
         ) : (
           box
         )}
@@ -242,7 +249,7 @@ export function Ship({
  * under reduced motion, limp and slack while it sinks. Suspends while the
  * file loads.
  */
-function ShipModelMesh({
+export function ShipModelMesh({
   model,
   colour,
   flag,
@@ -350,9 +357,11 @@ export function SinkingShip({
       <group ref={innerRef}>
         <group ref={ref}>
           {model ? (
-            <Suspense fallback={box}>
-              <ShipModelMesh model={model} colour={color} flag={flag} heading={sunkHeading} sinking />
-            </Suspense>
+            <ErrorBoundary fallback={box} onError={(error) => logModelFailure(model, error)}>
+              <Suspense fallback={box}>
+                <ShipModelMesh model={model} colour={color} flag={flag} heading={sunkHeading} sinking />
+              </Suspense>
+            </ErrorBoundary>
           ) : (
             box
           )}

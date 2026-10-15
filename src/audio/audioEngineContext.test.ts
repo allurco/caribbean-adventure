@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // A stand-in for three's audio classes: a context whose resume() the test
 // controls, and an Audio that only reports playing once a buffer is set.
-const context = { state: "suspended" as AudioContextState, resume: vi.fn() };
+const context = { state: "suspended" as AudioContextState, resume: vi.fn(), decodeAudioData: vi.fn() };
+const audioLoads = vi.fn();
+const fileLoads = vi.fn();
 let resolveLoad: (buffer: AudioBuffer) => void = () => {};
 
 vi.mock("three", () => {
@@ -25,11 +27,21 @@ vi.mock("three", () => {
     }
   }
   class AudioLoader {
-    loadAsync() {
+    loadAsync(url: string) {
+      audioLoads(url);
       return new Promise<AudioBuffer>((resolve) => (resolveLoad = resolve));
     }
   }
-  return { Audio, AudioListener, AudioLoader };
+  class FileLoader {
+    setResponseType() {
+      return this;
+    }
+    loadAsync(url: string) {
+      fileLoads(url);
+      return Promise.resolve(new ArrayBuffer(8));
+    }
+  }
+  return { Audio, AudioListener, AudioLoader, FileLoader };
 });
 
 const { createAudioEngine, installAudioUnlock } = await import("./audioEngine");
@@ -39,6 +51,9 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 beforeEach(() => {
   context.state = "suspended";
   context.resume.mockReset();
+  context.decodeAudioData.mockReset();
+  audioLoads.mockReset();
+  fileLoads.mockReset();
 });
 
 describe("unlocking against a real context state", () => {
@@ -94,6 +109,29 @@ describe("a sound still loading", () => {
     const handle = engine.play("sea-waves");
     resolveLoad({} as AudioBuffer);
     await flush();
+    expect(handle?.isPlaying()).toBe(true);
+  });
+});
+
+describe("prefetching a sound before the first gesture", () => {
+  it("downloads the file without touching the audio context", async () => {
+    const engine = createAudioEngine(undefined, "/");
+    await engine.prefetch("sea-wide");
+    expect(fileLoads).toHaveBeenCalledWith("/sounds/sea-wide-loop.ogg");
+    expect(context.resume).not.toHaveBeenCalled();
+    expect(context.decodeAudioData).not.toHaveBeenCalled();
+  });
+
+  it("plays from the prefetched bytes instead of downloading the file again", async () => {
+    const engine = createAudioEngine(undefined, "/");
+    await engine.prefetch("sea-wide");
+    context.resume.mockResolvedValue(undefined);
+    context.decodeAudioData.mockResolvedValue({} as AudioBuffer);
+    engine.unlock();
+    const handle = engine.play("sea-wide");
+    await flush();
+    expect(context.decodeAudioData).toHaveBeenCalledTimes(1);
+    expect(audioLoads).not.toHaveBeenCalled();
     expect(handle?.isPlaying()).toBe(true);
   });
 });
