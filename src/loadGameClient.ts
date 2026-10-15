@@ -32,8 +32,8 @@ export async function loadSeatClient(setupData: CaribbeanSetupData | undefined) 
     board: CaribbeanBoard,
     numPlayers: PLAYER_COUNT,
     multiplayer: Local(),
-    // boardgame.io opens its debug panel in dev, over the seat switcher; it starts folded here
-    debug: { collapseOnLoad: true },
+    // No boardgame.io debug panel: even folded, its tab covers End Turn and the turn bar; the seat switcher plays every seat
+    debug: false,
   });
 }
 

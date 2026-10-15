@@ -48,9 +48,9 @@ describe("loading the game client", () => {
     expect(Object.keys(seat.getState()!.G.draftHands)).toEqual(["1"]);
   });
 
-  it("starts the dev debug panel collapsed for the seats on one page, so it does not cover the seat switcher (#110)", async () => {
+  it("hides the dev debug panel for the seats on one page, so its tab does not cover End Turn or the turn bar (#110)", async () => {
     const { loadSeatClient } = await import("./loadGameClient");
     const { debug } = (await loadSeatClient(undefined)) as unknown as { debug: unknown };
-    expect(debug).toEqual({ collapseOnLoad: true });
+    expect(debug).toBe(false);
   });
 });
