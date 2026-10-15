@@ -80,6 +80,15 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-15: players out of the game (#265, PR #283)
+
+- **Branch and commit:** `feat/265-captains-out` at `52c0fbb`.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1280×800.
+- **View:** `?seats=1&size=small&seed=1` (two seats on this branch: #278's solo and `?players=` are on main, not merged in), camera where each seat's board puts it. Both seats drafted through `pickCaptain`. States staged by writing a deep copy of the local transport's stored match state and syncing: on seat 0's turn, seat 1's ship moved to `lostShips` with glory 4 and the captain deck emptied; then seat 0's End Turn sent as an event.
+- **Findings:** seat 1's turn came, no captain was left to deal, it went out and the turn came straight back to seat 0 (turn 3 to 5, and 5 to 6 on the next End Turn, always seat 0). The glory board keeps the out seat's glory, struck through and dimmed with an "OUT" tag, on both seats' boards. Seat 1's board shows "You are out of the game / No captain is left to take command. Your glory stands; you watch the table from here.", with "Waiting for <rival>" at the top. With seat 0's ship then lost too (staged) and End Turn, every seat was out and the game ended: the game-over card on both boards, "Captain Blackbeard … Final glory 4", the dead captain of the seat with most glory. No page errors.
+- **Not checked:** a true solo game (needs main's #278 merged in; the all-out ending is the same `endIf` path). Deleting a seat's ship mid-turn without ending it shows the "Awaiting orders" overlay; a staging artifact, real losses end the turn.
+- **For the maintainer:** the out seat is listed as "Player 2", not its last captain's name; the all-out game-over card reads "VICTORY! … has conquered the Caribbean!" on every seat's board, though no one reached the winning glory.
+
 ### 2026-10-15: region borders and labels (#239, PR #255)
 
 - **Branch and commit:** `feat/239-regions` at `715fc44`.
