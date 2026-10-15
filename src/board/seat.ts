@@ -1,5 +1,6 @@
 import type { Handoff } from "./turnHandoff";
-import type { Captain, CaribbeanState, CombatState } from "../game/types";
+import type { Captain, CaribbeanState, CombatStage, CombatState, ShipState } from "../game/types";
+import { npcName } from "./npcName";
 
 /**
  * Which seat the board is for, and what that seat may do (#110). A client
@@ -7,6 +8,10 @@ import type { Captain, CaribbeanState, CombatState } from "../game/types";
  * view (several seats on one page); the hotseat client holds none and is one
  * screen every seat shares, so it always shows and acts for whoever's turn
  * it is. Pure: the board reads these, the components only lay them out.
+ *
+ * These rules mirror the engine's for the board: they decide which controls
+ * a seat is offered, and do not replace the engine's own enforcement of who
+ * may move (boardgame.io's turn order today; the server, #104).
  */
 
 /** The client's seat (`playerID`, null or undefined in hotseat) and whose turn it is. */
@@ -21,7 +26,7 @@ export function seatMayAct({ playerID, currentPlayer }: SeatTurn): boolean {
 }
 
 /** Whose ship the board treats as the viewer's own (hover, ship details, port, scouting): the seat's, or in hotseat the current player's. */
-export function ownSeat({ playerID, currentPlayer }: SeatTurn): string {
+export function viewerSeat({ playerID, currentPlayer }: SeatTurn): string {
   return playerID ?? currentPlayer;
 }
 
@@ -43,14 +48,28 @@ export function hudSeat({
   return handingOff && ships[handoff.from] ? handoff.from : currentPlayer;
 }
 
+/**
+ * The ship the HUD shows for its seat (`hudSeat`), or null when that ship is
+ * gone: a sunk ship is deleted from `G.ships`, and the HUD then shows the
+ * loss, never another seat's ship in its place (a rival's reaches it emptied).
+ */
+export function hudShip(G: Pick<CaribbeanState, "ships">, seat: string): ShipState | null {
+  return G.ships[seat] ?? null;
+}
+
 /** What the board calls a seat: its captain, or "Player n" (counting from 1) before it has one. */
 export function seatName(G: Pick<CaribbeanState, "ships">, seat: string): string {
   return G.ships[seat]?.captain?.name ?? `Player ${Number(seat) + 1}`;
 }
 
+/** "Waiting for <captain>", and what for when given ("to draft"): every waiting line on the board. */
+function waitingLine(G: Pick<CaribbeanState, "ships">, seat: string, what?: string): string {
+  return `Waiting for ${seatName(G, seat)}${what ? ` ${what}` : ""}`;
+}
+
 /** The line a seat sees on another seat's turn, "Waiting for <captain>"; null when it may act. */
 export function waitingFor(G: Pick<CaribbeanState, "ships">, turn: SeatTurn): string | null {
-  return seatMayAct(turn) ? null : `Waiting for ${seatName(G, turn.currentPlayer)}`;
+  return seatMayAct(turn) ? null : waitingLine(G, turn.currentPlayer);
 }
 
 /**
@@ -63,22 +82,57 @@ export type DraftView =
   | { kind: "waiting"; line: string };
 
 export function draftView(G: Pick<CaribbeanState, "ships" | "draftHands">, turn: SeatTurn): DraftView {
-  if (!seatMayAct(turn)) return { kind: "waiting", line: `Waiting for ${seatName(G, turn.currentPlayer)} to draft` };
+  if (!seatMayAct(turn)) return { kind: "waiting", line: waitingLine(G, turn.currentPlayer, "to draft") };
   const hand = G.draftHands[turn.currentPlayer] ?? [];
   if (hand.length === 0) return { kind: "waiting", line: "Waiting for other players..." };
   return { kind: "pick", hand, passDevice: turn.playerID == null };
 }
 
+/** Who fights whom: the sides of a fight, as the seat rules read them. */
+export type FightSides = Pick<CombatState, "attackerId" | "defenderId" | "isNPCCombat">;
+
+/** A fight's sides and the step it is on: the draw's winner is the faster ship. */
+export type FightStep = FightSides & Pick<CombatState, "stage" | "seamanshipWinner">;
+
+/** The client's seat (null or undefined in hotseat) and the fight on: `SeatTurn` for combat. */
+export interface SeatFight {
+  playerID?: string | null;
+  combat: FightStep;
+}
+
 /**
- * May this client act in the fight on now? Hotseat always; a seat when its
- * ship is in it, attacking or attacked. Everyone else watches.
+ * The seat that presses the fight's current step. A fight is a declaration,
+ * a draw (the seamanship roll, both dice) that decides the faster ship, then
+ * its action (fire, board or flee) and the rolls after it. The attacker rolls
+ * the draw; the faster ship presses the rest. Against an NPC the attacker
+ * presses every step: when the NPC wins the draw the engine picks its action.
  */
-export function seatMayActInCombat(
-  playerID: string | null | undefined,
-  combat: Pick<CombatState, "attackerId" | "defenderId" | "isNPCCombat">
-): boolean {
-  if (playerID == null) return true;
-  return playerID === combat.attackerId || (!combat.isNPCCombat && playerID === combat.defenderId);
+export function combatActor(combat: FightStep): string {
+  if (combat.stage === "seamanship" || combat.isNPCCombat) return combat.attackerId;
+  return combat.seamanshipWinner ?? combat.attackerId;
+}
+
+/**
+ * May this client press the fight's current step? Hotseat always; else only
+ * the seat whose step it is (`combatActor`). Everyone else watches. Not
+ * enforced by the engine yet: that belongs to the server (#104).
+ */
+export function seatMayActInCombat({ playerID, combat }: SeatFight): boolean {
+  return playerID == null || playerID === combatActor(combat);
+}
+
+const STEP_WAITED_ON: Record<CombatStage, string> = {
+  seamanship: "to roll for seamanship",
+  chooseAction: "to choose",
+  fleeAttempt: "to roll the pursuit",
+  cannons: "to fire",
+  resolution: "to apply the damage",
+};
+
+/** The line a seat sees while another presses the fight's step ("Waiting for <captain> to choose"); null when it presses. */
+export function combatWaitingFor(G: Pick<CaribbeanState, "ships">, fight: SeatFight): string | null {
+  if (seatMayActInCombat(fight)) return null;
+  return waitingLine(G, combatActor(fight.combat), STEP_WAITED_ON[fight.combat.stage]);
 }
 
 /** One line of the glory scoreboard. */
@@ -101,11 +155,20 @@ export function gloryScoreboard(G: Pick<CaribbeanState, "ships">, viewer: string
     .sort((a, b) => b.glory - a.glory || Number(a.seat) - Number(b.seat));
 }
 
+/** A seat with no ship in the fight (hotseat never is one): it sees `fightWatched` over it. */
+export function fightBystander(playerID: string | null | undefined, combat: FightSides): boolean {
+  return playerID != null && playerID !== combat.attackerId && playerID !== combat.defenderId;
+}
+
+/** What the board calls a fight's defender: its captain, or an NPC by role and nation (`npcName`). */
+export function defenderName(G: Pick<CaribbeanState, "ships" | "npcs">, combat: FightSides): string {
+  if (!combat.isNPCCombat) return seatName(G, combat.defenderId);
+  const npc = G.npcs[combat.defenderId];
+  return npc ? npcName(npc) : "a ship";
+}
+
 /** The line a seat watching someone else's fight sees: who is fighting whom (an NPC as the combat panel names it). */
-export function fightWatched(
-  G: Pick<CaribbeanState, "ships">,
-  combat: Pick<CombatState, "attackerId" | "defenderId" | "isNPCCombat">
-): string {
-  const defender = combat.isNPCCombat ? "a merchant" : seatName(G, combat.defenderId);
+export function fightWatched(G: Pick<CaribbeanState, "ships" | "npcs">, combat: FightSides): string {
+  const defender = defenderName(G, combat);
   return `${seatName(G, combat.attackerId)} is fighting ${defender}`;
 }

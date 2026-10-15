@@ -5,9 +5,12 @@ import type { Game } from "boardgame.io";
 import { Caribbean } from "../game/Game";
 import { createShipState, STARTING_GOLD } from "../game/economy";
 import { hex } from "../game/hex";
-import type { Captain, CaribbeanState } from "../game/types";
-import { draftView, fightWatched, gloryScoreboard, hudSeat, ownSeat, seatMayAct, seatMayActInCombat, seatName, waitingFor } from "./seat";
+import { createNPCShip } from "../game/npcManager";
+import type { Captain, CaribbeanState, CombatState, NPCShip } from "../game/types";
+import { combatWaitingFor, draftView, fightBystander, fightWatched, gloryScoreboard, hudSeat, hudShip, viewerSeat, seatMayAct, seatMayActInCombat, seatName, waitingFor } from "./seat";
 import { startHandoff } from "./turnHandoff";
+
+const npc = (id: string): NPCShip => createNPCShip(id, hex(5, 0), hex(6, 0), "Spain", "Flute", () => 0.5);
 
 const captain = (id: string, name = `Captain ${id}`): Captain => ({ id, name, nation: "Spain", ability: "-" });
 
@@ -174,6 +177,31 @@ describe("no zeros for rivals: a seat's HUD on another seat's turn", () => {
   }
 });
 
+describe("hudShip: the ship the HUD shows, or none when the seat's ship is gone", () => {
+  it("is the HUD seat's own ship", () => {
+    const G = table(3);
+    expect(hudShip(G, "2")).toBe(G.ships["2"]);
+  });
+
+  for (const seats of [2, 3, 4]) {
+    it(`with ${seats} seats, a seat whose ship sank sees no ship on a rival's turn, never the rival's emptied one`, () => {
+      const clients = drafted(seats);
+      // Seat 1's ship goes down, as a lost fight deletes it from G.ships
+      const lost = (G: CaribbeanState) => {
+        const ships = { ...G.ships };
+        delete ships["1"];
+        return { ...G, ships };
+      };
+      const { G, ctx } = clients[1].getState()!;
+      expect(ctx.currentPlayer).toBe("0");
+      const seat = hudSeat({ playerID: "1", currentPlayer: ctx.currentPlayer, handoff: null, ships: lost(G).ships });
+      expect(seat).toBe("1");
+      expect(hudShip(lost(G), seat)).toBeNull();
+      clients.forEach((c) => c.stop());
+    });
+  }
+});
+
 describe("gloryScoreboard: every seat's captain and glory, which is public", () => {
   it("lists every seat, most glory first (ties in seat order), marking the viewer's", () => {
     const G = table(4);
@@ -200,34 +228,97 @@ describe("gloryScoreboard: every seat's captain and glory, which is public", () 
   });
 });
 
-describe("seatMayActInCombat", () => {
-  const combat = (attackerId: string, defenderId: string, isNPCCombat: boolean) => ({ attackerId, defenderId, isNPCCombat });
+describe("seatMayActInCombat: who presses each step of a fight", () => {
+  type Step = CombatState["stage"];
+  const fight = (stage: Step, seamanshipWinner: string | null, isNPCCombat = false) => ({
+    attackerId: "0",
+    defenderId: isNPCCombat ? "npc-1" : "1",
+    isNPCCombat,
+    stage,
+    seamanshipWinner,
+  });
+  const presses = (combat: ReturnType<typeof fight>) =>
+    ["0", "1", "2"].filter((playerID) => seatMayActInCombat({ playerID, combat }));
 
-  it("hotseat: always", () => {
-    expect(seatMayActInCombat(null, combat("0", "1", false))).toBe(true);
+  it("hotseat: the one shared screen presses every step", () => {
+    for (const stage of ["seamanship", "chooseAction", "fleeAttempt", "cannons", "resolution"] as const) {
+      expect(seatMayActInCombat({ playerID: null, combat: fight(stage, "1") })).toBe(true);
+    }
   });
 
-  it("a seat acts in its own fight, attacking or attacked; a bystander watches", () => {
-    expect(seatMayActInCombat("0", combat("0", "1", false))).toBe(true);
-    expect(seatMayActInCombat("1", combat("0", "1", false))).toBe(true);
-    expect(seatMayActInCombat("2", combat("0", "1", false))).toBe(false);
-    expect(seatMayActInCombat("0", combat("0", "npc-1", true))).toBe(true);
-    expect(seatMayActInCombat("1", combat("0", "npc-1", true))).toBe(false);
+  it("the attacker rolls the draw (both dice); the defender and bystanders watch", () => {
+    expect(presses(fight("seamanship", null))).toEqual(["0"]);
+  });
+
+  it("the faster ship, the draw's winner, presses the action and every roll after it", () => {
+    for (const stage of ["chooseAction", "fleeAttempt", "cannons", "resolution"] as const) {
+      expect(presses(fight(stage, "1"))).toEqual(["1"]);
+      expect(presses(fight(stage, "0"))).toEqual(["0"]);
+    }
+  });
+
+  it("against an NPC the attacker presses every step, even when the NPC wins the draw", () => {
+    for (const stage of ["seamanship", "chooseAction", "fleeAttempt", "cannons", "resolution"] as const) {
+      expect(presses(fight(stage, "npc-1", true))).toEqual(["0"]);
+      expect(presses(fight(stage, "0", true))).toEqual(["0"]);
+    }
+  });
+});
+
+describe("combatWaitingFor: the line a seat sees while another seat presses", () => {
+  const G = table(3);
+  G.ships["0"].captain = captain("a", "Anne Bonny");
+  G.ships["1"].captain = captain("b", "Calico Jack");
+  const pvp = { attackerId: "0", defenderId: "1", isNPCCombat: false };
+
+  it("names who it waits on and for what", () => {
+    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "seamanship", seamanshipWinner: null } })).toBe(
+      "Waiting for Anne Bonny to roll for seamanship"
+    );
+    expect(combatWaitingFor(G, { playerID: "0", combat: { ...pvp, stage: "chooseAction", seamanshipWinner: "1" } })).toBe(
+      "Waiting for Calico Jack to choose"
+    );
+    expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1" } })).toBe(
+      "Waiting for Calico Jack to fire"
+    );
+  });
+
+  it("is nothing for the seat that presses, and nothing in hotseat", () => {
+    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "resolution", seamanshipWinner: "1" } })).toBeNull();
+    expect(combatWaitingFor(G, { playerID: null, combat: { ...pvp, stage: "resolution", seamanshipWinner: "1" } })).toBeNull();
+  });
+});
+
+describe("fightBystander: a seat with no ship in the fight, which sees who is fighting whom", () => {
+  it("is a seat neither attacking nor attacked; never a combatant, never hotseat", () => {
+    const pvp = { attackerId: "0", defenderId: "1", isNPCCombat: false };
+    expect(fightBystander("2", pvp)).toBe(true);
+    expect(fightBystander("0", pvp)).toBe(false);
+    expect(fightBystander("1", pvp)).toBe(false);
+    expect(fightBystander(null, pvp)).toBe(false);
+    expect(fightBystander("1", { attackerId: "0", defenderId: "npc-1", isNPCCombat: true })).toBe(true);
   });
 });
 
 describe("fightWatched: the line a bystander seat sees over someone else's fight", () => {
-  it("names both sides by captain, an NPC as a merchant", () => {
+  it("names both sides by captain", () => {
     const G = table(3);
     G.ships["0"].captain = captain("a", "Anne Bonny");
     expect(fightWatched(G, { attackerId: "0", defenderId: "1", isNPCCombat: false })).toBe("Anne Bonny is fighting Player 2");
-    expect(fightWatched(G, { attackerId: "1", defenderId: "npc-4", isNPCCombat: true })).toBe("Player 2 is fighting a merchant");
+  });
+
+  it("names an NPC as the combat panel does: merchant or flotilla, and its nation", () => {
+    const G = table(2);
+    G.npcs["npc-4"] = { ...npc("npc-4"), role: "FLOTILLA", nation: "Spain" };
+    G.npcs["npc-5"] = { ...npc("npc-5"), role: "MERCHANT", nation: "England" };
+    expect(fightWatched(G, { attackerId: "1", defenderId: "npc-4", isNPCCombat: true })).toBe("Player 2 is fighting a Spanish flotilla");
+    expect(fightWatched(G, { attackerId: "0", defenderId: "npc-5", isNPCCombat: true })).toBe("Player 1 is fighting an English merchant");
   });
 });
 
-describe("ownSeat: whose ship the board treats as 'yours' (hover, details, port, scouting)", () => {
+describe("viewerSeat: whose ship the board treats as 'yours' (hover, details, port, scouting)", () => {
   it("is the client's seat, or in hotseat the current player's", () => {
-    expect(ownSeat({ playerID: "2", currentPlayer: "0" })).toBe("2");
-    expect(ownSeat({ playerID: null, currentPlayer: "3" })).toBe("3");
+    expect(viewerSeat({ playerID: "2", currentPlayer: "0" })).toBe("2");
+    expect(viewerSeat({ playerID: null, currentPlayer: "3" })).toBe("3");
   });
 });
