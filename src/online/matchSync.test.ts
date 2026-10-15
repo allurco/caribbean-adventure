@@ -63,11 +63,12 @@ describe("the online match sync (#113)", () => {
     const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: (e) => errors.push(e) });
     sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 2] } });
     await flush();
+    api.nextGet = () => ({ ok: true, changed: true, seat: "0", state: view(6) });
     answer({ ok: false, status: 409, code: "stale_state", error: "Someone moved first." });
     await flush();
     await flush();
     expect(calls).toEqual(["send moveShip at 4", "get since=-"]);
-    expect(views).toEqual([1]);
+    expect(views).toEqual([6]);
     expect(errors).toEqual(["Someone moved first."]);
   });
 
@@ -112,5 +113,62 @@ describe("the online match sync (#113)", () => {
     await flush();
     expect(calls).toEqual(["get since=-"]);
     expect(errors).toHaveLength(1);
+  });
+
+  it("after a send that never arrived, polls for the whole view until one succeeds, so no phantom move stays on the board", async () => {
+    const { api, calls } = fakeApi();
+    const views: number[] = [];
+    const errors: string[] = [];
+    api.sendAction = vi.fn(async () => {
+      calls.push("send (fails)");
+      throw new TypeError("Failed to fetch");
+    });
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: (e) => errors.push(e) });
+    // The refetch right after the failure fails too.
+    let getsFail = 2;
+    api.getMatch = vi.fn(async (_id: string, since?: number) => {
+      calls.push(`get since=${since ?? "-"}`);
+      if (getsFail-- > 0) throw new TypeError("Failed to fetch");
+      return { ok: true as const, changed: true as const, seat: "0", state: view(4) };
+    });
+    sync.start();
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 2] } });
+    await flush();
+    await flush();
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    // The server is still at 4: the whole view replaces the board's guess, though the stateID never moved.
+    expect(views).toEqual([4]);
+    expect(calls).toEqual(["send (fails)", "get since=-", "get since=-", "get since=-"]);
+    expect(errors.length).toBeGreaterThan(0);
+    // Once that poll succeeded, polling asks since= again.
+    api.getMatch = vi.fn(async (_id: string, since?: number) => {
+      calls.push(`get since=${since ?? "-"}`);
+      return { ok: true as const, changed: false as const, seat: "0", stateID: 4 };
+    });
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    expect(calls.at(-1)).toBe("get since=4");
+    sync.stop();
+  });
+
+  it("ignores a view older than the one the board holds (a late poll)", async () => {
+    const { api, answer } = fakeApi();
+    const views: number[] = [];
+    let release!: () => void;
+    api.getMatch = vi.fn(
+      () =>
+        new Promise<MatchGetResult>((resolve) => {
+          release = () => resolve({ ok: true, changed: true, seat: "0", state: view(4) });
+        }),
+    );
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+    sync.refresh();
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 2] } });
+    await flush();
+    answer({ ok: true, state: view(6) });
+    await flush();
+    release();
+    await flush();
+    expect(views).toEqual([6]);
   });
 });

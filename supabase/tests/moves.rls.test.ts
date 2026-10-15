@@ -125,5 +125,46 @@ describe.skipIf(!dbTestsEnabled)("the move API (local Supabase)", () => {
     }
     const write = await anne.client.from("moves").insert({ match_id: matchId, seat_index: 0, kind: "move", name: "x", state_id_before: 0, state_id_after: 1 });
     expect(write.error).not.toBeNull();
+    const rewrite = await anne.client.from("moves").update({ name: "y" }).eq("match_id", matchId).select();
+    expect(rewrite.error !== null || (rewrite.data ?? []).length === 0).toBe(true);
+    const erase = await anne.client.from("moves").delete().eq("match_id", matchId).select();
+    expect(erase.error !== null || (erase.data ?? []).length === 0).toBe(true);
+    const log = (await admin.from("moves").select("name").eq("match_id", matchId)).data;
+    expect(log).toEqual([{ name: "pickCaptain" }]);
+  });
+
+  it("keeps matches.state unreadable to the match's own players after moves are committed", async () => {
+    const { anne, matchId } = await startedMatch();
+    const s0 = ((await (await api("GET", `/api/matches/${matchId}`, anne)).json()) as ViewBody).state._stateID;
+    expect((await api("POST", `/api/matches/${matchId}/actions`, anne, pick(s0, 0))).status).toBe(200);
+    const secret = await anne.client.from("matches").select("state").eq("id", matchId);
+    expect(secret.error).not.toBeNull();
+    const meta = await anne.client.from("matches").select("state_id").eq("id", matchId).single();
+    expect(meta.data).toEqual({ state_id: s0 + 1 });
+  });
+
+  it("never puts another seat's hand, mission or stash in a seat's view", async () => {
+    const { anne, jack, matchId } = await startedMatch();
+    type Whole = { G: { draftHands: Record<string, unknown>; ships: Record<string, { stashedGold: number; activeMission?: unknown }> } };
+    const whole = ((await admin.from("matches").select("state").eq("id", matchId).single()).data as { state: Whole }).state;
+    // Give both seats a secret to keep: test set-up, written as the server.
+    for (const seat of ["0", "1"]) {
+      whole.G.ships[seat].stashedGold = 77;
+      whole.G.ships[seat].activeMission = { id: `secret-${seat}`, type: "DELIVERY", reward: 1 };
+    }
+    expect((await admin.from("matches").update({ state: whole }).eq("id", matchId)).error).toBeNull();
+
+    for (const [player, own, other] of [
+      [anne, "0", "1"],
+      [jack, "1", "0"],
+    ] as const) {
+      const body = (await (await api("GET", `/api/matches/${matchId}`, player)).json()) as { state: Whole };
+      expect(Object.keys(body.state.G.draftHands)).toEqual([own]);
+      expect(JSON.stringify(body.state)).not.toContain(JSON.stringify(whole.G.draftHands[other]));
+      expect(body.state.G.ships[other].stashedGold).toBe(0);
+      expect(body.state.G.ships[other].activeMission).toBeUndefined();
+      expect(JSON.stringify(body.state)).not.toContain(`secret-${other}`);
+      expect(body.state.G.ships[own].stashedGold).toBe(77);
+    }
   });
 });

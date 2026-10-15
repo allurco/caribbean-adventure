@@ -125,6 +125,12 @@ export function createMemoryOnlineStore({
       return { id: match.id, roomId: match.roomId, state: structuredClone(match.state), stateId: match.stateId, seats: record(match.roomId)!.seats };
     },
 
+    async getMatchHead(matchId) {
+      const match = matches.get(matchId);
+      if (!match) return null;
+      return { id: match.id, roomId: match.roomId, stateId: match.stateId, seats: record(match.roomId)!.seats };
+    },
+
     async commitMove(update) {
       const match = matches.get(update.matchId);
       if (!match || match.stateId !== update.expectedStateId) return false;

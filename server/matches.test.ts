@@ -3,6 +3,7 @@ import type { State } from "boardgame.io";
 import { handleApiRequest, type ApiServices } from "./handleApiRequest";
 import { createMemoryOnlineStore, type MemoryOnlineStore } from "./memoryOnlineStore";
 import type { CaribbeanState } from "../src/game/types";
+import { wrappedNeighbors } from "../src/game/hex";
 
 // The move API (#113) through handleApiRequest, with the in-memory store and
 // a token table: two captains in a started match.
@@ -319,5 +320,86 @@ describe("what a request may cost (#113 security review)", () => {
     }
     expect(statuses.filter((s) => s === 429)).toHaveLength(1);
     expect(statuses[120]).toBe(429);
+  });
+});
+
+describe("a fight between two seats (#113 review)", () => {
+  /** Seat 0 attacks seat 1, rolls the draw, and the draw goes to `winner`. */
+  async function fightAtChoice(winner: "0" | "1") {
+    const matchId = await startedMatch();
+    const main = await draftBoth(matchId);
+    const attacker = main.ctx.currentPlayer;
+    const defender = attacker === "0" ? "1" : "0";
+    const tokenOf = (seat: string) => (seat === "0" ? "anne" : "jack");
+    // Sail the defender alongside: test set-up, written straight into the store.
+    const stored = (await store.peekMatch(matchId))!.state as View;
+    stored.G.ships[defender].position = wrappedNeighbors(stored.G.ships[attacker].position, stored.G.wrap)[0];
+
+    clock += 1000;
+    let res = await act(matchId, tokenOf(attacker), move(main._stateID, "attackShip", defender));
+    expect(res.status).toBe(200);
+    let state = ((await res.json()) as MatchBody).state;
+    expect(state.ctx.phase).toBe("combat");
+
+    // The defender may not roll the draw: it is the attacker's step.
+    clock += 1000;
+    expect((await act(matchId, tokenOf(defender), move(state._stateID, "rollSeamanship"))).status).toBe(403);
+    clock += 1000;
+    res = await act(matchId, tokenOf(attacker), move(state._stateID, "rollSeamanship"));
+    expect(res.status).toBe(200);
+    state = ((await res.json()) as MatchBody).state;
+    // Let the draw fall to the side under test.
+    const combat = ((await store.peekMatch(matchId))!.state as View).G.combat!;
+    combat.seamanshipWinner = winner === "0" ? attacker : defender;
+    combat.stage = "chooseAction";
+    return { matchId, stateID: state._stateID, chooser: winner === "0" ? attacker : defender, other: winner === "0" ? defender : attacker, tokenOf };
+  }
+
+  for (const winner of ["0", "1"] as const) {
+    it(`lets only the faster ship choose its action, never the other seat for it (${winner === "0" ? "attacker" : "defender"} wins the draw)`, async () => {
+      const { matchId, stateID, chooser, other, tokenOf } = await fightAtChoice(winner);
+      clock += 1000;
+      const forced = await act(matchId, tokenOf(other), move(stateID, "chooseCombatAction", "fire"));
+      expect(forced.status).toBe(403);
+      expect(await forced.json()).toMatchObject({ code: "not_your_turn" });
+      clock += 1000;
+      const chosen = await act(matchId, tokenOf(chooser), move(stateID, "chooseCombatAction", "fire"));
+      expect(chosen.status).toBe(200);
+      expect(((await chosen.json()) as MatchBody).state.G.combat?.actionChosen).toBe("fire");
+      expect((await store.peekMoves(matchId)).at(-1)).toMatchObject({ name: "chooseCombatAction", seat: Number(chooser) });
+    });
+  }
+});
+
+describe("reading a match (#113 review)", () => {
+  it("answers 409 match_over to an action once the game has ended", async () => {
+    const matchId = await startedMatch();
+    const stored = (await store.peekMatch(matchId))!.state as View;
+    stored.ctx.gameover = { winner: "0" };
+    const res = await act(matchId, "anne", move(stored._stateID, "pickCaptain", 0, "Sloop"));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: "match_over" });
+  });
+
+  it("answers ?since= from the state id alone, without loading the match's state", async () => {
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    let loads = 0;
+    const getMatch = store.getMatch.bind(store);
+    store.getMatch = async (id) => {
+      loads++;
+      return getMatch(id);
+    };
+    const res = await call("GET", `/api/matches/${matchId}?since=${state._stateID}`, "anne");
+    expect(await res.json()).toMatchObject({ changed: false });
+    expect(loads).toBe(0);
+  });
+
+  it("limits reads per player, far above one poll every four seconds", async () => {
+    const matchId = await startedMatch();
+    const statuses: number[] = [];
+    for (let i = 0; i < 61; i++) statuses.push((await call("GET", `/api/matches/${matchId}?since=0`, "anne")).status);
+    expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true);
+    expect(statuses[60]).toBe(429);
   });
 });

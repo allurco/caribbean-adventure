@@ -33,10 +33,10 @@ export function MatchView({ client, matchId }: { client: AccountClient; matchId:
       </OnlineSheet>
     );
   }
-  const { MatchClient, seat } = match;
+  const { MatchClient, seat, matchId: id } = match;
   return (
     <>
-      <MatchClient playerID={seat} matchID={matchId!} />
+      <MatchClient playerID={seat} matchID={id} />
       {notice && (
         <p
           role="alert"

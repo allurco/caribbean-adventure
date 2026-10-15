@@ -118,6 +118,8 @@ export interface OnlineStore {
   /** Gives a claimed start back (building the match failed), so the host can try again. */
   releaseStart(roomId: string): Promise<void>;
   getMatch(matchId: string): Promise<MatchRecord | null>;
+  /** The match without its state: its id, state id and seats. For the cheap `?since=` check. */
+  getMatchHead(matchId: string): Promise<Omit<MatchRecord, "state"> | null>;
   /**
    * Writes the new snapshot and appends the move to the log, both or
    * neither, if the match is still at `expectedStateId`; false when another

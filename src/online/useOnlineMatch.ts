@@ -8,7 +8,7 @@ import type { MatchSyncApi } from "./matchSync";
 export type OnlineMatchState =
   | { status: "loading" }
   | { status: "error"; error: string }
-  | { status: "ready"; MatchClient: ComponentType<{ playerID: string; matchID: string }>; seat: string };
+  | { status: "ready"; MatchClient: ComponentType<{ playerID: string; matchID: string }>; seat: string; matchId: string };
 
 /**
  * The seat's board for an online match (#113): reads the seat's view once,
@@ -34,7 +34,7 @@ export function useOnlineMatch(api: MatchSyncApi, matchId: string | null, onErro
         multiplayer: apiTransport(api, result.state, onError),
         debug: false,
       }) as ComponentType<{ playerID: string; matchID: string }>;
-      setState({ status: "ready", MatchClient, seat: result.seat });
+      setState({ status: "ready", MatchClient, seat: result.seat, matchId });
     });
     return () => {
       live = false;

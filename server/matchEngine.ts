@@ -7,17 +7,19 @@
 import { CreateGameReducer, getFilterPlayerView, InitializeGame, ProcessGameConfig } from "boardgame.io/internal";
 import type { State } from "boardgame.io";
 import { Caribbean } from "../src/game/Game";
+import { combatActor } from "../src/game/combatActor";
+import { withSeatedCombat } from "../src/game/seatedCombat";
 import type { CaribbeanSetupData, CaribbeanState } from "../src/game/types";
+import type { MatchAction } from "../src/online/matchSync";
+
+export type { MatchAction };
 
 export type MatchState = State<CaribbeanState>;
 
-/** What a client may ask the server to do: one of the game's moves, or End Turn. */
-export interface MatchAction {
-  type: "MAKE_MOVE" | "GAME_EVENT";
-  payload: { type: string; args: unknown[] };
-}
 
-const reducer = CreateGameReducer({ game: Caribbean });
+/** The game as the server runs it: combat moves refused from any seat but the step's actor. */
+const SEATED = withSeatedCombat(Caribbean);
+const reducer = CreateGameReducer({ game: SEATED });
 
 /**
  * Every move the game defines, by its own name: the top-level moves and each
@@ -31,7 +33,7 @@ export const MOVE_NAMES: ReadonlySet<string> = new Set([
 
 /** No move of the game takes more arguments than this. */
 export const MAX_MOVE_ARGS = 4;
-const filterView = getFilterPlayerView(ProcessGameConfig(Caribbean));
+const filterView = getFilterPlayerView(ProcessGameConfig(SEATED));
 
 /**
  * A new match's whole state: `numPlayers` seats on the map `setupData` names,
@@ -40,7 +42,7 @@ const filterView = getFilterPlayerView(ProcessGameConfig(Caribbean));
  * ever reads whole; every view drops it.
  */
 export function createMatchState(numPlayers: number, setupData: Required<CaribbeanSetupData>, seed: string): MatchState {
-  return InitializeGame({ game: { ...Caribbean, seed }, numPlayers, setupData }) as MatchState;
+  return InitializeGame({ game: { ...SEATED, seed }, numPlayers, setupData }) as MatchState;
 }
 
 /**
@@ -55,6 +57,19 @@ export function viewFor(state: MatchState, seat: string): MatchState {
   const { deltalog: _deltalog, ...view } = filtered.args[1] as MatchState;
   void _deltalog;
   return view;
+}
+
+/**
+ * May `seat` act now? In a fight, only the seat that presses the current
+ * step (`combatActor`, the rule the board and the combat moves share);
+ * otherwise as boardgame.io's `isPlayerActive`: a seat in `activePlayers`
+ * when set, else the current player.
+ */
+export function seatMayActNow(state: MatchState, seat: string): boolean {
+  const { G, ctx } = state;
+  if (G.combat) return seat === combatActor(G.combat);
+  if (ctx.activePlayers) return seat in ctx.activePlayers;
+  return ctx.currentPlayer === seat;
 }
 
 export type ParsedAction = { ok: true; action: MatchAction } | { ok: false; error: string };

@@ -56,7 +56,9 @@ export type BoundedBody = { kind: "object"; body: Record<string, unknown> } | { 
 
 /**
  * The body as a JSON object, read no further than `maxBytes`: a larger body
- * is `too_large` (answer 413) without being read whole or parsed.
+ * is `too_large` (answer 413) and never parsed. Vercel buffers a request's
+ * body before the function runs, so this bounds parsing and the function's
+ * memory, not what crosses the network. Web-standard streams only.
  */
 export async function readBoundedJsonObject(request: Request, maxBytes: number): Promise<BoundedBody> {
   const declared = Number(request.headers.get("content-length"));
@@ -76,7 +78,13 @@ export async function readBoundedJsonObject(request: Request, maxBytes: number):
     chunks.push(value);
   }
   try {
-    const body: unknown = JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)));
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const body: unknown = JSON.parse(new TextDecoder().decode(bytes));
     return typeof body === "object" && body !== null && !Array.isArray(body)
       ? { kind: "object", body: body as Record<string, unknown> }
       : { kind: "invalid" };

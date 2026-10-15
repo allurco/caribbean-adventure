@@ -3,7 +3,7 @@
  * match, and its actions. Over the same injected `fetch` and access token as
  * the rooms client (`roomApi.ts`); resolves to results, never throws.
  */
-import type { MatchGetResult, MatchSendResult, MatchSyncApi, SentAction, SeatView } from "./matchSync";
+import type { MatchAction, MatchSyncApi, SeatView } from "./matchSync";
 import { callApi, type ApiDeps, type Messages } from "./roomApi";
 
 const MATCH_MESSAGES: Messages = {
@@ -16,17 +16,14 @@ const MATCH_MESSAGES: Messages = {
   payload_too_large: "That order is too long.",
 };
 
+type MatchRead = { seat: string } & ({ changed: true; state: SeatView } | { changed: false; stateID: number });
+
 export function createMatchApi(deps: ApiDeps): MatchSyncApi {
   const path = (id: string) => `/api/matches/${encodeURIComponent(id)}`;
   return {
     getMatch: (matchId, since) =>
-      callApi<{ matchId: string; seat: string; changed: boolean; state?: SeatView; stateID?: number }>(
-        deps,
-        MATCH_MESSAGES,
-        "GET",
-        since === undefined ? path(matchId) : `${path(matchId)}?since=${since}`,
-      ) as Promise<MatchGetResult>,
-    sendAction: (matchId, stateID, action: SentAction) =>
-      callApi<{ state: SeatView }>(deps, MATCH_MESSAGES, "POST", `${path(matchId)}/actions`, { stateID, action }) as Promise<MatchSendResult>,
+      callApi<MatchRead>(deps, MATCH_MESSAGES, "GET", since === undefined ? path(matchId) : `${path(matchId)}?since=${since}`),
+    sendAction: (matchId, stateID, action: MatchAction) =>
+      callApi<{ state: SeatView }>(deps, MATCH_MESSAGES, "POST", `${path(matchId)}/actions`, { stateID, action }),
   };
 }
