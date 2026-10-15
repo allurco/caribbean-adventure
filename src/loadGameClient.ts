@@ -10,21 +10,28 @@ import { createMapWorkerRunner } from "./mapWorker/createMapWorkerRunner";
  * The local hotseat client, once its map is ready (#124). boardgame.io's
  * `setup()` is synchronous, so the map is generated first, in a worker (on
  * the main thread where there is none), and the client's game starts on it.
- * `setupData` is the dev URL pin (#74): its size and seed, else random ones.
+ * `setupData` is the dev URL pin (#74): its size and seed, else random ones;
+ * `debugPanel: false` hides boardgame.io's debug panel (devUrlParams.ts).
  */
-export async function loadGameClient(setupData: CaribbeanSetupData | undefined) {
+export async function loadGameClient(setupData: CaribbeanSetupData | undefined, debugPanel = true) {
   const map = await generateMap(setupData);
   // One screen shared by every seat sees the whole table, not a spectator's view (#109).
-  return Client({ game: withHotseatView(withGeneratedMap(Caribbean, map)), board: CaribbeanBoard, numPlayers: PLAYER_COUNT });
+  return Client({
+    game: withHotseatView(withGeneratedMap(Caribbean, map)),
+    board: CaribbeanBoard,
+    numPlayers: PLAYER_COUNT,
+    ...(debugPanel ? {} : { debug: false }),
+  });
 }
 
 /**
  * Every seat of one match on one page (dev `?seats=1`, #110): the client is
  * rendered once per seat with its `playerID`, and boardgame.io's local
  * transport keeps one match for them all, each seat getting only its own
- * view (`playerView`, #109), as a networked seat would.
+ * view (`playerView`, #109), as a networked seat would. `debugPanel` comes
+ * from `showsDebugPanel`, which is false for `?seats=1`.
  */
-export async function loadSeatClient(setupData: CaribbeanSetupData | undefined) {
+export async function loadSeatClient(setupData: CaribbeanSetupData | undefined, debugPanel: boolean) {
   // Its own chunk: the multiplayer module brings the socket.io client, which the hotseat game never needs.
   const [map, { Local }] = await Promise.all([generateMap(setupData), import("boardgame.io/multiplayer")]);
   return Client({
@@ -32,8 +39,7 @@ export async function loadSeatClient(setupData: CaribbeanSetupData | undefined) 
     board: CaribbeanBoard,
     numPlayers: PLAYER_COUNT,
     multiplayer: Local(),
-    // No boardgame.io debug panel: even folded, its tab covers End Turn and the turn bar; the seat switcher plays every seat
-    debug: false,
+    ...(debugPanel ? {} : { debug: false }),
   });
 }
 

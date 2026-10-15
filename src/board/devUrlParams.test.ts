@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDevUrlParams } from "./devUrlParams";
+import { parseDevUrlParams, showsDebugPanel } from "./devUrlParams";
 
 describe("parseDevUrlParams", () => {
   it("pins nothing for a bare URL", () => {
@@ -115,5 +115,20 @@ describe("parseDevUrlParams", () => {
       cameraDistance: 4.3,
       renderStats: true,
     });
+  });
+});
+
+describe("showsDebugPanel", () => {
+  it("keeps boardgame.io's debug panel for the ordinary dev game", () => {
+    expect(showsDebugPanel(parseDevUrlParams("?size=small&seed=1"))).toBe(true);
+  });
+
+  it("hides it for a gallery shot, so it covers nothing in the picture", () => {
+    expect(showsDebugPanel(parseDevUrlParams("?size=small&seed=1&snapshot=1"))).toBe(false);
+  });
+
+  it("hides it for the seats on one page, so its tab does not cover End Turn or the turn bar (#110)", () => {
+    expect(showsDebugPanel(parseDevUrlParams("?seats=1&size=small&seed=1"))).toBe(false);
+    expect(showsDebugPanel(parseDevUrlParams("?seats=1&snapshot=1"))).toBe(false);
   });
 });

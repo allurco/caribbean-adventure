@@ -3,6 +3,7 @@ import { Client as HeadlessClient } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { SHIP_MODELS, shipModelUrl } from "./board/shipModels";
 import { PLAYER_COUNT, type CaribbeanState } from "./game/Game";
+import { parseDevUrlParams, showsDebugPanel } from "./board/devUrlParams";
 
 const preload = vi.hoisted(() => vi.fn());
 vi.mock("@react-three/drei", async (importOriginal) => ({
@@ -36,7 +37,7 @@ describe("loading the game client", () => {
 
   it("gives every seat on one page only its own view, through the local transport (#110)", async () => {
     const { loadSeatClient } = await import("./loadGameClient");
-    const { game, multiplayer, numPlayers } = (await loadSeatClient(undefined)) as unknown as {
+    const { game, multiplayer, numPlayers } = (await loadSeatClient(undefined, false)) as unknown as {
       game: Game<CaribbeanState>;
       multiplayer: unknown;
       numPlayers: number;
@@ -50,7 +51,7 @@ describe("loading the game client", () => {
 
   it("hides the dev debug panel for the seats on one page, so its tab does not cover End Turn or the turn bar (#110)", async () => {
     const { loadSeatClient } = await import("./loadGameClient");
-    const { debug } = (await loadSeatClient(undefined)) as unknown as { debug: unknown };
+    const { debug } = (await loadSeatClient(undefined, showsDebugPanel(parseDevUrlParams("?seats=1")))) as unknown as { debug: unknown };
     expect(debug).toBe(false);
   });
 });

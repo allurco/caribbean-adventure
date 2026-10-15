@@ -1,4 +1,4 @@
-import { Audio, AudioListener, AudioLoader } from "three";
+import { Audio, AudioListener, AudioLoader, FileLoader } from "three";
 import type { Object3D } from "three";
 import {
   type AudioSettings,
@@ -27,6 +27,12 @@ export interface AudioEngine {
   isUnlocked(): boolean;
   /** Carry the listener on `object` (the camera); returns a detach function. */
   attachTo(object: Object3D): () => void;
+  /**
+   * Download a registered sound's file ahead of its first play (the loading
+   * screen waits on every sound, sceneAssets.ts). Only the bytes: decoding
+   * needs the audio context, so it waits for the first play after unlock.
+   */
+  prefetch(id: SoundId): Promise<void>;
   /** Play a registered sound; null while locked. */
   play(id: SoundId, options?: PlayOptions): SoundHandle | null;
   getSettings(): AudioSettings;
@@ -56,11 +62,20 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
   const buffers = new Map<SoundId, Promise<AudioBuffer>>();
   const subscribers = new Set<() => void>();
   const loader = new AudioLoader();
+  const files = new FileLoader().setResponseType("arraybuffer");
+  const prefetched = new Map<SoundId, ArrayBuffer>();
+
+  const decode = (id: SoundId): Promise<AudioBuffer> => {
+    const bytes = prefetched.get(id);
+    // decodeAudioData detaches the buffer it is given, so it gets a copy
+    if (bytes && listener) return listener.context.decodeAudioData(bytes.slice(0));
+    return loader.loadAsync(soundUrl(soundById(id), base));
+  };
 
   const buffer = (id: SoundId): Promise<AudioBuffer> => {
     let pending = buffers.get(id);
     if (!pending) {
-      pending = loader.loadAsync(soundUrl(soundById(id), base));
+      pending = decode(id);
       // Let a failed load be retried next time
       pending.catch(() => buffers.delete(id));
       buffers.set(id, pending);
@@ -80,6 +95,12 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
     },
 
     isUnlocked: () => listener?.context.state === "running",
+
+    async prefetch(id) {
+      if (prefetched.has(id)) return;
+      const bytes = await files.loadAsync(soundUrl(soundById(id), base));
+      if (bytes instanceof ArrayBuffer) prefetched.set(id, bytes);
+    },
 
     attachTo(object) {
       host = object;

@@ -71,6 +71,16 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   return out;
 }
 
+/**
+ * Whether the game client shows boardgame.io's debug panel, the one place
+ * that decides: not in a gallery shot, where it would cover the right of the
+ * picture, nor for the seats on one page, where even folded its tab covers
+ * End Turn and the turn bar (#110; the seat switcher plays every seat).
+ */
+export function showsDebugPanel(params: DevUrlParams): boolean {
+  return params.gallerySnapshot !== true && params.localSeats !== true;
+}
+
 function parseSetupData(size: string | null, seed: string | null): CaribbeanSetupData | undefined {
   const setupData: CaribbeanSetupData = {};
   if (size !== null && (MAP_SIZES as readonly string[]).includes(size)) setupData.mapSize = size as MapSizeId;

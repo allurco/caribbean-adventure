@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { SoundLab } from "./lab/SoundLab";
-import { parseDevUrlParams } from "./board/devUrlParams";
+import { parseDevUrlParams, showsDebugPanel } from "./board/devUrlParams";
 import { loadGameClient, loadSeatClient, type GameClient } from "./loadGameClient";
 import { GameClientLoader } from "./GameClientLoader";
 import { LocalSeats } from "./LocalSeats";
@@ -42,7 +42,10 @@ const loginGate = showsGame && supabaseConfig !== null && !skipsLogin(window.loc
 let gameClientPromise: Promise<GameClient> | undefined;
 function gameClient(): Promise<GameClient> {
   // Dev `?seats=1` (#110): every seat on one page, through the local transport
-  gameClientPromise ??= devParams.localSeats ? loadSeatClient(devParams.setupData) : loadGameClient(devParams.setupData);
+  const debugPanel = showsDebugPanel(devParams);
+  gameClientPromise ??= devParams.localSeats
+    ? loadSeatClient(devParams.setupData, debugPanel)
+    : loadGameClient(devParams.setupData, debugPanel);
   return gameClientPromise;
 }
 if (showsGame && !loginGate) void gameClient();

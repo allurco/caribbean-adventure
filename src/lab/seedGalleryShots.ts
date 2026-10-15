@@ -25,8 +25,8 @@ export const SEED_GALLERY_VIEWS: readonly { id: SeedGalleryViewId; label: string
 /** The gallery's size when the URL names none. */
 export const SEED_GALLERY_DEFAULT_SIZE: MapSizeId = "small";
 
-/** How long a shot's board renders before it is taken, so ship models, textures and the sea settle. */
-export const SEED_GALLERY_SETTLE_MS = 4000;
+/** How long a shot's board renders after its loading gate opens before it is taken, so the camera and the sea settle. */
+export const SEED_GALLERY_SETTLE_MS = 1500;
 
 /** One picture on the sheet: a map and a view of it. */
 export interface SeedGalleryShot extends MapRequest {
