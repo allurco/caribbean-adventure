@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { controlsLocked, HANDOFF_TIMING as T, holdsNpcs, startHandoff, stepHandoff, turnPassed, type Handoff, type HandoffSignals } from "./turnHandoff";
+import { controlsLocked, HANDOFF_TIMING as T, holdsNpcs, startHandoff, turnsInPlay, stepHandoff, turnPassed, type Handoff, type HandoffSignals } from "./turnHandoff";
 
 const calm = (now: number, over: Partial<HandoffSignals> = {}): HandoffSignals => ({
   now,
@@ -100,12 +100,24 @@ describe("turnPassed", () => {
     expect(turnPassed({ player: "0", turn: 3 }, { player: "0", turn: 4, fight: true })).toBe(false);
   });
 
-  it("is once the fight ends and the turn moves on, from the attacker (#284)", () => {
-    expect(turnPassed({ player: "0", turn: 3 }, { player: "1", turn: 5 })).toBe(true);
-  });
-
   it("is not while the same turn goes on, nor before a turn has been shown", () => {
     expect(turnPassed({ player: "0", turn: 3 }, { player: "0", turn: 3 })).toBe(false);
     expect(turnPassed(null, { player: "0", turn: 1 })).toBe(false);
+  });
+});
+
+describe("turnsInPlay", () => {
+  it("is while the main phase or a fight is played", () => {
+    expect(turnsInPlay({ phase: "main" })).toBe(true);
+    expect(turnsInPlay({ phase: "combat" })).toBe(true);
+  });
+
+  it("is not in the draft", () => {
+    expect(turnsInPlay({ phase: "draft" })).toBe(false);
+  });
+
+  it("is not once the game is over, even when a fight won it and left the turn number moved on (#284)", () => {
+    expect(turnsInPlay({ phase: null, gameover: { winner: "0" } })).toBe(false);
+    expect(turnsInPlay({ phase: "main", gameover: { winner: "0" } })).toBe(false);
   });
 });
