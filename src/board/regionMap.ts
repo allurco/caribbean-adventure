@@ -1,5 +1,5 @@
 import type { Hex, MapWrap } from "../game/hex";
-import { canonicalHex, hexToWorld, wrappedNeighbors } from "../game/hex";
+import { canonicalHex, hexKey, hexToWorld, wrappedNeighbors } from "../game/hex";
 import type { MapCell, Region, RegionId } from "../game/types";
 import type { HexGridEdges } from "./hexGridEdges";
 import { SHIP_VIEW_DISTANCE } from "./shipView";
@@ -29,8 +29,6 @@ const CORNER: readonly (readonly [number, number])[] = Array.from({ length: 6 },
   const angle = (Math.PI / 3) * i;
   return [Math.cos(angle), -Math.sin(angle)] as const;
 });
-
-const hexKey = (h: Hex): string => `${h.q},${h.r}`;
 
 /**
  * The hex sides where the region changes, each once, as `HexGridEdges`

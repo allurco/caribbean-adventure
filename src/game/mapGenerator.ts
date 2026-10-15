@@ -3,6 +3,7 @@ import {
   createWrap,
   hexDistance,
   hexEquals,
+  hexKey,
   hexRect,
   hexToOffset,
   hexToWorld,
@@ -110,8 +111,6 @@ function shuffle<T>(arr: T[], rng: () => number): T[] {
 }
 
 /** Key of a (canonical) hex for the generator's lookup sets. */
-const hexKey = (h: Hex): string => `${h.q},${h.r}`;
-
 /** The hex a `hexKey` names. */
 function keyToHex(key: string): Hex {
   const [q, r] = key.split(",").map(Number);

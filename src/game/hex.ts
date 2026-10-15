@@ -14,6 +14,9 @@ const NEIGHBOR_DIRS: [number, number][] = [
 export const neighbors = (h: Hex): Hex[] =>
   NEIGHBOR_DIRS.map(([dq, dr]) => hex(h.q + dq, h.r + dr));
 
+/** A string key for `h` (its q and r), for maps and sets of hexes. */
+export const hexKey = (h: Hex): string => `${h.q},${h.r}`;
+
 export const hexEquals = (a: Hex, b: Hex): boolean =>
   a.q === b.q && a.r === b.r;
 

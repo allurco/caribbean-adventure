@@ -1,4 +1,4 @@
-import { canonicalHex, wrappedDistance, wrappedNeighbors } from "./hex";
+import { canonicalHex, hexKey, wrappedDistance, wrappedNeighbors } from "./hex";
 import type { Hex, MapWrap } from "./hex";
 import type { MapCell, PortNation, Region, RegionId } from "./types";
 import { NATIONS } from "./types";
@@ -27,8 +27,6 @@ export const REGION_NAMES: Readonly<Record<PortNation, readonly string[]>> = {
   Netherlands: ["the Orange Shoals", "Zeeland Waters", "the Free Sound", "the Merchants' Reach"],
   Pirate: ["Tortuga Waters", "the Brethren's Sea", "the Devil's Reach", "Blackwater Shoals"],
 };
-
-const hexKey = (h: Hex): string => `${h.q},${h.r}`;
 
 /**
  * The region of every hex in `grid`, given the land's: each hex takes the
