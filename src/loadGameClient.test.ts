@@ -4,6 +4,17 @@ import type { Game } from "boardgame.io";
 import { SHIP_MODELS, shipModelUrl } from "./board/shipModels";
 import type { CaribbeanState } from "./game/Game";
 import { parseDevUrlParams, showsDebugPanel } from "./board/devUrlParams";
+import { INVALID_MOVE } from "boardgame.io/core";
+import type { Move } from "boardgame.io";
+import { Caribbean } from "./game/Game";
+
+/** Presses the defender's choice as seat 0, the attacker, in a fight seat 1 is to choose in. */
+function attackerChoosesForDefender(game: Game<CaribbeanState>): unknown {
+  const move = game.phases!.combat.moves!.chooseCombatAction as Move<CaribbeanState>;
+  const run = typeof move === "function" ? move : move.move;
+  const combat = { attackerId: "0", defenderId: "1", isNPCCombat: false, stage: "chooseAction", seamanshipWinner: "1" };
+  return run({ G: { combat } as unknown as CaribbeanState, playerID: "0" } as Parameters<typeof run>[0], "fire");
+}
 
 const preload = vi.hoisted(() => vi.fn());
 vi.mock("@react-three/drei", async (importOriginal) => ({
@@ -62,5 +73,13 @@ describe("loading the game client", () => {
     const { loadSeatClient } = await import("./loadGameClient");
     const { debug } = (await loadSeatClient(undefined, showsDebugPanel(parseDevUrlParams("?seats=1")))) as unknown as { debug: unknown };
     expect(debug).toBe(false);
+  });
+
+  it("holds each seat on one page to its own combat steps (#113 review); the hotseat table keeps pressing both sides", async () => {
+    const { loadSeatClient, loadGameClient } = await import("./loadGameClient");
+    const seated = (await loadSeatClient(undefined, false, 2)) as unknown as { game: Game<CaribbeanState> };
+    expect(attackerChoosesForDefender(seated.game)).toBe(INVALID_MOVE);
+    const hotseat = (await loadGameClient(undefined, true, 2)) as unknown as { game: Game<CaribbeanState> };
+    expect(hotseat.game.phases!.combat.moves).toBe(Caribbean.phases!.combat.moves);
   });
 });

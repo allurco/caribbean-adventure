@@ -103,6 +103,9 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
       return;
     }
     onError(result.error);
+    // The board may show the refused move; until a whole view arrives (this
+    // refetch may itself be refused, a 429 or a 5xx), polls ask for it.
+    needsFullView = true;
     return refresh();
   }
 

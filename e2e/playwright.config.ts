@@ -21,6 +21,7 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120_000,
     env: {
+      E2E_BACKEND: "1",
       VITE_SUPABASE_URL: `http://localhost:${PORT}/e2e-supabase`,
       VITE_SUPABASE_ANON_KEY: "e2e-anon-key",
     },

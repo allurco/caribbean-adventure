@@ -1,5 +1,6 @@
 import { Client } from "boardgame.io/react";
 import { Caribbean, withGeneratedMap, withHotseatView } from "./game/Game";
+import { withSeatedCombat } from "./game/seatedCombat";
 import { DEFAULT_SEATS } from "./game/seats";
 import type { CaribbeanSetupData } from "./game/Game";
 import { resolveMapRequest } from "./game/mapRequest";
@@ -31,14 +32,15 @@ export async function loadGameClient(setupData: CaribbeanSetupData | undefined, 
  * Every seat of one match on one page (dev `?seats=1`, #110): the client is
  * rendered once per seat with its `playerID`, and boardgame.io's local
  * transport keeps one match for them all, each seat getting only its own
- * view (`playerView`, #109), as a networked seat would. `debugPanel` comes
+ * view (`playerView`, #109), as a networked seat would, and pressing only
+ * its own combat steps (`withSeatedCombat`, as online). `debugPanel` comes
  * from `showsDebugPanel`, which is false for `?seats=1`; `seats` from `seatCount`.
  */
 export async function loadSeatClient(setupData: CaribbeanSetupData | undefined, debugPanel: boolean, seats = DEFAULT_SEATS) {
   // Its own chunk: the multiplayer module brings the socket.io client, which the hotseat game never needs.
   const [map, { Local }] = await Promise.all([generateMap(setupData), import("boardgame.io/multiplayer")]);
   return Client({
-    game: withGeneratedMap(Caribbean, map),
+    game: withGeneratedMap(withSeatedCombat(Caribbean), map),
     board: CaribbeanBoard,
     numPlayers: seats,
     multiplayer: Local(),
