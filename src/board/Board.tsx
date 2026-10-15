@@ -90,6 +90,7 @@ import { sceneStateFor } from "./draftScene";
 import { HudGloryBoard } from "./HudGloryBoard";
 import {
   combatWaitingFor,
+  choosingCaptain,
   draftView,
   fightBystander,
   fightWatched,
@@ -1145,8 +1146,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         {import.meta.env.DEV && snapshot && <GallerySnapshot ready={readiness.view.ready && !drafting} />}
       </Canvas>
 
-      {/* The captain draft, over the finished scene once the loading screen has gone */}
-      {drafting && (
+      {/* The captain draft, over the finished scene once the loading screen has gone; and a new captain for a lost ship (#265) */}
+      {choosingCaptain(G, ctx.phase, ctx.currentPlayer) && (
         <div className="absolute inset-0 z-[55]">
           <DraftScreen
             view={draftView(G, turn)}

@@ -1,5 +1,6 @@
 import type { Handoff } from "./turnHandoff";
 import type { Captain, CaribbeanState, CombatStage, CombatState, ShipState } from "../game/types";
+import { awaitingCaptain } from "../game/captainDeath";
 import { npcName } from "./npcName";
 
 /**
@@ -73,19 +74,33 @@ export function waitingFor(G: Pick<CaribbeanState, "ships">, turn: SeatTurn): st
 }
 
 /**
+ * Whether the captain screen (`DraftScreen`) is up: through the draft, and
+ * in the main phase while the current seat, whose ship was lost, has yet to
+ * pick a new captain (#265).
+ */
+export function choosingCaptain(G: Pick<CaribbeanState, "lostShips">, phase: string, currentPlayer: string): boolean {
+  return phase === "draft" || (phase === "main" && awaitingCaptain(G, currentPlayer));
+}
+
+/**
  * What the draft screen shows: the hand to pick from (and, in hotseat, the
  * "pass the helm" screen after the pick), or a line to wait on. A seat never
  * sees another seat's hand: it reaches the seat emptied (`playerView`, #109).
+ * A new captain for a lost ship (#265) is picked the same way, but the seat
+ * then sails its turn, so there is no device to pass.
  */
 export type DraftView =
   | { kind: "pick"; hand: Captain[]; passDevice: boolean }
   | { kind: "waiting"; line: string };
 
-export function draftView(G: Pick<CaribbeanState, "ships" | "draftHands">, turn: SeatTurn): DraftView {
-  if (!seatMayAct(turn)) return { kind: "waiting", line: waitingLine(G, turn.currentPlayer, "to draft") };
+export function draftView(G: Pick<CaribbeanState, "ships" | "draftHands" | "lostShips">, turn: SeatTurn): DraftView {
+  const replacing = awaitingCaptain(G, turn.currentPlayer);
+  if (!seatMayAct(turn)) {
+    return { kind: "waiting", line: waitingLine(G, turn.currentPlayer, replacing ? "to pick a new captain" : "to draft") };
+  }
   const hand = G.draftHands[turn.currentPlayer] ?? [];
   if (hand.length === 0) return { kind: "waiting", line: "Waiting for other players..." };
-  return { kind: "pick", hand, passDevice: turn.playerID == null };
+  return { kind: "pick", hand, passDevice: turn.playerID == null && !replacing };
 }
 
 /** Who fights whom: the sides of a fight, as the seat rules read them. */
@@ -147,11 +162,16 @@ export interface GloryRow {
 /**
  * Every seat's captain and glory, most glory first and ties in seat order.
  * Glory (`score`) is public (#109); purses and holds are not, so they are
- * not on it.
+ * not on it. A seat whose ship was lost keeps its glory on the board until
+ * its new captain sails (#265).
  */
-export function gloryScoreboard(G: Pick<CaribbeanState, "ships">, viewer: string): GloryRow[] {
-  return Object.entries(G.ships)
-    .map(([seat, ship]) => ({ seat, name: seatName(G, seat), glory: ship.score, viewer: seat === viewer }))
+export function gloryScoreboard(G: Pick<CaribbeanState, "ships" | "lostShips">, viewer: string): GloryRow[] {
+  const glory = [
+    ...Object.entries(G.ships).map(([seat, ship]) => [seat, ship.score] as const),
+    ...Object.entries(G.lostShips ?? {}).map(([seat, lost]) => [seat, lost.score] as const),
+  ];
+  return glory
+    .map(([seat, score]) => ({ seat, name: seatName(G, seat), glory: score, viewer: seat === viewer }))
     .sort((a, b) => b.glory - a.glory || Number(a.seat) - Number(b.seat));
 }
 
