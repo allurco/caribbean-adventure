@@ -49,7 +49,8 @@ import {
 import { createCaptainDeck, dealHands, isCaptainPick, takeCommand } from "./captains";
 import { isOneOf, isOwnKey, isWhole } from "./moveArgs";
 import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
-import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
+import { spawnFlotillaForPlayer } from "./npcManager";
+import { npcsSailAsTurnEnds } from "./npcTurnStep";
 import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
@@ -354,18 +355,9 @@ export const Caribbean: Game<CaribbeanState> = {
             seatStillIn(G, ctx.playOrder, ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % ctx.playOrder.length),
           next: ({ G, ctx }) => seatStillIn(G, ctx.playOrder, (ctx.playOrderPos + 1) % ctx.playOrder.length),
         },
-        onEnd: ({ G, random }) => {
-          // Don't move NPCs if combat is starting
-          if (G.combat) return;
-
-          // Move all NPCs at the end of each player's turn
-          moveAllNPCs(G);
-
-          // Occasionally spawn new merchants (10% chance per turn end)
-          if (random.Number() < 0.1) {
-            spawnMerchant(G, random.Number);
-          }
-        },
+        // The NPCs sail as the turn ends; a turn that ends in a fight
+        // starts it here, and its NPCs sail when the fight resolves (#288)
+        onEnd: ({ G, random }) => npcsSailAsTurnEnds(G, random.Number),
       },
       moves: {
         // A player whose ship was lost picks a new captain from the hand their turn dealt (#265), on the draft's screen
@@ -608,6 +600,9 @@ export const Caribbean: Game<CaribbeanState> = {
           next: ({ ctx }) => ctx.playOrderPos,
         },
         activePlayers: { all: "combat" },
+        // The fight resolved and ended the attacker's turn: the NPCs take
+        // that turn's step now, once (#288)
+        onEnd: ({ G, random }) => npcsSailAsTurnEnds(G, random.Number),
       },
       moves: {
         rollSeamanship: ({ G, random }) => {

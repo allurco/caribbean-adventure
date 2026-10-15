@@ -9,6 +9,8 @@
  * animation can never hold the game up. Nothing here touches `G`. Pure.
  */
 
+import type { NPCShip } from "../game/types";
+
 export type HandoffPhase = "sailing" | "turnEnded" | "npcs" | "nextTurn" | "idle";
 
 export interface Handoff {
@@ -111,6 +113,23 @@ export function stepHandoff(h: Handoff, s: HandoffSignals): Handoff {
 
 /** Whether the board still shows the NPCs where they were before the turn ended. */
 export const holdsNpcs = (h: Handoff | null): boolean => h !== null && (h.phase === "sailing" || h.phase === "turnEnded");
+
+/**
+ * The NPCs a hand-off holds while the outgoing turn plays out: as the board
+ * last showed them (`before`), not yet where the turn's NPC step sent them
+ * (`after`). After a fight, `before` is the fight's last picture, so an NPC
+ * sunk or captured in it, gone from `after`, is left out, never to reappear
+ * (#288). After any other turn the NPCs are held as they stood: a merchant
+ * the step took home to port goes when the NPCs sail.
+ */
+export function heldNpcsFor(
+  before: Record<string, NPCShip>,
+  after: Record<string, NPCShip>,
+  afterFight: boolean,
+): Record<string, NPCShip> {
+  if (!afterFight) return before;
+  return Object.fromEntries(Object.entries(before).filter(([id]) => id in after));
+}
 
 /** Whether the next player's controls wait. */
 export const controlsLocked = (h: Handoff | null): boolean => h !== null && h.phase !== "idle";

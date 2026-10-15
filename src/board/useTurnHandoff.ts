@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NPCShip } from "../game/types";
-import { startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } from "./turnHandoff";
+import { heldNpcsFor, startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } from "./turnHandoff";
 
 /**
  * Plays the hand-off between turns (turnHandoff.ts, #216) each frame from
@@ -38,6 +38,8 @@ export function useTurnHandoff({
   // The turn the board last showed, and the NPCs as it last showed them
   const [turnOf, setTurnOf] = useState<ShownTurn | null>(active ? { player: currentPlayer, turn } : null);
   const [lastNpcs, setLastNpcs] = useState(npcs);
+  // Whether the board last showed a fight: the turn it ended passes with it over
+  const [lastFight, setLastFight] = useState(fight);
 
   // State adjusted while rendering (React's pattern for a changed prop), so
   // the hand-off holds from the first render of the new turn
@@ -46,10 +48,11 @@ export function useTurnHandoff({
     setTurnOf({ player: currentPlayer, turn });
     if (turnOf !== null) {
       setHandoff(startHandoff(turnOf.player, currentPlayer, null, reducedMotion));
-      setHeldNpcs(lastNpcs);
+      setHeldNpcs(heldNpcsFor(lastNpcs, npcs, lastFight));
     }
   }
   if (lastNpcs !== npcs) setLastNpcs(npcs);
+  if (lastFight !== fight) setLastFight(fight);
 
   const current = useRef(handoff);
   const seen = useRef({ underway, npcs, onNextTurn });
