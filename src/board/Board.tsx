@@ -7,7 +7,7 @@ import type { BoardProps } from "boardgame.io/react";
 import type { CaribbeanState } from "../game/Game";
 import { getMaxMoves, movesLeft } from "../game/turnMoves";
 import type { Hex } from "../game/hex";
-import type { ShipState, ShipClass, NPCShip, MapCell } from "../game/types";
+import type { NPCShip, MapCell } from "../game/types";
 import { hexToWorld, hexEquals, wrapWorldWidth } from "../game/hex";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
 import { turnReach, routeTo, reachCost } from "../game/reach";
@@ -75,7 +75,6 @@ import { useTurnHandoff } from "./useTurnHandoff";
 import { controlsLocked, holdsNpcs } from "./turnHandoff";
 import { TurnEndedBanner } from "./TurnEndedBanner";
 import type { Point } from "./shipMotion";
-import { trackShipHeadings } from "./shipHeading";
 import { ShipTooltip } from "./ShipTooltip";
 import { PortTooltip } from "./PortTooltip";
 import { ShipDetailsPanel } from "./ShipDetailsPanel";
@@ -96,24 +95,18 @@ import { RenderStatsOverlay } from "./RenderStatsOverlay";
 import { DevSeedControl } from "./DevSeedControl";
 import { PLAYER_COLOURS } from "./shipOwnerColour";
 import { npcShipLook, playerShipLook } from "./shipLook";
-import type { ShipFlag } from "./shipFlags";
 import { GallerySnapshot } from "../lab/GallerySnapshot";
 import { STARTER_SHIP_CLASSES } from "../game/types";
 import { createRenderStatsFeed } from "./renderStats";
 import { useAudioUnlock } from "../audio/useAudioUnlock";
 import { useGameSounds } from "../audio/useGameSounds";
+import { useCombatFx } from "./combatFx/useCombatFx";
+import { CombatEffects } from "./combatFx/CombatEffects";
+import { CombatBanner } from "./combatFx/CombatBanner";
+import type { CombatDirector } from "./combatFx/combatDirector";
+import type { DepartedShip } from "./combatFx/departedShips";
 import type { Mission } from "../game/types";
 
-interface SinkingShipData {
-  id: string;
-  position: [number, number, number];
-  color: string;
-  shipClass?: ShipClass;
-  /** The heading it last sailed on, which it goes down facing. */
-  heading: number;
-  /** The flag it flew, which goes down limp with it (#204). */
-  flag: ShipFlag | null;
-}
 
 /**
  * World units past the edge of the view that copies of a wrapping world still
@@ -145,6 +138,7 @@ function Scene({
   attackTargetHexes,
   spyglassTargetHexes,
   sinkingShips,
+  combatDirector,
   npcs,
   hoveredShipId,
   hoveredPort,
@@ -176,7 +170,10 @@ function Scene({
   spyglassMode: boolean;
   attackTargetHexes: Hex[];
   spyglassTargetHexes: Hex[];
-  sinkingShips: SinkingShipData[];
+  /** Ships that left G the fight still shows: going down, or a prize alongside (#263). */
+  sinkingShips: DepartedShip[];
+  /** Plays the fight's beats: its effects, its sounds, and where it holds the ships (#263). */
+  combatDirector: CombatDirector;
   npcs: Record<string, NPCShip>;
   hoveredShipId: string | null;
   hoveredPort: MapCell | null;
@@ -350,6 +347,16 @@ function Scene({
       flight.current = null;
     }
   }, [focusView]);
+
+  // A fight asks the camera to frame its ships (#263; never under reduced motion)
+  useFrame(() => {
+    const view = combatDirector.takeCameraRequest();
+    if (!view || !controlsRef.current) return;
+    targetPosition.current.set(view.target[0], 0, view.target[2]);
+    targetDistance.current = Math.min(CAMERA_MAX_DISTANCE, Math.max(CAMERA_MIN_DISTANCE, view.distance));
+    isAnimating.current = true;
+    flight.current = null;
+  });
 
   // Smooth camera animation: focus and zoom move together (cameraFlight.ts)
   useFrame(() => {
@@ -564,6 +571,7 @@ function Scene({
           openWater={shipOpenWater}
           initialHeading={shipSpawnHeading(id, ship.position)}
           foamId={copy === 0 ? id : undefined}
+          combatId={id}
           foamPlayer
           onUnderway={copy === 0 ? (underway) => onShipUnderway(id, underway) : undefined}
           onPointerEnter={() => onShipHover(id)}
@@ -585,6 +593,7 @@ function Scene({
           openWater={shipOpenWater}
           initialHeading={shipSpawnHeading(npc.id, npc.position)}
           foamId={copy === 0 ? npc.id : undefined}
+          combatId={npc.id}
           onUnderway={copy === 0 ? (underway) => onShipUnderway(npc.id, underway) : undefined}
           onPointerEnter={() => onShipHover(npc.id)}
           onPointerLeave={() => onShipHover(null)}
@@ -595,6 +604,9 @@ function Scene({
       {sinkingShips.map((ship) => (
         <SinkingShip
           key={`sinking-${ship.id}`}
+          combatId={ship.id}
+          report={copy === 0}
+          sinks={ship.sinks}
           position={ship.position}
           color={ship.color}
           shipClass={ship.shipClass}
@@ -606,6 +618,9 @@ function Scene({
       </>
       )}
       </WorldCopies>
+
+      {/* The fight's smoke, flashes, shot, splinters, spray, foam and grapples (#263) */}
+      <CombatEffects director={combatDirector} />
 
       {/* Ship Tooltip, once, in the copy under the pointer */}
       {hoveredShipId && (G.ships[hoveredShipId] || npcs[hoveredShipId]) && (() => {
@@ -699,7 +714,6 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
-  const [sinkingShips, setSinkingShips] = useState<SinkingShipData[]>([]);
   const [hoveredShipId, setHoveredShipId] = useState<string | null>(null);
   const [hoveredPort, setHoveredPort] = useState<MapCell | null>(null);
   const [showDetailsPanel, setShowDetailsPanel] = useState(false);
@@ -743,52 +757,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // Track previous port to detect new docking
   const prevPortRef = useRef<string | null>(null);
 
-  // Detect ships that were removed (sunk)
-  // Use a ref to track previous ship IDs without causing re-renders
-  const prevShipIdsRef = useRef<Set<string>>(new Set(Object.keys(G.ships)));
-  const prevShipSnapshotsRef = useRef<Record<string, ShipState>>(G.ships);
-  // Each ship's last heading, so a sunk ship goes down facing the way it sailed.
-  const shipHeadingsRef = useRef<Record<string, number>>({});
-
-  useEffect(() => {
-    const currentIds = Object.keys(G.ships);
-    const currentIdSet = new Set(currentIds);
-    const prevIds = prevShipIdsRef.current;
-    const prevSnapshots = prevShipSnapshotsRef.current;
-    const headings = trackShipHeadings(shipHeadingsRef.current, prevSnapshots, G.ships, wrapWorldWidth(G.wrap));
-
-    // Find ships that were removed
-    const removedIds: string[] = [];
-    prevIds.forEach((id) => {
-      if (!currentIdSet.has(id) && prevSnapshots[id]) {
-        removedIds.push(id);
-      }
-    });
-
-    if (removedIds.length > 0) {
-      const newSinking = removedIds.map((id) => ({
-        id,
-        position: hexToWorld(prevSnapshots[id].position),
-        color: PLAYER_COLOURS[id] ?? "#888888",
-        shipClass: prevSnapshots[id].shipClass,
-        heading: headings[id] ?? 0,
-        // The flag it flew, from its last state: it has left G.ships (#204).
-        flag: playerShipLook(G, id, prevSnapshots[id]).flag,
-      }));
-
-      setSinkingShips((prev) => {
-        const existingIds = new Set(prev.map((s) => s.id));
-        const toAdd = newSinking.filter((s) => !existingIds.has(s.id));
-        return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
-      });
-    }
-
-    // Update refs for next comparison
-    prevShipIdsRef.current = currentIdSet;
-    prevShipSnapshotsRef.current = G.ships;
-    for (const id of removedIds) delete headings[id];
-    shipHeadingsRef.current = headings;
-  }, [G]);
+  // The fight on the board (#263): beats, effects and their sounds from each change of G.
+  const combatFx = useCombatFx(G, prefersReducedMotion);
 
   // Detect when current player docks at a new port
   useEffect(() => {
@@ -869,9 +839,6 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     prevMissionRef.current = { mission: currentMission, playerId: currentPlayer };
   }, [currentShipState?.activeMission, currentPlayer]);
 
-  const handleSinkingComplete = (id: string) => {
-    setSinkingShips((prev) => prev.filter((s) => s.id !== id));
-  };
 
   // Calculate potential attack targets (players + NPCs) - must be before early return
   const attackTargetIds = useMemo(() => {
@@ -1013,7 +980,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           spyglassMode={spyglassMode}
           attackTargetHexes={attackTargetHexes}
           spyglassTargetHexes={spyglassTargetHexes}
-          sinkingShips={sinkingShips}
+          sinkingShips={combatFx.departed}
+          combatDirector={combatFx.director}
           npcs={shownNpcs}
           locked={locked}
           hoveredShipId={hoveredShipId}
@@ -1029,7 +997,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onMoveShip={(q, r) => props.moves.moveShip(q, r)}
           onSailRoute={sail}
           onHexClick={spyglassMode ? handleHexClickForSpyglass : handleHexClickForAttack}
-          onSinkingComplete={handleSinkingComplete}
+          onSinkingComplete={combatFx.finishDeparted}
           onShipHover={setHoveredShipId}
           onShipClick={(id) => {
             if (id === currentPlayer) {
@@ -1054,6 +1022,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {import.meta.env.DEV && renderStatsFeed && <RenderStatsOverlay feed={renderStatsFeed} />}
       {/* Dev: the seed control (#161); the DEV guard drops it from production builds */}
       {import.meta.env.DEV && !snapshot && G.mapSeed !== undefined && <DevSeedControl mapSize={G.mapSize} mapSeed={G.mapSeed} />}
+
+      {/* A word over the fight: escaped, caught (#263) */}
+      <CombatBanner text={combatFx.banner} />
 
       {/* Combat Panel */}
       {inCombat && G.combat && (

@@ -79,6 +79,7 @@ describe("one source of light (#169)", () => {
     expect(filesMatching(/from "\.{1,2}\/(visuals\/)?sceneLighting"/)).toEqual([
       "Board.tsx",
       "PropViewer.tsx",
+      "combatFx/PuffLayer.tsx",
       "useWaterGridLines.ts",
       "visuals/ShoreBoulderMeshes.tsx",
     ]);

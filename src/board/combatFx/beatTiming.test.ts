@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BEATS, pacedSeconds, MAST_LANDS_AT, beatProgress, easeInOutCubic, frameShips, mastTopple, sinkPose } from "./beatTiming";
+import { BEATS, framePoints, pacedSeconds, MAST_LANDS_AT, beatProgress, easeInOutCubic, frameShips, mastTopple, sinkPose } from "./beatTiming";
 
 describe("beats", () => {
   it("every beat has a label and a positive duration", () => {
@@ -70,5 +70,12 @@ describe("declaring: the camera frames both ships", () => {
     const wide = frameShips({ x: 0, z: 0 }, { x: 1.7, z: 0 }, { fovDeg: 45, aspect: 1.8, shipLength: 0.9 });
     const tall = frameShips({ x: 0, z: 0 }, { x: 1.7, z: 0 }, { fovDeg: 45, aspect: 0.5, shipLength: 0.9 });
     expect(tall.distance).toBeGreaterThan(wide.distance);
+  });
+
+  it("frames where a ship is about to run to as well", () => {
+    const two = frameShips({ x: 0, z: 0 }, { x: 1.7, z: 0 }, { fovDeg: 45, aspect: 1.6, shipLength: 0.9 });
+    const three = framePoints([{ x: 0, z: 0 }, { x: 1.7, z: 0 }, { x: 2.6, z: 0.6 }], { fovDeg: 45, aspect: 1.6, shipLength: 0.9 });
+    expect(three.distance).toBeGreaterThan(two.distance);
+    expect(three.target[0]).toBeCloseTo(1.3, 6);
   });
 });

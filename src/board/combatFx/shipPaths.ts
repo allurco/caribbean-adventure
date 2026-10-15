@@ -35,8 +35,8 @@ export const MAX_HEEL = 0.14;
 
 export const forward = (heading: number): Point => [Math.sin(heading), Math.cos(heading)];
 export const starboard = (heading: number): Point => [-Math.cos(heading), Math.sin(heading)];
-/** The heading that runs dead downwind, for a wind blowing toward `toward` (unit world XZ). */
-export const downwindHeading = (toward: Point): number => Math.atan2(toward[0], toward[1]);
+/** The heading that runs before the wind (dead downwind), for a wind blowing toward `toward` (unit world XZ): the wind is passed in. */
+export const headingBefore = (toward: Point): number => Math.atan2(toward[0], toward[1]);
 
 const add = (a: Point, b: Point, k = 1): Point => [a[0] + b[0] * k, a[1] + b[1] * k];
 const posOf = (p: ShipPose): Point => [p.x, p.z];
@@ -174,7 +174,7 @@ export function closeInPath(
 
 /** Bearing away: the ship turns to run dead downwind, all sail full, and runs off. */
 export function bearAwayPath(ship: ShipPose, toward: Point): ShipPath {
-  const run = forward(downwindHeading(toward));
+  const run = forward(headingBefore(toward));
   const p0 = posOf(ship);
   const end = add(p0, run, 2.4);
   return chainPath([[p0, add(p0, forward(ship.heading), 0.5), add(end, run, -1.0), end]]);

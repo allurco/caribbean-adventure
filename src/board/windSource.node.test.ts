@@ -83,9 +83,10 @@ describe("one wind (#204)", () => {
     expect(ownWindDirections("planted.ts", "export const PALM_WIND_DIR = SCENE_WIND.toward;")).toEqual([]);
   });
 
-  it("the sea, the palms, the reefs and the ships read the scene's wind", () => {
+  it("the sea, the palms, the reefs, the ships and the fight's smoke read the scene's wind", () => {
     expect(filesMatching(/from "\.{1,2}\/(visuals\/)?sceneWind"/)).toEqual([
       "Ship.tsx",
+      "combatFx/CombatEffects.tsx",
       "visuals/oceanWaves.ts",
       "visuals/palmSway.ts",
       "visuals/shoreFoam.ts",

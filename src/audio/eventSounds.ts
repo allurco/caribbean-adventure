@@ -3,8 +3,10 @@ import type { SoundId } from "./soundRegistry";
 
 /**
  * Which registered sound each event plays (#73). Events left out are
- * silent until a later slice gives them a sound (docking, sinking, combat
- * start, NPC movement, ...).
+ * silent until a later slice gives them a sound (docking, combat start, NPC
+ * movement, ...). The fight's guns, hits, splashes, grapples and sinkings
+ * play from the combat timeline's cues instead (board/combatFx/cueSounds.ts,
+ * #263), in step with what the board shows.
  */
 const EVENT_SOUNDS: Partial<Record<SoundEventType, SoundId>> = {
   shipSailed: "ship-wash",
@@ -14,7 +16,6 @@ const EVENT_SOUNDS: Partial<Record<SoundEventType, SoundId>> = {
   shipRepaired: "coins",
   shipBought: "coins",
   goldStashed: "coins",
-  cannonsFired: "cannon-fire",
   pirateBountyClaimed: "coins",
   // TODO(#201): turnedPirate stays silent until the registry has a fitting
   // sound (a bell or a shanty sting); none of the current ones suits it.

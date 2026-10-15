@@ -70,18 +70,34 @@ export function sinkPose(t: number): { drop: number; pitch: number; heel: number
 
 /**
  * Where the camera looks and how far back it stands (along the game's view
- * direction) to frame two ships with room around them.
+ * direction) to frame `points` (ships, and where a ship is about to run to)
+ * with room round each for a ship's length.
  */
+export function framePoints(
+  points: readonly { x: number; z: number }[],
+  { fovDeg, aspect, shipLength }: { fovDeg: number; aspect: number; shipLength: number }
+): { target: [number, number, number]; distance: number } {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of points) {
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minZ = Math.min(minZ, p.z);
+    maxZ = Math.max(maxZ, p.z);
+  }
+  const room = shipLength / 2 + 0.35;
+  const halfSpan = Math.hypot(maxX - minX, maxZ - minZ) / 2 + room;
+  // One behind the other (along the view, up the screen) they must fit the screen's height too.
+  const halfDepth = (maxZ - minZ) / 2 + room;
+  const tanHalf = Math.tan((fovDeg * Math.PI) / 360);
+  const distance = Math.max(1.6, halfSpan / (tanHalf * Math.min(aspect, 1.5)), halfDepth / tanHalf);
+  return { target: [(minX + maxX) / 2, 0.12, (minZ + maxZ) / 2], distance };
+}
+
+/** Frames two ships (framePoints). */
 export function frameShips(
   a: { x: number; z: number },
   b: { x: number; z: number },
-  { fovDeg, aspect, shipLength }: { fovDeg: number; aspect: number; shipLength: number }
+  options: { fovDeg: number; aspect: number; shipLength: number }
 ): { target: [number, number, number]; distance: number } {
-  const room = shipLength / 2 + 0.35;
-  const halfSpan = Math.hypot(a.x - b.x, a.z - b.z) / 2 + room;
-  // One behind the other (along the view, up the screen) they must fit the screen's height too.
-  const halfDepth = Math.abs(a.z - b.z) / 2 + room;
-  const tanHalf = Math.tan((fovDeg * Math.PI) / 360);
-  const distance = Math.max(1.6, halfSpan / (tanHalf * Math.min(aspect, 1.5)), halfDepth / tanHalf);
-  return { target: [(a.x + b.x) / 2, 0.12, (a.z + b.z) / 2], distance };
+  return framePoints([a, b], options);
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CLOSE_IN_APPROACH_GAP, bearAwayPath, sharedBeamHeading, bearingHeading, closeInPath, downwindHeading, forward, hullsOverlap, pathPose, rakePath, sideOf, starboard, turnHeading, type ShipPose } from "./shipPaths";
+import { CLOSE_IN_APPROACH_GAP, bearAwayPath, sharedBeamHeading, bearingHeading, closeInPath, headingBefore, forward, hullsOverlap, pathPose, rakePath, sideOf, starboard, turnHeading, type ShipPose } from "./shipPaths";
 
 const at = (x: number, z: number, heading: number): ShipPose => ({ x, z, heading });
 const close = (a: number, b: number, eps = 1e-6) => expect(Math.abs(a - b)).toBeLessThan(eps);
@@ -71,7 +71,7 @@ describe("bear away", () => {
     const toward: [number, number] = [Math.cos(0.4), Math.sin(0.4)];
     const ship = at(0, 0, Math.PI);
     const end = pathPose(bearAwayPath(ship, toward), 1);
-    expect(angleGap(end.heading, downwindHeading(toward))).toBeLessThan(1e-3);
+    expect(angleGap(end.heading, headingBefore(toward))).toBeLessThan(1e-3);
     const [fx, fz] = forward(end.heading);
     close(fx, toward[0], 1e-6);
     close(fz, toward[1], 1e-6);

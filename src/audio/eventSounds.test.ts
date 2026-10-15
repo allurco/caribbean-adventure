@@ -10,7 +10,6 @@ describe("soundForEvent", () => {
     expect(soundForEvent({ type: "shipRepaired", shipId: "0" })).toBe("coins");
     expect(soundForEvent({ type: "shipBought", shipId: "0", shipClass: "Frigate" })).toBe("coins");
     expect(soundForEvent({ type: "goldStashed", shipId: "0", amount: 5 })).toBe("coins");
-    expect(soundForEvent({ type: "cannonsFired", attackerHits: 0, defenderHits: 0 })).toBe("cannon-fire");
     expect(
       soundForEvent({ type: "pirateBountyClaimed", captorId: "0", pirateId: "1", nation: "England", gold: 25 })
     ).toBe("coins");
@@ -21,6 +20,8 @@ describe("soundForEvent", () => {
     expect(soundForEvent({ type: "docked", shipId: "0", portName: "Port Royal" })).toBeNull();
     expect(soundForEvent({ type: "combatStarted", attackerId: "0", defenderId: "1" })).toBeNull();
     expect(soundForEvent({ type: "shipSunk", shipId: "1", isNpc: false })).toBeNull();
+    // The fight's sounds play from its cues, gun by gun (board/combatFx/cueSounds.ts, #263)
+    expect(soundForEvent({ type: "cannonsFired", attackerHits: 0, defenderHits: 0 })).toBeNull();
     expect(soundForEvent({ type: "turnedPirate", playerId: "0", cause: "sink" })).toBeNull();
   });
 });
