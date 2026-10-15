@@ -40,6 +40,8 @@ export const DAMAGE_CATEGORIES = ["hull", "crew", "masts"] as const;
 
 export const COMBAT_ACTIONS = ["fire", "board", "flee"] as const;
 
+export const COMBAT_STAGES = ["seamanship", "chooseAction", "fleeAttempt", "cannons", "resolution"] as const;
+
 export interface ShipStats {
   maneuverability: number;
   scouting: number;
@@ -102,7 +104,7 @@ export interface ShipState {
 }
 
 export type CombatAction = (typeof COMBAT_ACTIONS)[number];
-export type CombatStage = "seamanship" | "chooseAction" | "fleeAttempt" | "cannons" | "resolution";
+export type CombatStage = (typeof COMBAT_STAGES)[number];
 export type FleeOutcome = "escaped" | "caught" | null;
 
 export interface CombatState {

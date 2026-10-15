@@ -44,6 +44,8 @@ language sql
 stable
 set search_path = ''
 as $$
+  -- A seat's player id is one digit, `^[0-9]$`: the same check as `isSeatId`
+  -- in src/game/seats.ts, which /api and the in-memory store use.
   select
     r.id,
     r.status,

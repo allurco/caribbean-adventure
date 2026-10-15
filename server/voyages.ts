@@ -7,6 +7,7 @@
  */
 import { fail, json } from "./http";
 import { combatActor } from "../src/game/combatActor";
+import { isSeatId } from "../src/game/seats";
 import type { OnlineStore, VoyageRecord } from "./onlineStore";
 
 /** The most recent voyages listed; older ones are left out. */
@@ -41,7 +42,7 @@ export function voyageView(voyage: VoyageRecord, userId: string) {
 
 /** A seat's index from its player id; null for anything else (an NPC's id). */
 function seatOf(playerId: string): number | null {
-  return /^[0-9]$/.test(playerId) ? Number(playerId) : null;
+  return isSeatId(playerId) ? Number(playerId) : null;
 }
 
 export async function listVoyages(userId: string, store: OnlineStore): Promise<Response> {

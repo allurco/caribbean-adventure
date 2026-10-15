@@ -8,7 +8,7 @@ import { Client } from "boardgame.io/client";
 import { Caribbean, withGeneratedMap, withHotseatView, withSetupData } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { generateMapFor } from "./mapRequest";
-import { DEFAULT_SEATS, MAX_SEATS, MIN_SEATS, isValidSeatCount } from "./seats";
+import { DEFAULT_SEATS, MAX_SEATS, MIN_SEATS, isSeatId, isValidSeatCount } from "./seats";
 import { STARTER_SHIP_CLASSES } from "./types";
 
 const request = { mapSize: "small", mapSeed: 7 } as const;
@@ -86,5 +86,15 @@ describe("the seat count", () => {
 
   it("refuses a match of more seats than the game holds", () => {
     expect(() => match(5)).toThrow(/1 to 4 seats/);
+  });
+});
+
+describe("a seat's player id", () => {
+  it("is a seat's index as one digit", () => {
+    for (const id of ["0", "1", "3"]) expect(isSeatId(id)).toBe(true);
+  });
+
+  it("is never an NPC's id, an empty string, a number with more digits or one padded", () => {
+    for (const id of ["npc-3", "", "10", " 1", "1 ", "-1", "1.0"]) expect(isSeatId(id)).toBe(false);
   });
 });

@@ -171,6 +171,20 @@ describe("GET /api/me/rooms", () => {
     expect((await voyages("anne"))[0]).toMatchObject({ currentSeat: 1, yourTurn: false });
   });
 
+  // A fight the SQL would not project is no fight: the turn falls back to boardgame.io's current player.
+  it.each([
+    ["a stage that is not a combat stage", { stage: "boarding" }],
+    ["no stage", { stage: undefined }],
+    ["isNPCCombat as a number", { isNPCCombat: 0 }],
+    ["isNPCCombat as an empty string", { isNPCCombat: "" }],
+    ["no isNPCCombat", { isNPCCombat: undefined }],
+  ])("reads a fight with %s as no fight", async (_name, broken) => {
+    const { matchId } = await startedMatch();
+    const fight = { stage: "chooseAction", attackerId: "0", defenderId: "1", seamanshipWinner: "1", isNPCCombat: false, ...broken };
+    await commitState(matchId, (state) => withFight(state, "0", fight), "combat");
+    expect((await voyages("jack"))[0]).toMatchObject({ currentSeat: 0, yourTurn: false });
+  });
+
   it("sends of a fight no more than whose step it is", async () => {
     const { matchId } = await startedMatch();
     const fight = { stage: "cannons", attackerId: "0", defenderId: "1", seamanshipWinner: "0", isNPCCombat: false, log: ["secret-log"] };

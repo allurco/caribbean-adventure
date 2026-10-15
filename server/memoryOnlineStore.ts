@@ -16,6 +16,8 @@ import {
   type VoyageFight,
   type VoyageRecord,
 } from "./onlineStore";
+import { isSeatId } from "../src/game/seats";
+import { COMBAT_STAGES } from "../src/game/types";
 
 interface StoredMatch extends InitialMatch {
   id: string;
@@ -29,12 +31,17 @@ interface VoyageState {
   G?: { combat?: VoyageFight };
 }
 
-const SEAT_ID = /^[0-9]$/;
-
-/** Only what says whose step it is, as `list_voyages` projects it: seat ids only, never an NPC's. */
+/**
+ * Only what says whose step it is, as `list_voyages` projects it, and only of
+ * a fight it would project: a combat stage, a seat attacking, `isNPCCombat` a
+ * boolean. Seat ids only, never an NPC's.
+ */
 function publicFight({ stage, attackerId, seamanshipWinner, isNPCCombat }: VoyageFight): VoyageFight | null {
-  if (!SEAT_ID.test(attackerId)) return null;
-  return { stage, attackerId, seamanshipWinner: seamanshipWinner !== null && SEAT_ID.test(seamanshipWinner) ? seamanshipWinner : null, isNPCCombat };
+  if (!(COMBAT_STAGES as readonly unknown[]).includes(stage)) return null;
+  if (typeof attackerId !== "string" || !isSeatId(attackerId)) return null;
+  if (typeof isNPCCombat !== "boolean") return null;
+  const winner = typeof seamanshipWinner === "string" && isSeatId(seamanshipWinner) ? seamanshipWinner : null;
+  return { stage, attackerId, seamanshipWinner: winner, isNPCCombat };
 }
 
 type StoredRoom = Omit<RoomRecord, "seats" | "matchId"> & { startClaimedAt: number | null; createdAt: number };
@@ -151,7 +158,7 @@ export function createMemoryOnlineStore({
           mapSize: room.mapSize,
           seats: record(roomId)!.seats,
           matchId: match?.id ?? null,
-          currentSeat: state?.ctx?.currentPlayer !== undefined && SEAT_ID.test(state.ctx.currentPlayer) ? Number(state.ctx.currentPlayer) : null,
+          currentSeat: state?.ctx?.currentPlayer !== undefined && isSeatId(state.ctx.currentPlayer) ? Number(state.ctx.currentPlayer) : null,
           phase: state ? (match?.phase ?? null) : null,
           fight: state?.G?.combat ? publicFight(state.G.combat) : null,
           updatedAt: new Date(match?.updatedAt ?? room.createdAt).toISOString(),

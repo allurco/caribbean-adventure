@@ -17,3 +17,12 @@ export const DEFAULT_SEATS = 1;
 export function isValidSeatCount(n: number): boolean {
   return Number.isInteger(n) && n >= MIN_SEATS && n <= MAX_SEATS;
 }
+
+/**
+ * Whether a player id is a seat's: one digit, the seat's index, as
+ * boardgame.io numbers them; never an NPC's id (`npc-3`). The SQL in
+ * `supabase/migrations/*_voyages_fight.sql` checks the same `^[0-9]$`.
+ */
+export function isSeatId(id: string): boolean {
+  return /^[0-9]$/.test(id);
+}
