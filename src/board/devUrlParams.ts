@@ -33,8 +33,19 @@ export interface DevUrlParams {
   gallerySnapshot?: true;
   /** `?seats=1`: every seat of the match on one page, through boardgame.io's local transport, one seat shown at a time (#110), in dev builds only. */
   localSeats?: true;
+  /** `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`: the combat effects, the regions' ink in the sea, the bloom or all the post-processing left out, to tell on a real GPU which one a rendering fault comes from; read in production builds too. */
+  renderOff?: RenderOff;
   /** `?players=1..4`: the match's seats, a hotseat game for testing (#278), in dev builds only; solo without it (`seatCount`). */
   players?: number;
+}
+
+/** Parts of the picture left out (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`). */
+export interface RenderOff {
+  combatFx?: true;
+  regionInk?: true;
+  bloom?: true;
+  /** `?post=0`: no post-processing at all; the scene is drawn straight to the screen. */
+  postProcessing?: true;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -64,6 +75,12 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   const regionBorder = params.get("regionBorder");
   const mode = REGION_BORDER_MODES.find((m) => m === regionBorder);
   if (mode) out.regionBorder = mode;
+  const renderOff: RenderOff = {};
+  if (params.get("fx") === "0") renderOff.combatFx = true;
+  if (params.get("ink") === "0") renderOff.regionInk = true;
+  if (params.get("bloom") === "0") renderOff.bloom = true;
+  if (params.get("post") === "0") renderOff.postProcessing = true;
+  if (Object.keys(renderOff).length > 0) out.renderOff = renderOff;
   // Dev-only routes (#161): the DEV guard drops even their names from production builds.
   if (import.meta.env.DEV) {
     if (params.get("seedGallery") === "1") out.seedGallery = true;

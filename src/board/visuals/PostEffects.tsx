@@ -24,6 +24,8 @@ function setRendererExposure(renderer: WebGLRenderer, exposure: number): () => v
 
 interface PostEffectsProps {
   lighting: Lighting;
+  /** Leave the bloom out (`?bloom=0`, an A/B check on a real GPU). */
+  withoutBloom?: boolean;
 }
 
 /**
@@ -32,7 +34,7 @@ interface PostEffectsProps {
  * into one effect pass after the render pass (bloom's blur runs its own
  * mip chain), so the grade adds no pass.
  */
-export function PostEffects({ lighting }: PostEffectsProps) {
+export function PostEffects({ lighting, withoutBloom = false }: PostEffectsProps) {
   const gl = useThree((state) => state.gl);
   const { bloom, vignette, grade } = lighting;
 
@@ -54,10 +56,12 @@ export function PostEffects({ lighting }: PostEffectsProps) {
 
   return (
     <EffectComposer>
-      <Bloom intensity={bloom.intensity} luminanceThreshold={bloom.threshold} luminanceSmoothing={bloom.smoothing} />
-      <Vignette darkness={vignette.darkness} offset={vignette.offset} />
-      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      <primitive object={gradeEffect} />
+      {[
+        ...(withoutBloom ? [] : [<Bloom key="bloom" intensity={bloom.intensity} luminanceThreshold={bloom.threshold} luminanceSmoothing={bloom.smoothing} />]),
+        <Vignette key="vignette" darkness={vignette.darkness} offset={vignette.offset} />,
+        <ToneMapping key="tone" mode={ToneMappingMode.ACES_FILMIC} />,
+        <primitive key="grade" object={gradeEffect} />,
+      ]}
     </EffectComposer>
   );
 }

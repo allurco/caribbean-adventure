@@ -105,6 +105,7 @@ function Game() {
     cameraDistance: devParams.cameraDistance,
     seaBuoys: devParams.seaBuoys,
     regionBorder: devParams.regionBorder,
+    renderOff: devParams.renderOff,
     renderStats: devParams.renderStats,
     gallerySnapshot: devParams.gallerySnapshot,
   };

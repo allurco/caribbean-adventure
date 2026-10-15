@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import {
   AdditiveBlending,
@@ -8,6 +8,7 @@ import {
   InstancedBufferGeometry,
   NormalBlending,
   PlaneGeometry,
+  type Mesh,
   ShaderMaterial,
   Vector2,
   UniformsLib,
@@ -92,6 +93,7 @@ export function PuffLayer({ pool, look, zoom }: { pool: ParticlePool; look: Puff
     [geometry, material]
   );
 
+  const mesh = useRef<Mesh>(null);
   useFrame(({ camera }) => {
     material.uniforms.uSunView.value.copy(sunWorld).transformDirection(camera.matrixWorldInverse);
     if (zoom) writeUniform(material.uniforms.uScale, zoom.scale);
@@ -99,7 +101,9 @@ export function PuffLayer({ pool, look, zoom }: { pool: ParticlePool; look: Puff
       viewAxis(SCENE_WIND.toward[0], SCENE_WIND.toward[1], camera.matrixWorldInverse, axis);
       material.uniforms.uAxis.value.set(axis[0], axis[1]);
     }
-    writePuffs(pool, look, buffers, geometry);
+    const live = writePuffs(pool, look, buffers, geometry);
+    // An empty pool draws nothing at all (frameWriters.ts, showInstances)
+    if (mesh.current) mesh.current.visible = live > 0;
   });
-  return <mesh geometry={geometry} material={material} frustumCulled={false} renderOrder={2} />;
+  return <mesh ref={mesh} geometry={geometry} material={material} frustumCulled={false} renderOrder={2} visible={false} />;
 }

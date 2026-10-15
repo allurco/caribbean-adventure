@@ -115,6 +115,15 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?regionBorder=")).toEqual({});
   });
 
+  it("turns parts of the picture off for an A/B check on a real GPU, in production builds too", () => {
+    expect(parseDevUrlParams("?fx=0")).toEqual({ renderOff: { combatFx: true } });
+    expect(parseDevUrlParams("?ink=0")).toEqual({ renderOff: { regionInk: true } });
+    expect(parseDevUrlParams("?bloom=0")).toEqual({ renderOff: { bloom: true } });
+    expect(parseDevUrlParams("?post=0")).toEqual({ renderOff: { postProcessing: true } });
+    expect(parseDevUrlParams("?fx=0&ink=0&bloom=0")).toEqual({ renderOff: { combatFx: true, regionInk: true, bloom: true } });
+    expect(parseDevUrlParams("?fx=1&ink=&bloom=no")).toEqual({});
+  });
+
   it("reads every parameter from one URL", () => {
     expect(parseDevUrlParams("?size=small&seed=1&cx=12&cz=13.9&dist=4.3&stats=1")).toEqual({
       setupData: { mapSize: "small", mapSeed: 1 },

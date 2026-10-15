@@ -45,8 +45,8 @@ export interface PuffShape {
   fadeOut: number;
 }
 
-/** Packs the pool's live particles into the instance buffers. */
-export function writePuffs(pool: ParticlePool, look: PuffShape, buffers: PuffBuffers, geometry: InstancedBufferGeometry): void {
+/** Packs the pool's live particles into the instance buffers; returns how many. */
+export function writePuffs(pool: ParticlePool, look: PuffShape, buffers: PuffBuffers, geometry: InstancedBufferGeometry): number {
   const o = buffers.offset.array as Float32Array;
   const s = buffers.size.array as Float32Array;
   const a = buffers.alpha.array as Float32Array;
@@ -64,6 +64,48 @@ export function writePuffs(pool: ParticlePool, look: PuffShape, buffers: PuffBuf
   }
   geometry.instanceCount = n;
   buffers.offset.needsUpdate = buffers.size.needsUpdate = buffers.alpha.needsUpdate = buffers.seed.needsUpdate = true;
+  return n;
+}
+
+/** The parts of an instanced mesh that say what it draws. */
+export interface InstanceTarget {
+  count: number;
+  visible: boolean;
+  castShadow: boolean;
+}
+
+/**
+ * Draws the first `n` instances of `target` and no others: hidden when `n`
+ * is 0, and casting shadows only when it `castsShadow` and has something to
+ * cast. Idle slots are never drawn (not even at zero size, whose singular
+ * matrices some drivers rasterise or light as NaN).
+ */
+export function showInstances(target: InstanceTarget, n: number, castsShadow = false): void {
+  target.count = n;
+  target.visible = n > 0;
+  target.castShadow = castsShadow && n > 0;
+}
+
+/**
+ * Packs the live slots of `slots` at the front of `target`: `write(slot,
+ * index)` for each slot `isLive`, in order, then draws only those
+ * (`showInstances`). Returns how many.
+ */
+export function drawLiveInstances(
+  target: InstanceTarget,
+  slots: number,
+  isLive: (slot: number) => boolean,
+  write: (slot: number, index: number) => void,
+  castsShadow = false
+): number {
+  let n = 0;
+  for (let slot = 0; slot < slots; slot++) {
+    if (!isLive(slot)) continue;
+    write(slot, n);
+    n++;
+  }
+  showInstances(target, n, castsShadow);
+  return n;
 }
 
 /** A point on a grapple's line at `u` (0 thrower, 1 hook): along the hook's arc while it flies (`s` < 1), then a sagging line. */
