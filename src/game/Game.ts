@@ -13,7 +13,7 @@ import type {
   DamageCategory,
   CombatAction,
 } from "./types";
-import { SHIP_CLASSES, STARTER_SHIP_CLASSES } from "./types";
+import { COMBAT_ACTIONS, SHIP_CLASSES } from "./types";
 import { playerViewFor } from "./playerView";
 import { MAX_SEATS, MIN_SEATS, isValidSeatCount } from "./seats";
 import {
@@ -46,8 +46,9 @@ import {
   canJuryRig,
   applyJuryRig,
 } from "./economy";
-import { createCaptainDeck, dealHands, takeCommand } from "./captains";
-import { awaitingCaptain, dealReplacementHand, loseShip, replaceCaptain } from "./captainDeath";
+import { createCaptainDeck, dealHands, isCaptainPick, takeCommand } from "./captains";
+import { isOneOf, isOwnKey, isWhole } from "./moveArgs";
+import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
@@ -188,7 +189,7 @@ export const Caribbean: Game<CaribbeanState> = {
   // Each seat sees only its own hidden information; a client with no seat is a spectator (#109).
   playerView: ({ G, playerID }) => playerViewFor(G, playerID),
 
-  endIf: ({ G }) => {
+  endIf: ({ G, ctx }) => {
     const winner = findWinner(G.ships);
     if (winner !== null) {
       const ship = G.ships[winner];
@@ -196,6 +197,16 @@ export const Caribbean: Game<CaribbeanState> = {
         winner,
         captainName: ship.captain?.name ?? `Player ${Number(winner) + 1}`,
         score: ship.score,
+      };
+    }
+    // Every player out of the game (#265): the most glory wins
+    const lastOut = winnerWhenAllOut(G, ctx.playOrder);
+    if (lastOut !== null) {
+      const lost = G.lostShips![lastOut];
+      return {
+        winner: lastOut,
+        captainName: lost.captain?.name ?? `Player ${Number(lastOut) + 1}`,
+        score: lost.score,
       };
     }
   },
@@ -211,6 +222,7 @@ export const Caribbean: Game<CaribbeanState> = {
     moveShip: ({ G, ctx }, q: number, r: number) => {
       const ship = G.ships[ctx.currentPlayer];
       if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
+      if (!isWhole(q) || !isWhole(r)) return INVALID_MOVE;
       const target = canonicalHex(hex(q, r), G.wrap);
       if (wrappedDistance(ship.position, target, G.wrap) !== 1) return INVALID_MOVE;
       const cell = G.cells.find((c) => hexEquals(c.hex, target));
@@ -240,6 +252,7 @@ export const Caribbean: Game<CaribbeanState> = {
       const ship = G.ships[ctx.currentPlayer];
       const port = findAccessiblePort(ship.position, G.cells, G.wrap);
       if (!port?.market) return INVALID_MOVE;
+      if (action !== "BUY" && action !== "SELL") return INVALID_MOVE;
       if (action === "BUY") {
         if (!canBuy(ship, good, amount, port.market)) return INVALID_MOVE;
         ship.gold -= port.market.prices[good].buy * amount;
@@ -267,8 +280,7 @@ export const Caribbean: Game<CaribbeanState> = {
       const ship = G.ships[ctx.currentPlayer];
       const port = findAccessiblePort(ship.position, G.cells, G.wrap);
       if (!port?.hasPort || !port.market) return INVALID_MOVE;
-      if (points <= 0) return INVALID_MOVE;
-      if (!canRepair(ship, category)) return INVALID_MOVE;
+      if (!canRepair(ship, category, points)) return INVALID_MOVE;
       applyRepair(ship, category, points);
     },
 
@@ -302,21 +314,14 @@ export const Caribbean: Game<CaribbeanState> = {
         ) => {
           const playerId = ctx.currentPlayer;
           const hand = G.draftHands[playerId];
-          if (!hand || captainIndex < 0 || captainIndex >= hand.length) {
-            return INVALID_MOVE;
-          }
-          if (
-            !shipClass ||
-            !(STARTER_SHIP_CLASSES as readonly string[]).includes(shipClass)
-          ) {
-            return INVALID_MOVE;
-          }
+          if (!isCaptainPick(hand, captainIndex, shipClass)) return INVALID_MOVE;
           const ship = G.ships[playerId];
           if (ship.captain) return INVALID_MOVE;
 
           takeCommand(G, playerId, ship, hand[captainIndex], shipClass);
 
-          // Clear the player's draft hand
+          // The captain not picked lives, back at the bottom of the deck (#265); the hand is cleared
+          G.captainDeck.push(...hand.filter((_, i) => i !== captainIndex));
           G.draftHands[playerId] = [];
         },
       },
@@ -330,24 +335,28 @@ export const Caribbean: Game<CaribbeanState> = {
     main: {
       turn: {
         ...movesBudgetTurn,
-        // A player whose ship was lost is dealt a new captain's hand as their turn begins (#265)
-        onBegin: ({ G, ctx }) => {
+        // A player whose ship was lost is dealt a new captain's hand as their
+        // turn begins; with no captain left to deal they are out of the game,
+        // and the turn passes on at once (#265)
+        onBegin: ({ G, ctx, events }) => {
           movesBudgetTurn.onBegin({ G });
           dealReplacementHand(G, ctx.currentPlayer);
+          if (isEliminated(G, ctx.currentPlayer)) events.endTurn();
         },
         order: {
           // boardgame.io's default order, except that a seat which has just
           // lost its ship (no hand dealt yet) is passed over once: its turn
           // ended with the fight that lost it, and its next turn deals it a
-          // new captain's hand (#265). Never a seat stuck with no ship.
+          // new captain's hand. A seat out of the game is passed over for
+          // good (#265). Never a seat stuck with no ship.
           first: ({ G, ctx }) => {
             const seats = ctx.playOrder.length;
-            const first = ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % seats;
+            let first = ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % seats;
             const seat = ctx.playOrder[first];
-            const justLost = awaitingCaptain(G, seat) && (G.draftHands[seat]?.length ?? 0) === 0;
-            return justLost ? (first + 1) % seats : first;
+            if (G.lostShips?.[seat] && (G.draftHands[seat]?.length ?? 0) === 0) first = (first + 1) % seats;
+            return seatStillIn(G, ctx.playOrder, first);
           },
-          next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.playOrder.length,
+          next: ({ G, ctx }) => seatStillIn(G, ctx.playOrder, (ctx.playOrderPos + 1) % ctx.playOrder.length),
         },
         onEnd: ({ G, random }) => {
           // Don't move NPCs if combat is starting
@@ -370,6 +379,7 @@ export const Caribbean: Game<CaribbeanState> = {
         moveShip: ({ G, ctx }, q: number, r: number) => {
           const ship = G.ships[ctx.currentPlayer];
           if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
+          if (!isWhole(q) || !isWhole(r)) return INVALID_MOVE;
           const target = canonicalHex(hex(q, r), G.wrap);
           if (wrappedDistance(ship.position, target, G.wrap) !== 1) return INVALID_MOVE;
           const cell = G.cells.find((c) => hexEquals(c.hex, target));
@@ -420,6 +430,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const ship = G.ships[ctx.currentPlayer];
           const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.market) return INVALID_MOVE;
+          if (action !== "BUY" && action !== "SELL") return INVALID_MOVE;
           if (action === "BUY") {
             if (!canBuy(ship, good, amount, port.market)) return INVALID_MOVE;
             ship.gold -= port.market.prices[good].buy * amount;
@@ -447,8 +458,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const ship = G.ships[ctx.currentPlayer];
           const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.hasPort || !port.market) return INVALID_MOVE;
-          if (points <= 0) return INVALID_MOVE;
-          if (!canRepair(ship, category)) return INVALID_MOVE;
+          if (!canRepair(ship, category, points)) return INVALID_MOVE;
           applyRepair(ship, category, points);
         },
 
@@ -475,14 +485,14 @@ export const Caribbean: Game<CaribbeanState> = {
           if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
 
           if (isNPC) {
+            if (!isOwnKey(G.npcs, targetId)) return INVALID_MOVE;
             const npc = G.npcs[targetId];
-            if (!npc) return INVALID_MOVE;
             if (!canScoutNPC(ship, npc, G.wrap)) return INVALID_MOVE;
             // Mark NPC as identified
             npc.isIdentified = true;
           } else {
+            if (!isOwnKey(G.ships, targetId)) return INVALID_MOVE;
             const target = G.ships[targetId];
-            if (!target) return INVALID_MOVE;
             if (!canScoutPlayer(ship, target, targetId, G.wrap)) return INVALID_MOVE;
             // Add to scouted ships list
             if (!ship.scoutedShips.includes(targetId)) {
@@ -527,8 +537,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
         attackShip: ({ G, ctx, events }, targetId: string) => {
           const attacker = G.ships[ctx.currentPlayer];
+          if (!isOwnKey(G.ships, targetId) || targetId === ctx.currentPlayer) return INVALID_MOVE;
           const defender = G.ships[targetId];
-          if (!defender) return INVALID_MOVE;
 
           const distance = wrappedDistance(attacker.position, defender.position, G.wrap);
           if (!canAttack(attacker, defender, distance)) return INVALID_MOVE;
@@ -554,8 +564,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
         attackNPC: ({ G, ctx, events }, npcId: string) => {
           const attacker = G.ships[ctx.currentPlayer];
+          if (!isOwnKey(G.npcs, npcId)) return INVALID_MOVE;
           const npc = G.npcs[npcId];
-          if (!npc) return INVALID_MOVE;
 
           const distance = wrappedDistance(attacker.position, npc.position, G.wrap);
           if (!canAttackNPC(attacker, npc, distance)) return INVALID_MOVE;
@@ -650,6 +660,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
         chooseCombatAction: ({ G, ctx, events }, action: CombatAction) => {
           if (!G.combat || G.combat.stage !== "chooseAction") return INVALID_MOVE;
+          if (!isOneOf(COMBAT_ACTIONS, action)) return INVALID_MOVE;
           // In hotseat mode, we trust the UI to show who should choose
           // In NPC combat, player always chooses (NPC auto-fires if it won)
 
@@ -850,6 +861,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
           // Check for sunk/derelict
           let combatEnded = false;
+          // Player ships sunk this exchange: lost once both sides' glory and bounties are settled
+          const sunk: string[] = [];
 
           // Check if NPC defender is sunk
           if (isNPC) {
@@ -896,8 +909,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
               const loot = createLootFromShip(defenderShip);
               G.floatingLoot.push(loot);
-              // The ship leaves G.ships here, and its captain dies with it (#265)
-              loseShip(G, G.combat.defenderId, "sunk");
+              sunk.push(G.combat.defenderId);
               combatEnded = true;
             } else if (isDerelict(defenderShip)) {
               defenderShip.isDerelict = true;
@@ -917,13 +929,15 @@ export const Caribbean: Game<CaribbeanState> = {
 
             const loot = createLootFromShip(attacker);
             G.floatingLoot.push(loot);
-            // The ship leaves G.ships here, and its captain dies with it (#265)
-            loseShip(G, G.combat.attackerId, "sunk");
+            sunk.push(G.combat.attackerId);
             combatEnded = true;
           } else if (isDerelict(attacker)) {
             attacker.isDerelict = true;
             combatEnded = true;
           }
+
+          // The sunk ships leave G.ships here, and their captains die with them (#265)
+          for (const id of sunk) loseShip(G, id, "sunk");
 
           // After a failed flee attempt, combat ends after the parting shot
           if (G.combat.fleeOutcome === "caught") {

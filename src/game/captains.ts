@@ -2,6 +2,8 @@ import type { Hex } from "./hex";
 import { hexEquals, wrappedNeighbors } from "./hex";
 import type { MapWrap } from "./hex";
 import { SHIP_SPECS } from "./constants";
+import { isIndexOf, isOneOf } from "./moveArgs";
+import { STARTER_SHIP_CLASSES } from "./types";
 import type { Captain, CaribbeanState, MapCell, Nation, Region, ShipClass, ShipState } from "./types";
 
 export const CAPTAINS: Captain[] = [
@@ -163,6 +165,15 @@ export function findHomeStart(
 
   const ports = cells.filter((c) => c.hasPort && c.dockingHex);
   return firstOf(ports.filter(inNationWaters)) ?? firstOf(ports);
+}
+
+/**
+ * Whether a captain pick is well formed: `captainIndex` a position in
+ * `hand` and `shipClass` a starter class. Both picks (the draft's and a
+ * replacement captain's, #265) check their untrusted arguments here.
+ */
+export function isCaptainPick(hand: readonly Captain[] | undefined, captainIndex: unknown, shipClass: unknown): boolean {
+  return hand !== undefined && isIndexOf(hand, captainIndex) && isOneOf(STARTER_SHIP_CLASSES, shipClass);
 }
 
 /**

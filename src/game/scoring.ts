@@ -1,6 +1,7 @@
 import type { ShipState, NPCShip } from "./types";
 import { WIN_SCORE, GOLD_PER_GLORY } from "./types";
 import { hexEquals } from "./hex";
+import { isCount } from "./moveArgs";
 
 /**
  * Check if a ship is at its home port (at the docking hex)
@@ -14,7 +15,7 @@ export function isAtHomePort(ship: ShipState): boolean {
  * Check if player can stash gold
  */
 export function canStashGold(ship: ShipState, amount: number): boolean {
-  if (amount <= 0) return false;
+  if (!isCount(amount)) return false;
   if (ship.gold < amount) return false;
   if (!isAtHomePort(ship)) return false;
   return true;

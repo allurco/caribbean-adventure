@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { createShipState } from "./economy";
 import { hex, hexEquals } from "./hex";
+import { createFlotillaShip, moveNPC } from "./npcManager";
 import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, Mission, NPCShip } from "./types";
-import { awaitingCaptain, dealReplacementHand, loseShip, replaceCaptain } from "./captainDeath";
+import { awaitingCaptain, dealReplacementHand, isEliminated, loseShip, replaceCaptain, winnerWhenAllOut } from "./captainDeath";
 
 /**
  * Captain death and replacement (#265): a player who loses their ship loses
@@ -97,7 +98,47 @@ describe("dealReplacementHand: the start of the player's next turn", () => {
     loseShip(G, "0", "sunk");
     dealReplacementHand(G, "0");
     expect(G.draftHands["0"]).toEqual([captain("drake"), captain("morgan")]);
-    expect(G.captainDeck.map((c) => c.id)).toEqual(["ducasse", "blackbeard"]);
+    expect(G.captainDeck.map((c) => c.id)).toEqual(["ducasse"]);
+  });
+
+  it("never deals the dead captain again: they are out of the game", () => {
+    const G = table();
+    loseShip(G, "0", "sunk");
+    expect(G.captainDeck.map((c) => c.id)).toEqual(["drake", "morgan", "ducasse"]);
+  });
+
+  it("deals a hand of one when only one captain is left", () => {
+    const G = table();
+    G.captainDeck = [captain("drake")];
+    loseShip(G, "0", "sunk");
+    dealReplacementHand(G, "0");
+    expect(G.draftHands["0"]).toEqual([captain("drake")]);
+    expect(isEliminated(G, "0")).toBe(false);
+  });
+
+  it("puts the player out of the game when no captain is left to deal", () => {
+    const G = table();
+    G.captainDeck = [];
+    loseShip(G, "0", "sunk");
+    dealReplacementHand(G, "0");
+    expect(isEliminated(G, "0")).toBe(true);
+    expect(awaitingCaptain(G, "0")).toBe(false);
+    expect(G.draftHands["0"]).toEqual([]);
+    expect(G.lostShips?.["0"]).toMatchObject({ score: 4, stashedGold: 60 });
+    expect(replaceCaptain(G, "0", 0, "Sloop")).toBe(false);
+  });
+
+  it("releases the flotillas hunting a player who goes out, and they sail on", () => {
+    const G = table();
+    G.captainDeck = [];
+    G.npcs.hunter = createFlotillaShip("hunter", hex(2, 0), "Spain", "Sloop", "0", hex(1, 0));
+    loseShip(G, "0", "sunk");
+    expect(moveNPC(G, "hunter")).toBe(false);
+    dealReplacementHand(G, "0");
+    expect(G.npcs.hunter.huntingTargetId).toBeNull();
+    expect(G.pirates?.["0"]).toBeUndefined();
+    expect(moveNPC(G, "hunter")).toBe(true);
+    expect(G.npcs.hunter.position).toEqual(hex(1, 0));
   });
 
   it("deals nothing to a seat with a ship, nor a second hand", () => {
@@ -166,7 +207,7 @@ describe("replaceCaptain: the pick", () => {
     expect(G.draftHands["0"]).toEqual([]);
     expect(awaitingCaptain(G, "0")).toBe(false);
     expect(G.lostShips?.["0"]).toBeUndefined();
-    expect(G.captainDeck.map((c) => c.id)).toEqual(["ducasse", "blackbeard", "morgan"]);
+    expect(G.captainDeck.map((c) => c.id)).toEqual(["ducasse", "morgan"]);
   });
 
   it("refuses a seat with a ship, a pick outside the hand, or a ship that is not a starter", () => {
@@ -184,5 +225,35 @@ describe("replaceCaptain: the pick", () => {
     const { G } = replaced();
     const json = JSON.stringify(G);
     expect(JSON.stringify(JSON.parse(json))).toBe(json);
+  });
+});
+
+describe("winnerWhenAllOut: every seat is out of the game", () => {
+  /** Seats 0 and 1 both out, with `glory` each. */
+  function allOut(glory: [number, number]): CaribbeanState {
+    const G = table();
+    G.captainDeck = [];
+    G.ships["0"].score = glory[0];
+    G.ships["1"].score = glory[1];
+    loseShip(G, "0", "sunk");
+    loseShip(G, "1", "sunk");
+    dealReplacementHand(G, "0");
+    dealReplacementHand(G, "1");
+    return G;
+  }
+
+  it("is the seat with the most glory", () => {
+    expect(winnerWhenAllOut(allOut([2, 5]), ["0", "1"])).toBe("1");
+  });
+
+  it("breaks a tie as the win condition does: the first seat", () => {
+    expect(winnerWhenAllOut(allOut([3, 3]), ["0", "1"])).toBe("0");
+  });
+
+  it("is no one while any seat is still in the game", () => {
+    const G = allOut([2, 5]);
+    G.lostShips!["1"].eliminated = undefined;
+    expect(winnerWhenAllOut(G, ["0", "1"])).toBeNull();
+    expect(winnerWhenAllOut(table(), ["0", "1"])).toBeNull();
   });
 });

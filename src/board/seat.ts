@@ -1,6 +1,6 @@
 import type { Handoff } from "./turnHandoff";
 import type { Captain, CaribbeanState, CombatStage, CombatState, ShipState } from "../game/types";
-import { awaitingCaptain } from "../game/captainDeath";
+import { awaitingCaptain, isEliminated } from "../game/captainDeath";
 import { npcName } from "./npcName";
 
 /**
@@ -157,13 +157,16 @@ export interface GloryRow {
   glory: number;
   /** The seat the board is for. */
   viewer: boolean;
+  /** Out of the game: its ship lost with no captain left to deal (#265). */
+  out: boolean;
 }
 
 /**
  * Every seat's captain and glory, most glory first and ties in seat order.
  * Glory (`score`) is public (#109); purses and holds are not, so they are
  * not on it. A seat whose ship was lost keeps its glory on the board until
- * its new captain sails (#265).
+ * its new captain sails, and for good, marked out, once it is out of the
+ * game (#265).
  */
 export function gloryScoreboard(G: Pick<CaribbeanState, "ships" | "lostShips">, viewer: string): GloryRow[] {
   const glory = [
@@ -171,7 +174,13 @@ export function gloryScoreboard(G: Pick<CaribbeanState, "ships" | "lostShips">, 
     ...Object.entries(G.lostShips ?? {}).map(([seat, lost]) => [seat, lost.score] as const),
   ];
   return glory
-    .map(([seat, score]) => ({ seat, name: seatName(G, seat), glory: score, viewer: seat === viewer }))
+    .map(([seat, score]) => ({
+      seat,
+      name: seatName(G, seat),
+      glory: score,
+      viewer: seat === viewer,
+      out: isEliminated(G, seat),
+    }))
     .sort((a, b) => b.glory - a.glory || Number(a.seat) - Number(b.seat));
 }
 

@@ -36,6 +36,10 @@ export type ShipClass = (typeof SHIP_CLASSES)[number];
 
 export const STARTER_SHIP_CLASSES: readonly ShipClass[] = ["Sloop", "Flute"];
 
+export const DAMAGE_CATEGORIES = ["hull", "crew", "masts"] as const;
+
+export const COMBAT_ACTIONS = ["fire", "board", "flee"] as const;
+
 export interface ShipStats {
   maneuverability: number;
   scouting: number;
@@ -97,7 +101,7 @@ export interface ShipState {
   activeMission?: Mission; // Current active mission from tavern
 }
 
-export type CombatAction = "fire" | "board" | "flee";
+export type CombatAction = (typeof COMBAT_ACTIONS)[number];
 export type CombatStage = "seamanship" | "chooseAction" | "fleeAttempt" | "cannons" | "resolution";
 export type FleeOutcome = "escaped" | "caught" | null;
 
@@ -278,7 +282,8 @@ export interface CaribbeanState {
   /**
    * The seats whose ship is lost and whose captain died with it (#265), by
    * player id: from the loss until the seat picks a new captain at the
-   * start of its next turn (`captainDeath.ts`). Their ship is gone from
+   * start of its next turn, or for good once it is out of the game
+   * (`captainDeath.ts`). Their ship is gone from
    * `ships`, so what the player keeps waits here. Optional for the same
    * reason as `pirates` (missing means no seat is waiting).
    */
@@ -297,6 +302,11 @@ export interface LostShip {
   score: number;
   /** The player's stashed gold, kept; private to the seat like a ship's stash. */
   stashedGold: number;
+  /**
+   * Out of the game: no captain was left to deal when the seat's turn came
+   * (#265). It keeps its glory, and has no ship and no more turns.
+   */
+  eliminated?: true;
 }
 
 /** How a player turned pirate: by sinking or by boarding an NPC merchant. */
