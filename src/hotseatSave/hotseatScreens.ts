@@ -58,6 +58,11 @@ export function afterRestoreFailed(now: number): HotseatScreen {
   return { kind: "start", save: null, continuable: false, notice: "failed", shownAt: now };
 }
 
+/** Back on the start screen after it threw while showing the stored save (set aside): it could not be read, so only New game is offered. */
+export function afterStartScreenFailed(now: number): HotseatScreen {
+  return { kind: "start", save: null, continuable: false, notice: "corrupt", shownAt: now };
+}
+
 /** Save & leave, after the save was written or failed: leave at once, or ask before losing the voyage. */
 export function afterSaveAndLeave(result: SaveWriteResult): "leave" | "askFirst" {
   return result.ok ? "leave" : "askFirst";

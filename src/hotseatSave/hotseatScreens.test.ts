@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { HotseatSave } from "./hotseatSave";
-import { afterRestoreFailed, afterSaveAndLeave, openingScreen, newGameOverwrites, continueVoyage, newVoyage } from "./hotseatScreens";
+import { afterRestoreFailed, afterStartScreenFailed, afterSaveAndLeave, openingScreen, newGameOverwrites, continueVoyage, newVoyage } from "./hotseatScreens";
 
 /** A save of a `numPlayers`-seat match on the small map with seed 7; only what the screens read is filled in. */
 function saveFor(numPlayers: number): HotseatSave {
@@ -50,6 +50,12 @@ describe("the hotseat game's screens (#300)", () => {
 
   it("comes back to the start screen, saying so, when a voyage cannot be restored", () => {
     expect(afterRestoreFailed(5)).toEqual({ kind: "start", save: null, continuable: false, notice: "failed", shownAt: 5 });
+  });
+
+  it("says the save could not be read, offering only New game, when the start screen throws on it", () => {
+    const screen = afterStartScreenFailed(5);
+    expect(screen).toEqual({ kind: "start", save: null, continuable: false, notice: "corrupt", shownAt: 5 });
+    expect(newGameOverwrites(screen)).toBe(false);
   });
 
   it("leaves at once when the voyage is saved, and asks first when it could not be", () => {

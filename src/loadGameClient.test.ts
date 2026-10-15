@@ -83,7 +83,7 @@ describe("loading the game client", () => {
     expect(hotseat.game.phases!.combat.moves).toBe(Caribbean.phases!.combat.moves);
   });
 
-  it("continues a saved voyage on its seats, saving every state it reaches (#300)", async () => {
+  it("continues a saved voyage on its seats, saving every state it reaches from there (#300)", async () => {
     const { loadGameClient } = await import("./loadGameClient");
     const { saveHotseat } = await import("./hotseatSave/hotseatSave");
     const map = { mapSize: "small", mapSeed: 1, cells: [] } as const;
@@ -103,8 +103,9 @@ describe("loading the game client", () => {
     const continued = HeadlessClient<CaribbeanState>({ game: options.game, numPlayers: options.numPlayers, enhancer: options.enhancer });
     expect(continued.getState()!.ctx.currentPlayer).toBe("1");
     expect(continued.getState()!.G.ships["0"].captain).toEqual(played.getState()!.G.ships["0"].captain);
-    expect(states).toHaveLength(1);
+    // Not saved again until it is played on, so the save keeps its time
+    expect(states).toEqual([]);
     continued.moves.pickCaptain(0, "Sloop");
-    expect(states.length).toBeGreaterThan(1);
+    expect(states.length).toBeGreaterThan(0);
   });
 });

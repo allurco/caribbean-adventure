@@ -45,6 +45,16 @@ describe("reading a saved game back", () => {
       JSON.stringify({ ...save, cellPatches: [[1]] }),
       JSON.stringify({ ...save, regions: 3 }),
       JSON.stringify({ ...save, mapFingerprint: 7 }),
+      // What the start screen and the restore read of G and ctx
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: undefined } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: null } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: [] } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: { 0: 5 } } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: { 0: { captain: { name: 7 } } } } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, lostShips: 3 } } }),
+      JSON.stringify({ ...save, state: { ...save.state, ctx: { ...save.state.ctx, phase: 5 } } }),
+      JSON.stringify({ ...save, state: { ...save.state, ctx: { ...save.state.ctx, numPlayers: undefined } } }),
+      JSON.stringify({ ...save, state: { ...save.state, ctx: { ...save.state.ctx, turn: Number.NaN } } }),
     ];
     for (const raw of corrupt) expect(parseHotseatSave(raw), raw.slice(0, 40)).toEqual({ kind: "unreadable", reason: "corrupt" });
   });

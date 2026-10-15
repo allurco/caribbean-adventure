@@ -25,12 +25,14 @@ describe("the hotseat store enhancer", () => {
     expect(states.at(-1)!.ctx.phase).toBe("main");
   });
 
-  it("starts a restored match in its saved state and reports that state at once", () => {
+  it("starts a restored match in its saved state, and reports it only once it changes, so a bare Continue keeps the save's time", () => {
     const played = match();
     played.client.moves.pickCaptain(0, "Sloop");
     const saved = played.client.store.getState();
     const { client, states } = match(saved);
     expect(client.getState()!.ctx.phase).toBe("main");
-    expect(states).toEqual([saved]);
+    expect(states).toEqual([]);
+    client.events.endTurn!();
+    expect(states.at(-1)!._stateID).toBeGreaterThan(saved._stateID);
   });
 });
