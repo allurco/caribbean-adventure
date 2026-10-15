@@ -1,4 +1,4 @@
-import { Audio, AudioListener, AudioLoader } from "three";
+import { Audio, AudioListener, AudioLoader, PositionalAudio } from "three";
 import type { Object3D } from "three";
 import {
   type AudioSettings,
@@ -40,7 +40,21 @@ export interface PlayOptions {
   loop?: boolean;
   /** Base volume instead of the registry's, 0..1 (before the master volume). */
   volume?: number;
+  /**
+   * Where in the world the sound comes from (#263): heard from that point
+   * relative to the listener on the camera, panned and fading with distance.
+   * Without it the sound plays flat, as from the listener.
+   */
+  at?: readonly [number, number, number];
 }
+
+/**
+ * How a placed sound fades with distance, in world units: full within the
+ * distance of a close ship zoom, then gently, so a fight seen from the
+ * map's zoom is quieter but still heard.
+ */
+export const POSITIONAL_REF_DISTANCE = 4;
+export const POSITIONAL_ROLLOFF = 0.6;
 
 export interface SoundHandle {
   stop(): void;
@@ -93,7 +107,7 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
     play(id, options = {}) {
       if (!listener) return null;
       const entry = soundById(id);
-      const audio = new Audio(listener);
+      const audio = options.at ? placedAudio(listener, options.at) : new Audio(listener);
       let stopped = false;
       // A first play waits on its buffer; it counts as playing meanwhile
       let loading = true;
@@ -143,6 +157,21 @@ export function createAudioEngine(storage: SettingsStorage | undefined, base: st
       return () => subscribers.delete(notify);
     },
   };
+}
+
+/** A sound placed at `at` in the world: its panner set once from there (it does not move). */
+function placedAudio(listener: AudioListener, at: readonly [number, number, number]): PositionalAudio {
+  const audio = new PositionalAudio(listener);
+  audio.setDistanceModel("inverse");
+  audio.setRefDistance(POSITIONAL_REF_DISTANCE);
+  audio.setRolloffFactor(POSITIONAL_ROLLOFF);
+  // Not in the scene, and still: the panner is placed directly, once.
+  const panner = audio.panner;
+  const t = listener.context.currentTime;
+  panner.positionX.setValueAtTime(at[0], t);
+  panner.positionY.setValueAtTime(at[1], t);
+  panner.positionZ.setValueAtTime(at[2], t);
+  return audio;
 }
 
 /**
