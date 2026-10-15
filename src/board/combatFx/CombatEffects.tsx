@@ -17,11 +17,11 @@ const COMBAT_FX_PRIORITY = -0.5;
 /** The longest frame the effects step over, s: a stalled tab does not throw the smoke across the map. */
 const MAX_STEP = 0.1;
 
-const SMOKE: PuffLook = { color: "#ece8df", shade: "#8e8a84", lit: 1, intensity: 1, additive: false, opacity: 0.26, grow: 4, growSeconds: 5, fadeIn: 0.02, fadeOut: 0.55, stretch: 2.6, flat: false };
+const SMOKE: PuffLook = { color: "#ece8df", shade: "#8e8a84", lit: 1, intensity: 1, additive: false, opacity: 0.3, grow: 2.6, growSeconds: 5, fadeIn: 0.02, fadeOut: 0.55, stretch: 3.4, flat: false };
 const FLASH: PuffLook = { color: "#ffc46b", shade: "#ffc46b", lit: 0, intensity: 3.2, additive: true, opacity: 1, grow: 1.4, growSeconds: 0.05, fadeIn: 0, fadeOut: 0.7, stretch: 1, flat: false };
 const SPRAY: PuffLook = { color: "#eef4f4", shade: "#9fb3b8", lit: 0.6, intensity: 1, additive: false, opacity: 0.8, grow: 0.6, growSeconds: 0.6, fadeIn: 0, fadeOut: 0.3, stretch: 1, flat: false };
 const MIST: PuffLook = { color: "#e8eeee", shade: "#a9b4b6", lit: 0.7, intensity: 1, additive: false, opacity: 0.35, grow: 2.5, growSeconds: 1, fadeIn: 0.05, fadeOut: 0.6, stretch: 1.4, flat: false };
-const FOAM: PuffLook = { color: "#f4f7f6", shade: "#cfd9da", lit: 0, intensity: 1, additive: false, opacity: 0.55, grow: 2, growSeconds: 2.5, fadeIn: 0.15, fadeOut: 0.6, stretch: 1, flat: true };
+const FOAM: PuffLook = { color: "#e6efee", shade: "#cfd9da", lit: 0, intensity: 1, additive: false, opacity: 0.32, grow: 1.5, growSeconds: 2.5, fadeIn: 0.15, fadeOut: 0.6, stretch: 1, flat: true };
 
 /**
  * The fight's effects on the board (#263): steps the combat director once a

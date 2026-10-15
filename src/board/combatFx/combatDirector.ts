@@ -34,7 +34,7 @@ import { stream } from "../visuals/variationStream";
 export const KINDS = {
   // Powder smoke: blown out of the ports, then held in a low bank on the water, drifting downwind.
   smoke: { gravity: -0.01, drag: 1.3, windFollow: 1, onSea: "pass", life: 22, ceiling: 0.1 },
-  flash: { gravity: 0, drag: 6, windFollow: 0, onSea: "pass", life: 0.14 },
+  flash: { gravity: 0, drag: 6, windFollow: 0, onSea: "pass", life: 0.25 },
   spray: { gravity: 2.6, drag: 0.35, windFollow: 0.2, onSea: "die", life: 2.5 },
   mist: { gravity: -0.01, drag: 2.5, windFollow: 0.6, onSea: "pass", life: 2.4, ceiling: 0.16 },
   splinter: { gravity: 2.6, drag: 0.3, windFollow: 0.1, onSea: "float", life: 14 },
@@ -346,9 +346,9 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
     const [sx, sz] = starboard(fx.held.heading);
     const [kx, kz] = forward(fx.held.heading);
     const ox = side * sx, oz = side * sz;
-    spawn(pools.flash, KINDS.flash, { x: muzzle.x + ox * 0.015, y: muzzle.y, z: muzzle.z + oz * 0.015, vx: ox * 0.3, vy: 0, vz: oz * 0.3, size: 0.07 + 0.03 * random(), seed: random() });
+    spawn(pools.flash, KINDS.flash, { x: muzzle.x + ox * 0.015, y: muzzle.y, z: muzzle.z + oz * 0.015, vx: ox * 0.3, vy: 0, vz: oz * 0.3, size: 0.12 + 0.05 * random(), seed: random() });
     const life = reduced ? 7 : 16;
-    for (let k = 0; k < 12; k++) {
+    for (let k = 0; k < 14; k++) {
       const out = 0.12 + 0.8 * random();
       const along = (random() - 0.5) * 0.2;
       spawn(pools.smoke, KINDS.smoke, {
@@ -576,7 +576,8 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
     sink.foamDue = now() + (reduced ? 0.12 : 0.06);
     const spread = 0.6 + 0.6 * t;
     const along = (random() - 0.5) * fx.size.length * 0.9;
-    const across = (random() < 0.5 ? -1 : 1) * fx.size.beam * (0.4 + 0.4 * random()) * spread;
+    // Along her waterline and out from it, where it shows past the hull and the sails.
+    const across = (random() < 0.5 ? -1 : 1) * fx.size.beam * (0.5 + 0.9 * random()) * spread;
     const [sx, sz] = starboard(fx.held.heading);
     const [kx, kz] = forward(fx.held.heading);
     const x = fx.held.x + sx * across + kx * along;
@@ -585,7 +586,7 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
     spawn(pools.foam, KINDS.foam, {
       x, y: env.seaHeight(x, z), z,
       vx: sx * Math.sign(across) * out, vy: 0, vz: sz * Math.sign(across) * out,
-      size: 0.08 + 0.08 * random(),
+      size: 0.05 + 0.06 * random(),
       life: (reduced ? 3 : 5) + 2 * random(),
       seed: random(),
     });

@@ -24,8 +24,8 @@ export const PUFF_VERTEX = /* glsl */ `
     vec2 p = mat2(cos(a), sin(a), -sin(a), cos(a)) * position.xy;
     vec4 mvPosition;
     if (uFlat > 0.5) {
-      // Lying on the sea: the quad in world x and z.
-      mvPosition = modelViewMatrix * vec4(iOffset + vec3(p.x, 0.0, p.y) * iSize, 1.0);
+      // Lying on the sea, facing up (the quad's y onto world -z), a hair above the swell so the drawn waves do not swallow it.
+      mvPosition = modelViewMatrix * vec4(iOffset + vec3(p.x, 0.0, -p.y) * iSize + vec3(0.0, 0.012, 0.0), 1.0);
     } else {
       mvPosition = modelViewMatrix * vec4(iOffset, 1.0);
       mvPosition.xy += vec2(p.x * uStretch, p.y) * iSize;
