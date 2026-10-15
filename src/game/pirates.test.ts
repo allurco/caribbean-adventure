@@ -84,7 +84,8 @@ function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanSta
       cells: water,
       ships,
       mapSize: "small",
-      captainDeck: [],
+      // Captains to deal: a sunk player's turn comes straight after the fight (#284), and awaits a new captain rather than going out
+      captainDeck: [captain("England"), captain("France")],
       draftHands: {},
       floatingLoot: [],
       npcs: {},

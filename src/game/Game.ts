@@ -344,18 +344,14 @@ export const Caribbean: Game<CaribbeanState> = {
           if (isEliminated(G, ctx.currentPlayer)) events.endTurn();
         },
         order: {
-          // boardgame.io's default order, except that a seat which has just
-          // lost its ship (no hand dealt yet) is passed over once: its turn
-          // ended with the fight that lost it, and its next turn deals it a
-          // new captain's hand. A seat out of the game is passed over for
-          // good (#265). Never a seat stuck with no ship.
-          first: ({ G, ctx }) => {
-            const seats = ctx.playOrder.length;
-            let first = ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % seats;
-            const seat = ctx.playOrder[first];
-            if (G.lostShips?.[seat] && (G.draftHands[seat]?.length ?? 0) === 0) first = (first + 1) % seats;
-            return seatStillIn(G, ctx.playOrder, first);
-          },
+          // boardgame.io's default order, passing over a seat out of the
+          // game for good (#265). The phase begins after the draft, or when
+          // a fight ends: combat keeps the attacker's seat (its own order),
+          // so the turn moves on exactly one seat from the attacker, whose
+          // turn the fight ended (#284). A seat whose ship was lost is dealt
+          // a new captain's hand as its turn begins, so it never sticks.
+          first: ({ G, ctx }) =>
+            seatStillIn(G, ctx.playOrder, ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % ctx.playOrder.length),
           next: ({ G, ctx }) => seatStillIn(G, ctx.playOrder, (ctx.playOrderPos + 1) % ctx.playOrder.length),
         },
         onEnd: ({ G, random }) => {
@@ -604,6 +600,13 @@ export const Caribbean: Game<CaribbeanState> = {
 
     combat: {
       turn: {
+        // The fight is played on the attacker's turn: the current player
+        // stays the attacker, and main moves the turn on from there (#284).
+        // boardgame.io's default would move it on a seat as combat begins.
+        order: {
+          first: ({ ctx }) => ctx.playOrderPos,
+          next: ({ ctx }) => ctx.playOrderPos,
+        },
         activePlayers: { all: "combat" },
       },
       moves: {

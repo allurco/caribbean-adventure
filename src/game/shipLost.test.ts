@@ -113,9 +113,8 @@ describe("a ship sunk in combat (#265)", () => {
     client.moves.attackShip("1");
     fireOnce(client);
     expect(stateOf(client).G.ships["1"]).toBeUndefined();
-    expect(stateOf(client).ctx.currentPlayer).toBe("0");
 
-    client.events.endTurn!();
+    // The fight ended the attacker's turn: the defender's comes next (#284)
     const { G, ctx } = stateOf(client);
     expect(ctx.currentPlayer).toBe("1");
     expect(ctx.phase).toBe("main");
@@ -191,7 +190,6 @@ describe("a ship sunk in combat (#265)", () => {
     const client = startGame({ "0": ship(0, 0, "blackbeard", true), "1": loser });
     client.moves.attackShip("1");
     fireOnce(client);
-    client.events.endTurn!();
     client.moves.pickCaptain(0, "Sloop");
     expect(stateOf(client).G.ships["1"]).toMatchObject({ score: 3, stashedGold: 40 });
   });
@@ -200,7 +198,7 @@ describe("a ship sunk in combat (#265)", () => {
     const client = startGame({ "0": ship(0, 0, "blackbeard", true), "1": ship(1, 0, "surcouf", false) });
     client.moves.attackShip("1");
     fireOnce(client);
-    client.events.endTurn!();
+    expect(stateOf(client).ctx.currentPlayer).toBe("1");
     const before = stateOf(client).G;
     client.moves.moveShip(2, 0);
     client.moves.stashGold(10);
