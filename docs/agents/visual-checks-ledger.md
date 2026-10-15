@@ -142,7 +142,7 @@ That is enough to answer "which PR is this from?" later without guessing.
 ### 2026-10-15: NPCs sail once after a fight (#288, PR #293)
 
 - **Branch and commit:** `fix/288-npc-after-fight` at `b717174`.
-- **Renderer:** headless Chromium on the GPU, "ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Max, Unspecified Version)", 1280×800, debug panel hidden (`.`).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1280×800, debug panel hidden (`.`).
 - **View:** two seats, `?players=2&size=small&seed=1&skipLogin=1&cx=6&cz=19.9&dist=9` (over Thornwood Bay); solo, `?size=small&seed=1&skipLogin=1&cx=8.5&cz=20&dist=11` (over Marisma Bay). The fight camera reframes the two ships once the fight starts; in some runs the view was zoomed out with the mouse wheel to keep the other NPCs in frame.
 - **How the fights were set up:** captains and ships drafted through the draft screen. No NPC had spawned yet, so the match state was rewritten in the client's store (an `UPDATE` with a new `G`): a Flute merchant with no cannons beside the player's ship as the prey (hull 1 to sink it, crew 1 to board it, hull 4 for a fight over several rounds), and two or three more merchants nearby, bound for far ports, to watch. The rest went through the UI: Attack!, a click on the red hex, then the combat panel's buttons, and End Turn.
 - **Findings:**
