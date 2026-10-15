@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { Client as HeadlessClient } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { SHIP_MODELS, shipModelUrl } from "./board/shipModels";
-import type { CaribbeanState } from "./game/Game";
+import { PLAYER_COUNT, type CaribbeanState } from "./game/Game";
 
 const preload = vi.hoisted(() => vi.fn());
 vi.mock("@react-three/drei", async (importOriginal) => ({
@@ -32,5 +32,25 @@ describe("loading the game client", () => {
     // Like the hotseat client: one shared screen, no seat.
     const client = HeadlessClient<CaribbeanState>({ game, numPlayers: 2 });
     expect(Object.keys(client.getState()!.G.draftHands)).toEqual(["0", "1"]);
+  });
+
+  it("gives every seat on one page only its own view, through the local transport (#110)", async () => {
+    const { loadSeatClient } = await import("./loadGameClient");
+    const { game, multiplayer, numPlayers } = (await loadSeatClient(undefined)) as unknown as {
+      game: Game<CaribbeanState>;
+      multiplayer: unknown;
+      numPlayers: number;
+    };
+    expect(multiplayer).toBeDefined();
+    expect(numPlayers).toBe(PLAYER_COUNT);
+    // Not the hotseat's whole table: a seat sees its own hand only.
+    const seat = HeadlessClient<CaribbeanState>({ game, numPlayers, playerID: "1" });
+    expect(Object.keys(seat.getState()!.G.draftHands)).toEqual(["1"]);
+  });
+
+  it("hides the dev debug panel for the seats on one page, so its tab does not cover End Turn or the turn bar (#110)", async () => {
+    const { loadSeatClient } = await import("./loadGameClient");
+    const { debug } = (await loadSeatClient(undefined)) as unknown as { debug: unknown };
+    expect(debug).toBe(false);
   });
 });

@@ -27,6 +27,8 @@ export interface DevUrlParams {
   seedGallery?: true;
   /** `?snapshot=1`: one gallery shot (#161): the draft picks itself and the board posts its picture to the gallery, in dev builds only. */
   gallerySnapshot?: true;
+  /** `?seats=1`: every seat of the match on one page, through boardgame.io's local transport, one seat shown at a time (#110), in dev builds only. */
+  localSeats?: true;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -57,6 +59,7 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   if (import.meta.env.DEV) {
     if (params.get("seedGallery") === "1") out.seedGallery = true;
     if (params.get("snapshot") === "1") out.gallerySnapshot = true;
+    if (params.get("seats") === "1") out.localSeats = true;
   }
 
   return out;
