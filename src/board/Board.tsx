@@ -98,6 +98,9 @@ import { PLAYER_COLOURS } from "./shipOwnerColour";
 import { npcShipLook, playerShipLook } from "./shipLook";
 import type { ShipFlag } from "./shipFlags";
 import { GallerySnapshot } from "../lab/GallerySnapshot";
+import { BoardLoadingVeil } from "./BoardLoadingVeil";
+import { SceneReadinessProbe } from "./SceneReadinessProbe";
+import { useSceneReadiness } from "./useSceneReadiness";
 import { STARTER_SHIP_CLASSES } from "../game/types";
 import { createRenderStatsFeed } from "./renderStats";
 import { useAudioUnlock } from "../audio/useAudioUnlock";
@@ -166,6 +169,7 @@ function Scene({
   onPortHover,
   onCameraCut,
   seaBuoys,
+  onReady,
 }: {
   G: CaribbeanState;
   currentPlayer: string;
@@ -208,6 +212,8 @@ function Scene({
   onCameraCut: () => void;
   /** Dev: buoys on the CPU sea surface (#141). */
   seaBuoys: boolean;
+  /** Reports the loading gate's tasks done here: "world" once built, "sky" once baked (useSceneReadiness.ts). */
+  onReady: (task: string) => void;
 }) {
   const currentShipState = G.ships[currentPlayer];
   const controlsRef = useRef<MapControlsType>(null);
@@ -223,6 +229,12 @@ function Scene({
   // Physical sky as image-based lighting for the whole scene (replaces the old
   // hemisphere and fill lights) and as the sea's reflection.
   const skyEnvironment = useSkyEnvironment(lighting);
+  // The loading gate: the sky is baked, and the sea that waits on it is mounted
+  useEffect(() => {
+    if (skyEnvironment) onReady("sky");
+  }, [skyEnvironment, onReady]);
+  // Children commit before their parent's effects run, so by now the world (terrain, decorations, ports) is built and placed
+  useEffect(() => onReady("world"), [onReady]);
   // The sea's wave slopes, rebuilt on the GPU each frame (frozen under
   // reduced motion). The water shades its surface with them and the seabed
   // focuses its sunlight through them (#38 step 6), so they live here; the
@@ -697,6 +709,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   }, [snapshot, ctx.phase, ctx.currentPlayer, pickCaptain]);
   // Dev `stats=1` (#162): the probe in the Canvas reports to the overlay through this feed.
   const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
+  // The loading gate: the board shows once every asset, shader and a few frames are ready
+  const portNames = useMemo(() => G.cells.flatMap((c) => (c.portName ? [c.portName] : [])).join(""), [G.cells]);
+  const readiness = useSceneReadiness(portNames, ctx.phase !== "draft");
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
   const [sinkingShips, setSinkingShips] = useState<SinkingShipData[]>([]);
@@ -1039,12 +1054,22 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onPortHover={setHoveredPort}
           onCameraCut={cameraCut}
           seaBuoys={seaBuoys ?? false}
+          onReady={readiness.complete}
+        />
+        <SceneReadinessProbe
+          compileShaders={readiness.view.compileShaders}
+          countFrames={readiness.view.stage === "frames" && !readiness.view.ready}
+          complete={readiness.complete}
+          frame={readiness.frame}
         />
         {/* Dev: fps, draw calls and triangles (#162); the DEV guard drops it from production builds */}
         {import.meta.env.DEV && renderStatsFeed && <RenderStatsProbe onStats={renderStatsFeed.publish} />}
         {/* Dev: a seed-gallery shot (#161); the DEV guard drops it from production builds */}
-        {import.meta.env.DEV && snapshot && <GallerySnapshot />}
+        {import.meta.env.DEV && snapshot && <GallerySnapshot ready={readiness.view.ready} />}
       </Canvas>
+
+      {/* The loading screen until every asset, shader and a few frames are ready, then faded out */}
+      <BoardLoadingVeil view={readiness.view} />
 
       {/* A camera cut (reduced motion, #229) fades in from a veil rather than jumping */}
       {cameraCuts > 0 && (

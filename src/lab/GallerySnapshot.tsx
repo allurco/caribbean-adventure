@@ -4,15 +4,17 @@ import { SEED_GALLERY_SETTLE_MS, type SeedGalleryMessage } from "./seedGallerySh
 
 /**
  * One seed-gallery shot (#161), mounted in the board's Canvas under
- * `snapshot=1`: once the scene has settled it takes the frame just drawn
+ * `snapshot=1`: once the scene is ready (the board's loading gate,
+ * useSceneReadiness.ts) and has settled, it takes the frame just drawn
  * (right after the render, before the drawing buffer is cleared) and posts
  * it to the gallery that opened this page in its frame.
  */
-export function GallerySnapshot() {
+export function GallerySnapshot({ ready }: { ready: boolean }) {
   const gl = useThree((state) => state.gl);
   const done = useRef(false);
 
   useEffect(() => {
+    if (!ready) return;
     let unsubscribe: (() => void) | null = null;
     const timer = window.setTimeout(() => {
       unsubscribe = addAfterEffect(() => {
@@ -27,7 +29,7 @@ export function GallerySnapshot() {
       window.clearTimeout(timer);
       unsubscribe?.();
     };
-  }, [gl]);
+  }, [gl, ready]);
 
   return null;
 }
