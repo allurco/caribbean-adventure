@@ -1,30 +1,32 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { type InstancedMesh, MeshBasicMaterial, Object3D, SphereGeometry, Vector3 } from "three";
+import { type InstancedMesh, MeshStandardMaterial, Object3D, SphereGeometry, Vector3 } from "three";
 import type { Shot } from "./combatDirector";
-
-/**
- * A round shot's radius, world units: drawn larger than true scale (a 24 lb
- * ball is about 15 cm) like the ships themselves (ADR 0006), so it reads at
- * the game camera's distance.
- */
-const SHOT_RADIUS = 0.013;
-/** How long the faint motion streak draws a ball along its flight, as a multiple of its width. */
-const SHOT_STREAK = 1.8;
+import type { PuffZoom } from "./PuffLayer";
+import { SHOT_IRON } from "./fxTuning";
 
 const dummy = new Object3D();
 const ALONG = new Vector3(0, 0, 1);
 const flight = new Vector3();
 
 /**
- * Round shot in flight (#263): solid black iron, unlit, so neither the sea's
- * glare nor the bloom can wash it out, drawn a little long along its flight.
- * One instance per shot slot, the idle ones at zero size.
+ * Round shot in flight (#263): near-black iron lit by the scene's own sun,
+ * with one small dim glint that stays under the bloom (fxTuning.ts), drawn
+ * a little long along its flight and larger as the camera zooms out. One
+ * instance per shot slot, the idle ones at zero size.
  */
-export function ShotLayer({ shots }: { shots: readonly Shot[] }) {
+export function ShotLayer({ shots, zoom }: { shots: readonly Shot[]; zoom: PuffZoom }) {
   const mesh = useRef<InstancedMesh>(null);
   const { geometry, material } = useMemo(
-    () => ({ geometry: new SphereGeometry(SHOT_RADIUS, 10, 8), material: new MeshBasicMaterial({ color: "#0b0b0c", toneMapped: false }) }),
+    () => ({
+      geometry: new SphereGeometry(SHOT_IRON.radius, 12, 10),
+      material: new MeshStandardMaterial({
+        color: SHOT_IRON.colour,
+        metalness: SHOT_IRON.metalness,
+        roughness: SHOT_IRON.roughness,
+        envMapIntensity: SHOT_IRON.envMapIntensity,
+      }),
+    }),
     []
   );
   useEffect(
@@ -43,7 +45,7 @@ export function ShotLayer({ shots }: { shots: readonly Shot[] }) {
       if (shot.active) {
         flight.subVectors(shot.to, shot.from);
         if (flight.lengthSq() > 1e-12) dummy.quaternion.setFromUnitVectors(ALONG, flight.normalize());
-        dummy.scale.set(1, 1, SHOT_STREAK);
+        dummy.scale.set(zoom.scale, zoom.scale, zoom.scale * SHOT_IRON.streak);
       } else dummy.scale.setScalar(0);
       dummy.updateMatrix();
       m.setMatrixAt(i, dummy.matrix);

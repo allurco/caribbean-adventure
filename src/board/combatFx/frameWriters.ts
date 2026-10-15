@@ -95,3 +95,8 @@ export function viewAxis(x: number, z: number, view: Matrix4, out: [number, numb
   out[0] = vx / length;
   out[1] = vy / length;
 }
+
+/** Writes a number into a shader uniform, kept out of the components (their hooks own the material). */
+export function writeUniform(uniform: { value: number }, value: number): void {
+  uniform.value = value;
+}

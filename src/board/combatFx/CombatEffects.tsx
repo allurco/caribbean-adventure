@@ -1,12 +1,13 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { PerspectiveCamera, type Group } from "three";
+import { PerspectiveCamera, type Group, type Vector3 } from "three";
 import { SCENE_WIND } from "../visuals/sceneWind";
 import { useSeaSurface } from "../visuals/seaSurfaceContext";
 import type { CombatDirector } from "./combatDirector";
 import { createSeaReader } from "./frameWriters";
 import { windDrift } from "./windDrift";
 import { PuffLayer, type PuffLook } from "./PuffLayer";
+import { fxScaleForDistance } from "./fxTuning";
 import { DebrisLayer } from "./DebrisLayer";
 import { ShotLayer } from "./ShotLayer";
 import { GrappleLayer } from "./GrappleLayer";
@@ -37,24 +38,27 @@ export function CombatEffects({ director }: { director: CombatDirector }) {
   const group = useRef<Group>(null);
   const sea = useSeaSurface();
   const reader = useMemo(() => createSeaReader(...windDrift(SCENE_WIND, WIND_DRIFT)), []);
-  useFrame(({ camera, size }, delta) => {
+  useFrame(({ camera, size, controls }, delta) => {
+    const focus = (controls as { target?: Vector3 } | null)?.target;
+    // The small effects (flash, sparks, embers, shot) grow as the camera zooms out (fxTuning.ts).
+    director.setZoom(fxScaleForDistance(focus ? camera.position.distanceTo(focus) : 0));
     if (sea) reader.sync(sea.surface, sea.clock.waveTimeAt(), camera.position);
     if (camera instanceof PerspectiveCamera) director.setView(camera.fov, size.width / Math.max(1, size.height));
     director.update(Math.min(delta, MAX_STEP), reader.env);
     if (group.current) group.current.position.x = director.copyX;
   }, COMBAT_FX_PRIORITY);
-  const { pools } = director;
+  const { pools, zoom } = director;
   return (
     <group ref={group}>
       <PuffLayer pool={pools.foam} look={FOAM} />
       <PuffLayer pool={pools.smoke} look={SMOKE} />
       <PuffLayer pool={pools.mist} look={MIST} />
       <PuffLayer pool={pools.spray} look={SPRAY} />
-      <PuffLayer pool={pools.flash} look={FLASH} />
-      <PuffLayer pool={pools.spark} look={SPARK} />
-      <PuffLayer pool={pools.ember} look={EMBER} />
+      <PuffLayer pool={pools.flash} look={FLASH} zoom={zoom} />
+      <PuffLayer pool={pools.spark} look={SPARK} zoom={zoom} />
+      <PuffLayer pool={pools.ember} look={EMBER} zoom={zoom} />
       <DebrisLayer pool={pools.splinter} />
-      <ShotLayer shots={director.shots} />
+      <ShotLayer shots={director.shots} zoom={zoom} />
       <GrappleLayer director={director} />
     </group>
   );

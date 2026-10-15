@@ -16,7 +16,7 @@ import {
 } from "three";
 import { SCENE_LIGHTING } from "../visuals/sceneLighting";
 import type { ParticlePool } from "./particlePool";
-import { viewAxis, writePuffs, type PuffShape } from "./frameWriters";
+import { viewAxis, writePuffs, writeUniform, type PuffShape } from "./frameWriters";
 import { SCENE_WIND } from "../visuals/sceneWind";
 import { PUFF_FRAGMENT, PUFF_VERTEX } from "./puffShader";
 
@@ -42,7 +42,12 @@ const sunWorld = new Vector3(...SCENE_LIGHTING.sun.direction);
 const axis: [number, number] = [1, 0];
 
 /** One pool of puffs, drawn in one instanced call; its buffers are written in place each frame (#263). */
-export function PuffLayer({ pool, look }: { pool: ParticlePool; look: PuffLook }) {
+/** A scale the layer's puffs are drawn at, written each frame by its owner (the camera's zoom, fxTuning.ts). */
+export interface PuffZoom {
+  scale: number;
+}
+
+export function PuffLayer({ pool, look, zoom }: { pool: ParticlePool; look: PuffLook; zoom?: PuffZoom }) {
   const { geometry, material, buffers } = useMemo(() => {
     const quad = new PlaneGeometry(1, 1);
     const g = new InstancedBufferGeometry();
@@ -67,6 +72,7 @@ export function PuffLayer({ pool, look }: { pool: ParticlePool; look: PuffLook }
           uSunView: { value: new Vector3() },
           uLit: { value: look.lit },
           uStretch: { value: look.stretch },
+          uScale: { value: 1 },
           uAxis: { value: new Vector2(1, 0) },
           uFlat: { value: look.flat ? 1 : 0 },
         },
@@ -88,6 +94,7 @@ export function PuffLayer({ pool, look }: { pool: ParticlePool; look: PuffLook }
 
   useFrame(({ camera }) => {
     material.uniforms.uSunView.value.copy(sunWorld).transformDirection(camera.matrixWorldInverse);
+    if (zoom) writeUniform(material.uniforms.uScale, zoom.scale);
     if (look.alongWind) {
       viewAxis(SCENE_WIND.toward[0], SCENE_WIND.toward[1], camera.matrixWorldInverse, axis);
       material.uniforms.uAxis.value.set(axis[0], axis[1]);
