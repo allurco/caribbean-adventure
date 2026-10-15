@@ -123,6 +123,15 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-15: the harbour link over the local game, re-check (#125, PR #306)
+
+- **Branch and commit:** `feat/125-online-shell` at `88b046b`.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1440×900 and 844×390 (a phone held sideways: `isMobile`, touch, DPR 2).
+- **View:** the e2e dev server (`e2e/vite.e2e.config.ts` with `E2E_BACKEND=1`, in-memory backend), signed in as a test captain. Steps at each size: Play, Sail alone, the loading screen polled every 250 ms, "Choose Your Captain", the debug panel hidden (`.`), a hit test (`elementFromPoint` at the link's centre); the first captain and the Sloop picked, the ship docked at its home port with the port panel open; "The harbour" clicked back to Play; then Sail alone again (New game, overwrite the saved voyage) and the link clicked from the draft itself.
+- **Findings:** while the loading screen is up the hit test lands on the loading screen, not the link; in the draft it lands on the link, and a click from the draft returns to Play at both sizes. Desktop placement unchanged: 102×28 at top 70, right 16. At 844×390 the link is 102×48 at top 70, 312 px from the right edge, clear of the port panel (its header included) and of End Turn. No page errors.
+- **Not checked:** the game-over screen (no cheap way to reach one in the local game); the layer order against it is pinned by `accountLinkLayer.node.test.ts`.
+- **For the maintainer:** at 844×390 the link now sits mid-screen at the top and covers the middle of the draft's "Choose Your Captain" title and its "Player 1" line. Separately (not from this PR), the port panel's top edge covers the lower part of End Turn at that size.
+
 ### 2026-10-15: the online shell in the Harbour launcher style (#125, PR #306)
 
 - **Branch and commit:** `feat/125-online-shell` at `0b13760`.
