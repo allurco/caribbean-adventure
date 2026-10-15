@@ -12,7 +12,7 @@ import { YourVoyages } from "./YourVoyages";
 export function OnlineView({ client, route }: { client: AccountClient; route: OnlineRoute }) {
   const api = useRoomApi(client);
   switch (route.kind) {
-    case "harbour":
+    case "newRoom":
       return (
         <OnlineSheet title="The harbour" subtitle="Your voyages, and a private room for a new one.">
           {route.saved && <p role="status">Your voyage is saved. Resume it below whenever you like.</p>}
