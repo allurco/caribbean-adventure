@@ -106,6 +106,8 @@ import { HudParchmentPanel } from "./HudParchmentPanel";
 import { HudShipLost } from "./HudShipLost";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
+import { gaugeLine } from "./combatGauge";
+import { SCENE_WIND } from "./visuals/sceneWind";
 import { GameOverScreen } from "./GameOverScreen";
 import { DockingAnimation } from "./DockingAnimation";
 import { TurnChangeAnimation } from "./TurnChangeAnimation";
@@ -1187,6 +1189,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           mayAct={seatMayActInCombat({ playerID: props.playerID, combat: G.combat })}
           waitingLine={combatWaitingFor(G, { playerID: props.playerID, combat: G.combat })}
           watchingLine={fightBystander(props.playerID, G.combat) ? fightWatched(G, G.combat) : null}
+          gaugeLine={gaugeLine(G, G.combat, SCENE_WIND)}
         />
       )}
 

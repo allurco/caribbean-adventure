@@ -126,7 +126,7 @@ describe("sailFullness", () => {
 
   it("follows the wind round: the same heading relative to any wind gives the same fullness", () => {
     for (const swing of [-120, 10, 75]) {
-      const wind = windFor({ ...TRADE_WIND, swingFromViewDeg: swing });
+      const wind = windFor({ ...TRADE_WIND, angle: TRADE_WIND.angle + swing * DEG });
       const eye = Math.atan2(-wind.toward[0], -wind.toward[1]);
       expect(sailFullness(eye + 50 * DEG, wind)).toBeCloseTo(sailFullness(headingOffTheWind(50), SCENE_WIND), 12);
     }
