@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { matchPath } from "./onlineRoute";
 import type { RoomApi, RoomView } from "./roomApi";
 import { seatRole, turnTimerLabel } from "./roomLabels";
 import { BTN_BRASS, BTN_INK, INPUT, LABEL } from "./shellStyles";
@@ -86,7 +87,13 @@ export function RoomLobby({ api, id }: { api: RoomApi; id: string | null }) {
         <p role="status">This room's host has left, so its match cannot be started. Open a new room.</p>
       )}
       {room.status === "starting" && <p role="status">The host is starting the match…</p>}
-      {(room.status === "started" || room.status === "finished") && <p role="status">The match has set sail.</p>}
+      {(room.status === "started" || room.status === "finished") && room.matchId && (
+        <p>
+          <a href={matchPath(room.matchId)} className={BTN_BRASS}>
+            {room.status === "started" ? "Board your ship" : "See how it ended"}
+          </a>
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-shell-ink-wax">
           {error}

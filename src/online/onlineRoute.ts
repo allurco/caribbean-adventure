@@ -1,7 +1,8 @@
 /**
  * The online play views' URLs (#112), in the `?view=` style of
  * `accountRoute.ts`: `?view=rooms` to create a room, `?view=room&id=<uuid>` a
- * room's lobby, and `?view=join&invite=<code>` the invite link a host shares.
+ * room's lobby, `?view=join&invite=<code>` the invite link a host shares, and
+ * `?view=match&id=<uuid>` a started match, played from the seat's own board (#113).
  * Pure; the server builds the invite link with `joinPath` too.
  */
 import { isUuid } from "./uuid";
@@ -9,7 +10,8 @@ import { isUuid } from "./uuid";
 export type OnlineRoute =
   | { kind: "newRoom" }
   | { kind: "room"; id: string | null }
-  | { kind: "join"; inviteCode: string | null };
+  | { kind: "join"; inviteCode: string | null }
+  | { kind: "match"; id: string | null };
 
 /** 128 random bits, base64url: what the server issues (`newInviteCode`). */
 const INVITE_CODE = /^[A-Za-z0-9_-]{22}$/;
@@ -23,6 +25,10 @@ export function parseOnlineRoute(search: string): OnlineRoute | null {
     case "room": {
       const id = params.get("id");
       return { kind: "room", id: id !== null && isUuid(id) ? id.toLowerCase() : null };
+    }
+    case "match": {
+      const id = params.get("id");
+      return { kind: "match", id: id !== null && isUuid(id) ? id.toLowerCase() : null };
     }
     case "join": {
       const code = params.get("invite");
@@ -43,4 +49,8 @@ export function roomPath(id: string): string {
 
 export function joinPath(inviteCode: string): string {
   return `/?${new URLSearchParams({ view: "join", invite: inviteCode }).toString()}`;
+}
+
+export function matchPath(id: string): string {
+  return `/?${new URLSearchParams({ view: "match", id }).toString()}`;
 }

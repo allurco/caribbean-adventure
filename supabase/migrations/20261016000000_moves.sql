@@ -30,6 +30,7 @@ create index moves_match_id_idx on public.moves (match_id, id);
 comment on table public.moves is 'Append-only log of accepted moves. Written and read only by /api (service role).';
 
 alter table public.moves enable row level security;
+alter table public.moves force row level security;
 revoke all on table public.moves from anon, authenticated;
 
 -- Writes the match's new state if it is still at `p_expected_state_id`, logs

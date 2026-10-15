@@ -27,6 +27,20 @@ Online play (PRD #104) has no boardgame.io server: the backend is one Vercel Fun
 - **Rate limits** are fixed-window counters in Postgres (`consume_rate_limit`), per user and action: room creation 5 an hour.
 - **The function runs bundled.** Vercel transpiles function files one by one, and Node's ES modules then cannot resolve the game's extensionless relative imports or `boardgame.io/internal`. So `npm run build` ends with `build:api`, which bundles `server/vercelHandler.ts`, the game code and all dependencies into `api/_server.mjs` (git-ignored; files starting with `_` in `api/` are not functions of their own). `api/index.ts` imports it at run time, and `vercel.json` ships it with the function (`includeFiles`). Vercel runs the framework build, and so the build command, before the function builders.
 
+- **The move pipeline (#113).** `POST /api/matches/:id/actions` carries `{ stateID, action }`. In order, the server:
+  1. refuses a body over 4 KiB with 413, unread;
+  2. counts the action against the player's limits (10 a second, 120 a minute);
+  3. loads the match, and answers 404 unless the caller holds a seat;
+  4. refuses anyone but the seat whose turn it is (`ctx.currentPlayer`; combat is played on the attacker's turn);
+  5. refuses a stale `stateID` with 409 and the seat's current view;
+  6. accepts only `MAKE_MOVE` of a move the game defines as its own key (top-level or a phase's; never `__proto__`, `constructor` and the like), with at most 4 arguments, or `GAME_EVENT` `endTurn` in the `main` phase. No other event (`setPhase`, `endPhase`, `endGame`, `setActivePlayers`, stages), no undo or redo, no plugin action, no `playerID` but the caller's own;
+  7. runs boardgame.io's `CreateGameReducer`, and a move the game refuses is a 400;
+  8. writes with `commit_move`: `UPDATE … WHERE state_id = $old`, plus the `moves` log row, in one transaction. The loser of a race gets 409.
+
+  The stored state keeps no deltalog and no undo or redo history (undo is never allowed online), so nothing in it grows per move. Every response is `viewFor(state, seat)`: `playerViewFor` on `G`, the plugins' own views (the random seed removed), no log.
+- **`moves` is the server's alone**: its arguments can carry what a seat may not know, so no client reads it (row-level security on and forced, no grants).
+- **The browser side** is boardgame.io's own `Client` with a custom transport (`src/online/apiTransport.ts`, the one class in the online code, as boardgame.io requires a `Transport` subclass), delegating to the pure `matchSync.ts`. Actions are sent one at a time; the server's view replaces the client's state; a refusal refetches the view. The client asks `GET /api/matches/:id?since=<stateID>` every 4 s and fetches the view only when it changed, until realtime (#114) replaces the polling.
+
 ## Considered options
 
 - **A boardgame.io server (Koa + socket.io).** Rejected in PRD #104: it needs a long-lived process Vercel does not offer.
@@ -34,6 +48,7 @@ Online play (PRD #104) has no boardgame.io server: the backend is one Vercel Fun
 - **Let members read `matches.state` and strip it in the client.** Rejected: hidden information must never reach a browser (#109).
 - **A separate `match_secrets` table.** Unnecessary: a column grant hides the snapshot as well, and keeps one row per match.
 - **Verify the JWT locally with the project's JWT secret.** Rejected for now: one more secret to manage, and it would not notice a signed-out session. `auth.getUser` costs one call to Supabase Auth per request.
+- **Turn boardgame.io's client events off in the `Game` config** (`events: { setPhase: false, … }`). Rejected: the game's own moves call `events.setPhase` and `events.endTurn`, and the config switches an event off for moves as well. The server's allowlist refuses them from clients instead; the local hotseat client still trusts its one player.
 - **Add `.js` extensions throughout `src/game/`.** Rejected: it touches every game module, and `boardgame.io`'s subpath imports still fail under Node's ES modules.
 - **The Build Output API (`.vercel/output`).** Kept in reserve: it would replace zero-config deployment entirely; bundling into `api/` keeps today's set-up.
 
