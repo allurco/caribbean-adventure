@@ -1,35 +1,18 @@
 import type { AccountClient } from "./accountClient";
 import { JoinRoom } from "./JoinRoom";
-import { MatchView } from "./MatchView";
 import { NewRoomForm } from "./NewRoomForm";
-import { OnlineSheet } from "./OnlineSheet";
 import type { OnlineRoute } from "./onlineRoute";
 import { RoomLobby } from "./RoomLobby";
 import { useRoomApi } from "./useRoomApi";
 
-/** One online view for the signed-in player, in its sheet. */
-export function OnlineView({ client, route }: { client: AccountClient; route: OnlineRoute }) {
+/** A room view (#112) on the shell's sheet (#125): a new room, a room's lobby, an invite. The nameboard carries its title. */
+export function OnlineView({ client, route }: { client: AccountClient; route: Exclude<OnlineRoute, { kind: "match" }> }) {
   const api = useRoomApi(client);
-  switch (route.kind) {
-    case "newRoom":
-      return (
-        <OnlineSheet title="A private room" subtitle="Invite your friends with a link; start once every seat is taken.">
-          <NewRoomForm api={api} />
-        </OnlineSheet>
-      );
-    case "room":
-      return (
-        <OnlineSheet title="The room">
-          <RoomLobby api={api} id={route.id} />
-        </OnlineSheet>
-      );
-    case "match":
-      return <MatchView client={client} matchId={route.id} />;
-    case "join":
-      return (
-        <OnlineSheet title="An invitation">
-          <JoinRoom api={api} inviteCode={route.inviteCode} />
-        </OnlineSheet>
-      );
-  }
+  return (
+    <div className="space-y-5 text-[16px]">
+      {route.kind === "newRoom" && <NewRoomForm api={api} />}
+      {route.kind === "room" && <RoomLobby api={api} id={route.id} />}
+      {route.kind === "join" && <JoinRoom api={api} inviteCode={route.inviteCode} />}
+    </div>
+  );
 }

@@ -1,25 +1,14 @@
 import type { Profile } from "./accountService";
-import { safeAvatarUrl } from "./avatarUrl";
+import { CaptainSeal } from "./CaptainSeal";
 
 /**
  * A player's public face: avatar when the sign-in provider gave one (#106),
- * else a wax seal with their initial; and their display name.
+ * else their wax seal (#125); and their display name.
  */
 export function ProfileCard({ profile }: { profile: Profile }) {
-  // Checked again where it is rendered: an <img> takes nothing but https.
-  const avatarUrl = safeAvatarUrl(profile.avatarUrl);
   return (
     <div className="flex items-center gap-4">
-      {avatarUrl ? (
-        <img src={avatarUrl} alt="" referrerPolicy="no-referrer" className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-black/30" />
-      ) : (
-        <div
-          aria-hidden
-          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[radial-gradient(circle_at_35%_30%,var(--color-shell-ink-wax),#1c0f08_140%)] font-fell-sc text-2xl text-amber-100/90 ring-2 ring-black/30 shadow-[inset_0_-3px_6px_rgba(0,0,0,0.45),inset_0_2px_3px_rgba(255,255,255,0.15)]"
-        >
-          {[...profile.displayName][0]?.toUpperCase()}
-        </div>
-      )}
+      <CaptainSeal id={profile.id} displayName={profile.displayName} avatarUrl={profile.avatarUrl} size="lg" />
       <p className="min-w-0 font-fell text-[26px] leading-tight break-words">{profile.displayName}</p>
     </div>
   );

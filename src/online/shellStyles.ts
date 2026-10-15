@@ -30,3 +30,27 @@ export const TIMBER_FRAME =
 /** The parchment sheet itself: foxed at the edges. */
 export const PARCHMENT_SHEET =
   "rounded-[2px] bg-shell-parchment bg-[radial-gradient(ellipse_at_25%_10%,rgba(255,250,228,0.55),transparent_55%),radial-gradient(ellipse_at_90%_100%,rgba(120,72,24,0.28),transparent_50%)] shadow-[inset_0_0_70px_rgba(116,68,22,0.42),inset_0_0_14px_rgba(84,46,12,0.45)] font-garamond text-shell-ink";
+
+/** The keyboard focus ring, for controls that take none of the button plates. */
+export const FOCUS_RING = FOCUS;
+
+/** Dark button on timber: secondary actions on the boards. */
+export const BTN_TIMBER = `${FOCUS} ${PRESS} inline-flex items-center justify-center gap-1.5 px-3 py-1 font-garamond text-[15px] font-semibold text-[#ecdcae] rounded-[3px] border border-[#8a6a33]/80 bg-[#24160b] shadow-[0_2px_0_#0d0703] hover:bg-[#2f1d0f] active:shadow-none`;
+
+const BOARD_EDGE =
+  "rounded-[3px] border-2 border-shell-tar shadow-[inset_0_1px_0_rgba(255,220,160,0.12),0_12px_28px_rgba(0,0,0,0.5)]";
+
+/** A timber board floating over the harbour, planks running across: the nameboard and the party board (#125). */
+export const BOARD_H = `shell-timber-h ${BOARD_EDGE}`;
+
+/** A timber board with its planks upright: the nav board (#125). */
+export const BOARD_V = `shell-timber-v ${BOARD_EDGE}`;
+
+/** The shell's one parchment sheet (#125), foxed and grained, under the nameboard. */
+export const SHEET = "shell-parchment rounded-[3px] font-garamond text-shell-ink";
+
+/** A small italic heading for a section on the sheet. */
+export const SECTION = "font-fell text-[19px] italic text-shell-ink-soft";
+
+/** A hairline between rows on the sheet. */
+export const RULE = "border-[#7a5c3a]/35";

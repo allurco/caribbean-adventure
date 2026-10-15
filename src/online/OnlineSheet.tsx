@@ -12,9 +12,8 @@ interface OnlineSheetProps {
 }
 
 /**
- * A stand-in frame for the online pages (#105): one parchment sheet in a
- * timber frame on tar. The Harbour launcher shell (#125) replaces this frame
- * with its own (nav board, nameboard, harbour) and keeps what goes inside.
+ * One parchment sheet in a timber frame on tar, for a page outside the online
+ * shell (#125) that has something to say: the match board when it cannot load.
  */
 export function OnlineSheet({ title, subtitle, children, backLink = true }: OnlineSheetProps) {
   useShellFonts();
