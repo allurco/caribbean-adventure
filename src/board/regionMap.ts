@@ -6,7 +6,8 @@ import { SHIP_VIEW_DISTANCE } from "./shipView";
 
 /**
  * The regions on the board (#239), pure: the borders between them, a label
- * position per region, and how loud the labels are at each zoom. The region
+ * position per region, and how strongly their names are written at each
+ * zoom (where the names lie is `regionNamePlacement.ts`). The region
  * table and every cell's region come from `G` (src/game/regions.ts); this
  * only turns them into geometry. The label positions are where the event
  * deck (#240) points the camera at a region.
@@ -140,16 +141,19 @@ function centreOf(cells: readonly MapCell[], period: number): { x: number; z: nu
   return { x: (((angle / (Math.PI * 2)) * period) % period + period) % period, z: z / n };
 }
 
-/** The labels' opacity at map zoom: legible, not loud (ADR 0002's ambience). */
-export const REGION_LABEL_OPACITY = 0.55;
-/** Camera distance from which the labels are at `REGION_LABEL_OPACITY`. */
-export const REGION_LABEL_FULL_DISTANCE = 12;
+/** Camera distance from which the regions' names are written at full strength: the overview. */
+export const REGION_NAME_FULL_DISTANCE = 20;
 /** Camera distance at and below which they are gone: ship zoom, where they would lie across the sea. */
-export const REGION_LABEL_GONE_DISTANCE = SHIP_VIEW_DISTANCE + 2;
+export const REGION_NAME_GONE_DISTANCE = SHIP_VIEW_DISTANCE + 2;
 
-/** The region labels' opacity for a camera `distance` from its focus. */
-export function regionLabelOpacity(distance: number): number {
-  const t = (distance - REGION_LABEL_GONE_DISTANCE) / (REGION_LABEL_FULL_DISTANCE - REGION_LABEL_GONE_DISTANCE);
+/**
+ * How strongly the regions' names are written into the sea, 0 … 1, for a
+ * camera `distance` from its focus: whole at the overview, about half at mid
+ * zoom, gone at ship zoom, eased between. The ocean shader scales the ink by
+ * it (`regionChart.ts`).
+ */
+export function regionNameStrength(distance: number): number {
+  const t = (distance - REGION_NAME_GONE_DISTANCE) / (REGION_NAME_FULL_DISTANCE - REGION_NAME_GONE_DISTANCE);
   const s = Math.min(1, Math.max(0, t));
-  return REGION_LABEL_OPACITY * s * s * (3 - 2 * s);
+  return s * s * (3 - 2 * s);
 }
