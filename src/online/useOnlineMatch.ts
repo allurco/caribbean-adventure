@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentType } from "react";
 import { Client } from "boardgame.io/react";
 import { CaribbeanBoard } from "../board/Board";
 import { Caribbean } from "../game/Game";
+import { withSeatedCombat } from "../game/seatedCombat";
 import { apiTransport } from "./apiTransport";
 import type { MatchSyncApi } from "./matchSync";
 
@@ -28,7 +29,8 @@ export function useOnlineMatch(api: MatchSyncApi, matchId: string | null, onErro
       if (!result.ok) return setState({ status: "error", error: result.error });
       if (!result.changed) return setState({ status: "error", error: "The match could not be read." });
       const MatchClient = Client({
-        game: Caribbean,
+        // The game the server runs: a seat presses only its own combat steps.
+        game: withSeatedCombat(Caribbean),
         board: CaribbeanBoard,
         numPlayers: result.state.ctx.numPlayers,
         multiplayer: apiTransport(api, result.state, onError),

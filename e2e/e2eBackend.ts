@@ -7,8 +7,8 @@
  *
  * It can never be on in production: the app's `vite.config.ts` and the
  * `/api` bundle never import it, the plugin applies to the dev server only
- * (`apply: "serve"`), and it refuses to start on Vercel or with
- * NODE_ENV=production.
+ * (`apply: "serve"`), and it starts only with E2E_BACKEND=1 (which only
+ * the Playwright config sets), never on Vercel or with NODE_ENV=production.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -65,8 +65,10 @@ export function e2eBackend(): Plugin {
     name: "e2e-backend",
     apply: "serve",
     async configureServer(server) {
-      if (process.env.VERCEL || process.env.NODE_ENV === "production") {
-        throw new Error("The e2e backend is for local browser tests only.");
+      // Fail closed: only an explicit opt-in (set by e2e/playwright.config.ts)
+      // starts it, and never on Vercel or in production.
+      if (process.env.E2E_BACKEND !== "1" || process.env.VERCEL || process.env.NODE_ENV === "production") {
+        throw new Error("The e2e backend runs only for the local browser tests (E2E_BACKEND=1).");
       }
       const { handleApiRequest, createMemoryOnlineStore, newInviteCode, newMapSeed, newMatchSeed } = await loadServer();
       const services: ApiServices = {

@@ -402,4 +402,11 @@ describe("reading a match (#113 review)", () => {
     expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true);
     expect(statuses[60]).toBe(429);
   });
+
+  it("answers 400 to an empty ?since=, not as state id 0", async () => {
+    const matchId = await startedMatch();
+    const res = await call("GET", `/api/matches/${matchId}?since=`, "anne");
+    expect(res.status).toBe(400);
+    expect((await call("GET", `/api/matches/${matchId}?since=abc`, "anne")).status).toBe(400);
+  });
 });

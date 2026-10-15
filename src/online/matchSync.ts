@@ -95,6 +95,8 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
     const args = action.payload?.args ?? [];
     if ((action.type !== "MAKE_MOVE" && action.type !== "GAME_EVENT") || typeof name !== "string" || !Array.isArray(args)) {
       onError("That cannot be done in an online match.");
+      // As for a refusal: the board may show it until a whole view arrives.
+      needsFullView = true;
       return refresh();
     }
     const result = await api.sendAction(matchId, baseStateID, { type: action.type, payload: { type: name, args } });
@@ -103,6 +105,9 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
       return;
     }
     onError(result.error);
+    // The board may show the refused move; until a whole view arrives (this
+    // refetch may itself be refused, a 429 or a 5xx), polls ask for it.
+    needsFullView = true;
     return refresh();
   }
 

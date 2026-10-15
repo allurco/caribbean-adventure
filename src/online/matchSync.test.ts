@@ -171,4 +171,39 @@ describe("the online match sync (#113)", () => {
     await flush();
     expect(views).toEqual([6]);
   });
+
+  it("keeps asking for the whole view after a refusal whose refetch came back refused too (429, 5xx)", async () => {
+    const { api, calls, answer } = fakeApi();
+    const views: number[] = [];
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+    api.nextGet = () => ({ ok: false, status: 429, code: "rate_limited", error: "Slow down." });
+    sync.start();
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 2] } });
+    await flush();
+    answer({ ok: false, status: 409, code: "stale_state", error: "Someone moved first." });
+    await flush();
+    await flush();
+    // The server is still at 4: only a whole view clears the board's guess.
+    api.nextGet = (since) => (since === undefined ? { ok: true, changed: true, seat: "0", state: view(4) } : { ok: true, changed: false, seat: "0", stateID: 4 });
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    expect(calls.slice(-2)).toEqual(["get since=-", "get since=-"]);
+    expect(views).toEqual([4]);
+    sync.stop();
+  });
+
+  it("keeps asking for the whole view after an action it cannot send, if that refetch is refused", async () => {
+    const { api, calls } = fakeApi();
+    const views: number[] = [];
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+    api.nextGet = () => ({ ok: false, status: 503, code: "internal", error: "Down." });
+    sync.start();
+    sync.send(4, { type: "UNDO", payload: { type: null, args: null } });
+    await flush();
+    await flush();
+    api.nextGet = (since) => (since === undefined ? { ok: true, changed: true, seat: "0", state: view(4) } : { ok: true, changed: false, seat: "0", stateID: 4 });
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    expect(calls).toEqual(["get since=-", "get since=-"]);
+    expect(views).toEqual([4]);
+    sync.stop();
+  });
 });

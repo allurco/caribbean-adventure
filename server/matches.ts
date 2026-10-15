@@ -47,6 +47,7 @@ export async function getMatch(request: Request, matchId: string, userId: string
   const seat = head && seatOf(head.seats, userId);
   if (!head || seat === null) return fail(404, "not_found", "no such match");
   const since = new URL(request.url).searchParams.get("since");
+  if (since !== null && !/^\d+$/.test(since)) return fail(400, "bad_request", "since must be a state id");
   if (since !== null && Number(since) === head.stateId) {
     return json({ ok: true, matchId: head.id, seat, changed: false, stateID: head.stateId });
   }
