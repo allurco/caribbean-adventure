@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { regionAt, regionBorderEdges, regionLabels, regionLabelOpacity, REGION_LABEL_FULL_DISTANCE } from "./regionMap";
+import { regionAt, regionBorderEdges, regionLabels, regionNameStrength } from "./regionMap";
 import { createWrap, hexRect, hexToOffset, hexToWorld, wrappedDistance } from "../game/hex";
 import type { Hex, MapWrap } from "../game/hex";
 import { generateMapFor } from "../game/mapRequest";
@@ -135,15 +135,17 @@ describe("regionLabels (#239)", () => {
   });
 });
 
-describe("regionLabelOpacity (#239)", () => {
-  it("is quiet at map zoom and gone at ship zoom, easing between", () => {
-    expect(regionLabelOpacity(CAMERA_MAX_DISTANCE)).toBe(regionLabelOpacity(REGION_LABEL_FULL_DISTANCE));
-    expect(regionLabelOpacity(CAMERA_MAX_DISTANCE)).toBeGreaterThan(0.3);
-    expect(regionLabelOpacity(CAMERA_MAX_DISTANCE)).toBeLessThanOrEqual(0.7);
-    expect(regionLabelOpacity(SHIP_VIEW_DISTANCE)).toBe(0);
+describe("regionNameStrength (#239)", () => {
+  it("is whole at the overview, about half at mid zoom, gone at ship zoom, easing between", () => {
+    expect(regionNameStrength(CAMERA_MAX_DISTANCE)).toBe(1);
+    expect(regionNameStrength(20)).toBe(1);
+    expect(regionNameStrength(12)).toBeGreaterThan(0.3);
+    expect(regionNameStrength(12)).toBeLessThan(0.7);
+    expect(regionNameStrength(SHIP_VIEW_DISTANCE)).toBe(0);
+    expect(regionNameStrength(SHIP_VIEW_DISTANCE + 2)).toBe(0);
     let prev = 0;
     for (let d = SHIP_VIEW_DISTANCE; d <= CAMERA_MAX_DISTANCE; d += 0.5) {
-      const o = regionLabelOpacity(d);
+      const o = regionNameStrength(d);
       expect(o).toBeGreaterThanOrEqual(prev);
       prev = o;
     }

@@ -16,6 +16,8 @@ interface CombatPanelProps {
   waitingLine?: string | null;
   /** The line a seat watching someone else's fight sees (`fightWatched`). */
   watchingLine?: string | null;
+  /** Who holds the weather gauge (`gaugeLine`, #264). */
+  gaugeLine?: string | null;
 }
 
 function ShipCombatStats({ ship, label }: { ship: ShipState; label: string }) {
@@ -101,6 +103,7 @@ export function CombatPanel({
   mayAct,
   waitingLine,
   watchingLine,
+  gaugeLine,
 }: CombatPanelProps) {
   const attacker = ships[combat.attackerId];
   const defender = combat.isNPCCombat
@@ -133,6 +136,7 @@ export function CombatPanel({
       <div className="text-center text-xs text-amber-400/70 mb-2">
         Distance: {combat.distance} hex{combat.distance > 1 ? "es" : ""}
       </div>
+      {gaugeLine && <div className="text-center text-xs text-sky-200/80 mb-2">{gaugeLine}</div>}
 
       {watchingLine && <div className="text-center text-xs italic text-amber-200/90 mb-1">{watchingLine}</div>}
       {waitingLine && <div className="text-center text-xs italic text-amber-200/90 mb-2">{waitingLine}</div>}
