@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createShipState } from "./economy";
 import { hex, hexEquals } from "./hex";
+import { createFlotillaShip, moveNPC } from "./npcManager";
 import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, Mission, NPCShip } from "./types";
 import { awaitingCaptain, dealReplacementHand, isEliminated, loseShip, replaceCaptain, winnerWhenAllOut } from "./captainDeath";
@@ -125,6 +126,19 @@ describe("dealReplacementHand: the start of the player's next turn", () => {
     expect(G.draftHands["0"]).toEqual([]);
     expect(G.lostShips?.["0"]).toMatchObject({ score: 4, stashedGold: 60 });
     expect(replaceCaptain(G, "0", 0, "Sloop")).toBe(false);
+  });
+
+  it("releases the flotillas hunting a player who goes out, and they sail on", () => {
+    const G = table();
+    G.captainDeck = [];
+    G.npcs.hunter = createFlotillaShip("hunter", hex(2, 0), "Spain", "Sloop", "0", hex(1, 0));
+    loseShip(G, "0", "sunk");
+    expect(moveNPC(G, "hunter")).toBe(false);
+    dealReplacementHand(G, "0");
+    expect(G.npcs.hunter.huntingTargetId).toBeNull();
+    expect(G.pirates?.["0"]).toBeUndefined();
+    expect(moveNPC(G, "hunter")).toBe(true);
+    expect(G.npcs.hunter.position).toEqual(hex(1, 0));
   });
 
   it("deals nothing to a seat with a ship, nor a second hand", () => {

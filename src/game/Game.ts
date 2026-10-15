@@ -47,7 +47,7 @@ import {
 } from "./economy";
 import { createCaptainDeck, dealHands, isCaptainPick, takeCommand } from "./captains";
 import { isOneOf, isOwnKey, isWhole } from "./moveArgs";
-import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, winnerWhenAllOut } from "./captainDeath";
+import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
@@ -159,19 +159,6 @@ const movesBudgetTurn = {
   },
   endIf: ({ G, ctx }: { G: CaribbeanState; ctx: { currentPlayer: string } }) => turnRunsOut(G, ctx.currentPlayer),
 };
-
-/**
- * The play-order position `from`, or the first after it whose seat is still
- * in the game (#265). When every seat is out, `from`: the game is over
- * (`endIf`).
- */
-function seatStillIn(G: CaribbeanState, playOrder: readonly string[], from: number): number {
-  for (let step = 0; step < playOrder.length; step++) {
-    const pos = (from + step) % playOrder.length;
-    if (!isEliminated(G, playOrder[pos])) return pos;
-  }
-  return from;
-}
 
 /**
  * The main phase's moves, each refused (INVALID_MOVE) while the current
