@@ -460,19 +460,19 @@ const fragmentShader = `
     // reflected sky.
     vec3 skyDiffuse = textureCubeUV(skyEnv, vec3(0.0, 1.0, 0.0), 1.0).rgb * skyIntensity;
     float fresnel = schlickFresnel(dot(nShade, -dir));
-    // The ink darkens the light from the water body only: the sky's
-    // reflection, the glint and the foam lie over it as over the sea (#239).
-    vec3 inkShade = mix(vec3(1.0), REGION_INK_SHADE, ink);
-    vec3 seaColor = waterBody(seabed, seabedWorldY, refracted, facetSunlight(nShade, light), skyDiffuse) * inkShade * (1.0 - fresnel)
-      + getSkyColor(reflect(dir, nShade), skyRoughness) * fresnel;
+    // The sun's own reflection (the sky map has no solar disc) is added to
+    // them: GGX, HDR and unclamped so its brightest sparkles bloom. The
+    // regions' ink is printed over all three, the water body's light, the
+    // sky's reflection and the glint; only the foam lies over it (#239).
+    vec3 seaColor = regionInkedSea(
+      waterBody(seabed, seabedWorldY, refracted, facetSunlight(nShade, light), skyDiffuse),
+      getSkyColor(reflect(dir, nShade), skyRoughness),
+      sunGlintRadiance(n, -dir, light, alpha2, sunIrradiance), fresnel, ink);
     // The shore bands are contours of the seabed (the breaker line is where
     // the bathymetry breaks the waves, the wash where the sand meets sea
     // level), so they read the seabed's depth below sea level, not below the
     // heaving surface, and hold still while it moves.
     float seabedDepthMetres = max(-seabedWorldY, 0.0) * METRES_PER_UNIT;
-    // The sun's own reflection (the sky map has no solar disc): GGX, HDR and
-    // unclamped so its brightest sparkles bloom.
-    seaColor += sunGlintRadiance(n, -dir, light, alpha2, sunIrradiance);
     // At the waterline the sea is a film on the sand (#147): it fades to the
     // seabed it lies on over the first decimetres (waterlineBlend), so where
     // it meets the land there is no edge, whichever way the mesh's lattice

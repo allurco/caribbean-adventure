@@ -106,6 +106,13 @@ That is enough to answer "which PR is this from?" later without guessing.
 - **Findings:** seat 1 sunk: "Your ship is lost" card, the sinking ship lists and goes under, seat 0 sees "Waiting for Player 2 to pick a new captain"; on seat 1's turn the captain screen comes up, the new captain's sloop is at that captain's home port with 4 moves and sails. The glory board keeps the lost seat's glory ("Player 2 3"). A sunk attacker passes the turn on. A mutual sinking (both ships lost) passed the turn too.
 - **For the maintainer:** on seat 1's turn the "<rival>'s turn ends" banner shows dimmed under the captain screen, across its title; no "Your turn" banner shows for the new captain, and after the pick the camera stays on the map overview instead of going to the new ship. In combat the turn banner announces the defender ("Your turn, <defender>") on the attacker's board, as the combat phase makes the defender current.
 
+### 2026-10-15: region ink printed over the sea's light (#239, follow-up to PR #279)
+
+- **Branch and commit:** `feat/239-region-ink`, uncommitted work on `3f910ae` (main), against `3f910ae` unchanged for the before shots.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1440×900, `snapshot=1`, about 4 s after the loading screen faded.
+- **View:** the eight views in PR #279's description, each with `regionBorder=water` and `regionBorder=line`. Diagnostic runs swapped shader lines through a request intercept (no source change): the raw ink painted as colour to find the names and seams, each lighting term alone, and the ink forced to zero as a baseline.
+- **Findings:** at the overview the sky's reflection is a small part of a sea pixel (about 4 grey levels against about 45 for the water body); the haze lifts the rest, and gamma and haze cut a darkening in the shader to well under half on screen. Measured against the zero-ink baseline, the shipped ink darkened the names by 4% (unreadable). Dimming the reflection alone barely moved it. What works: the ink darkens the water body, the reflection and the sun's glint together, at `REGION_NAME_INK` 0.9 and `REGION_SEAM_INK` 0.55 with a deep-blue `REGION_INK_SHADE`, and the wobble cut from 0.35 to 0.12, which had scrambled 7-px letters. Names are then about 33% darker on the small overview and read on all three overviews, including in the sun's path; the far names fade into the haze. Nothing at distance 5; `line` mode draws no seams in the water. The dark blotches in the shallows near Crescent Harbor are seabed, in the before shots too.
+
 ### 2026-10-15: region names in the sea (#239, PR #279)
 
 - **Branch and commit:** detached `origin/main` at `894edb4`.
