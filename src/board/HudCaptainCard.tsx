@@ -23,7 +23,7 @@ export function HudCaptainCard({
           style={{ backgroundColor: playerColor }}
         />
         <h2 className="font-heading text-[11px] font-bold text-ink-faded uppercase tracking-widest">
-          Captain — P{playerIndex}
+          Captain — P{Number(playerIndex) + 1}
         </h2>
       </div>
 

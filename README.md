@@ -1,6 +1,6 @@
 # Project Caribbean
 
-A turn-based naval strategy game for up to six players, set in the age of sail. Captain a ship, trade between ports, take on missions, and fight rival captains and NPC flotillas on a procedurally generated archipelago.
+A turn-based naval strategy game for up to four players, set in the age of sail. Captain a ship, trade between ports, take on missions, and fight rival captains and NPC flotillas on a procedurally generated archipelago.
 
 Inspired by classic age-of-sail board games, rebuilt as a 3D browser game.
 
@@ -73,6 +73,7 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `stats=1` | A corner readout of fps, draw calls and triangles per frame (every pass: shadows, wave cascades, postprocessing), averaged over half a second, for the numbers each visual slice reports in its PR (#162). Dev server only: production builds leave it out |
 | `buoys=1` | Small orange buoys on the CPU sea surface, on a 9 × 9 grid round the camera focus, to check by eye that it rides the drawn swell (#141) |
 | `seedGallery=1` | The 12-seed contact sheet instead of the game (#161): every seed in `SEED_GALLERY_SEEDS` at map zoom and at ship zoom over the port nearest the map's middle (`SEED_GALLERY_VIEWS`, both in `src/lab/seedGalleryShots.ts`), one row a seed. With `size=medium\|large` for that size (small otherwise). The shots render one at a time (about 5 s each); click one to open its view, or **save PNG** for the whole sheet. Dev server only |
+| `seats=1` | Every seat of the match on one page, through boardgame.io's local transport (#110): each seat gets only its own view (`playerView`) and acts only on its own turn. A switcher at the top right shows one seat's board at a time. Dev server only |
 | `snapshot=1` | One gallery shot: the draft picks itself and the board posts its frame to the gallery. The gallery adds it; you should not need it by hand. Dev server only |
 
 **Seed control.** On the dev server the board shows the map's size and seed at the bottom of the screen. `[` and `]` reload on seed − 1 and seed + 1, `\` on a random seed, each keeping the size and every other parameter (the camera's `cx`, `cz`, `dist`, `stats`, …); **copy URL** copies a URL that reproduces the map on screen. Production builds leave the control out.
