@@ -4,6 +4,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DataTexture,
   ShaderMaterial,
   Vector2,
   Vector3,
@@ -41,6 +42,8 @@ import { waveTimeStep } from "./waveClock";
 import { useSeaSurface } from "./seaSurfaceContext";
 import { WHITECAP_FOAM_GLSL } from "./whitecapFoam";
 import { SHIP_FOAM_CAP, SHIP_FOAM_FLOATS_A, SHIP_FOAM_FLOATS_B, shipFoamSources } from "../shipFoamSources";
+import { REGION_CHART_GLSL, REGION_NAME_INK, REGION_SEAM_INK } from "./regionChart";
+import { regionNameStrength } from "../regionMap";
 
 /** After the cascades have drawn this frame's whitecaps, before the seabed prepass (0.5). */
 const WHITECAP_BIND_PRIORITY = CASCADE_PRIORITY + 0.05;
@@ -152,6 +155,8 @@ const fragmentShader = `
   uniform sampler2D terrainField;
   uniform vec4 mapBounds; // minX, maxX, minZ, maxZ
   ${TERRAIN_FIELD_GLSL}
+  // The regions' names, and their seams, written into the water (#239, regionChart.ts).
+  ${REGION_CHART_GLSL}
 
   varying vec3 vWorld;  // the displaced surface point
   varying vec2 vRestXZ; // its rest point, for the wave look-ups
@@ -429,6 +434,12 @@ const fragmentShader = `
     // ... the sky reflection and the refracted seabed see them scaled to the
     // measured slope of the real sea (WAVE_SHADING_GAIN, oceanWaves.ts).
     vec2 shadeSlope = slope * WAVE_SHADING_GAIN;
+    // The regions' ink (#239), read where the wave has moved this point and
+    // nudged by its slope, so the letters ride and waver with the water; it
+    // calms the slope it shades with, a slick on the sea.
+    vec2 regionInk = regionChartInk(vWorld.xz, shadeSlope);
+    float ink = max(regionInk.x, regionInk.y);
+    shadeSlope *= 1.0 - REGION_INK_CALM * ink;
     vec3 nShade = normalize(vec3(-shadeSlope.x, 1.0, -shadeSlope.y));
     float shadeAlpha2 = GLINT_BASE_ROUGHNESS2 + WAVE_SHADING_GAIN * WAVE_SHADING_GAIN * slopeVariance;
     // PMREM roughness is perceptual: α = roughness², α² = roughness⁴.
@@ -449,7 +460,10 @@ const fragmentShader = `
     // reflected sky.
     vec3 skyDiffuse = textureCubeUV(skyEnv, vec3(0.0, 1.0, 0.0), 1.0).rgb * skyIntensity;
     float fresnel = schlickFresnel(dot(nShade, -dir));
-    vec3 seaColor = waterBody(seabed, seabedWorldY, refracted, facetSunlight(nShade, light), skyDiffuse) * (1.0 - fresnel)
+    // The ink darkens the light from the water body only: the sky's
+    // reflection, the glint and the foam lie over it as over the sea (#239).
+    vec3 inkShade = mix(vec3(1.0), REGION_INK_SHADE, ink);
+    vec3 seaColor = waterBody(seabed, seabedWorldY, refracted, facetSunlight(nShade, light), skyDiffuse) * inkShade * (1.0 - fresnel)
       + getSkyColor(reflect(dir, nShade), skyRoughness) * fresnel;
     // The shore bands are contours of the seabed (the breaker line is where
     // the bathymetry breaks the waves, the wash where the sand meets sea
@@ -541,7 +555,15 @@ interface OceanProps {
   waveWhitecaps: readonly Texture[];
   /** The displacing cascades' (h, Dx, Dz) textures (useWaveCascades), in DISPLACEMENT_CASCADES order; stable objects. */
   waveDisplacements: readonly Texture[];
+  /** The regions' chart (useRegionChart): their names, and their seams when `regionSeams`; none draws no ink. */
+  regionChart?: Texture | null;
+  /** Whether the borders between regions are drawn as seams in the water (`regionBorderMode.ts`). */
+  regionSeams?: boolean;
 }
+
+/** Bound in place of the regions' chart while there is none: one black texel, no ink. */
+const noChart = new DataTexture(new Uint8Array(4), 1, 1);
+noChart.needsUpdate = true;
 
 /** The rings of the sea's mesh (oceanGrid.ts) as geometries, with culling bounds padded for the displacement. */
 function oceanRingGeometries(): BufferGeometry[] {
@@ -570,6 +592,8 @@ export function Ocean({
   waveSlopes,
   waveWhitecaps,
   waveDisplacements,
+  regionChart = null,
+  regionSeams = false,
 }: OceanProps) {
   const rings = useMemo(() => oceanRingGeometries(), []);
   useEffect(() => () => rings.forEach((geo) => geo.dispose()), [rings]);
@@ -599,6 +623,8 @@ export function Ocean({
           shipFoamCount: { value: 0 },
           shipFoamWrap: { value: wrap ? wrapWorldWidth(wrap) : 0 },
           cameraDistance: { value: 0 },
+          regionNameInk: { value: 0 },
+          regionSeamInk: { value: 0 },
         },
       ]),
       defines: wrap ? { ...cubeUvDefines(skyHeight), TERRAIN_FIELD_WRAP_X: "" } : cubeUvDefines(skyHeight),
@@ -609,6 +635,7 @@ export function Ocean({
     mat.uniforms.surfTime = surfTimeUniform;
     mat.uniforms.cameraDistance = cameraDistanceUniform;
     mat.uniforms.terrainField = { value: terrainField.texture };
+    mat.uniforms.regionChart = { value: noChart };
     mat.uniforms.skyEnv = { value: sky };
     mat.uniforms.seabedColor = { value: seabed.texture };
     mat.uniforms.seabedDepth = { value: seabed.depthTexture };
@@ -666,6 +693,10 @@ export function Ocean({
     // How far the camera is from its focus: the shelf and the shore foam
     // recede with it (#77); shared with the land's wash (shoreFoamLand.ts).
     if (focus) cameraDistanceUniform.value = camera.position.distanceTo(focus);
+    // The regions' names fade out as the camera nears a ship (#239); the seams stay.
+    mat.uniforms.regionChart.value = regionChart ?? noChart;
+    mat.uniforms.regionNameInk.value = regionChart ? REGION_NAME_INK * regionNameStrength(cameraDistanceUniform.value) : 0;
+    mat.uniforms.regionSeamInk.value = regionChart && regionSeams ? REGION_SEAM_INK : 0;
     // The one surf clock, shared with the land's shoreline foam.
     surfTimeUniform.value = advanceSurfTime(surfTimeUniform.value, delta, reducedMotion);
     // This frame's animated ship positions (written by Ship.tsx) for the hull foam.

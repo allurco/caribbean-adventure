@@ -10,7 +10,8 @@ interface HudShipLostProps {
 
 /**
  * The bottom-left HUD once the seat's ship is gone (`hudShip` is null): the
- * loss, on the same parchment, in place of the captain and ship cards.
+ * loss, on the same parchment, in place of the captain and ship cards, until
+ * the seat picks a new captain on its next turn (#265).
  */
 export function HudShipLost({ name, playerColor }: HudShipLostProps) {
   return (
@@ -27,7 +28,7 @@ export function HudShipLost({ name, playerColor }: HudShipLostProps) {
           <h2 className="font-heading text-[11px] font-bold text-ink-faded uppercase tracking-widest">{name}</h2>
         </div>
         <div className="font-heading text-ink text-sm font-bold leading-tight">Your ship is lost</div>
-        <div className="text-ink-faded text-[11px] mt-1">She went down with all her cargo. You watch the table from here.</div>
+        <div className="text-ink-faded text-[11px] mt-1">Her captain went down with her, and her cargo and gold. A new captain takes command on your next turn, at your home port.</div>
       </div>
     </section>
   );

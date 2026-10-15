@@ -108,6 +108,13 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?stats")).toEqual({});
   });
 
+  it("picks how the region borders are drawn: in the water or as a line (#239)", () => {
+    expect(parseDevUrlParams("?regionBorder=water")).toEqual({ regionBorder: "water" });
+    expect(parseDevUrlParams("?regionBorder=line")).toEqual({ regionBorder: "line" });
+    expect(parseDevUrlParams("?regionBorder=dotted")).toEqual({});
+    expect(parseDevUrlParams("?regionBorder=")).toEqual({});
+  });
+
   it("reads every parameter from one URL", () => {
     expect(parseDevUrlParams("?size=small&seed=1&cx=12&cz=13.9&dist=4.3&stats=1")).toEqual({
       setupData: { mapSize: "small", mapSeed: 1 },

@@ -217,3 +217,27 @@ describe("the Caribbean game's playerView", () => {
     expect(client.getState()!.G).toEqual(secretive());
   });
 });
+
+describe("playerViewFor: a seat that lost its ship (#265)", () => {
+  /** Seat 1's ship is lost and its turn dealt it a replacement hand. */
+  function lostTable(): CaribbeanState {
+    const G = table();
+    G.draftHands = { "0": [], "1": [captain("e"), captain("f")] };
+    delete G.ships["1"];
+    G.lostShips = { "1": { cause: "sunk", captain: captain("dead"), score: 2, stashedGold: 40 } };
+    return G;
+  }
+
+  it("shows the replacement hand only to its own seat", () => {
+    expect(playerViewFor(lostTable(), "1").draftHands).toEqual({ "1": [captain("e"), captain("f")] });
+    expect(playerViewFor(lostTable(), "0").draftHands).toEqual({ "0": [] });
+    expect(playerViewFor(lostTable(), null).draftHands).toEqual({});
+  });
+
+  it("hides the stash it keeps from other seats, but not its glory or the dead captain", () => {
+    expect(playerViewFor(lostTable(), "1").lostShips).toEqual(lostTable().lostShips);
+    expect(playerViewFor(lostTable(), "0").lostShips).toEqual({
+      "1": { cause: "sunk", captain: captain("dead"), score: 2, stashedGold: 0 },
+    });
+  });
+});

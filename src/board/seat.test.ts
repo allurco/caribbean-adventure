@@ -7,7 +7,7 @@ import { createShipState, STARTING_GOLD } from "../game/economy";
 import { hex } from "../game/hex";
 import { createNPCShip } from "../game/npcManager";
 import type { Captain, CaribbeanState, CombatState, NPCShip } from "../game/types";
-import { combatWaitingFor, draftView, fightBystander, fightWatched, gloryScoreboard, hudSeat, hudShip, viewerSeat, seatMayAct, seatMayActInCombat, seatName, waitingFor } from "./seat";
+import { choosingCaptain, combatWaitingFor, draftView, fightBystander, fightWatched, gloryScoreboard, hudSeat, hudShip, viewerSeat, seatMayAct, seatMayActInCombat, seatName, waitingFor } from "./seat";
 import { startHandoff } from "./turnHandoff";
 
 const npc = (id: string): NPCShip => createNPCShip(id, hex(5, 0), hex(6, 0), "Spain", "Flute", () => 0.5);
@@ -320,5 +320,50 @@ describe("viewerSeat: whose ship the board treats as 'yours' (hover, details, po
   it("is the client's seat, or in hotseat the current player's", () => {
     expect(viewerSeat({ playerID: "2", currentPlayer: "0" })).toBe("2");
     expect(viewerSeat({ playerID: null, currentPlayer: "3" })).toBe("3");
+  });
+});
+
+/** A two-seat table in the main phase where seat 1 lost its ship (#265) and its turn dealt it a hand. */
+function lostSeatTable(): CaribbeanState {
+  const G = table(2);
+  G.ships["0"].captain = captain("a", "Anne Bonny");
+  delete G.ships["1"];
+  G.draftHands = { "0": [], "1": [captain("e"), captain("f")] };
+  G.lostShips = { "1": { cause: "sunk", captain: captain("dead"), score: 5, stashedGold: 30 } };
+  return G;
+}
+
+describe("choosingCaptain: when the captain screen is up", () => {
+  it("through the draft, and in the main phase while the current seat awaits a new captain (#265)", () => {
+    const G = lostSeatTable();
+    expect(choosingCaptain(G, "draft", "0")).toBe(true);
+    expect(choosingCaptain(G, "main", "1")).toBe(true);
+    expect(choosingCaptain(G, "main", "0")).toBe(false);
+    expect(choosingCaptain(G, "combat", "1")).toBe(false);
+  });
+});
+
+describe("draftView: a new captain for a lost ship (#265)", () => {
+  it("the seat picks from its hand without passing the device, even in hotseat", () => {
+    const G = lostSeatTable();
+    const view = { kind: "pick", hand: [captain("e"), captain("f")], passDevice: false };
+    expect(draftView(G, { playerID: null, currentPlayer: "1" })).toEqual(view);
+    expect(draftView(G, { playerID: "1", currentPlayer: "1" })).toEqual(view);
+  });
+
+  it("every other seat waits for it to pick a new captain", () => {
+    expect(draftView(lostSeatTable(), { playerID: "0", currentPlayer: "1" })).toEqual({
+      kind: "waiting",
+      line: "Waiting for Player 2 to pick a new captain",
+    });
+  });
+});
+
+describe("gloryScoreboard: a seat that lost its ship (#265)", () => {
+  it("keeps its glory on the board while it waits for a new captain", () => {
+    expect(gloryScoreboard(lostSeatTable(), "0")).toEqual([
+      { seat: "1", name: "Player 2", glory: 5, viewer: false },
+      { seat: "0", name: "Anne Bonny", glory: 0, viewer: true },
+    ]);
   });
 });
