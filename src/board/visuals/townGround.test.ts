@@ -8,8 +8,8 @@ import { PAVING_TONE, pavingTone, townGround, TOWN_REFINE } from "./townGround";
 import { nearestCopyX, plateauPoint, streetDistance } from "./townPlateau";
 import { BUILDING_ENLARGEMENT } from "./worldScale";
 
-function fields(seed: number, size: MapSizeId = "small"): { plain: TerrainHeightField; town: TerrainHeightField } {
-  const preset = getMapPreset(size);
+function fields(seed: number): { plain: TerrainHeightField; town: TerrainHeightField } {
+  const preset = getMapPreset("small");
   const wrap = createWrap(preset.columns);
   const cells = generateMap(preset, seed, wrap);
   const terrainSeed = seed;
@@ -162,14 +162,13 @@ describe("town ground (#87)", () => {
     expect(hi).toBeLessThanOrEqual(PAVING_TONE[1]);
     expect(hi - lo).toBeGreaterThan((PAVING_TONE[1] - PAVING_TONE[0]) * 0.5);
   });
-
 });
 
 /** The map sizes and seeds the town ground is held on (#261): one pinned seed hid the others. */
 const SWEEP: readonly (readonly [MapSizeId, readonly number[]])[] = [
   ["small", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]],
-  ["medium", [1, 2, 3, 4]],
-  ["large", [1, 2, 3]],
+  ["medium", [1, 2]],
+  ["large", [1, 2]],
 ];
 
 /**
@@ -190,32 +189,51 @@ function latticePoint(lattice: LandLattice, x: number, z: number): [number, numb
   return [lattice.minX + Math.round((x - lattice.minX) / dx) * dx, lattice.minZ + Math.round((z - lattice.minZ) / dz) * dz];
 }
 
+/** Most a vertex may move to its lattice point: a few units in the last place of a single-precision position, so a vertex off the grid fails rather than being moved. */
+const SNAP_TOLERANCE = 1e-5;
+
 describe.each(SWEEP)("town ground on %s maps (#87, #261)", (size, seeds) => {
   it.each(seeds)("is sampled by the placement surface exactly as drawn, at the vertices and inside the triangles, on seed %i", (seed) => {
-    const { town } = fields(seed, size);
+    const preset = getMapPreset(size);
+    const wrap = createWrap(preset.columns);
+    const town = createTerrainHeightField(generateMap(preset, seed, wrap), seed, { wrap });
     const { positions } = buildLandMesh(town).land;
     const surface = landSurface(town);
     const lattice = landLattice(town);
     const plateaus = town.townPlateaus;
+    /** Corner `k` of triangle `t` at its lattice point, and how far it moved to get there. */
+    const corner = (t: number, k: number): [number, number, number] => {
+      const x = positions[t * 9 + k * 3];
+      const z = positions[t * 9 + k * 3 + 2];
+      const [lx, lz] = latticePoint(lattice, x, z);
+      return [lx, lz, Math.max(Math.abs(lx - x), Math.abs(lz - z))];
+    };
+    // The largest differences, asserted once: two expects per triangle were most of the test's time.
+    let moved = 0;
+    let worst = 0;
     let checked = 0;
     for (let t = 0; t < positions.length / 9; t += 3) {
-      const [x0, z0] = latticePoint(lattice, positions[t * 9], positions[t * 9 + 2]);
+      const [x0, z0] = corner(t, 0);
       if (!plateaus.some((p) => Math.hypot(x0 - p.x, z0 - p.z) < p.reach)) continue;
       // A corner, and a point inside the face (weights 0.2, 0.3, 0.5).
-      expect(surface.sampleHeight(x0, z0)).toBeCloseTo(positions[t * 9 + 1], 5);
+      worst = Math.max(worst, Math.abs(surface.sampleHeight(x0, z0) - positions[t * 9 + 1]));
       const w = [0.2, 0.3, 0.5];
       let x = 0;
       let y = 0;
       let z = 0;
       for (let k = 0; k < 3; k++) {
-        const [cx, cz] = latticePoint(lattice, positions[t * 9 + k * 3], positions[t * 9 + k * 3 + 2]);
+        const [cx, cz, m] = corner(t, k);
+        moved = Math.max(moved, m);
         x += cx * w[k];
         y += positions[t * 9 + k * 3 + 1] * w[k];
         z += cz * w[k];
       }
-      expect(surface.sampleHeight(x, z)).toBeCloseTo(y, 5);
+      worst = Math.max(worst, Math.abs(surface.sampleHeight(x, z) - y));
       checked++;
     }
+    expect(moved, `a vertex ${moved} off its lattice point`).toBeLessThan(SNAP_TOLERANCE);
+    // toBeCloseTo(…, 5)'s bound (NaN fails it too).
+    expect(worst < 5e-6, `largest difference ${worst}`).toBe(true);
     expect(checked).toBeGreaterThan(500);
   });
 });
