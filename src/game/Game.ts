@@ -1,4 +1,4 @@
-import type { Game } from "boardgame.io";
+import type { Game, MoveFn } from "boardgame.io";
 import { INVALID_MOVE } from "boardgame.io/core";
 import { hex, hexEquals, canonicalHex, createWrap, wrappedDistance } from "./hex";
 import type { MapWrap } from "./hex";
@@ -31,7 +31,6 @@ import {
   createLootFromNPC,
   getEffectiveCannons,
 } from "./combat";
-import { SHIP_SPECS } from "./constants";
 import { movesLeft, spendMove, turnRunsOut } from "./turnMoves";
 import {
   createShipState,
@@ -46,7 +45,8 @@ import {
   canJuryRig,
   applyJuryRig,
 } from "./economy";
-import { createCaptainDeck, dealHands, findHomeStart } from "./captains";
+import { createCaptainDeck, dealHands, takeCommand } from "./captains";
+import { awaitingCaptain, dealReplacementHand, loseShip, replaceCaptain } from "./captainDeath";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
@@ -158,6 +158,20 @@ const movesBudgetTurn = {
   },
   endIf: ({ G, ctx }: { G: CaribbeanState; ctx: { currentPlayer: string } }) => turnRunsOut(G, ctx.currentPlayer),
 };
+
+/**
+ * The main phase's moves, each refused (INVALID_MOVE) while the current
+ * player has no ship: between a lost ship and the pick of a new captain
+ * (#265), only `pickCaptain` may be played.
+ */
+function needingAShip(moves: Record<string, MoveFn<CaribbeanState>>): Record<string, MoveFn<CaribbeanState>> {
+  return Object.fromEntries(
+    Object.entries(moves).map(([name, move]): [string, MoveFn<CaribbeanState>] => [
+      name,
+      (context, ...args) => (context.G.ships[context.ctx.currentPlayer] ? move(context, ...args) : INVALID_MOVE),
+    ])
+  );
+}
 
 export const Caribbean: Game<CaribbeanState> = {
   name: "caribbean",
@@ -291,23 +305,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const ship = G.ships[playerId];
           if (ship.captain) return INVALID_MOVE;
 
-          const chosen = hand[captainIndex];
-          ship.captain = chosen;
-          ship.shipClass = shipClass;
-          const stats = structuredClone(SHIP_SPECS[shipClass]);
-          ship.stats = stats;
-          ship.maxCargo = stats.cargo;
-
-          // Start at a home port in the captain's nation's region (#239)
-          const occupiedHexes = Object.entries(G.ships)
-            .filter(([id, s]) => id !== playerId && s.captain !== undefined)
-            .map(([, s]) => s.position);
-          const start = findHomeStart(chosen.nation, G.cells, occupiedHexes, G.regions, G.wrap);
-          if (start) {
-            ship.position = start.position;
-            ship.homePortHex = start.homePortHex;
-            ship.homeDockingHex = start.homeDockingHex;
-          }
+          takeCommand(G, playerId, ship, hand[captainIndex], shipClass);
 
           // Clear the player's draft hand
           G.draftHands[playerId] = [];
@@ -323,6 +321,25 @@ export const Caribbean: Game<CaribbeanState> = {
     main: {
       turn: {
         ...movesBudgetTurn,
+        // A player whose ship was lost is dealt a new captain's hand as their turn begins (#265)
+        onBegin: ({ G, ctx }) => {
+          movesBudgetTurn.onBegin({ G });
+          dealReplacementHand(G, ctx.currentPlayer);
+        },
+        order: {
+          // boardgame.io's default order, except that a seat which has just
+          // lost its ship (no hand dealt yet) is passed over once: its turn
+          // ended with the fight that lost it, and its next turn deals it a
+          // new captain's hand (#265). Never a seat stuck with no ship.
+          first: ({ G, ctx }) => {
+            const seats = ctx.playOrder.length;
+            const first = ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % seats;
+            const seat = ctx.playOrder[first];
+            const justLost = awaitingCaptain(G, seat) && (G.draftHands[seat]?.length ?? 0) === 0;
+            return justLost ? (first + 1) % seats : first;
+          },
+          next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.playOrder.length,
+        },
         onEnd: ({ G, random }) => {
           // Don't move NPCs if combat is starting
           if (G.combat) return;
@@ -337,6 +354,10 @@ export const Caribbean: Game<CaribbeanState> = {
         },
       },
       moves: {
+        // A player whose ship was lost picks a new captain from the hand their turn dealt (#265), on the draft's screen
+        pickCaptain: ({ G, ctx }, captainIndex: number, shipClass: ShipClass) =>
+          replaceCaptain(G, ctx.currentPlayer, captainIndex, shipClass) ? undefined : INVALID_MOVE,
+        ...needingAShip({
         moveShip: ({ G, ctx }, q: number, r: number) => {
           const ship = G.ships[ctx.currentPlayer];
           if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
@@ -558,6 +579,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
           events.setPhase("combat");
         },
+        }),
       },
     },
 
@@ -865,7 +887,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
               const loot = createLootFromShip(defenderShip);
               G.floatingLoot.push(loot);
-              delete G.ships[G.combat.defenderId];
+              // The ship leaves G.ships here, and its captain dies with it (#265)
+              loseShip(G, G.combat.defenderId, "sunk");
               combatEnded = true;
             } else if (isDerelict(defenderShip)) {
               defenderShip.isDerelict = true;
@@ -885,7 +908,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
             const loot = createLootFromShip(attacker);
             G.floatingLoot.push(loot);
-            delete G.ships[G.combat.attackerId];
+            // The ship leaves G.ships here, and its captain dies with it (#265)
+            loseShip(G, G.combat.attackerId, "sunk");
             combatEnded = true;
           } else if (isDerelict(attacker)) {
             attacker.isDerelict = true;
