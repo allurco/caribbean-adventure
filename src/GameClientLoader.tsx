@@ -11,7 +11,7 @@ interface GameClientLoaderProps {
   seaBuoys?: boolean;
   /** How the region borders are drawn (dev, #239). */
   regionBorder?: RegionBorderMode;
-  /** Parts of the picture left out for an A/B check (`?fx=0`, `?ink=0`, `?bloom=0`). */
+  /** Parts of the picture left out for an A/B check (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`). */
   renderOff?: RenderOff;
   renderStats?: boolean;
   gallerySnapshot?: boolean;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BoxGeometry, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, MeshBasicMaterial, Vector3 } from "three";
+import { BoxGeometry, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, MeshBasicMaterial, Scene, Vector3 } from "three";
 import { drawLiveInstances, ropePoint, showInstances, writePuffs } from "./frameWriters";
 import { createPool, spawn, type ParticleKind } from "./particlePool";
 
@@ -39,14 +39,14 @@ describe("writing the effects into their buffers (#263)", () => {
     const mesh = new InstancedMesh(new BoxGeometry(), new MeshBasicMaterial(), 5);
     const live = [false, true, false, true, false];
     const written: [number, number][] = [];
-    const n = drawLiveInstances(mesh, live.length, (slot) => live[slot], (slot, index) => written.push([slot, index]), true);
+    const n = drawLiveInstances(mesh, live.length, (slot) => live[slot], (slot, index) => written.push([slot, index]), { castsShadow: true });
     expect(n).toBe(2);
     expect(written).toEqual([[1, 0], [3, 1]]);
     expect(mesh.count).toBe(2);
     expect(mesh.visible).toBe(true);
     expect(mesh.castShadow).toBe(true);
 
-    drawLiveInstances(mesh, live.length, () => false, () => {}, true);
+    drawLiveInstances(mesh, live.length, () => false, () => {}, { castsShadow: true });
     expect(mesh.count).toBe(0);
     expect(mesh.visible).toBe(false);
     expect(mesh.castShadow).toBe(false); // an empty layer casts no shadow
@@ -57,6 +57,25 @@ describe("writing the effects into their buffers (#263)", () => {
     showInstances(mesh, 3);
     expect(mesh.count).toBe(3);
     expect(mesh.visible).toBe(true);
+    expect(mesh.castShadow).toBe(false);
+  });
+
+  it("while the loading gate warms up, an empty layer stays in the scene, casting its shadow, so its shaders compile behind the loading screen", () => {
+    const scene = new Scene();
+    const mesh = new InstancedMesh(new BoxGeometry(), new MeshBasicMaterial(), 3);
+    scene.add(mesh);
+    const reached = () => {
+      let found = false;
+      scene.traverseVisible((o) => (found ||= o === mesh));
+      return found;
+    };
+    drawLiveInstances(mesh, 3, () => false, () => {}, { castsShadow: true, warm: true });
+    expect(mesh.count).toBe(0); // nothing drawn
+    expect(reached()).toBe(true); // but compileAsync (traverseVisible) still compiles it
+    expect(mesh.castShadow).toBe(true); // and the shadow pass builds its depth program
+
+    showInstances(mesh, 0, { castsShadow: true });
+    expect(reached()).toBe(false); // once warm, an idle layer is left out again
     expect(mesh.castShadow).toBe(false);
   });
 

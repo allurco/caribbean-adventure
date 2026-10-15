@@ -56,6 +56,9 @@ export function PostEffects({ lighting, withoutBloom = false }: PostEffectsProps
 
   return (
     <EffectComposer>
+      {/* A keyed array, not `{!withoutBloom && <Bloom />}`: the composer's children are typed
+          `JSX.Element | JSX.Element[]`, so a `false` child does not type-check; the keys keep the
+          other passes mounted, in order, when the bloom is left out. */}
       {[
         ...(withoutBloom ? [] : [<Bloom key="bloom" intensity={bloom.intensity} luminanceThreshold={bloom.threshold} luminanceSmoothing={bloom.smoothing} />]),
         <Vignette key="vignette" darkness={vignette.darkness} offset={vignette.offset} />,
