@@ -4,9 +4,9 @@ import type { MapRequest } from "./mapRequest";
 import type { MapWorld } from "./mapGenerator";
 import { MAP_PRESETS, getMapPreset } from "./mapConfig";
 import { NATIONS } from "./types";
-import { REGION_NAMES } from "./regions";
+import { REGION_NAMES, placeRegionCentres } from "./regions";
 import type { MapCell } from "./types";
-import { createWrap, wrappedDistance, wrappedNeighbors } from "./hex";
+import { createWrap, hex, wrappedDistance, wrappedNeighbors } from "./hex";
 import type { Hex, MapWrap } from "./hex";
 
 /**
@@ -161,5 +161,15 @@ describe("generateMapFor: regions (#239)", { timeout: 60_000 }, () => {
       );
       expect(layouts.size).toBe(4);
     }
+  });
+});
+
+describe("placeRegionCentres (#239)", () => {
+  it("never places two centres on the same hex, even when every draw repeats", () => {
+    const candidates = [hex(0, 0), hex(1, 0), hex(2, 0), hex(3, 0), hex(4, 0)];
+    // An rng stuck on one value draws the same candidate every time.
+    const centres = placeRegionCentres(candidates, 5, () => 0, null);
+    const keys = centres.map((h) => `${h.q},${h.r}`);
+    expect(new Set(keys).size).toBe(5);
   });
 });

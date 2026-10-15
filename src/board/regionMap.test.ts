@@ -106,6 +106,16 @@ describe("regionLabels (#239)", () => {
     }
   });
 
+  it("skips a region with no cells rather than fail", () => {
+    const cells = halves(6, 4);
+    const regions = [
+      { id: 0, nation: "England" as const, name: "West", neighbours: [1] },
+      { id: 1, nation: "France" as const, name: "East", neighbours: [0] },
+      { id: 2, nation: "Spain" as const, name: "Nowhere", neighbours: [] },
+    ];
+    expect(regionLabels(cells, regions, null).map((l) => l.region)).toEqual([0, 1]);
+  });
+
   it("is the same for the same map", () => {
     const { cells, regions } = generateMapFor({ mapSize: "medium", mapSeed: 99 });
     const wrap = createWrap(getMapPreset("medium").columns);

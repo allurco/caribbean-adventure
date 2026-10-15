@@ -103,7 +103,9 @@ export function buildRegionTable(cells: readonly MapCell[], wrap: MapWrap, rng: 
  * `count` region centres spread across `candidates` (seeded): the first at
  * random, each next the best of a few random tries, the one farthest from the
  * centres already placed (Mitchell's best-candidate sampling), measured round
- * the seam.
+ * the seam. No two centres share a hex: if every try lands on a centre, the
+ * first free candidate is taken, and with too few distinct candidates there
+ * are fewer centres than `count`.
  */
 export function placeRegionCentres(
   candidates: readonly Hex[],
@@ -113,18 +115,21 @@ export function placeRegionCentres(
   tries = 16
 ): Hex[] {
   const pick = () => candidates[Math.floor(rng() * candidates.length)];
-  const centres: Hex[] = [pick()];
+  const centres: Hex[] = candidates.length > 0 ? [pick()] : [];
+  const nearestCentre = (h: Hex) => Math.min(...centres.map((c) => wrappedDistance(c, h, wrap)));
   while (centres.length < count) {
-    let best = pick();
-    let bestDistance = -1;
+    let best: Hex | undefined;
+    let bestDistance = 0;
     for (let t = 0; t < tries; t++) {
-      const candidate = t === 0 ? best : pick();
-      const nearest = Math.min(...centres.map((c) => wrappedDistance(c, candidate, wrap)));
+      const candidate = pick();
+      const nearest = nearestCentre(candidate);
       if (nearest > bestDistance) {
         best = candidate;
         bestDistance = nearest;
       }
     }
+    best ??= candidates.find((h) => nearestCentre(h) > 0);
+    if (!best) break;
     centres.push(best);
   }
   return centres;

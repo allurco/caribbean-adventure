@@ -83,7 +83,8 @@ export interface RegionLabel {
  * One label per region, in region order: over the water hex of the region
  * nearest the middle of its islands (measured round the seam) that has no
  * land or reef beside it, so the name reads as the cluster's and sits on
- * open sea. Falls back to any water of the region, then any of its cells.
+ * open sea. Falls back to any water of the region, then any of its cells;
+ * a region with no cells has no label.
  */
 export function regionLabels(cells: readonly MapCell[], regions: readonly Region[], wrap: MapWrap): RegionLabel[] {
   const byKey = new Map(cells.map((c) => [hexKey(c.hex), c]));
@@ -99,11 +100,12 @@ export function regionLabels(cells: readonly MapCell[], regions: readonly Region
       return !cell || cell.terrain === "water";
     });
 
-  return regions.map((region) => {
+  return regions.flatMap((region) => {
     const own = cells.filter((c) => c.region === region.id);
+    if (own.length === 0) return [];
     const land = own.filter((c) => c.terrain === "island");
     const middle = centreOf(land.length > 0 ? land : own, period);
-    const candidates = [own.filter(openSea), own.filter((c) => c.terrain === "water"), own].find((cs) => cs.length > 0) ?? [];
+    const candidates = [own.filter(openSea), own.filter((c) => c.terrain === "water"), own].find((cs) => cs.length > 0)!;
     let best = candidates[0];
     let bestDistance = Infinity;
     for (const c of candidates) {
@@ -115,7 +117,7 @@ export function regionLabels(cells: readonly MapCell[], regions: readonly Region
       }
     }
     const [x, , z] = hexToWorld(best.hex);
-    return { region: region.id, name: region.name, hex: best.hex, x, z };
+    return [{ region: region.id, name: region.name, hex: best.hex, x, z }];
   });
 }
 
