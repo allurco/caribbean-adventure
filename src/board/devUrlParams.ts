@@ -62,6 +62,11 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   return out;
 }
 
+/** Whether the game client shows boardgame.io's debug panel: not in a gallery shot, where it would cover the right of the picture. */
+export function showsDebugPanel(params: DevUrlParams): boolean {
+  return params.gallerySnapshot !== true;
+}
+
 function parseSetupData(size: string | null, seed: string | null): CaribbeanSetupData | undefined {
   const setupData: CaribbeanSetupData = {};
   if (size !== null && (MAP_SIZES as readonly string[]).includes(size)) setupData.mapSize = size as MapSizeId;

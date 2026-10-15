@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { SoundLab } from "./lab/SoundLab";
-import { parseDevUrlParams } from "./board/devUrlParams";
+import { parseDevUrlParams, showsDebugPanel } from "./board/devUrlParams";
 import { loadGameClient, type GameClient } from "./loadGameClient";
 import { GameClientLoader } from "./GameClientLoader";
 import { parseAccountRoute, skipsLogin } from "./online/accountRoute";
@@ -40,7 +40,7 @@ const loginGate = showsGame && supabaseConfig !== null && !skipsLogin(window.loc
 // while React mounts, or behind the sign-in screen once a player is through.
 let gameClientPromise: Promise<GameClient> | undefined;
 function gameClient(): Promise<GameClient> {
-  gameClientPromise ??= loadGameClient(devParams.setupData);
+  gameClientPromise ??= loadGameClient(devParams.setupData, showsDebugPanel(devParams));
   return gameClientPromise;
 }
 if (showsGame && !loginGate) void gameClient();

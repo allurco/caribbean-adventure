@@ -10,14 +10,19 @@ import { createMapWorkerRunner } from "./mapWorker/createMapWorkerRunner";
  * The local hotseat client, once its map is ready (#124). boardgame.io's
  * `setup()` is synchronous, so the map is generated first, in a worker (on
  * the main thread where there is none), and the client's game starts on it.
- * `setupData` is the dev URL pin (#74): its size and seed, else random ones.
+ * `setupData` is the dev URL pin (#74): its size and seed, else random ones;
+ * `debugPanel: false` hides boardgame.io's debug panel (devUrlParams.ts).
  */
-export async function loadGameClient(setupData: CaribbeanSetupData | undefined) {
+export async function loadGameClient(setupData: CaribbeanSetupData | undefined, debugPanel = true) {
   // Seed picking (ADR 0007): with no pinned size or seed, this is where a new world's seed is drawn.
   // eslint-disable-next-line no-restricted-properties -- the one allowed seed-picking call site
   const map = await generateMapOffThread(resolveMapRequest(setupData, Math.random), createMapWorkerRunner());
   // One screen shared by every seat sees the whole table, not a spectator's view (#109).
-  return Client({ game: withHotseatView(withGeneratedMap(Caribbean, map)), board: CaribbeanBoard });
+  return Client({
+    game: withHotseatView(withGeneratedMap(Caribbean, map)),
+    board: CaribbeanBoard,
+    ...(debugPanel ? {} : { debug: false }),
+  });
 }
 
 export type GameClient = Awaited<ReturnType<typeof loadGameClient>>;
