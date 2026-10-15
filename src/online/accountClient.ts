@@ -20,6 +20,8 @@ export interface ClientError {
 
 export interface SessionLike {
   user: { id: string; email?: string };
+  /** The JWT `/api` checks (#112); supabase-js refreshes it in `getSession`. */
+  access_token?: string;
 }
 
 export interface Unsubscribable {

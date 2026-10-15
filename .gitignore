@@ -29,3 +29,6 @@ dist-ssr
 .env.*
 !.env.example
 .playwright-mcp/
+
+# The bundled /api server (npm run build:api, ADR 0008)
+api/_server.mjs

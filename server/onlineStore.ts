@@ -1,0 +1,87 @@
+/**
+ * What `/api` needs from the database (#112), as a narrow port: the Supabase
+ * implementation (`supabaseOnlineStore.ts`, service role, the SQL functions of
+ * `supabase/migrations/*_rooms.sql`) in production, and an in-memory one
+ * (`memoryOnlineStore.ts`) in the route tests. Every operation that must not
+ * race (taking a seat, starting a match) is one call, atomic in the database.
+ */
+import type { MapSizeId } from "../src/game/mapConfig";
+
+/** `starting`: the host's start is claimed and the match is being built (#112). */
+export type RoomStatus = "open" | "starting" | "started" | "finished";
+
+export interface NewRoom {
+  hostId: string;
+  inviteCode: string;
+  seatCount: number;
+  mapSize: MapSizeId;
+  mapSeed: number;
+  turnTimerSeconds: number;
+}
+
+export interface SeatRecord {
+  /** The seat's index, which is its boardgame.io playerID as a string. */
+  index: number;
+  userId: string;
+  /** From the public profile; null when it is gone. */
+  displayName: string | null;
+}
+
+export interface RoomRecord {
+  id: string;
+  hostId: string | null;
+  inviteCode: string;
+  seatCount: number;
+  mapSize: MapSizeId;
+  mapSeed: number;
+  turnTimerSeconds: number;
+  status: RoomStatus;
+  /** Sorted by index. */
+  seats: SeatRecord[];
+  /** The room's match once started. */
+  matchId: string | null;
+}
+
+export type JoinOutcome = "seated" | "not_found" | "full" | "started";
+export type ClaimOutcome = "claimed" | "not_found" | "not_host" | "not_full" | "starting" | "already_started";
+export type StartOutcome = "started" | "not_found" | "not_claimed";
+
+/** A claimed start not finished in this long can be claimed again: the function building it died. */
+export const STALE_START_SECONDS = 120;
+
+/** A per-user allowance: at most `limit` uses in each fixed window of `windowSeconds`. */
+export interface RateLimit {
+  limit: number;
+  windowSeconds: number;
+}
+
+/** A match's first snapshot: boardgame.io's whole state, secrets included. */
+export interface InitialMatch {
+  state: unknown;
+  stateId: number;
+  phase: string | null;
+}
+
+export interface OnlineStore {
+  /** Counts one use of `action` by `userId` in the current fixed window; false once over `limit`. */
+  consumeRateLimit(userId: string, action: string, limit: number, windowSeconds: number): Promise<boolean>;
+  /**
+   * Counts the creation against the host's allowance and creates the room
+   * with its host in seat 0, in one transaction: the room's id, or null when
+   * the allowance is used up. A creation that fails costs nothing.
+   */
+  createRoom(room: NewRoom, allowance: RateLimit): Promise<string | null>;
+  /** Seats the player at the lowest free seat of the room with this invite code. */
+  joinRoom(inviteCode: string, userId: string): Promise<{ outcome: JoinOutcome; roomId: string | null }>;
+  getRoom(roomId: string): Promise<RoomRecord | null>;
+  /**
+   * Claims the room's start for its host (open, or a start gone stale, to
+   * `starting`), if every seat is taken: before the match is built, so a
+   * second start is refused without building another.
+   */
+  claimStart(roomId: string, userId: string): Promise<{ outcome: ClaimOutcome }>;
+  /** Stores the match of a claimed start and marks the room started. */
+  startMatch(roomId: string, userId: string, match: InitialMatch): Promise<{ outcome: StartOutcome; matchId: string | null }>;
+  /** Gives a claimed start back (building the match failed), so the host can try again. */
+  releaseStart(roomId: string): Promise<void>;
+}
