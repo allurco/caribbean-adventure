@@ -759,6 +759,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   // The fight on the board (#263): beats, effects and their sounds from each change of G.
   const combatFx = useCombatFx(G, prefersReducedMotion);
+  const combatDirector = combatFx.director;
 
   // Detect when current player docks at a new port
   useEffect(() => {
@@ -787,17 +788,20 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // The hand-off between turns (#216): the outgoing ship arrives, a "turn
   // ends" beat, the NPCs sail, and only then the next turn is announced
   const shipsRef = useRef(G.ships);
+  const inFightRef = useRef(G.combat !== undefined);
   useEffect(() => {
     shipsRef.current = G.ships;
-  }, [G.ships]);
+    inFightRef.current = G.combat !== undefined;
+  }, [G.ships, G.combat]);
   const announceTurn = useCallback(
     (player: string) => {
       setShowTurnChange(true);
-      // Hotseat: fly to the new player's ship (networked clients stay put)
-      const view = turnChangeView({ ships: shipsRef.current, currentPlayer: player, playerID: props.playerID });
+      // Hotseat: fly to the new player's ship (networked clients stay put);
+      // in a fight the camera stays on the two ships the fight framed (#263)
+      const view = inFightRef.current || combatDirector.holding() ? null : turnChangeView({ ships: shipsRef.current, currentPlayer: player, playerID: props.playerID });
       if (view) setCameraFocusView(view);
     },
-    [props.playerID]
+    [props.playerID, combatDirector]
   );
   const { handoff, heldNpcs, markTurnShown } = useTurnHandoff({
     currentPlayer,

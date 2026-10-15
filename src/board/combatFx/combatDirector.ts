@@ -56,6 +56,8 @@ export const HAULED_GAP = 0.035;
 const RELEASE_DELAY = 1.5;
 /** How far a sinking ship goes down, as a share of her masthead's height: just past it. */
 const SINK_PAST_MASTHEAD = 1.15;
+/** Extra room round the framed fight, for the HUD over the scene (the combat panel, the ship card). */
+const CAMERA_ROOM = 1.3;
 /** How long a banner (escaped, caught) stays up, s. */
 const BANNER_SECONDS = 2.4;
 
@@ -118,6 +120,8 @@ export interface CombatDirector {
   grappling: { from: string; to: string } | null;
   /** The offset of the copy of the world the camera is in (WorldCopies.tsx). */
   copyX: number;
+  /** A fight is on the board: beats to play, or ships still held. */
+  holding: () => boolean;
   /** Seconds since the director started: the clock its effects are timed on. */
   time: () => number;
   enqueue: (beats: readonly CombatBeat[], classes: Readonly<Record<string, ShipClass | undefined>>) => void;
@@ -175,6 +179,7 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
     grappling: null,
     copyX: 0,
     time: () => player.time(),
+    holding: () => player.busy() || ships.size > 0,
     enqueue: (beats, shipClasses) => {
       classes = { ...classes, ...shipClasses };
       player.enqueue(beats);
@@ -266,10 +271,10 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
     return [env.windX / length, env.windZ / length];
   };
 
+  /** Asks for a view of the fight; under reduced motion the board cuts to it rather than flying (cameraFlight.ts, #229). */
   function frameCamera(points: readonly { x: number; z: number }[], shipLength: number): void {
-    if (reduced) return;
     const frame = framePoints(points, { ...view, shipLength });
-    cameraRequest = { target: [frame.target[0] + director.copyX, frame.target[1], frame.target[2]], distance: frame.distance };
+    cameraRequest = { target: [frame.target[0] + director.copyX, frame.target[1], frame.target[2]], distance: frame.distance * CAMERA_ROOM };
   }
 
   function turnTo(fx: ShipFx, heading: number, seconds: number): void {
@@ -343,15 +348,15 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
     const ox = side * sx, oz = side * sz;
     spawn(pools.flash, KINDS.flash, { x: muzzle.x + ox * 0.015, y: muzzle.y, z: muzzle.z + oz * 0.015, vx: ox * 0.3, vy: 0, vz: oz * 0.3, size: 0.07 + 0.03 * random(), seed: random() });
     const life = reduced ? 7 : 16;
-    for (let k = 0; k < 8; k++) {
-      const out = 0.2 + 0.7 * random();
-      const along = (random() - 0.5) * 0.14;
+    for (let k = 0; k < 12; k++) {
+      const out = 0.12 + 0.8 * random();
+      const along = (random() - 0.5) * 0.2;
       spawn(pools.smoke, KINDS.smoke, {
         x: muzzle.x + kx * along, y: muzzle.y - 0.01 * random(), z: muzzle.z + kz * along,
         vx: ox * out + kx * (random() - 0.5) * 0.15,
         vy: 0.02 * random(),
         vz: oz * out + kz * (random() - 0.5) * 0.15,
-        size: 0.04 + 0.03 * random(),
+        size: 0.045 + 0.04 * random(),
         life: life + 6 * random(),
         seed: random(),
       });
@@ -406,7 +411,7 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
       splash(at, 1);
       return;
     }
-    burst("splinter", at, reduced ? 6 : 10, 0.5, 0.45, 1, 30);
+    burst("splinter", at, reduced ? 6 : 10, 0.35, 0.4, 1, 30);
     burst("mist", at, 2, 0.08, 0.02, 0.05);
     const target = shipFx(volley.targetId);
     const shooter = shipFx(volley.shooterId);
@@ -499,7 +504,7 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
         const paths = closeInPath(a.held, d.held, { attackerBeam: a.size.beam, defenderBeam: d.size.beam, gap: CLOSE_IN_APPROACH_GAP });
         setPath(a, paths.attacker, beat.seconds * GRAPPLES_AT);
         setPath(d, paths.defender, beat.seconds * GRAPPLES_AT);
-        frameCamera([a.held, d.held, pathPose(paths.defender, 1)], Math.max(a.size.length, d.size.length));
+        frameCamera([a.held, d.held, pathPose(paths.defender, 1), pathPose(paths.attacker, 1)], Math.max(a.size.length, d.size.length));
         return;
       }
       case "sink": {
@@ -580,7 +585,7 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
     spawn(pools.foam, KINDS.foam, {
       x, y: env.seaHeight(x, z), z,
       vx: sx * Math.sign(across) * out, vy: 0, vz: sz * Math.sign(across) * out,
-      size: 0.05 + 0.05 * random(),
+      size: 0.08 + 0.08 * random(),
       life: (reduced ? 3 : 5) + 2 * random(),
       seed: random(),
     });

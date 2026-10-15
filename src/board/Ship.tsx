@@ -178,6 +178,25 @@ export function Ship({
     combatShipPoses.report(combatId, r);
   }, [combatId, foamId, innerRef]);
 
+  /** Registers the hull foam where the ship is drawn this frame, at its heading and way. */
+  const writeFoam = (rot: number, speed: number, delta: number): void => {
+    if (foamId && ref.current) {
+      const p = ref.current.position;
+      foamSpeed.current = Math.max(speed, foamSpeed.current * Math.exp(-delta / FOAM_SPEED_DECAY));
+      const source = foamSource.current;
+      source.x = p.x;
+      source.z = p.z;
+      source.headingX = Math.sin(rot);
+      source.headingZ = Math.cos(rot);
+      source.hullLength = waterline.length;
+      source.beam = waterline.beam;
+      source.roundness = waterline.roundness;
+      source.speed = foamSpeed.current;
+      source.player = foamPlayer;
+      shipFoamSources.set(foamId, source);
+    }
+  };
+
   useFrame((_, delta) => {
     if (!ref.current) return;
 
@@ -186,9 +205,12 @@ export function Ship({
     const fight = combatId ? combatShipPoses.held(combatId) : undefined;
     if (fight) {
       held.current = fight;
-      ref.current.position.set(fight.x, position[1] + SHIP_WATERLINE_Y, fight.z);
+      const p = ref.current.position;
+      // Its way through the water as the fight moves it (a run, closing alongside), for its hull foam.
+      const way = delta > 0 ? Math.hypot(fight.x - p.x, fight.z - p.z) / delta : 0;
+      p.set(fight.x, position[1] + SHIP_WATERLINE_Y, fight.z);
       ref.current.rotation.y = fight.heading;
-      foamSpeed.current *= Math.exp(-delta / FOAM_SPEED_DECAY);
+      writeFoam(fight.heading, way, delta);
       reportPose();
       return;
     }
@@ -226,25 +248,11 @@ export function Ship({
     ref.current.position.set(m.x, position[1] + SHIP_WATERLINE_Y, m.z);
     ref.current.rotation.y = m.heading;
 
-    if (foamId) {
-      const p = ref.current.position;
-      // Its way along the course, which does not spike when the ship is moved a wrap width over the seam.
-      foamSpeed.current = Math.max(m.speed, foamSpeed.current * Math.exp(-delta / FOAM_SPEED_DECAY));
-      const rot = m.heading;
-      const source = foamSource.current;
-      source.x = p.x;
-      source.z = p.z;
-      source.headingX = Math.sin(rot);
-      source.headingZ = Math.cos(rot);
-      source.hullLength = waterline.length;
-      source.beam = waterline.beam;
-      source.roundness = waterline.roundness;
-      source.speed = foamSpeed.current;
-      source.player = foamPlayer;
-      shipFoamSources.set(foamId, source);
-    }
+    // Its way along the course, which does not spike when the ship is moved a wrap width over the seam.
+    writeFoam(m.heading, m.speed, delta);
     reportPose();
   });
+
 
 
   // The box's centre rides above the waterline the group stands on.

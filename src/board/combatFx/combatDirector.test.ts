@@ -65,11 +65,11 @@ describe("the combat director: beats played on the board (#263)", () => {
     expect(director.takeCameraRequest()).toBeNull(); // taken once
   });
 
-  it("asks for no camera move under reduced motion", () => {
+  it("asks for the framing under reduced motion too: the board cuts to it, never flies (cameraFlight.ts)", () => {
     const { director } = setup(true);
     director.enqueue([declare], CLASSES);
     play(director, 1);
-    expect(director.takeCameraRequest()).toBeNull();
+    expect(director.takeCameraRequest()).not.toBeNull();
   });
 
   it("a volley: each gun flashes, smokes and is heard where it fires; the hit splinters, the miss splashes", () => {
@@ -149,8 +149,10 @@ describe("the combat director: beats played on the board (#263)", () => {
     director.enqueue([declare], CLASSES);
     play(director, 3);
     expect(poses.held("0")).toBeDefined();
+    expect(director.holding()).toBe(true);
     director.setFightOn(false);
     play(director, 3);
     expect(poses.held("0")).toBeUndefined();
+    expect(director.holding()).toBe(false);
   });
 });
