@@ -9,9 +9,11 @@ import type { CaribbeanState, NPCShip, ShipState } from "./types";
  *
  * Hidden from a seat:
  * - the undealt captains (`captainDeck`): from everyone, the deck's order too;
- * - other seats' draft hands: only the seat's own hand stays;
+ * - other seats' draft hands: only the seat's own hand stays, a replacement
+ *   captain's hand (#265) as much as the draft's;
  * - other seats' missions (`activeMission`), which only their tavern shows;
- * - other seats' stashed gold, which only their own ship's details show (the
+ * - other seats' stashed gold, which only their own ship's details show, and
+ *   the stash a seat that lost its ship keeps for its next captain (the
  *   glory a stash earns stays in the public `score`, so its size can be
  *   guessed to within ten gold per point);
  * - the cargo and gold of a rival ship the seat has not scouted, and of an
@@ -35,10 +37,14 @@ export function playerViewFor(G: CaribbeanState, playerID: string | null | undef
   for (const [id, npc] of Object.entries(G.npcs)) {
     npcs[id] = npc.isIdentified ? npc : { ...npc, cargo: emptyCargo(), gold: 0 };
   }
+  const lostShips = G.lostShips && Object.fromEntries(
+    Object.entries(G.lostShips).map(([id, lost]) => [id, id === seat ? lost : { ...lost, stashedGold: 0 }])
+  );
   return {
     ...G,
     ships,
     npcs,
+    ...(lostShips ? { lostShips } : {}),
     captainDeck: [],
     draftHands: seat !== null && seat in G.draftHands ? { [seat]: G.draftHands[seat] } : {},
   };
