@@ -16,6 +16,7 @@ npm run preview          # Preview production build
 npm test                 # Run all tests once (vitest run)
 npm run test:watch       # Vitest in watch mode
 npm run test:db          # Row-level security tests against local Supabase (needs `npx supabase start`, Docker)
+npm run test:e2e         # Playwright: two browsers play an online match against the e2e backend (no Docker; ~4 min)
 npx tsc --noEmit         # Type-check only (no emit)
 
 npx vitest run src/game/combat.test.ts        # Run a single test file

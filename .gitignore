@@ -32,3 +32,7 @@ dist-ssr
 
 # The bundled /api server (npm run build:api, ADR 0008)
 api/_server.mjs
+
+# Playwright output (npm run test:e2e)
+test-results/
+playwright-report/
