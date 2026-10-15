@@ -2,7 +2,7 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { BufferAttribute, BufferGeometry, Group, Matrix4, Mesh, Vector3, type Object3D } from "three";
-import { SHIP_SINK_DEPTH, shipWaterline } from "../../board/shipHull";
+import { shipWaterline } from "../../board/shipHull";
 import { type ShipModel, shipModel, shipModelPlacement, shipModelUrl } from "../../board/shipModels";
 import { mergeShipModel } from "../../board/shipModelMerge";
 import { dressShipModel } from "../../board/shipDressing";
@@ -25,6 +25,9 @@ import { poseTopmast, type TopmastHeel } from "./frameWriters";
  * a group inside that sinks, and the model split at the mainmast so its top
  * can fall (mastSplit.ts). Reads its state from the director every frame.
  */
+/** How far a sinking ship goes down, as a share of her masthead's height: just past it. */
+const SINK_PAST_MASTHEAD = 1.15;
+
 export function LabShip({ director, shipKey, colour, flag }: { director: Director; shipKey: ShipKey; colour: string; flag: ShipFlag | null }) {
   const outer = useRef<Group>(null);
   const sinkGroup = useRef<Group>(null);
@@ -44,7 +47,9 @@ export function LabShip({ director, shipKey, colour, flag }: { director: Directo
     g.position.set(s.pose.x, 0, s.pose.z);
     g.rotation.y = s.pose.heading;
     g.visible = !s.sunk;
-    sinkGroup.current.position.y = -s.drop * SHIP_SINK_DEPTH;
+    // Down by her own height, masthead and all: the board's SHIP_SINK_DEPTH is
+    // over twice a galleon's height, so the settle took the hull under at once.
+    sinkGroup.current.position.y = -s.drop * s.size.masthead * SINK_PAST_MASTHEAD;
     director.attach(shipKey, sinkGroup.current);
     if (s.sunk || s.drop > 0.3) {
       shipFoamSources.remove(foamId);
