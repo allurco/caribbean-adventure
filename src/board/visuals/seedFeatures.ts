@@ -57,6 +57,10 @@ export const SEED_FEATURES = {
   islandLook: "islandLook",
   /** The heading a ship lies at before it first sails (`shipSpawnHeading.ts`), per ship id. */
   shipSpawnHeading: "shipSpawnHeading",
+  /** Which of a volley's shots hit and when each gun fires (`combatFx/combatTimeline.ts`, #263), per fight, round and shooter. */
+  combatShots: "combatShots",
+  /** The look of a fight's smoke, splinters, spray and foam (`combatFx/combatDirector.ts`, #263), per fight. */
+  combatEffects: "combatEffects",
 } as const;
 
 export type SeedFeature = (typeof SEED_FEATURES)[keyof typeof SEED_FEATURES];

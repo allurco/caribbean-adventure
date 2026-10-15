@@ -227,7 +227,8 @@ describe("the board's seeded world (ADR 0007, #165)", () => {
     it("covers every decoration and town feature", () => {
       const terrain: readonly SeedFeature[] = [SEED_FEATURES.coastNoise, SEED_FEATURES.reliefNoise, SEED_FEATURES.reefNoise, SEED_FEATURES.landBandNoise];
       // A ship's resting heading is seeded per ship, not laid out with the map (shipSpawnHeading.test.ts covers it).
-      const ships: readonly SeedFeature[] = [SEED_FEATURES.shipSpawnHeading];
+      // So are a fight's shots and effects, per fight (combatFx/combatTimeline.test.ts covers them).
+      const ships: readonly SeedFeature[] = [SEED_FEATURES.shipSpawnHeading, SEED_FEATURES.combatShots, SEED_FEATURES.combatEffects];
       const all = Object.values(SEED_FEATURES).filter((f) => !terrain.includes(f) && !ships.includes(f));
       expect(Object.keys(REACH).sort()).toEqual([...all].sort());
     });
