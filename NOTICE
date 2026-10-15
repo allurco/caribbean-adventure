@@ -83,3 +83,183 @@ public/sounds/sea-close-loop.ogg
   Changes: waves lapping near with a 2.3 kHz hum notched out, a quiet water
            trickle under them, crossfaded into one seamless 20 s loop, mono,
            loudness-normalised
+
+public/sounds/cannon-shot-1.ogg
+  Source:  "Battle at sea" (cannon_fire_1)
+  Author:  Thimras
+  URL:     https://opengameart.org/content/battle-at-sea
+  Licence: CC0
+  Changes: trimmed to 1.7 s with a faded tail, mono, loudness-normalised
+
+public/sounds/cannon-shot-2.ogg
+  Source:  "Battle at sea" (cannon_fire_1)
+  Author:  Thimras
+  URL:     https://opengameart.org/content/battle-at-sea
+  Licence: CC0
+  Changes: pitched down 14% for a heavier gun, trimmed to 1.9 s with a
+           faded tail, mono, loudness-normalised
+
+public/sounds/cannon-shot-3.ogg
+  Source:  "Tiny Naval Battle Sounds Set" (GunShot.wav)
+  Author:  qubodup (Iwan Gabovitch)
+  URL:     https://opengameart.org/content/tiny-naval-battle-sounds-set
+  Licence: CC0
+  Changes: low end lifted, faded out over the last 0.4 s, mono, loudness-
+           normalised
+
+public/sounds/cannon-shot-4.ogg
+  Source:  "Tiny Naval Battle Sounds Set" (GunShot.wav)
+  Author:  qubodup (Iwan Gabovitch)
+  URL:     https://opengameart.org/content/tiny-naval-battle-sounds-set
+  Licence: CC0
+  Changes: pitched down 10%, low end lifted, trimmed to 1.1 s with a
+           faded tail, mono, loudness-normalised
+
+public/sounds/cannon-shot-5.ogg
+  Source:  "Tiny Naval Battle Sounds Set" (GunShotGverb.wav)
+  Author:  qubodup (Iwan Gabovitch)
+  URL:     https://opengameart.org/content/tiny-naval-battle-sounds-set
+  Licence: CC0
+  Changes: low-passed at 2.4 kHz for distance, trimmed to 1.8 s with a
+           faded tail, mono, loudness-normalised quieter
+
+public/sounds/cannon-shot-6.ogg
+  Source:  "Battle at sea" (cannon_fire_1)
+  Author:  Thimras
+  URL:     https://opengameart.org/content/battle-at-sea
+  Licence: CC0
+  Changes: pitched up 6%, low-passed at 3 kHz with a short echo for
+           distance, trimmed to 1.8 s, mono, loudness-normalised quieter
+
+public/sounds/wood-crack-1.ogg
+  A mix of 2 CC0 sources:
+  Source:  "35 wooden cracks/hits/destructions" (crack07)
+  Author:  Independent.nu (submitted by qubodup)
+  URL:     https://opengameart.org/content/35-wooden-crackshitsdestructions
+  Licence: CC0
+  Source:  "75 CC0 breaking / falling / hit sfx" (bfh1_wood_hit_01)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+  Licence: CC0
+  Changes: a splintering crack over a low wood thud, 1.0 s with a faded
+           tail, mono, loudness-normalised
+
+public/sounds/wood-crack-2.ogg
+  A mix of 2 CC0 sources:
+  Source:  "35 wooden cracks/hits/destructions" (crack09)
+  Author:  Independent.nu (submitted by qubodup)
+  URL:     https://opengameart.org/content/35-wooden-crackshitsdestructions
+  Licence: CC0
+  Source:  "75 CC0 breaking / falling / hit sfx" (bfh1_wood_hit_02)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+  Licence: CC0
+  Changes: a splintering crack over a low wood thud, 1.0 s with a faded
+           tail, mono, loudness-normalised
+
+public/sounds/wood-crack-3.ogg
+  A mix of 2 CC0 sources:
+  Source:  "35 wooden cracks/hits/destructions" (crack10)
+  Author:  Independent.nu (submitted by qubodup)
+  URL:     https://opengameart.org/content/35-wooden-crackshitsdestructions
+  Licence: CC0
+  Source:  "80 CC0 RPG SFX" (wood_03)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/80-cc0-rpg-sfx
+  Licence: CC0
+  Changes: a splintering crack over a low wood thud, 0.9 s with a faded
+           tail, mono, loudness-normalised
+
+public/sounds/wood-crack-4.ogg
+  A mix of 2 CC0 sources:
+  Source:  "35 wooden cracks/hits/destructions" (crack05)
+  Author:  Independent.nu (submitted by qubodup)
+  URL:     https://opengameart.org/content/35-wooden-crackshitsdestructions
+  Licence: CC0
+  Source:  "75 CC0 breaking / falling / hit sfx" (bfh1_wood_hit_03)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+  Licence: CC0
+  Changes: a splintering crack over a low wood thud, 1.1 s with a faded
+           tail, mono, loudness-normalised
+
+public/sounds/ball-splash-1.ogg
+  Source:  "Battle at sea" (cannon_miss_1)
+  Author:  Thimras
+  URL:     https://opengameart.org/content/battle-at-sea
+  Licence: CC0
+  Changes: trimmed to 1.6 s with a faded tail, mono, loudness-normalised
+
+public/sounds/ball-splash-2.ogg
+  Source:  "Tiny Naval Battle Sounds Set" (Splash.wav)
+  Author:  qubodup (Iwan Gabovitch)
+  URL:     https://opengameart.org/content/tiny-naval-battle-sounds-set
+  Licence: CC0
+  Changes: trimmed to 1.8 s with a faded tail, mono, loudness-normalised
+
+public/sounds/ball-splash-3.ogg
+  Source:  "40 CC0 water / splash / slime SFX" (splash_04, bubble_01)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/40-cc0-water-splash-slime-sfx
+  Licence: CC0
+  Changes: a splash with its low end lifted and a bubble after it, 1.0 s,
+           mono, loudness-normalised
+
+public/sounds/hull-groan.ogg
+  Source:  "Tree Creaking" (tree_creak)
+  Author:  antumdeluge
+  URL:     https://opengameart.org/content/tree-creaking
+  Licence: CC0
+  Changes: 4.4 s of a tree's creak slowed 30% into a hull's groan, low-
+           passed, faded in and out, 6.2 s, mono, loudness-normalised
+
+public/sounds/mast-crack.ogg
+  A mix of 3 CC0 sources:
+  Source:  "35 wooden cracks/hits/destructions" (crack03)
+  Author:  Independent.nu (submitted by qubodup)
+  URL:     https://opengameart.org/content/35-wooden-crackshitsdestructions
+  Licence: CC0
+  Source:  "75 CC0 breaking / falling / hit sfx" (bfh1_falling_04, bfh1_wood_hit_02)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+  Licence: CC0
+  Source:  "40 CC0 water / splash / slime SFX" (splash_11)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/40-cc0-water-splash-slime-sfx
+  Licence: CC0
+  Changes: a long crack, the spar falling and striking (slowed 20%), then
+           a splash, 3.7 s, mono, loudness-normalised
+
+public/sounds/grapples.ogg
+  A mix of 4 CC0 sources:
+  Source:  "Swishes Sound Pack" (swish-9, swish-7)
+  Author:  artisticdude
+  URL:     https://opengameart.org/content/swishes-sound-pack
+  Licence: CC0
+  Source:  "Metal Impact Sounds" (clink1, clink3)
+  Author:  bmaczero
+  URL:     https://opengameart.org/content/metal-impact-sounds
+  Licence: CC0
+  Source:  "80 CC0 RPG SFX" (wood_03, wood_05, chain_01)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/80-cc0-rpg-sfx
+  Licence: CC0
+  Source:  "50 RPG sound effects" (creak3)
+  Author:  Kenney (www.kenney.nl)
+  URL:     https://opengameart.org/content/50-rpg-sound-effects
+  Licence: CC0
+  Changes: two lines thrown (swishes slowed), iron biting wood, a chain
+           rattle and a rope's creak, 1.7 s, mono, loudness-normalised
+
+public/sounds/ship-breakup.ogg
+  A mix of 2 CC0 sources:
+  Source:  "Battle at sea" (ship_destroyed_short)
+  Author:  Thimras
+  URL:     https://opengameart.org/content/battle-at-sea
+  Licence: CC0
+  Source:  "40 CC0 water / splash / slime SFX" (loop_bubbles_1)
+  Author:  rubberduck
+  URL:     https://opengameart.org/content/40-cc0-water-splash-slime-sfx
+  Licence: CC0
+  Changes: 6.4 s of the ship breaking up with a long fade, bubbles rising
+           as she goes down, 7.0 s, mono, loudness-normalised

@@ -49,6 +49,19 @@ export const HANDOFF_TIMING = {
   total: 12000,
 } as const;
 
+/** A turn as the board shows it: whose it is, and boardgame.io's turn number. */
+export interface ShownTurn {
+  readonly player: string;
+  readonly turn: number;
+}
+
+/**
+ * Whether a new turn has begun since the board last showed `shown`: the turn
+ * number moved on. Not the player alone: solo (#278) every turn is the same
+ * seat's, and its turns still end and hand off.
+ */
+export const turnPassed = (shown: ShownTurn | null, now: ShownTurn): boolean => shown !== null && shown.turn !== now.turn;
+
 /**
  * A hand-off from `from` to `to`, the outgoing ship still sailing. Started
  * `now`, or, given null, at its first step (the board starts it while
