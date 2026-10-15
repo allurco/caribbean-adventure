@@ -1,5 +1,6 @@
 import type { AccountClient } from "./accountClient";
 import { JoinRoom } from "./JoinRoom";
+import { MatchView } from "./MatchView";
 import { NewRoomForm } from "./NewRoomForm";
 import { OnlineSheet } from "./OnlineSheet";
 import type { OnlineRoute } from "./onlineRoute";
@@ -22,6 +23,8 @@ export function OnlineView({ client, route }: { client: AccountClient; route: On
           <RoomLobby api={api} id={route.id} />
         </OnlineSheet>
       );
+    case "match":
+      return <MatchView client={client} matchId={route.id} />;
     case "join":
       return (
         <OnlineSheet title="An invitation">

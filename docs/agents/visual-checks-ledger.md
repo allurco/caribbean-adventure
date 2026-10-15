@@ -48,6 +48,13 @@ Reports still being chased. Move an entry to "Investigated, not a bug" or close 
 
 One entry per report. Newest first.
 
+### 2026-10-15: two browsers play an online match (#113, PR #297)
+
+- **Branch and commit:** `feat/113-async-turns`, the commit that adds `e2e/`.
+- **Renderer:** Playwright 1.59's headless Chromium (software WebGL), 1280×800; one browser per captain, because two boards in one headless browser stalled the second page's clicks.
+- **View:** `npm run test:e2e` against the e2e dev server (`e2e/e2eBackend.ts`: the real `/api` router over the in-memory store, test tokens, no Docker).
+- **Findings:** a room opened, joined by its invite link, started; both seats board; each drafts on its own board in turn, the other showing "Awaiting Orders"; the seat to play presses End Turn and the other seat's End Turn appears within a poll. Passed twice, about four minutes a run, most of it waiting on the software-rendered boards. No screenshots taken; nothing visual was judged.
+
 ### 2026-10-15: `?seats=1` behind the loading screen (merge of main into PR #262)
 
 - **Batch:** branch `feat/loading-screen` with main (#245) merged in; headless Chromium on the GPU (ANGLE Metal); `?size=small&seed=1&snapshot=1` at 1280×800 and `?seats=1&size=small&seed=1` at 1024×640, camera at its default start.

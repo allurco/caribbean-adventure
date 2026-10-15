@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { joinPath, newRoomPath, parseOnlineRoute, roomPath } from "./onlineRoute";
+import { joinPath, matchPath, newRoomPath, parseOnlineRoute, roomPath } from "./onlineRoute";
 
 const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const CODE = "AbC-_0123456789xyzXYZ0";
@@ -9,6 +9,8 @@ describe("parseOnlineRoute", () => {
     expect(parseOnlineRoute("?view=rooms")).toEqual({ kind: "newRoom" });
     expect(parseOnlineRoute(`?view=room&id=${ID.toUpperCase()}`)).toEqual({ kind: "room", id: ID });
     expect(parseOnlineRoute(`?view=join&invite=${CODE}`)).toEqual({ kind: "join", inviteCode: CODE });
+    expect(parseOnlineRoute(`?view=match&id=${ID}`)).toEqual({ kind: "match", id: ID });
+    expect(parseOnlineRoute("?view=match&id=x")).toEqual({ kind: "match", id: null });
   });
 
   it("keeps the view but drops a malformed id or invite code", () => {
@@ -28,5 +30,6 @@ describe("parseOnlineRoute", () => {
     expect(parseOnlineRoute(newRoomPath().slice(1))).toEqual({ kind: "newRoom" });
     expect(parseOnlineRoute(roomPath(ID).slice(1))).toEqual({ kind: "room", id: ID });
     expect(parseOnlineRoute(joinPath(CODE).slice(1))).toEqual({ kind: "join", inviteCode: CODE });
+    expect(parseOnlineRoute(matchPath(ID).slice(1))).toEqual({ kind: "match", id: ID });
   });
 });

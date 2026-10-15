@@ -8,6 +8,7 @@ import {
   type ClaimOutcome,
   type InitialMatch,
   type JoinOutcome,
+  type MoveEntry,
   type NewRoom,
   type OnlineStore,
   type RoomRecord,
@@ -24,6 +25,8 @@ type StoredRoom = Omit<RoomRecord, "seats" | "matchId"> & { startClaimedAt: numb
 export interface MemoryOnlineStore extends OnlineStore {
   /** The stored match, whole state included: for tests only. */
   peekMatch(matchId: string): Promise<StoredMatch | null>;
+  /** The match's move log, oldest first: for tests only. */
+  peekMoves(matchId: string): Promise<(MoveEntry & { at: string })[]>;
 }
 
 export function createMemoryOnlineStore({
@@ -34,6 +37,7 @@ export function createMemoryOnlineStore({
   const seats = new Map<string, Map<number, string>>();
   const matches = new Map<string, StoredMatch>();
   const counters = new Map<string, number>();
+  const moves = new Map<string, (MoveEntry & { at: string })[]>();
   let ids = 0;
   const newId = () => `00000000-0000-4000-9000-${String(++ids).padStart(12, "0")}`;
 
@@ -115,6 +119,29 @@ export function createMemoryOnlineStore({
       return { outcome: "started", matchId: id };
     },
 
+    async getMatch(matchId) {
+      const match = matches.get(matchId);
+      if (!match) return null;
+      return { id: match.id, roomId: match.roomId, state: structuredClone(match.state), stateId: match.stateId, seats: record(match.roomId)!.seats };
+    },
+
+    async getMatchHead(matchId) {
+      const match = matches.get(matchId);
+      if (!match) return null;
+      return { id: match.id, roomId: match.roomId, stateId: match.stateId, seats: record(match.roomId)!.seats };
+    },
+
+    async commitMove(update) {
+      const match = matches.get(update.matchId);
+      if (!match || match.stateId !== update.expectedStateId) return false;
+      match.state = structuredClone(update.state);
+      match.stateId = update.stateId;
+      match.phase = update.phase;
+      if (update.finished) rooms.get(match.roomId)!.status = "finished";
+      moves.set(match.id, [...(moves.get(match.id) ?? []), { ...structuredClone(update.move), at: new Date(now()).toISOString() }]);
+      return true;
+    },
+
     async releaseStart(roomId) {
       const room = rooms.get(roomId);
       if (room?.status === "starting") {
@@ -125,6 +152,10 @@ export function createMemoryOnlineStore({
 
     async peekMatch(matchId) {
       return matches.get(matchId) ?? null;
+    },
+
+    async peekMoves(matchId) {
+      return moves.get(matchId) ?? [];
     },
   };
 }

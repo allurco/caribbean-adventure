@@ -24,6 +24,7 @@ export default defineConfig({
   },
   test: {
     // Agent worktrees live under .claude/; their copies of the suite are not ours to run.
-    exclude: [...configDefaults.exclude, ".claude/**"],
+    // e2e/ holds the Playwright browser tests (npm run test:e2e), not Vitest's.
+    exclude: [...configDefaults.exclude, ".claude/**", "e2e/**"],
   },
 });

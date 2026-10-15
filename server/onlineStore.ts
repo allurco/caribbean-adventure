@@ -62,6 +62,39 @@ export interface InitialMatch {
   phase: string | null;
 }
 
+/** A started match as the move API loads it (#113). */
+export interface MatchRecord {
+  id: string;
+  roomId: string;
+  /** boardgame.io's whole state, secrets included: never sent as it is. */
+  state: unknown;
+  stateId: number;
+  seats: SeatRecord[];
+}
+
+/** One accepted action, for the append-only move log. */
+export interface MoveEntry {
+  seat: number;
+  userId: string;
+  kind: "move" | "event";
+  name: string;
+  args: unknown[];
+  stateIdBefore: number;
+  stateIdAfter: number;
+}
+
+export interface MatchUpdate {
+  matchId: string;
+  /** The `state_id` the action was made against: the write happens only if it is still current. */
+  expectedStateId: number;
+  state: unknown;
+  stateId: number;
+  phase: string | null;
+  /** The game is over: the room is marked finished. */
+  finished: boolean;
+  move: MoveEntry;
+}
+
 export interface OnlineStore {
   /** Counts one use of `action` by `userId` in the current fixed window; false once over `limit`. */
   consumeRateLimit(userId: string, action: string, limit: number, windowSeconds: number): Promise<boolean>;
@@ -84,4 +117,13 @@ export interface OnlineStore {
   startMatch(roomId: string, userId: string, match: InitialMatch): Promise<{ outcome: StartOutcome; matchId: string | null }>;
   /** Gives a claimed start back (building the match failed), so the host can try again. */
   releaseStart(roomId: string): Promise<void>;
+  getMatch(matchId: string): Promise<MatchRecord | null>;
+  /** The match without its state: its id, state id and seats. For the cheap `?since=` check. */
+  getMatchHead(matchId: string): Promise<Omit<MatchRecord, "state"> | null>;
+  /**
+   * Writes the new snapshot and appends the move to the log, both or
+   * neither, if the match is still at `expectedStateId`; false when another
+   * write got there first (the client then refetches).
+   */
+  commitMove(update: MatchUpdate): Promise<boolean>;
 }
