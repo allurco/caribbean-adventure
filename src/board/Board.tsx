@@ -124,6 +124,7 @@ import { MissionCompleteToast } from "./MissionCompleteToast";
 import { CameraAudioListener } from "./CameraAudioListener";
 import { AmbienceBedDriver } from "./AmbienceBedDriver";
 import { HudSoundControl } from "./HudSoundControl";
+import { HudSaveLeave } from "./HudSaveLeave";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { RenderStatsOverlay } from "./RenderStatsOverlay";
 import { DevSeedControl } from "./DevSeedControl";
@@ -206,6 +207,7 @@ function Scene({
   regionBorder,
   renderOff,
   composerMultisampling,
+  composerFrameBuffer,
   onReady,
   warmUp,
 }: {
@@ -264,6 +266,8 @@ function Scene({
   renderOff: RenderOff;
   /** The composer's multisampling: 0 under `?aa=0` (canvasSetup.ts). */
   composerMultisampling: number;
+  /** The composer's buffers: half floats, or full floats under `?bloomhalf=0` (canvasSetup.ts). */
+  composerFrameBuffer: "half" | "float";
   /** Reports the loading gate's tasks done here: "world" once built, "sky" once baked (useSceneReadiness.ts). */
   onReady: (task: string) => void;
   /** The loading gate is still open: idle layers stay in the scene so their shaders compile behind it. */
@@ -776,7 +780,18 @@ function Scene({
       />
 
       {/* Post-processing: bloom, vignette, ACES at the lighting's exposure, warm grade */}
-      {renderOff.postProcessing ? <PlainRender /> : <PostEffects lighting={lighting} withoutBloom={renderOff.bloom === true} multisampling={composerMultisampling} />}
+      {renderOff.postProcessing ? (
+        <PlainRender />
+      ) : (
+        <PostEffects
+          lighting={lighting}
+          withoutBloom={renderOff.bloom === true}
+          multisampling={composerMultisampling}
+          sanitizeBloomInput={!renderOff.bloomSanitize}
+          mipmapBlur={!renderOff.bloomMipmapBlur}
+          frameBuffer={composerFrameBuffer}
+        />
+      )}
     </>
     </SeaSurfaceContext.Provider>
   );
@@ -799,6 +814,8 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   renderStats?: boolean;
   /** A seed-gallery shot (dev, #161): the draft picks itself and the frame is posted to the gallery; ignored in production builds. */
   gallerySnapshot?: boolean;
+  /** Saves the hotseat game and goes back to its start screen (#300); the HUD offers it only when given. */
+  onSaveAndLeave?: () => void;
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
@@ -1153,6 +1170,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           regionBorder={regionBorder ?? DEFAULT_REGION_BORDER_MODE}
           renderOff={renderOff ?? NOTHING_OFF}
           composerMultisampling={setup.composerMultisampling}
+          composerFrameBuffer={setup.composerFrameBuffer}
           onReady={readiness.complete}
           warmUp={!readiness.view.ready}
         />
@@ -1245,6 +1263,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
       {/* Sound: mute and volume, under the turn bar */}
       {currentShipState && <HudSoundControl />}
+      {props.onSaveAndLeave && <HudSaveLeave onSaveAndLeave={props.onSaveAndLeave} />}
 
       {/* Every captain's glory, which is public (#110) */}
       {!inCombat && currentShipState && (

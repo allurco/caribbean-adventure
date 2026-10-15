@@ -4,6 +4,7 @@
  * call resolves to a result, never throws, so components show what comes back.
  */
 import type { MapSizeId } from "../game/mapConfig";
+import type { VoyageView } from "./voyageList";
 
 /** A room as its members see it (`roomView` in server/rooms.ts). */
 export interface RoomView {
@@ -90,11 +91,17 @@ export async function callApi<T>(deps: ApiDeps, messages: Messages, method: stri
   return refuse(res.status, typeof payload?.code === "string" ? payload.code : "internal");
 }
 
+const VOYAGE_MESSAGES: Messages = {
+  rate_limited: "The harbour master is busy. Try again in a minute.",
+};
+
 export function createRoomApi(deps: ApiDeps) {
   return {
     createRoom: (settings: NewRoomSettings) => callApi<{ room: RoomView }>(deps, ROOM_MESSAGES, "POST", "/api/rooms", settings),
     joinRoom: (inviteCode: string) => callApi<{ room: RoomView }>(deps, ROOM_MESSAGES, "POST", "/api/rooms/join", { inviteCode }),
     getRoom: (id: string) => callApi<{ room: RoomView }>(deps, ROOM_MESSAGES, "GET", `/api/rooms/${encodeURIComponent(id)}`),
+    /** The player's rooms and matches, most recent first (`GET /api/me/rooms`). */
+    listVoyages: () => callApi<{ voyages: VoyageView[] }>(deps, VOYAGE_MESSAGES, "GET", "/api/me/rooms"),
     startRoom: (id: string) => callApi<{ room: RoomView }>(deps, ROOM_MESSAGES, "POST", `/api/rooms/${encodeURIComponent(id)}/start`),
   };
 }

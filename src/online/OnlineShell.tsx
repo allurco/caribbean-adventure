@@ -13,9 +13,11 @@ import { ShellStatus } from "./ShellStatus";
 import type { SupabaseConfig } from "./supabaseConfig";
 import { useAccountClient, useAccountSession } from "./useAccount";
 import { useProfile, type ProfileState } from "./useProfile";
+import { useRoomApi } from "./useRoomApi";
 import { useShellFonts } from "./useShellFonts";
 import { useShellLayout } from "./useShellLayout";
 import { useShellNavigation } from "./useShellNavigation";
+import { YourVoyages } from "./YourVoyages";
 
 /**
  * The online entry point (#125, the "Harbour launcher" of #104): the harbour,
@@ -68,8 +70,7 @@ function ShellSheet({ page, client, session, ownProfile, onProfileSaved }: Shell
   if (!session) return null;
   switch (page.kind) {
     case "play":
-      // The voyages slot: #301's YourVoyages drops in here.
-      return <PlaySheet />;
+      return <PlayPage client={client} saved={page.saved === true} />;
     case "coming":
       return <ComingSheet screen={page.screen} />;
     case "account":
@@ -79,6 +80,12 @@ function ShellSheet({ page, client, session, ownProfile, onProfileSaved }: Shell
     case "join":
       return <OnlineView client={client} route={page} />;
   }
+}
+
+/** Play, with the player's voyages (#301) read through the rooms API. */
+function PlayPage({ client, saved }: { client: AccountClient; saved: boolean }) {
+  const api = useRoomApi(client);
+  return <PlaySheet voyages={<YourVoyages api={api} />} saved={saved} />;
 }
 
 /** The signed-in captain for the nav board: their profile once read, else a nameless seal on their id. */

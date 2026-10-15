@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { accountPath, profilePath } from "./accountRoute";
 import { joinPath, matchPath, newRoomPath, roomPath } from "./onlineRoute";
-import { comingPath, localGamePath, parseShellPage, playPath, shellPageForHref } from "./shellRoute";
+import { comingPath, harbourPath, localGamePath, parseShellPage, playPath, shellPageForHref } from "./shellRoute";
 
 const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const CODE = "AbC-_0123456789xyzXYZ0";
@@ -16,6 +16,14 @@ describe("parseShellPage", () => {
   it("still opens Play when the sign-in link comes back with its own parameters", () => {
     expect(parseShellPage("?code=abc")).toEqual({ kind: "play" });
     expect(parseShellPage("?error=access_denied&error_code=otp_expired&error_description=x")).toEqual({ kind: "play" });
+  });
+
+  it("carries the word that an online match was left and saved, back to Play (#301)", () => {
+    expect(harbourPath({ saved: true })).toBe("/?saved=1");
+    expect(harbourPath()).toBe(playPath());
+    expect(parseShellPage("?saved=1")).toEqual({ kind: "play", saved: true });
+    expect(parseShellPage("?saved=0")).toEqual({ kind: "play" });
+    expect(parseShellPage(harbourPath({ saved: true }).slice(1))).toEqual({ kind: "play", saved: true });
   });
 
   it("reads the coming sheets", () => {

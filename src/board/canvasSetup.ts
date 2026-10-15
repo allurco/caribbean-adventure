@@ -16,6 +16,8 @@ export interface CanvasSetup {
   gl: { antialias: boolean; powerPreference: WebGLPowerPreference; preserveDrawingBuffer: boolean };
   shadows: boolean;
   composerMultisampling: number;
+  /** The composer's buffers (and the bloom's): half floats, or full floats under `?bloomhalf=0`. */
+  composerFrameBuffer: "half" | "float";
 }
 
 /** The canvas and composer for the A/B switches (`?dpr=1`, `?power=low`, `?pdb=1`, `?aa=0`, `?shadows=0`); the game's usual set-up without them. Pure. */
@@ -29,5 +31,6 @@ export function canvasSetup(gpu: GpuCheck, off: RenderOff): CanvasSetup {
     },
     shadows: !off.shadows,
     composerMultisampling: off.msaa ? 0 : COMPOSER_MULTISAMPLING,
+    composerFrameBuffer: off.halfFloatBuffers ? "float" : "half",
   };
 }

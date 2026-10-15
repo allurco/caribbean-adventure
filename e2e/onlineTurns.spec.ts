@@ -95,5 +95,29 @@ test("two captains open a room, start it, and play their turns from two browsers
   await endTurn(playing).click();
   await expect(endTurn(waiting)).toBeVisible({ timeout: 30_000 });
   await expect(endTurn(playing)).toBeHidden();
+
+  // Both captains leave to the harbour, the shell's Play (#125), where the voyage waits, saved, and come back to it (#301).
+  const leave = async (page: Page) => {
+    await page.bringToFront();
+    await page.getByRole("link", { name: "Leave to harbour" }).click();
+    await expect(page).toHaveURL(/\/\?saved=1$/);
+    await expect(page.getByText("Your voyage is saved.")).toBeVisible();
+  };
+  await test.step("the seat waited on leaves, and takes its turn from the harbour", async () => {
+    await leave(waiting);
+    await expect(waiting.getByText("It is your turn")).toBeVisible();
+    await waiting.getByRole("link", { name: "Take your turn" }).click();
+    await expect(waiting).toHaveURL(/view=match&id=/);
+    await expect(endTurn(waiting)).toBeVisible({ timeout: 90_000 });
+  });
+  await test.step("the other seat leaves, and opens the voyage it waits on", async () => {
+    await leave(playing);
+    const voyages = playing.getByRole("list", { name: "Your voyages" });
+    await expect(voyages).toContainText("Waiting on");
+    await voyages.getByRole("link", { name: "Open" }).click();
+    await expect(playing).toHaveURL(/view=match&id=/);
+    await expect(playing.getByRole("link", { name: "Leave to harbour" })).toBeVisible({ timeout: 90_000 });
+    await expect(endTurn(playing)).toBeHidden();
+  });
   await second.close();
 });

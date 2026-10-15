@@ -2,9 +2,10 @@ import { lazy, Suspense } from "react";
 import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { SoundLab } from "./lab/SoundLab";
-import { parseDevUrlParams, seatCount, showsDebugPanel } from "./board/devUrlParams";
+import { parseDevUrlParams, seatCount, showsDebugPanel, usesHotseatSave } from "./board/devUrlParams";
 import { loadGameClient, loadSeatClient, type GameClient } from "./loadGameClient";
 import { GameClientLoader } from "./GameClientLoader";
+import { HotseatGame } from "./HotseatGame";
 import { LocalSeats } from "./LocalSeats";
 import { parseOnlineRoute } from "./online/onlineRoute";
 import { parseShellPage } from "./online/shellRoute";
@@ -53,7 +54,10 @@ function gameClient(): Promise<GameClient> {
     : loadGameClient(devParams.setupData, debugPanel, seats);
   return gameClientPromise;
 }
-if (showsGame) void gameClient();
+// The saved hotseat game (#300) starts from its own start screen, so only a
+// match a dev URL pins (size, seed, seats), which never touches the save, starts here.
+const savesHotseat = usesHotseatSave(devParams);
+if (showsGame && !savesHotseat) void gameClient();
 
 export default function App() {
   // Visit http://localhost:5173/#lab for the shader sandbox,
@@ -94,10 +98,13 @@ export default function App() {
   return <Game />;
 }
 
-/** The local game (solo, or hotseat with dev `?players=`), with the account link when a backend is configured. */
+/**
+ * The local game (solo, or hotseat with dev `?players=`), with the account
+ * link when a backend is configured. Saved in the browser unless a dev URL
+ * pins the match (`usesHotseatSave`).
+ */
 function Game() {
-  const loaderProps = {
-    client: gameClient(),
+  const viewProps = {
     cameraTarget: devParams.cameraTarget,
     cameraDistance: devParams.cameraDistance,
     seaBuoys: devParams.seaBuoys,
@@ -109,7 +116,13 @@ function Game() {
   };
   return (
     <>
-      {devParams.localSeats ? <LocalSeats {...loaderProps} seats={seatCount(devParams)} /> : <GameClientLoader {...loaderProps} />}
+      {savesHotseat ? (
+        <HotseatGame {...viewProps} debugPanel={showsDebugPanel(devParams)} seats={seatCount(devParams)} />
+      ) : devParams.localSeats ? (
+        <LocalSeats {...viewProps} client={gameClient()} seats={seatCount(devParams)} />
+      ) : (
+        <GameClientLoader {...viewProps} client={gameClient()} />
+      )}
       {supabaseConfig && (
         <Suspense fallback={null}>
           <AccountLink config={supabaseConfig} />

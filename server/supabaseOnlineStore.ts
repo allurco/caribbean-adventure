@@ -9,6 +9,18 @@ import type { MapSizeId } from "../src/game/mapConfig";
 import type { AuthVerifier } from "./handleApiRequest";
 import type { ClaimOutcome, JoinOutcome, OnlineStore, RoomRecord, RoomStatus, StartOutcome } from "./onlineStore";
 
+interface VoyageRow {
+  room_id: string;
+  status: RoomStatus;
+  seat_count: number;
+  map_size: MapSizeId;
+  match_id: string | null;
+  current_seat: number | null;
+  turn: number | null;
+  updated_at: string;
+  seats: { seat_index: number; user_id: string; display_name: string | null }[];
+}
+
 export type ServiceClient = SupabaseClient;
 
 interface RoomRow {
@@ -118,6 +130,22 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         }),
       ) as { outcome: StartOutcome; match_id: string | null }[];
       return { outcome: rows[0].outcome, matchId: rows[0].match_id };
+    },
+
+    async listVoyages(userId, limit) {
+      const db = await client();
+      const rows = check(await db.rpc("list_voyages", { p_user: userId, p_limit: limit })) as VoyageRow[];
+      return rows.map((row) => ({
+        roomId: row.room_id,
+        status: row.status,
+        seatCount: row.seat_count,
+        mapSize: row.map_size,
+        seats: row.seats.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: s.display_name })),
+        matchId: row.match_id,
+        currentSeat: row.current_seat,
+        turn: row.turn,
+        updatedAt: new Date(row.updated_at).toISOString(),
+      }));
     },
 
     async getMatch(matchId) {

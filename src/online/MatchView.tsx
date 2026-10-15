@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { MapLoadingScreen } from "../board/MapLoadingScreen";
 import type { AccountClient } from "./accountClient";
+import { LeaveToHarbour } from "./LeaveToHarbour";
 import { createMatchApi } from "./matchApi";
 import { OnlineSheet } from "./OnlineSheet";
 import { useApiDeps } from "./useRoomApi";
@@ -37,6 +38,7 @@ export function MatchView({ client, matchId }: { client: AccountClient; matchId:
   return (
     <>
       <MatchClient playerID={seat} matchID={id} />
+      <LeaveToHarbour />
       {notice && (
         <p
           role="alert"

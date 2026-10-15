@@ -54,3 +54,6 @@ export const SECTION = "font-fell text-[19px] italic text-shell-ink-soft";
 
 /** A hairline between rows on the sheet. */
 export const RULE = "border-[#7a5c3a]/35";
+
+/** Wax red: reserved for taking your turn (#125), never any other action. */
+export const BTN_WAX = `${FOCUS} ${PRESS} inline-flex items-center justify-center gap-2 px-5 py-2.5 font-fell-sc text-[17px] leading-none text-[#fbe9d0] rounded-[3px] border border-[#3f0d06] bg-shell-ink-wax bg-[linear-gradient(180deg,#b23a24,var(--color-shell-ink-wax)_60%,#651a0f)] shadow-[inset_0_1px_0_rgba(255,200,170,0.45),0_3px_0_#3f0d06,0_6px_14px_rgba(60,10,0,0.45)] hover:brightness-110 active:shadow-[inset_0_1px_0_rgba(255,200,170,0.3),0_1px_0_#3f0d06]`;

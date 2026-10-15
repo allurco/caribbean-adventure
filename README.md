@@ -75,6 +75,7 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `regionBorder=water\|line` | How the borders between regions are drawn (#239): `water`, a soft seam written into the sea with the regions' names (the default), or `line`, the faint parchment line on the water grid |
 | `fx=0`, `ink=0`, `bloom=0`, `post=0` | Leave out part of the picture, to tell on a real GPU which one a rendering fault comes from: the combat effects, the regions' ink in the sea, the bloom, or all the post-processing (the scene drawn straight to the screen, without tone mapping). Read in production builds too |
 | `shadows=0`, `aa=0`, `ocean=0`, `land=0` | Leave out more of the base scene for the same checks: the shadow maps, multisampling (on the canvas and in the composer), the sea surface, or the land mesh with its decorations. Read in production builds too |
+| `bloomsan=0`, `bloommip=0`, `bloomhalf=0` | Change the bloom for the same checks: without the pass that sanitizes its input (NaN to black, every channel held to `[0, 8192]`), with its Kawase blur instead of its mipmap blur, or on full float buffers instead of half floats. Read in production builds too |
 | `dpr=1`, `power=low`, `pdb=1` | Set up the GL context differently for the same checks: pixel ratio 1, `powerPreference: "low-power"`, or `preserveDrawingBuffer: true`. Read in production builds too |
 | `gpuinfo=1` | An on-screen readout of the GL context (the full unmasked renderer and vendor, WebGL2, antialias, power preference, preserved drawing buffer, DPR, drawing buffer size, max samples), the frame (fps, draw calls, triangles, geometries, textures, programs), context losses and restores, and the A/B switches in effect (only those, not the rest of the URL), to read from a screenshot. It shows the full name of the GPU, so a screenshot posted in public (an issue, say) tells everyone which GPU that machine has. Read in production builds too |
 | `seedGallery=1` | The 12-seed contact sheet instead of the game (#161): every seed in `SEED_GALLERY_SEEDS` at map zoom and at ship zoom over the port nearest the map's middle (`SEED_GALLERY_VIEWS`, both in `src/lab/seedGalleryShots.ts`), one row a seed. With `size=medium\|large` for that size (small otherwise). The shots render one at a time (about 5 s each); click one to open its view, or **save PNG** for the whole sheet. Dev server only |
@@ -83,6 +84,8 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 | `snapshot=1` | One gallery shot: the draft picks itself and the board posts its frame to the gallery. The gallery adds it; you should not need it by hand. Dev server only |
 
 **Seed control.** On the dev server the board shows the map's size and seed at the bottom of the screen. `[` and `]` reload on seed − 1 and seed + 1, `\` on a random seed, each keeping the size and every other parameter (the camera's `cx`, `cz`, `dist`, `stats`, …); **copy URL** copies a URL that reproduces the map on screen. Production builds leave the control out.
+
+**Saved games.** The local hotseat game is saved in the browser as it is played (#300); a plain URL, or one that only moves the camera or switches parts of the picture, opens on **Continue voyage** / **New game** when there is a save. A URL that pins the match (`size`, `seed`, `players`, `seats=1`, `snapshot=1`, `seedGallery=1`) never touches the save: it neither offers to continue it nor overwrites it, so a test map can be opened without losing the voyage. To start afresh with a save in place, press **New game** (it asks before overwriting).
 
 The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=22.5&cz=13&dist=3.4` opens the same small map every time, at ship zoom over its middle port (Isla Quieta), and `/?size=small&seed=1&cx=16.5&cz=23.4&dist=1` at town zoom over Île de Sable. The size and seed choose the map the local client generates before its match starts (in a Web Worker, see `src/mapWorker/`); the camera values go to the board. Captains and NPCs stay random.
 
@@ -95,6 +98,7 @@ src/
 ├── audio/   Sound: the registry, settings, the state-diff events, three.js playback
 ├── lab/     Shader experiments (open the app at /#lab) and the sound lab (/?view=sound)
 ├── mapWorker/  Generates the map in a Web Worker, with a main-thread fallback
+├── hotseatSave/  Saves the local hotseat game in the browser and restores it
 ├── online/  Sign-in and profile pages, when a Supabase backend is configured
 └── App.tsx  Wires the game to the board via boardgame.io
 api/         The Vercel Function serving /api/* (routes in server/)

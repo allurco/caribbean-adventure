@@ -12,7 +12,8 @@ import { parseOnlineRoute, type OnlineRoute } from "./onlineRoute";
 export type ComingScreen = "lobby" | "party" | "ranked";
 
 export type ShellPage =
-  | { kind: "play" }
+  /** `saved`: the player just left an online match, which is saved (`?saved=1`, #301). */
+  | { kind: "play"; saved?: true }
   | { kind: "coming"; screen: ComingScreen }
   | AccountRoute
   | Exclude<OnlineRoute, { kind: "match" }>;
@@ -27,9 +28,11 @@ export function parseShellPage(search: string): ShellPage | null {
   const params = new URLSearchParams(search);
   const view = params.get("view");
   if (view === null) {
-    // The bare root URL, or the sign-in link coming back to it. Anything else
-    // there (`?skipLogin=1`, the dev URL parameters of #74) opens the local game.
-    return [...params.keys()].every((key) => SIGN_IN_RETURN_PARAMS.has(key)) ? { kind: "play" } : null;
+    // The bare root URL, the sign-in link coming back to it, or a match left
+    // for the harbour. Anything else there (`?skipLogin=1`, the dev URL
+    // parameters of #74) opens the local game.
+    if (![...params.keys()].every((key) => key === "saved" || SIGN_IN_RETURN_PARAMS.has(key))) return null;
+    return params.get("saved") === "1" ? { kind: "play", saved: true } : { kind: "play" };
   }
   if (view === "play") return { kind: "play" };
   const coming = COMING.find((screen) => screen === view);
@@ -60,6 +63,11 @@ export function shellPageForHref(href: string, origin: string): ShellPage | null
 
 export function playPath(): string {
   return "/";
+}
+
+/** The harbour, the shell's Play: the player's voyages; `saved` after leaving an online match (#301). */
+export function harbourPath({ saved = false }: { saved?: boolean } = {}): string {
+  return saved ? "/?saved=1" : playPath();
 }
 
 export function comingPath(screen: ComingScreen): string {

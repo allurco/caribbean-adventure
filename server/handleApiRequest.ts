@@ -12,6 +12,7 @@ import { bearerToken, fail, json } from "./http";
 import type { OnlineStore } from "./onlineStore";
 import { getMatch, postAction } from "./matches";
 import { createRoom, getRoom, joinRoom, startRoom } from "./rooms";
+import { listVoyages } from "./voyages";
 
 export type ServerEnv = Readonly<Record<string, string | undefined>>;
 
@@ -54,6 +55,7 @@ const pattern = (re: RegExp) => (path: string) => {
 };
 
 const ROUTES: RouteEntry[] = [
+  { method: "GET", match: exact("/api/me/rooms"), run: (_req, user, s) => listVoyages(user, s.store) },
   { method: "POST", match: exact("/api/rooms"), run: (req, user, s) => createRoom(req, user, s) },
   { method: "POST", match: exact("/api/rooms/join"), run: (req, user, s) => joinRoom(req, user, s) },
   { method: "POST", match: pattern(/^\/api\/rooms\/([^/]+)\/start$/), run: (_req, user, s, [id]) => startRoom(id, user, s) },

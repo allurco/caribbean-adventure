@@ -3,16 +3,19 @@ import { PLAY_ACTIONS } from "./playActions";
 import { ShellIcon } from "./ShellIcon";
 import { BTN_INK, SECTION } from "./shellStyles";
 
-/**
- * The shell's Play sheet (#125), where a signed-in captain lands: their
- * voyages lead, then the ways in. `voyages` is the slot for "Your voyages"
- * (#301, `YourVoyages`): the match waiting on you with Take your turn, then
- * your other voyages.
- */
-export function PlaySheet({ voyages }: { voyages?: ReactNode }) {
+interface PlaySheetProps {
+  /** "Your voyages" (#301, `YourVoyages`): the match waiting on you with Take your turn, then your other voyages. */
+  voyages: ReactNode;
+  /** The player just left an online match, which is saved. */
+  saved?: boolean;
+}
+
+/** The shell's Play sheet (#125), where a signed-in captain lands: their voyages lead, then the ways in. */
+export function PlaySheet({ voyages, saved = false }: PlaySheetProps) {
   return (
     <div className="space-y-6">
-      {voyages && <div className="border-b-2 border-double border-[#7a5c3a]/50 pb-6">{voyages}</div>}
+      {saved && <p role="status">Your voyage is saved. Resume it below whenever you like.</p>}
+      <div className="border-b-2 border-double border-[#7a5c3a]/50 pb-6">{voyages}</div>
       <section aria-labelledby="play-ways-in">
         <h2 id="play-ways-in" className={`${SECTION} mb-3`}>
           Set sail

@@ -103,9 +103,16 @@ export function gpuSetupLines(gpu: GpuCheck, off: RenderOff, setup: CanvasSetup)
   const switches = renderSwitches(off, gpu);
   const dpr = Array.isArray(setup.dpr) ? setup.dpr.join("–") : `${setup.dpr}`;
   const composer = off.postProcessing ? "(no composer)" : `${setup.composerMultisampling}`;
+  const bloom = off.postProcessing
+    ? "(no composer)"
+    : [
+        ...(off.bloom ? ["off"] : [off.bloomSanitize ? "input not sanitized" : "input sanitized", off.bloomMipmapBlur ? "no mipmap blur" : "mipmap blur"]),
+        `buffers ${setup.composerFrameBuffer === "float" ? "float" : "half float"}`,
+      ].join("  ");
   return [
     `switches: ${switches.length > 0 ? switches.join(" ") : "(none)"}`,
     `asked: dpr ${dpr}  shadows ${setup.shadows ? "on" : "off"}  composer multisampling ${composer}`,
+    `bloom: ${bloom}`,
   ];
 }
 
