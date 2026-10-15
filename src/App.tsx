@@ -28,7 +28,11 @@ const accountRoute = supabaseConfig ? parseAccountRoute(window.location.search) 
 const SeedGallery = import.meta.env.DEV ? lazy(() => import("./lab/SeedGallery")) : null;
 const showSeedGallery = SeedGallery !== null && devParams.seedGallery === true;
 
-const showsGame = !(isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || accountRoute);
+// PROTOTYPE (throwaway, branch proto/combat-ui): the combat UI variants (#259), dev only.
+const CombatProto = import.meta.env.DEV ? lazy(() => import("./lab/combatProto/CombatProto")) : null;
+const showCombatProto = CombatProto !== null && new URLSearchParams(window.location.search).get("view") === "combatproto";
+
+const showsGame = !(isLab || showCombatProto || devParams.propViewer || devParams.soundLab || showSeedGallery || accountRoute);
 
 // With a backend configured the root URL is the sign-in screen, and the game
 // sits behind it; `?skipLogin=1` goes straight to the game (temporary, until
@@ -53,6 +57,13 @@ export default function App() {
   // anything else loads the normal game. All stay fully isolated from game code.
   if (isLab) {
     return <ShaderLab />;
+  }
+  if (CombatProto && showCombatProto) {
+    return (
+      <Suspense fallback={null}>
+        <CombatProto />
+      </Suspense>
+    );
   }
   if (supabaseConfig && accountRoute) {
     return (
