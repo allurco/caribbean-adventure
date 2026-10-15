@@ -15,6 +15,12 @@ Headless Chromium usually has no GPU, so WebGL runs on a software renderer (Swif
 
 One entry per report. Newest first.
 
+### 2026-10-15: screenshots time out in `?seats=1` (#110 re-check)
+
+- **Symptom:** while re-checking PR #245's fixes, headless `page.screenshot` calls timed out after 90 s once a game was under way in `?seats=1&size=small&seed=1`. The draft and the first in-game shots worked.
+- **Ruled out:** this is not a game hang. Earlier shots in the same session rendered, and the unit tests cover the combat gating.
+- **Conclusion:** the software renderer (SwiftShader) can't keep up with several full scenes mounted on one page. Check combat flows in `?seats=1` on a real GPU, or with one seat's client per page.
+
 ### 2026-10-14: sea drawn white, or a dark patch round a docked ship (#110 check)
 
 - **Symptom:** in headless screenshots taken while checking PR #245 (`?seats=1` and hotseat, `size=small&seed=1`), the sea sometimes came out flat white with only hex lines, and once a dark blue polygon of water lay round a seat's docked ship while it was another seat's turn.
