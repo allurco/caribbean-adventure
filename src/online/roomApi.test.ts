@@ -102,4 +102,18 @@ describe("the rooms API client", () => {
     const result = await createRoomApi({ fetch, accessToken: async () => "tok" }).getRoom(ROOM.id);
     expect(result).toEqual({ ok: false, status: 0, code: "network", error: "Could not reach the harbour. Check your connection." });
   });
+
+  it("lists the player's voyages from their own route", async () => {
+    const voyages = [{ roomId: ROOM.id, status: "open" }];
+    const { fetch, calls } = fakeFetch(200, { ok: true, voyages });
+    const result = await createRoomApi({ fetch, accessToken: async () => "tok" }).listVoyages();
+    expect(result).toEqual({ ok: true, voyages });
+    expect(calls.map((c) => [c.method, c.url, c.headers.authorization])).toEqual([["GET", "/api/me/rooms", "Bearer tok"]]);
+  });
+
+  it("says when the voyages are asked for too often", async () => {
+    const { fetch } = fakeFetch(429, { ok: false, code: "rate_limited", error: "any" });
+    const result = await createRoomApi({ fetch, accessToken: async () => "tok" }).listVoyages();
+    expect(result).toMatchObject({ ok: false, code: "rate_limited", error: "The harbour master is busy. Try again in a minute." });
+  });
 });
