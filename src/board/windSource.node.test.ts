@@ -1,15 +1,18 @@
 /**
  * One wind (#204): the sea, the palms, the reefs and the ships all take their
  * wind from `windFor(weather)`, through the scene's wind, and no module
- * defines a wind direction of its own. Read from the sources, since the rule
- * is about who defines what (like lightingSource.node.test.ts).
+ * defines a wind direction of its own. The wind lives in the game logic
+ * (#264), so the rules (the weather gauge) read the same one; the board only
+ * re-exports it. Read from the sources of both, since the rule is about who
+ * defines what (like lightingSource.node.test.ts).
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 
-const BOARD_DIR = fileURLToPath(new URL(".", import.meta.url));
+const SRC_DIR = fileURLToPath(new URL("..", import.meta.url));
+const SCANNED = ["board", "game"];
 
 function sourcesUnder(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -23,8 +26,8 @@ function sourcesUnder(dir: string): string[] {
 const stripComments = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 const SOURCES = new Map(
-  sourcesUnder(BOARD_DIR).map((path) => [
-    relative(BOARD_DIR, path).split("\\").join("/"),
+  SCANNED.flatMap((dir) => sourcesUnder(join(SRC_DIR, dir))).map((path) => [
+    relative(SRC_DIR, path).split("\\").join("/"),
     stripComments(readFileSync(path, "utf8")),
   ])
 );
@@ -38,8 +41,9 @@ const exportedNames = (text: string): string[] =>
 const filesMatching = (pattern: RegExp): string[] =>
   [...SOURCES].filter(([, text]) => pattern.test(text)).map(([file]) => file).sort();
 
-const WIND = "visuals/wind.ts";
-const SCENE_WIND = "visuals/sceneWind.ts";
+const WIND = "game/wind.ts";
+const BOARD_WIND = "board/visuals/wind.ts";
+const SCENE_WIND = "board/visuals/sceneWind.ts";
 
 /** Names that hold a wind's direction. */
 const WIND_DIRECTION_NAME = /wind(?!ow)\w*(angle|dir|direction|toward|azimuth|bearing|heading)|(angle|dir|direction|toward|azimuth|bearing|heading)\w*wind(?!ow)/i;
@@ -59,8 +63,16 @@ function ownWindDirections(file: string, text: string): string[] {
 }
 
 describe("one wind (#204)", () => {
-  it("wind.ts exports the weather and the function, and no wind of its own", () => {
+  it("the game's wind.ts exports the weather and the function, and no wind of its own", () => {
     expect(exportedNames(source(WIND)).sort()).toEqual(["TRADE_WIND", "windFor"]);
+  });
+
+  it("the board defines no wind: its wind.ts only re-exports the game's", () => {
+    const statements = source(BOARD_WIND).trim().split(/;\s*/).filter(Boolean);
+    expect(statements).toEqual([
+      'export { TRADE_WIND, windFor } from "../../game/wind"',
+      'export type { Wind, WindWeather } from "../../game/wind"',
+    ]);
   });
 
   it("only the scene's wind calls windFor; everything else reads its record", () => {
@@ -85,15 +97,15 @@ describe("one wind (#204)", () => {
 
   it("the sea, the palms, the reefs and the ships read the scene's wind", () => {
     expect(filesMatching(/from "\.{1,2}\/(visuals\/)?sceneWind"/)).toEqual([
-      "Ship.tsx",
-      "visuals/oceanWaves.ts",
-      "visuals/palmSway.ts",
-      "visuals/shoreFoam.ts",
+      "board/Ship.tsx",
+      "board/visuals/oceanWaves.ts",
+      "board/visuals/palmSway.ts",
+      "board/visuals/shoreFoam.ts",
     ]);
   });
 
-  it("the wind takes no seed: wind.ts and sceneWind.ts import nothing seeded", () => {
-    expect([...source(WIND).matchAll(/from "([^"]+)";/g)].map((m) => m[1]).sort()).toEqual(["../cameraBounds", "./sunDirection"]);
+  it("the wind takes no seed: wind.ts imports nothing, sceneWind.ts only the wind", () => {
+    expect([...source(WIND).matchAll(/from "([^"]+)";/g)]).toEqual([]);
     expect([...source(SCENE_WIND).matchAll(/from "([^"]+)";/g)].map((m) => m[1])).toEqual(["./wind"]);
   });
 });
