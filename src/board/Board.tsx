@@ -81,6 +81,7 @@ import { PortTooltip } from "./PortTooltip";
 import { ShipDetailsPanel } from "./ShipDetailsPanel";
 import { PortPanel } from "./PortPanel";
 import { DraftScreen } from "./DraftScreen";
+import { sceneStateFor } from "./draftScene";
 import { HudParchmentPanel } from "./HudParchmentPanel";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
@@ -153,6 +154,7 @@ function Scene({
   hoveredPort,
   scoutedPlayerIds,
   focusView,
+  focusCut,
   sailing,
   plannedRoute,
   locked,
@@ -187,6 +189,8 @@ function Scene({
   scoutedPlayerIds: string[];
   /** Where to fly the camera: a new view starts a flight. */
   focusView: CameraView | null;
+  /** Go to `focusView` at once instead of flying (the opening view once the draft is over). */
+  focusCut: boolean;
   /** A planned route is being sailed: no reach, no moves (#213). */
   sailing: boolean;
   /** The route being sailed, if any. */
@@ -359,9 +363,9 @@ function Scene({
       // Within the zoom limits, or the controls would hold it off forever
       targetDistance.current = Math.min(CAMERA_MAX_DISTANCE, Math.max(CAMERA_MIN_DISTANCE, focusView.distance));
       isAnimating.current = true;
-      flight.current = null;
+      flight.current = focusCut ? { kind: "cut" } : null;
     }
-  }, [focusView]);
+  }, [focusView, focusCut]);
 
   // Smooth camera animation: focus and zoom move together (cameraFlight.ts)
   useFrame(() => {
@@ -711,7 +715,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
   // The loading gate: the board shows once every asset, shader and a few frames are ready
   const portNames = useMemo(() => G.cells.flatMap((c) => (c.portName ? [c.portName] : [])).join(""), [G.cells]);
-  const readiness = useSceneReadiness(portNames, ctx.phase !== "draft");
+  const readiness = useSceneReadiness(portNames);
+  // The scene is mounted from the start, under the loading screen and then the draft (draftScene.ts)
+  const drafting = ctx.phase === "draft";
+  const sceneG = useMemo(() => sceneStateFor(G, ctx.phase), [G, ctx.phase]);
   const [attackMode, setAttackMode] = useState(false);
   const [spyglassMode, setSpyglassMode] = useState(false);
   const [sinkingShips, setSinkingShips] = useState<SinkingShipData[]>([]);
@@ -725,6 +732,24 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const cameraCut = useCallback(() => setCameraCuts((n) => n + 1), []);
   const [completedMission, setCompletedMission] = useState<Mission | null>(null);
   const [cameraFocusView, setCameraFocusView] = useState<CameraView | null>(null);
+  const [cameraFocusCut, setCameraFocusCut] = useState(false);
+  // Once the draft is over the camera cuts to the opening view, the viewer's own ship
+  const wasDrafting = useRef(drafting);
+  useEffect(() => {
+    if (!wasDrafting.current || drafting) return;
+    wasDrafting.current = false;
+    const mapCam = computeCameraConfig(getMapPreset(G.mapSize));
+    setCameraFocusView(
+      openingView({
+        ships: G.ships,
+        currentPlayer: ctx.currentPlayer,
+        playerID: props.playerID,
+        mapView: { target: mapCam.target, distance: mapCam.isoDistance },
+        pins: { target: cameraTarget, distance: cameraDistance },
+      })
+    );
+    setCameraFocusCut(true);
+  }, [drafting, G.ships, G.mapSize, ctx.currentPlayer, props.playerID, cameraTarget, cameraDistance]);
   // The first view, taken once when the main phase starts: MapControls
   // re-aims at its `target` prop whenever that changes.
   const [firstView, setFirstView] = useState<CameraView | null>(null);
@@ -840,7 +865,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       setShowTurnChange(true);
       // Hotseat: fly to the new player's ship (networked clients stay put)
       const view = turnChangeView({ ships: shipsRef.current, currentPlayer: player, playerID: props.playerID });
-      if (view) setCameraFocusView(view);
+      if (view) {
+        setCameraFocusView(view);
+        setCameraFocusCut(false);
+      }
     },
     [props.playerID]
   );
@@ -921,18 +949,6 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   const hasSpyglassTargets = spyglassTargets.players.length > 0 || spyglassTargets.npcs.length > 0;
 
-  if (ctx.phase === "draft") {
-    return (
-      <DraftScreen
-        G={G}
-        currentPlayer={ctx.currentPlayer}
-        onPickCaptain={(index, shipClass) =>
-          props.moves.pickCaptain(index, shipClass)
-        }
-      />
-    );
-  }
-
   const preset = getMapPreset(G.mapSize);
   const cam = computeCameraConfig(preset);
   // The first view: the viewer's own ship at ship zoom (the map's middle from
@@ -942,7 +958,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const start =
     firstView ??
     openingView({
-      ships: G.ships,
+      ships: sceneG.ships,
       currentPlayer,
       playerID: props.playerID,
       mapView: { target: cam.target, distance: cam.isoDistance },
@@ -1020,7 +1036,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         style={{ background: '#0a1929' }}
       >
         <Scene
-          G={G}
+          G={sceneG}
           currentPlayer={currentPlayer}
           cam={{ target: start.target }}
           movesRemaining={movesRemaining}
@@ -1030,11 +1046,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           spyglassTargetHexes={spyglassTargetHexes}
           sinkingShips={sinkingShips}
           npcs={shownNpcs}
-          locked={locked}
+          locked={locked || drafting}
           hoveredShipId={hoveredShipId}
           hoveredPort={hoveredPort}
           scoutedPlayerIds={currentShipState?.scoutedShips ?? []}
           focusView={cameraFocusView}
+          focusCut={cameraFocusCut}
           sailing={sailing}
           plannedRoute={plannedRoute}
           shipUnderway={Boolean(underway[currentPlayer])}
@@ -1058,18 +1075,31 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         />
         <SceneReadinessProbe
           compileShaders={readiness.view.compileShaders}
+          shadersCompiled={readiness.view.stage === "frames"}
           countFrames={readiness.view.stage === "frames" && !readiness.view.ready}
           complete={readiness.complete}
+          fail={readiness.fail}
           frame={readiness.frame}
         />
         {/* Dev: fps, draw calls and triangles (#162); the DEV guard drops it from production builds */}
         {import.meta.env.DEV && renderStatsFeed && <RenderStatsProbe onStats={renderStatsFeed.publish} />}
         {/* Dev: a seed-gallery shot (#161); the DEV guard drops it from production builds */}
-        {import.meta.env.DEV && snapshot && <GallerySnapshot ready={readiness.view.ready} />}
+        {import.meta.env.DEV && snapshot && <GallerySnapshot ready={readiness.view.ready && !drafting} />}
       </Canvas>
 
-      {/* The loading screen until every asset, shader and a few frames are ready, then faded out */}
+      {/* The captain draft, over the finished scene once the loading screen has gone */}
+      {drafting && (
+        <div className="absolute inset-0 z-[55]">
+          <DraftScreen G={G} currentPlayer={ctx.currentPlayer} onPickCaptain={(index, shipClass) => props.moves.pickCaptain(index, shipClass)} />
+        </div>
+      )}
+
+      {/* The loading screen from page load until every asset, shader and a few frames are ready, then faded out */}
       <BoardLoadingVeil view={readiness.view} />
+
+      {/* The HUD and panels, once the draft is over */}
+      {!drafting && (
+      <>
 
       {/* A camera cut (reduced motion, #229) fades in from a veil rather than jumping */}
       {cameraCuts > 0 && (
@@ -1269,6 +1299,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           score={ctx.gameover.score}
           onPlayAgain={() => window.location.reload()}
         />
+      )}
+      </>
       )}
     </div>
   );

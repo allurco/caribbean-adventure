@@ -24,8 +24,13 @@ const STAGE_LABELS: Readonly<Record<ReadinessStage, string>> = {
 /** Frames drawn after the shaders compile before the board is shown. */
 export const READINESS_FRAMES = 3;
 
-/** How long the loading screen waits before showing the board whatever is still pending. */
+/** How long after page load the loading screen waits before showing the board whatever is still pending. */
 export const READINESS_TIMEOUT_MS = 90_000;
+
+/** How long is left of the timeout `sincePageLoadMs` after page load (`performance.now()`). */
+export function timeoutRemaining(sincePageLoadMs: number): number {
+  return Math.max(0, READINESS_TIMEOUT_MS - sincePageLoadMs);
+}
 
 /** One thing the board waits on before it is shown. */
 export interface ReadinessTask {
@@ -35,7 +40,8 @@ export interface ReadinessTask {
 
 export interface ReadinessState {
   tasks: readonly ReadinessTask[];
-  done: Readonly<Record<string, true>>;
+  /** Settled tasks: loaded, or failed and given up on. */
+  done: Readonly<Record<string, "ok" | "failed">>;
   shadersCompiled: boolean;
   frames: number;
   timedOut: boolean;
@@ -52,19 +58,30 @@ export interface ReadinessView {
   compileShaders: boolean;
   /** The board may be shown. */
   ready: boolean;
-  /** Shown because the timeout passed, not because everything loaded. */
+  /** Shown because the timeout passed, not because everything settled. */
   timedOut: boolean;
+  /** Tasks that failed and were given up on, in task order. */
+  failed: string[];
 }
 
 export function createReadiness(tasks: readonly ReadinessTask[]): ReadinessState {
   return { tasks, done: {}, shadersCompiled: false, frames: 0, timedOut: false };
 }
 
-/** Mark a task done; "shaders" marks the shader compile done. Unknown and repeated ids change nothing. */
+/** Mark a task done; "shaders" marks the shader compile done. Unknown and settled ids change nothing. */
 export function completeTask(state: ReadinessState, id: string): ReadinessState {
   if (id === "shaders") return state.shadersCompiled ? state : { ...state, shadersCompiled: true };
+  return settle(state, id, "ok");
+}
+
+/** A task failed (a file that would not load): settled, so the gate moves on without it; listed in the view's `failed`. */
+export function failTask(state: ReadinessState, id: string): ReadinessState {
+  return settle(state, id, "failed");
+}
+
+function settle(state: ReadinessState, id: string, outcome: "ok" | "failed"): ReadinessState {
   if (state.done[id] || !state.tasks.some((task) => task.id === id)) return state;
-  return { ...state, done: { ...state.done, [id]: true } };
+  return { ...state, done: { ...state.done, [id]: outcome } };
 }
 
 /** A frame was drawn; counted only once the shaders are compiled. */
@@ -103,5 +120,6 @@ export function readinessView(state: ReadinessState): ReadinessView {
     compileShaders: assetsDone && !state.shadersCompiled && !state.timedOut,
     ready: complete || state.timedOut,
     timedOut: state.timedOut && !complete,
+    failed: state.tasks.filter((task) => state.done[task.id] === "failed").map((task) => task.id),
   };
 }

@@ -3,10 +3,13 @@ import {
   READINESS_FRAMES,
   completeTask,
   createReadiness,
+  failTask,
   frameRendered,
   pendingTasks,
   readinessView,
   timedOut,
+  timeoutRemaining,
+  READINESS_TIMEOUT_MS,
 } from "./sceneReadiness";
 
 const tasks = [
@@ -104,5 +107,38 @@ describe("scene readiness", () => {
   it("labels each stage for the loading screen", () => {
     expect(readinessView(createReadiness(tasks)).label).toMatch(/\S/);
     expect(readinessView(allLoaded()).label).not.toBe(readinessView(createReadiness(tasks)).label);
+  });
+
+  it("counts a failed asset as settled, so the gate moves on without waiting for the timeout", () => {
+    let state = failTask(createReadiness(tasks), "model:/ships/sloop.glb");
+    state = completeTask(state, "model:/ships/frigate.glb");
+    const view = readinessView(state);
+    expect(view.stage).toBe("fonts");
+    expect(view.failed).toEqual(["model:/ships/sloop.glb"]);
+    expect(pendingTasks(state)).not.toContain("model:/ships/sloop.glb");
+  });
+
+  it("opens with failed assets once everything else is ready, and says it was not a timeout", () => {
+    let state = tasks.reduce((s, task) => (task.id === "sky" ? failTask(s, task.id) : completeTask(s, task.id)), createReadiness(tasks));
+    expect(readinessView(state).compileShaders).toBe(true);
+    state = completeTask(state, "shaders");
+    for (let i = 0; i < READINESS_FRAMES; i++) state = frameRendered(state);
+    const view = readinessView(state);
+    expect(view.ready).toBe(true);
+    expect(view.timedOut).toBe(false);
+    expect(view.failed).toEqual(["sky"]);
+  });
+
+  it("does not let a late success undo a failure, or a failure undo a success", () => {
+    const failed = failTask(createReadiness(tasks), "sky");
+    expect(readinessView(completeTask(failed, "sky")).failed).toEqual(["sky"]);
+    const done = completeTask(createReadiness(tasks), "sky");
+    expect(readinessView(failTask(done, "sky")).failed).toEqual([]);
+  });
+
+  it("times out a fixed time after page load, however late the board mounts", () => {
+    expect(timeoutRemaining(0)).toBe(READINESS_TIMEOUT_MS);
+    expect(timeoutRemaining(20_000)).toBe(READINESS_TIMEOUT_MS - 20_000);
+    expect(timeoutRemaining(READINESS_TIMEOUT_MS + 5)).toBe(0);
   });
 });

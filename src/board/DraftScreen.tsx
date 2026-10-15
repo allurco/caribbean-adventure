@@ -121,7 +121,7 @@ export function DraftScreen({
   // Interstitial: pass the device
   if (showInterstitial) {
     return (
-      <div className="w-screen h-screen bg-[#0a0e17] flex flex-col items-center justify-center font-body">
+      <div className="w-screen h-screen bg-[#0a0e17]/80 flex flex-col items-center justify-center font-body">
         <div className="rounded-xl border border-amber-700/30 bg-gradient-to-b from-stone-900/95 to-amber-950/90 backdrop-blur-sm p-12 text-center max-w-md shadow-2xl shadow-black/50">
           <h2 className="font-heading text-2xl font-bold text-amber-100 mb-3 tracking-wide">
             Pass the Helm
@@ -147,7 +147,7 @@ export function DraftScreen({
   // Waiting
   if (hand.length === 0) {
     return (
-      <div className="w-screen h-screen bg-[#0a0e17] flex items-center justify-center font-body">
+      <div className="w-screen h-screen bg-[#0a0e17]/80 flex items-center justify-center font-body">
         <div className="text-center">
           <div className="font-heading text-amber-500/40 text-sm uppercase tracking-[0.3em] mb-3">
             Awaiting Orders
@@ -164,7 +164,7 @@ export function DraftScreen({
   if (selectedCaptainIndex !== null) {
     const chosenCaptain = hand[selectedCaptainIndex];
     return (
-      <div className="w-screen h-screen bg-[#0a0e17] flex flex-col items-center justify-center font-body">
+      <div className="w-screen h-screen bg-[#0a0e17]/80 flex flex-col items-center justify-center font-body">
         <div className="max-w-2xl w-full px-6">
           {/* Header */}
           <div className="text-center mb-10">
@@ -215,7 +215,7 @@ export function DraftScreen({
 
   // Step 1: Captain selection
   return (
-    <div className="w-screen h-screen bg-[#0a0e17] flex flex-col items-center justify-center font-body">
+    <div className="w-screen h-screen bg-[#0a0e17]/80 flex flex-col items-center justify-center font-body">
       <div className="max-w-2xl w-full px-6">
         {/* Header */}
         <div className="text-center mb-10">
