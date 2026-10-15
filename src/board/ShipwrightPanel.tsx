@@ -1,4 +1,5 @@
 import type { ShipState, DamageCategory } from "../game/types";
+import { DAMAGE_CATEGORIES } from "../game/types";
 import { UPGRADES, REPAIR_COST_PER_POINT } from "../game/constants";
 import { canBuyUpgrade, canRepair } from "../game/economy";
 
@@ -7,8 +8,6 @@ interface ShipwrightPanelProps {
   onBuyUpgrade: (upgradeId: string) => void;
   onRepair: (category: DamageCategory, points: number) => void;
 }
-
-const DAMAGE_CATEGORIES: DamageCategory[] = ["hull", "crew", "masts"];
 
 export function ShipwrightPanel({
   ship,
@@ -32,7 +31,7 @@ export function ShipwrightPanel({
                 </span>
               </span>
               <button
-                disabled={!canRepair(ship, cat)}
+                disabled={!canRepair(ship, cat, 1)}
                 onClick={() => onRepair(cat, 1)}
                 className="px-2.5 py-0.5 bg-amber-800/50 hover:bg-amber-700/60 disabled:bg-white/5 disabled:text-white/20 border border-amber-700/30 disabled:border-transparent rounded text-[11px] font-medium cursor-pointer disabled:cursor-not-allowed transition-colors text-amber-200"
               >

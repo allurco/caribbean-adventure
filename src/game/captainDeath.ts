@@ -16,11 +16,10 @@
  * `G.lostShips` and not in `G.ships`. Pure functions over `G`; `Game.ts` wires them into the moves
  * and the turn.
  */
-import { takeCommand } from "./captains";
+import { isCaptainPick, takeCommand } from "./captains";
 import { createShipState } from "./economy";
 import { hex } from "./hex";
 import type { CaribbeanState, ShipClass, ShipLossCause } from "./types";
-import { STARTER_SHIP_CLASSES } from "./types";
 
 /** The size of a replacement hand: a draft hand's. */
 const HAND_SIZE = 2;
@@ -100,8 +99,7 @@ export function replaceCaptain(
 ): boolean {
   const lost = awaitingCaptain(G, playerId) ? G.lostShips![playerId] : undefined;
   const hand = G.draftHands[playerId] ?? [];
-  if (!lost || !Number.isInteger(captainIndex) || captainIndex < 0 || captainIndex >= hand.length) return false;
-  if (!STARTER_SHIP_CLASSES.includes(shipClass)) return false;
+  if (!lost || !isCaptainPick(hand, captainIndex, shipClass)) return false;
 
   const ship = createShipState(hex(0, 0), shipClass);
   ship.score = lost.score;

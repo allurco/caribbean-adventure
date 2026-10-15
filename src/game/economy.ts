@@ -7,7 +7,8 @@ import type {
   DamageCategory,
   Nation,
 } from "./types";
-import { GOOD_TYPES, NATIONS } from "./types";
+import { DAMAGE_CATEGORIES, GOOD_TYPES, NATIONS } from "./types";
+import { isCount, isOneOf } from "./moveArgs";
 import { SHIP_SPECS, UPGRADES, REPAIR_COST_PER_POINT, SHIP_COSTS } from "./constants";
 
 export const PRICE_RANGES: Record<
@@ -48,7 +49,7 @@ export function canBuy(
   amount: number,
   market: PortMarket,
 ): boolean {
-  if (amount <= 0) return false;
+  if (!isOneOf(GOOD_TYPES, good) || !isCount(amount)) return false;
   if (!hasCargoSpace(ship, amount)) return false;
   return ship.gold >= market.prices[good].buy * amount;
 }
@@ -58,7 +59,7 @@ export function canSell(
   good: GoodType,
   amount: number,
 ): boolean {
-  if (amount <= 0) return false;
+  if (!isOneOf(GOOD_TYPES, good) || !isCount(amount)) return false;
   return ship.cargo[good] >= amount;
 }
 
@@ -118,9 +119,15 @@ export function applyUpgrade(ship: ShipState, upgradeId: string): void {
   applyUpgradeEffect(ship, upgradeId);
 }
 
-export function canRepair(ship: ShipState, category: DamageCategory): boolean {
+/**
+ * Whether `ship` can repair `points` of `category` damage:
+ * it has that damage, and the gold for the points it would mend (at most
+ * the damage it has).
+ */
+export function canRepair(ship: ShipState, category: DamageCategory, points: number): boolean {
+  if (!isOneOf(DAMAGE_CATEGORIES, category) || !isCount(points)) return false;
   if (ship.damage[category] <= 0) return false;
-  return ship.gold >= REPAIR_COST_PER_POINT;
+  return ship.gold >= Math.min(points, ship.damage[category]) * REPAIR_COST_PER_POINT;
 }
 
 // Jury-rigging costs nothing but only repairs 1 mast damage at a time

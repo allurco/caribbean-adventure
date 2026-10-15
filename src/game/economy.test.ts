@@ -244,17 +244,17 @@ describe("applyUpgrade", () => {
 describe("canRepair", () => {
   it("returns false when no damage", () => {
     const ship = makeShip({ gold: 100, damage: { hull: 0, crew: 0, masts: 0 } });
-    expect(canRepair(ship, "hull")).toBe(false);
+    expect(canRepair(ship, "hull", 1)).toBe(false);
   });
 
   it("returns true when damaged and has gold", () => {
     const ship = makeShip({ gold: 100, damage: { hull: 1, crew: 0, masts: 0 } });
-    expect(canRepair(ship, "hull")).toBe(true);
+    expect(canRepair(ship, "hull", 1)).toBe(true);
   });
 
   it("returns false when too poor", () => {
     const ship = makeShip({ gold: 2, damage: { hull: 1, crew: 0, masts: 0 } });
-    expect(canRepair(ship, "hull")).toBe(false);
+    expect(canRepair(ship, "hull", 1)).toBe(false);
   });
 });
 

@@ -13,7 +13,7 @@ import type {
   DamageCategory,
   CombatAction,
 } from "./types";
-import { SHIP_CLASSES, STARTER_SHIP_CLASSES } from "./types";
+import { COMBAT_ACTIONS, SHIP_CLASSES } from "./types";
 import { playerViewFor } from "./playerView";
 import {
   canAttack,
@@ -45,7 +45,8 @@ import {
   canJuryRig,
   applyJuryRig,
 } from "./economy";
-import { createCaptainDeck, dealHands, takeCommand } from "./captains";
+import { createCaptainDeck, dealHands, isCaptainPick, takeCommand } from "./captains";
+import { isOneOf, isOwnKey, isWhole } from "./moveArgs";
 import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, winnerWhenAllOut } from "./captainDeath";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
@@ -225,6 +226,7 @@ export const Caribbean: Game<CaribbeanState> = {
     moveShip: ({ G, ctx }, q: number, r: number) => {
       const ship = G.ships[ctx.currentPlayer];
       if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
+      if (!isWhole(q) || !isWhole(r)) return INVALID_MOVE;
       const target = canonicalHex(hex(q, r), G.wrap);
       if (wrappedDistance(ship.position, target, G.wrap) !== 1) return INVALID_MOVE;
       const cell = G.cells.find((c) => hexEquals(c.hex, target));
@@ -254,6 +256,7 @@ export const Caribbean: Game<CaribbeanState> = {
       const ship = G.ships[ctx.currentPlayer];
       const port = findAccessiblePort(ship.position, G.cells, G.wrap);
       if (!port?.market) return INVALID_MOVE;
+      if (action !== "BUY" && action !== "SELL") return INVALID_MOVE;
       if (action === "BUY") {
         if (!canBuy(ship, good, amount, port.market)) return INVALID_MOVE;
         ship.gold -= port.market.prices[good].buy * amount;
@@ -281,8 +284,7 @@ export const Caribbean: Game<CaribbeanState> = {
       const ship = G.ships[ctx.currentPlayer];
       const port = findAccessiblePort(ship.position, G.cells, G.wrap);
       if (!port?.hasPort || !port.market) return INVALID_MOVE;
-      if (points <= 0) return INVALID_MOVE;
-      if (!canRepair(ship, category)) return INVALID_MOVE;
+      if (!canRepair(ship, category, points)) return INVALID_MOVE;
       applyRepair(ship, category, points);
     },
 
@@ -316,15 +318,7 @@ export const Caribbean: Game<CaribbeanState> = {
         ) => {
           const playerId = ctx.currentPlayer;
           const hand = G.draftHands[playerId];
-          if (!hand || captainIndex < 0 || captainIndex >= hand.length) {
-            return INVALID_MOVE;
-          }
-          if (
-            !shipClass ||
-            !(STARTER_SHIP_CLASSES as readonly string[]).includes(shipClass)
-          ) {
-            return INVALID_MOVE;
-          }
+          if (!isCaptainPick(hand, captainIndex, shipClass)) return INVALID_MOVE;
           const ship = G.ships[playerId];
           if (ship.captain) return INVALID_MOVE;
 
@@ -389,6 +383,7 @@ export const Caribbean: Game<CaribbeanState> = {
         moveShip: ({ G, ctx }, q: number, r: number) => {
           const ship = G.ships[ctx.currentPlayer];
           if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
+          if (!isWhole(q) || !isWhole(r)) return INVALID_MOVE;
           const target = canonicalHex(hex(q, r), G.wrap);
           if (wrappedDistance(ship.position, target, G.wrap) !== 1) return INVALID_MOVE;
           const cell = G.cells.find((c) => hexEquals(c.hex, target));
@@ -439,6 +434,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const ship = G.ships[ctx.currentPlayer];
           const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.market) return INVALID_MOVE;
+          if (action !== "BUY" && action !== "SELL") return INVALID_MOVE;
           if (action === "BUY") {
             if (!canBuy(ship, good, amount, port.market)) return INVALID_MOVE;
             ship.gold -= port.market.prices[good].buy * amount;
@@ -466,8 +462,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const ship = G.ships[ctx.currentPlayer];
           const port = findAccessiblePort(ship.position, G.cells, G.wrap);
           if (!port?.hasPort || !port.market) return INVALID_MOVE;
-          if (points <= 0) return INVALID_MOVE;
-          if (!canRepair(ship, category)) return INVALID_MOVE;
+          if (!canRepair(ship, category, points)) return INVALID_MOVE;
           applyRepair(ship, category, points);
         },
 
@@ -494,14 +489,14 @@ export const Caribbean: Game<CaribbeanState> = {
           if (movesLeft(G, ctx.currentPlayer) <= 0) return INVALID_MOVE;
 
           if (isNPC) {
+            if (!isOwnKey(G.npcs, targetId)) return INVALID_MOVE;
             const npc = G.npcs[targetId];
-            if (!npc) return INVALID_MOVE;
             if (!canScoutNPC(ship, npc, G.wrap)) return INVALID_MOVE;
             // Mark NPC as identified
             npc.isIdentified = true;
           } else {
+            if (!isOwnKey(G.ships, targetId)) return INVALID_MOVE;
             const target = G.ships[targetId];
-            if (!target) return INVALID_MOVE;
             if (!canScoutPlayer(ship, target, targetId, G.wrap)) return INVALID_MOVE;
             // Add to scouted ships list
             if (!ship.scoutedShips.includes(targetId)) {
@@ -546,8 +541,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
         attackShip: ({ G, ctx, events }, targetId: string) => {
           const attacker = G.ships[ctx.currentPlayer];
+          if (!isOwnKey(G.ships, targetId) || targetId === ctx.currentPlayer) return INVALID_MOVE;
           const defender = G.ships[targetId];
-          if (!defender) return INVALID_MOVE;
 
           const distance = wrappedDistance(attacker.position, defender.position, G.wrap);
           if (!canAttack(attacker, defender, distance)) return INVALID_MOVE;
@@ -573,8 +568,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
         attackNPC: ({ G, ctx, events }, npcId: string) => {
           const attacker = G.ships[ctx.currentPlayer];
+          if (!isOwnKey(G.npcs, npcId)) return INVALID_MOVE;
           const npc = G.npcs[npcId];
-          if (!npc) return INVALID_MOVE;
 
           const distance = wrappedDistance(attacker.position, npc.position, G.wrap);
           if (!canAttackNPC(attacker, npc, distance)) return INVALID_MOVE;
@@ -669,6 +664,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
         chooseCombatAction: ({ G, ctx, events }, action: CombatAction) => {
           if (!G.combat || G.combat.stage !== "chooseAction") return INVALID_MOVE;
+          if (!isOneOf(COMBAT_ACTIONS, action)) return INVALID_MOVE;
           // In hotseat mode, we trust the UI to show who should choose
           // In NPC combat, player always chooses (NPC auto-fires if it won)
 

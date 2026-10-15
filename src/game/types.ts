@@ -36,6 +36,10 @@ export type ShipClass = (typeof SHIP_CLASSES)[number];
 
 export const STARTER_SHIP_CLASSES: readonly ShipClass[] = ["Sloop", "Flute"];
 
+export const DAMAGE_CATEGORIES = ["hull", "crew", "masts"] as const;
+
+export const COMBAT_ACTIONS = ["fire", "board", "flee"] as const;
+
 export interface ShipStats {
   maneuverability: number;
   scouting: number;
@@ -97,7 +101,7 @@ export interface ShipState {
   activeMission?: Mission; // Current active mission from tavern
 }
 
-export type CombatAction = "fire" | "board" | "flee";
+export type CombatAction = (typeof COMBAT_ACTIONS)[number];
 export type CombatStage = "seamanship" | "chooseAction" | "fleeAttempt" | "cannons" | "resolution";
 export type FleeOutcome = "escaped" | "caught" | null;
 
