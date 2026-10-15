@@ -27,7 +27,14 @@ export async function loadGameClient(setupData: CaribbeanSetupData | undefined) 
 export async function loadSeatClient(setupData: CaribbeanSetupData | undefined) {
   // Its own chunk: the multiplayer module brings the socket.io client, which the hotseat game never needs.
   const [map, { Local }] = await Promise.all([generateMap(setupData), import("boardgame.io/multiplayer")]);
-  return Client({ game: withGeneratedMap(Caribbean, map), board: CaribbeanBoard, numPlayers: PLAYER_COUNT, multiplayer: Local() });
+  return Client({
+    game: withGeneratedMap(Caribbean, map),
+    board: CaribbeanBoard,
+    numPlayers: PLAYER_COUNT,
+    multiplayer: Local(),
+    // boardgame.io opens its debug panel in dev, over the seat switcher; it starts folded here
+    debug: { collapseOnLoad: true },
+  });
 }
 
 function generateMap(setupData: CaribbeanSetupData | undefined) {
