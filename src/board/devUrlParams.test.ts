@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderSwitches, parseDevUrlParams, seatCount, showsDebugPanel } from "./devUrlParams";
+import { renderSwitches, parseDevUrlParams, seatCount, showsDebugPanel, usesHotseatSave } from "./devUrlParams";
 
 describe("parseDevUrlParams", () => {
   it("pins nothing for a bare URL", () => {
@@ -191,5 +191,23 @@ describe("showsDebugPanel", () => {
   it("hides it for the seats on one page, so its tab does not cover End Turn or the turn bar (#110)", () => {
     expect(showsDebugPanel(parseDevUrlParams("?seats=1&size=small&seed=1"))).toBe(false);
     expect(showsDebugPanel(parseDevUrlParams("?seats=1&snapshot=1"))).toBe(false);
+  });
+});
+
+describe("usesHotseatSave (#300)", () => {
+  it("keeps the save for a plain URL, and for switches that change only the picture", () => {
+    for (const search of ["", "?cx=1&cz=2&dist=30", "?stats=1", "?fx=0&dpr=1", "?regionBorder=line"]) {
+      expect(usesHotseatSave(parseDevUrlParams(search)), search).toBe(true);
+    }
+  });
+
+  it("leaves the save alone for a URL that pins the match: its map, its seats, the seats on one page, a gallery shot", () => {
+    for (const search of ["?size=small", "?seed=12", "?size=large&seed=3", "?players=2", "?seats=1", "?snapshot=1"]) {
+      expect(usesHotseatSave(parseDevUrlParams(search)), search).toBe(false);
+    }
+  });
+
+  it("keeps the save for pins that are not valid, which pin nothing", () => {
+    expect(usesHotseatSave(parseDevUrlParams("?size=huge&seed=x&players=9"))).toBe(true);
   });
 });

@@ -85,6 +85,8 @@ Query parameters on the dev server pin what would otherwise be random, so a URL 
 
 **Seed control.** On the dev server the board shows the map's size and seed at the bottom of the screen. `[` and `]` reload on seed − 1 and seed + 1, `\` on a random seed, each keeping the size and every other parameter (the camera's `cx`, `cz`, `dist`, `stats`, …); **copy URL** copies a URL that reproduces the map on screen. Production builds leave the control out.
 
+**Saved games.** The local hotseat game is saved in the browser as it is played (#300); a plain URL, or one that only moves the camera or switches parts of the picture, opens on **Continue voyage** / **New game** when there is a save. A URL that pins the match (`size`, `seed`, `players`, `seats=1`, `snapshot=1`, `seedGallery=1`) never touches the save: it neither offers to continue it nor overwrites it, so a test map can be opened without losing the voyage. To start afresh with a save in place, press **New game** (it asks before overwriting).
+
 The hash `#lab` opens the shader sandbox. For example, `/?size=small&seed=1&cx=22.5&cz=13&dist=3.4` opens the same small map every time, at ship zoom over its middle port (Isla Quieta), and `/?size=small&seed=1&cx=16.5&cz=23.4&dist=1` at town zoom over Île de Sable. The size and seed choose the map the local client generates before its match starts (in a Web Worker, see `src/mapWorker/`); the camera values go to the board. Captains and NPCs stay random.
 
 ## Project structure
@@ -96,6 +98,7 @@ src/
 ├── audio/   Sound: the registry, settings, the state-diff events, three.js playback
 ├── lab/     Shader experiments (open the app at /#lab) and the sound lab (/?view=sound)
 ├── mapWorker/  Generates the map in a Web Worker, with a main-thread fallback
+├── hotseatSave/  Saves the local hotseat game in the browser and restores it
 ├── online/  Sign-in and profile pages, when a Supabase backend is configured
 └── App.tsx  Wires the game to the board via boardgame.io
 api/         The Vercel Function serving /api/* (routes in server/)
