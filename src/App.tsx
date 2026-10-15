@@ -3,8 +3,9 @@ import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { SoundLab } from "./lab/SoundLab";
 import { parseDevUrlParams } from "./board/devUrlParams";
-import { loadGameClient, type GameClient } from "./loadGameClient";
+import { loadGameClient, loadSeatClient, type GameClient } from "./loadGameClient";
 import { GameClientLoader } from "./GameClientLoader";
+import { LocalSeats } from "./LocalSeats";
 import { parseAccountRoute, skipsLogin } from "./online/accountRoute";
 import { supabaseConfig } from "./online/supabaseClient";
 
@@ -40,7 +41,8 @@ const loginGate = showsGame && supabaseConfig !== null && !skipsLogin(window.loc
 // while React mounts, or behind the sign-in screen once a player is through.
 let gameClientPromise: Promise<GameClient> | undefined;
 function gameClient(): Promise<GameClient> {
-  gameClientPromise ??= loadGameClient(devParams.setupData);
+  // Dev `?seats=1` (#110): every seat on one page, through the local transport
+  gameClientPromise ??= devParams.localSeats ? loadSeatClient(devParams.setupData) : loadGameClient(devParams.setupData);
   return gameClientPromise;
 }
 if (showsGame && !loginGate) void gameClient();
@@ -92,9 +94,10 @@ export default function App() {
 
 /** The local hotseat game, with the account link when a backend is configured. */
 function Game() {
+  const Loader = devParams.localSeats ? LocalSeats : GameClientLoader;
   return (
     <>
-      <GameClientLoader
+      <Loader
         client={gameClient()}
         cameraTarget={devParams.cameraTarget}
         cameraDistance={devParams.cameraDistance}
