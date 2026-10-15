@@ -337,7 +337,7 @@ function hash(x: number, z: number): number {
 }
 
 /** The triangular lattice the land mesh is built on, from the field's bounds and period. */
-interface LandLattice {
+export interface LandLattice {
   minX: number;
   minZ: number;
   spacing: number;
@@ -356,7 +356,7 @@ interface LandLattice {
  * edge (relief occlusion, seabed normals) wraps round to the other side.
  * Vertex (i, j) sits at (minX + i·spacing [+ spacing/2 on odd rows], minZ + j·rowHeight).
  */
-function landLattice(field: TerrainHeightField, requestedSpacing = LAND_MESH_SPACING): LandLattice {
+export function landLattice(field: TerrainHeightField, requestedSpacing = LAND_MESH_SPACING): LandLattice {
   const { minX, maxX, minZ, maxZ } = field.bounds;
   const period = field.periodX;
   const periodSteps = period === null ? 0 : Math.max(1, Math.round(period / requestedSpacing));
