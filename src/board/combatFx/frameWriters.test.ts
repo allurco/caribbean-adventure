@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { InstancedBufferAttribute, InstancedBufferGeometry, Vector3 } from "three";
-import { ropePoint, writePuffs } from "./frameWriters";
+import { BoxGeometry, InstancedBufferAttribute, InstancedBufferGeometry, InstancedMesh, MeshBasicMaterial, Vector3 } from "three";
+import { drawLiveInstances, ropePoint, showInstances, writePuffs } from "./frameWriters";
 import { createPool, spawn, type ParticleKind } from "./particlePool";
 
 const KIND: ParticleKind = { gravity: 0, drag: 1, windFollow: 0, onSea: "pass", life: 10 };
@@ -33,5 +33,39 @@ describe("writing the effects into their buffers (#263)", () => {
     ropePoint(from, to, 1, 0.5, 0, scratch, flying);
     expect(flying.x).toBeCloseTo(0.2, 6); // the line's end is the hook, halfway there
     expect(flying.y).toBeGreaterThan(0.1); // arcing up
+  });
+
+  it("an instanced layer draws only its live instances, packed at the front, and nothing at all when none is live", () => {
+    const mesh = new InstancedMesh(new BoxGeometry(), new MeshBasicMaterial(), 5);
+    const live = [false, true, false, true, false];
+    const written: [number, number][] = [];
+    const n = drawLiveInstances(mesh, live.length, (slot) => live[slot], (slot, index) => written.push([slot, index]), true);
+    expect(n).toBe(2);
+    expect(written).toEqual([[1, 0], [3, 1]]);
+    expect(mesh.count).toBe(2);
+    expect(mesh.visible).toBe(true);
+    expect(mesh.castShadow).toBe(true);
+
+    drawLiveInstances(mesh, live.length, () => false, () => {}, true);
+    expect(mesh.count).toBe(0);
+    expect(mesh.visible).toBe(false);
+    expect(mesh.castShadow).toBe(false); // an empty layer casts no shadow
+  });
+
+  it("a layer that never casts shadows does not start to when it has instances", () => {
+    const mesh = new InstancedMesh(new BoxGeometry(), new MeshBasicMaterial(), 3);
+    showInstances(mesh, 3);
+    expect(mesh.count).toBe(3);
+    expect(mesh.visible).toBe(true);
+    expect(mesh.castShadow).toBe(false);
+  });
+
+  it("an empty pool of puffs hides its layer", () => {
+    const pool = createPool(4);
+    const attr = (n: number) => new InstancedBufferAttribute(new Float32Array(4 * n), n);
+    const buffers = { offset: attr(3), size: attr(1), alpha: attr(1), seed: attr(1) };
+    const geometry = new InstancedBufferGeometry();
+    expect(writePuffs(pool, LOOK, buffers, geometry)).toBe(0);
+    expect(geometry.instanceCount).toBe(0);
   });
 });

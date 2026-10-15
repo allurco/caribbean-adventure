@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { ConeGeometry, CylinderGeometry, type InstancedMesh, Matrix4, MeshStandardMaterial, Object3D, Vector3 } from "three";
 import type { CombatDirector } from "./combatDirector";
-import { ropePoint } from "./frameWriters";
+import { ropePoint, showInstances } from "./frameWriters";
 import { shotArc, type Vec3 } from "./broadside";
 
 const ROPE_SEGMENTS = 10;
@@ -51,33 +51,27 @@ export function GrappleLayer({ director }: { director: CombatDirector }) {
     const pair = director.grappling;
     const placed = pair !== null && director.shipMatrix(pair.from, ma) && director.shipMatrix(pair.to, mb);
     const time = director.time();
+    // Only the grapples in the air or bitten are drawn, packed at the front; idle ones are not drawn at all
+    let hooksShown = 0;
+    let ropesShown = 0;
     for (let gi = 0; gi < count; gi++) {
       const g = director.grapples[gi];
       const s = (time - g.throwAt) / g.flight;
-      const shown = placed && g.active && s >= 0;
-      if (shown) {
-        from.set(g.from.x, g.from.y, g.from.z).applyMatrix4(ma);
-        to.set(g.to.x, g.to.y, g.to.z).applyMatrix4(mb);
-        if (s < 1) {
-          shotArc(from, to, s, 0.06, arc);
-          hook.set(arc.x, arc.y, arc.z);
-        } else hook.copy(to);
-      }
+      if (!(placed && g.active && s >= 0)) continue;
+      from.set(g.from.x, g.from.y, g.from.z).applyMatrix4(ma);
+      to.set(g.to.x, g.to.y, g.to.z).applyMatrix4(mb);
+      if (s < 1) {
+        shotArc(from, to, s, 0.06, arc);
+        hook.set(arc.x, arc.y, arc.z);
+      } else hook.copy(to);
       dummy.rotation.set(0, 0, 0);
       dummy.position.copy(hook);
-      dummy.scale.setScalar(shown ? 1 : 0);
+      dummy.scale.setScalar(1);
       dummy.updateMatrix();
-      h.setMatrixAt(gi, dummy.matrix);
+      h.setMatrixAt(hooksShown++, dummy.matrix);
       // Slack while it flies (the line follows the hook's arc), then hauled in, a little sag left.
       const sag = s < 1 ? 0 : 0.01 + 0.025 * Math.exp(-(s - 1) * 2);
       for (let k = 0; k < ROPE_SEGMENTS; k++) {
-        const index = gi * ROPE_SEGMENTS + k;
-        if (!shown) {
-          dummy.scale.setScalar(0);
-          dummy.updateMatrix();
-          r.setMatrixAt(index, dummy.matrix);
-          continue;
-        }
         ropePoint(from, to, k / ROPE_SEGMENTS, s, sag, arc, a);
         ropePoint(from, to, (k + 1) / ROPE_SEGMENTS, s, sag, arc, b);
         dir.subVectors(b, a);
@@ -86,17 +80,21 @@ export function GrappleLayer({ director }: { director: CombatDirector }) {
         dummy.quaternion.setFromUnitVectors(UP, length > 1e-9 ? dir.multiplyScalar(1 / length) : UP);
         dummy.scale.set(1, length, 1);
         dummy.updateMatrix();
-        r.setMatrixAt(index, dummy.matrix);
+        r.setMatrixAt(ropesShown++, dummy.matrix);
       }
     }
-    r.instanceMatrix.needsUpdate = true;
-    h.instanceMatrix.needsUpdate = true;
+    showInstances(h, hooksShown);
+    showInstances(r, ropesShown);
+    if (hooksShown > 0) {
+      r.instanceMatrix.needsUpdate = true;
+      h.instanceMatrix.needsUpdate = true;
+    }
   });
 
   return (
     <>
-      <instancedMesh ref={ropes} args={[parts.rope, parts.ropeMaterial, count * ROPE_SEGMENTS]} frustumCulled={false} />
-      <instancedMesh ref={hooks} args={[parts.hook, parts.hookMaterial, count]} frustumCulled={false} />
+      <instancedMesh ref={ropes} args={[parts.rope, parts.ropeMaterial, count * ROPE_SEGMENTS]} count={0} visible={false} frustumCulled={false} />
+      <instancedMesh ref={hooks} args={[parts.hook, parts.hookMaterial, count]} count={0} visible={false} frustumCulled={false} />
     </>
   );
 }

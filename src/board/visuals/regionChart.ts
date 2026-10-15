@@ -21,6 +21,7 @@
  * screen, so the strengths below are high on purpose.
  */
 import type { TerrainBounds } from "./terrainHeightField";
+import { finiteColour, SUN_GLINT_MAX } from "./finiteColour";
 
 /** Chart texels per world unit, at most: a name's smallest letters (0.32 units) are then ten texels tall. */
 export const REGION_CHART_TEXELS_PER_UNIT = 32;
@@ -47,12 +48,15 @@ export const REGION_INK_SHADE: Rgb = [0.1, 0.14, 0.22];
 /**
  * The sea's colour under `ink` (0 … 1) before the foam: the water body's
  * light `body` and the sky's reflection `sky`, split by `fresnel`, plus the
- * sun's `glint`, darkened together by the ink. Mirrored in GLSL by
- * `regionInkedSea`.
+ * sun's `glint`, darkened together by the ink. The glint is unclamped HDR,
+ * so it is held finite first (`finiteColour`, to `SUN_GLINT_MAX`): a NaN or
+ * an overflow there would otherwise black out the frame through the bloom.
+ * Mirrored in GLSL by `regionInkedSea`.
  */
 export function inkedSea(body: Rgb, sky: Rgb, glint: Rgb, fresnel: number, ink: number): Rgb {
+  const g = finiteColour(glint, SUN_GLINT_MAX);
   const channel = (i: 0 | 1 | 2) =>
-    (body[i] * (1 - fresnel) + sky[i] * fresnel + glint[i]) * (1 - ink * (1 - REGION_INK_SHADE[i]));
+    (body[i] * (1 - fresnel) + sky[i] * fresnel + g[i]) * (1 - ink * (1 - REGION_INK_SHADE[i]));
   return [channel(0), channel(1), channel(2)];
 }
 
@@ -89,8 +93,9 @@ export const REGION_CHART_GLSL = `
   // The sea's colour under \`ink\` before the foam: the water body's light
   // and the sky's reflection, split by \`fresnel\`, plus the sun's glint,
   // darkened together by the ink printed over them (inkedSea in regionChart.ts).
+  // The glint is held finite first (finiteColour, FINITE_COLOUR_GLSL, included before this).
   vec3 regionInkedSea(vec3 body, vec3 sky, vec3 glint, float fresnel, float ink) {
-    return (mix(body, sky, fresnel) + glint) * mix(vec3(1.0), REGION_INK_SHADE, ink);
+    return (mix(body, sky, fresnel) + finiteColour(glint, SUN_GLINT_MAX)) * mix(vec3(1.0), REGION_INK_SHADE, ink);
   }
 
   // The ink at the displaced surface point \`worldXZ\` whose drawn slope is

@@ -31,6 +31,14 @@ Wait for the board's loading screen to go (the progress bar `[role=progressbar]`
 
 One entry per report. Newest first.
 
+### 2026-10-15: the 3D view flickers black whenever the camera moves (one Mac mini only)
+
+- **Symptom:** on a 16 GB Mac mini, with many apps open, whole 3D frames alternate between a normal render and pure black (0, 0, 0) on any pan, zoom or turn. It stops when the camera stops. The HUD is untouched, the console is empty (no context loss, no GL or shader errors). Medium map, docked at a port, `line` region borders.
+- **Not reproduced headless:** on `a04f058` (main) and on the production deployment (`?skipLogin=1`), with headless Chromium on a real GPU (ANGLE Metal, Apple M1 Max) at DPR 1 and 2, with ANGLE on OpenGL, and in WebKit. Tried stepped zoom 28 → 1, wheel zoom, drag pans and 400 frames of continuous pan and zoom, with a per-frame pixel readback and a NaN/Infinity scan of every uniform: no black frame and no bad uniform. The maintainer saw no flicker on an M1 Max either.
+- **Measured, `894edb4` → `a04f058`, medium map, 1440 × 900 at DPR 2:** GPU memory the same (about 650 MB: textures 317, buffers 72, renderbuffers 260) and no growth over repeated camera motion or hover. Per frame, about 6 more draw calls and about 440 k more triangles: #281's idle combat layers (shot, splinters, grapples), drawn at zero size even with no fight.
+- **Changed in the PR (fix/black-flicker):** idle instanced layers are not drawn and cast no shadow when empty; the sun glint and the sea's output are held finite (a NaN or a half-float overflow there blacks out a whole frame through the bloom's mip blur); the canvas DPR is capped at 1.5 (650 → 480 MB, frame time median 13.4 → 10.1 ms on the M1 Max). A/B switches for a real GPU: `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`.
+- **Open:** whether that machine's flicker is gone with the PR's preview, and if not, which switch stops it.
+
 ### 2026-10-15: `?seats=1` behind the loading screen (merge of main into PR #262)
 
 - **Batch:** branch `feat/loading-screen` with main (#245) merged in; headless Chromium on the GPU (ANGLE Metal); `?size=small&seed=1&snapshot=1` at 1280×800 and `?seats=1&size=small&seed=1` at 1024×640, camera at its default start.

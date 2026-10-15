@@ -77,6 +77,8 @@ import { useRegionBorders } from "./useRegionBorders";
 import { regionAt } from "./regionMap";
 import { placeRegionNames } from "./regionNamePlacement";
 import { DEFAULT_REGION_BORDER_MODE, type RegionBorderMode } from "./regionBorderMode";
+import type { RenderOff } from "./devUrlParams";
+import { PlainRender } from "./visuals/PlainRender";
 import { useRegionChart } from "./visuals/useRegionChart";
 import { useTurnHandoff } from "./useTurnHandoff";
 import { controlsLocked, holdsNpcs, turnsInPlay } from "./turnHandoff";
@@ -149,6 +151,15 @@ const WRAP_COPY_MARGIN = 3;
 
 /** The reach's lines and tint over the sea (#213): widths in world units, heights above sea level. */
 const REACH_OUTLINE_WIDTH = 0.04;
+/**
+ * The canvas's pixel ratio: the device's, capped at 1.5. At 2 on a Retina
+ * screen the drawing buffer, its multisampled copy and the composer's HDR
+ * buffers come to about 370 MB of GPU memory at 1440 × 900; at 1.5 about 210 MB,
+ * for a picture hardly softer (the post-processing smooths it).
+ */
+const CANVAS_DPR: [number, number] = [1, 1.5];
+/** Nothing left out of the picture (no `?fx=0`, `?ink=0` or `?bloom=0`). */
+const NOTHING_OFF: RenderOff = {};
 const REACH_RING_WIDTH = 0.03;
 const REACH_TINT_Y = 0.012;
 const REACH_LINE_Y = 0.02;
@@ -194,6 +205,7 @@ function Scene({
   onCameraCut,
   seaBuoys,
   regionBorder,
+  renderOff,
   onReady,
 }: {
   G: CaribbeanState;
@@ -247,6 +259,8 @@ function Scene({
   seaBuoys: boolean;
   /** How the region borders are drawn: seams in the water or lines (dev, #239). */
   regionBorder: RegionBorderMode;
+  /** Parts of the picture left out for an A/B check (`?fx=0`, `?ink=0`, `?bloom=0`). */
+  renderOff: RenderOff;
   /** Reports the loading gate's tasks done here: "world" once built, "sky" once baked (useSceneReadiness.ts). */
   onReady: (task: string) => void;
 }) {
@@ -599,7 +613,7 @@ function Scene({
           waveSlopes={waveSlopes}
           waveWhitecaps={waves.whitecaps}
           waveDisplacements={waves.displacements}
-          regionChart={regionChart}
+          regionChart={renderOff.regionInk ? null : regionChart}
           regionSeams={regionBorder === "water"}
         />
       )}
@@ -686,7 +700,7 @@ function Scene({
       </WorldCopies>
 
       {/* The fight's smoke, flashes, shot, splinters, spray, foam and grapples (#263) */}
-      <CombatEffects director={combatDirector} />
+      {!renderOff.combatFx && <CombatEffects director={combatDirector} />}
 
       {/* Ship Tooltip, once, in the copy under the pointer */}
       {hoveredShipId && (G.ships[hoveredShipId] || npcs[hoveredShipId]) && (() => {
@@ -757,7 +771,7 @@ function Scene({
       />
 
       {/* Post-processing: bloom, vignette, ACES at the lighting's exposure, warm grade */}
-      <PostEffects lighting={lighting} />
+      {renderOff.postProcessing ? <PlainRender /> : <PostEffects lighting={lighting} withoutBloom={renderOff.bloom === true} />}
     </>
     </SeaSurfaceContext.Provider>
   );
@@ -772,6 +786,8 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   seaBuoys?: boolean;
   /** How the region borders are drawn (dev, #239): `DEFAULT_REGION_BORDER_MODE` when left out. */
   regionBorder?: RegionBorderMode;
+  /** Parts of the picture left out for an A/B check on a real GPU (`?fx=0`, `?ink=0`, `?bloom=0`). */
+  renderOff?: RenderOff;
   /** Show the fps, draw calls and triangles readout (dev, #162); ignored in production builds. */
   renderStats?: boolean;
   /** A seed-gallery shot (dev, #161): the draft picks itself and the frame is posted to the gallery; ignored in production builds. */
@@ -779,12 +795,16 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, regionBorder, renderStats, gallerySnapshot } = props;
+  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, regionBorder, renderOff, renderStats, gallerySnapshot } = props;
   const snapshot = import.meta.env.DEV && gallerySnapshot === true;
   // Dev seed gallery (#161): each seat takes its first captain and starter ship, so the shot reaches the main phase.
+  // Once per seat: StrictMode runs the effect twice, and a second pick for the same seat is an invalid move.
   const { pickCaptain } = props.moves;
+  const snapshotPicked = useRef<string | null>(null);
   useEffect(() => {
-    if (snapshot && ctx.phase === "draft") pickCaptain(0, STARTER_SHIP_CLASSES[0]);
+    if (!snapshot || ctx.phase !== "draft" || snapshotPicked.current === ctx.currentPlayer) return;
+    snapshotPicked.current = ctx.currentPlayer;
+    pickCaptain(0, STARTER_SHIP_CLASSES[0]);
   }, [snapshot, ctx.phase, ctx.currentPlayer, pickCaptain]);
   // Dev `stats=1` (#162): the probe in the Canvas reports to the overlay through this feed.
   const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
@@ -1062,6 +1082,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   return (
     <div className="relative w-screen h-screen font-body bg-[#0a1929]">
       <Canvas
+        dpr={CANVAS_DPR}
         shadows={{ type: SHADOW_MAP_TYPE }}
         camera={{
           // Start due south of the middle of the map (the rectangle's corner
@@ -1119,6 +1140,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onCameraCut={cameraCut}
           seaBuoys={seaBuoys ?? false}
           regionBorder={regionBorder ?? DEFAULT_REGION_BORDER_MODE}
+          renderOff={renderOff ?? NOTHING_OFF}
           onReady={readiness.complete}
         />
         <SceneReadinessProbe
