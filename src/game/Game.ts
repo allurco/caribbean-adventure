@@ -46,7 +46,7 @@ import {
   applyJuryRig,
 } from "./economy";
 import { createCaptainDeck, dealHands, takeCommand } from "./captains";
-import { awaitingCaptain, dealReplacementHand, loseShip, replaceCaptain } from "./captainDeath";
+import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, winnerWhenAllOut } from "./captainDeath";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
@@ -160,6 +160,19 @@ const movesBudgetTurn = {
 };
 
 /**
+ * The play-order position `from`, or the first after it whose seat is still
+ * in the game (#265). When every seat is out, `from`: the game is over
+ * (`endIf`).
+ */
+function seatStillIn(G: CaribbeanState, playOrder: readonly string[], from: number): number {
+  for (let step = 0; step < playOrder.length; step++) {
+    const pos = (from + step) % playOrder.length;
+    if (!isEliminated(G, playOrder[pos])) return pos;
+  }
+  return from;
+}
+
+/**
  * The main phase's moves, each refused (INVALID_MOVE) while the current
  * player has no ship: between a lost ship and the pick of a new captain
  * (#265), only `pickCaptain` may be played.
@@ -179,7 +192,7 @@ export const Caribbean: Game<CaribbeanState> = {
   // Each seat sees only its own hidden information; a client with no seat is a spectator (#109).
   playerView: ({ G, playerID }) => playerViewFor(G, playerID),
 
-  endIf: ({ G }) => {
+  endIf: ({ G, ctx }) => {
     const winner = findWinner(G.ships);
     if (winner !== null) {
       const ship = G.ships[winner];
@@ -187,6 +200,16 @@ export const Caribbean: Game<CaribbeanState> = {
         winner,
         captainName: ship.captain?.name ?? `Player ${Number(winner) + 1}`,
         score: ship.score,
+      };
+    }
+    // Every player out of the game (#265): the most glory wins
+    const lastOut = winnerWhenAllOut(G, ctx.playOrder);
+    if (lastOut !== null) {
+      const lost = G.lostShips![lastOut];
+      return {
+        winner: lastOut,
+        captainName: lost.captain?.name ?? `Player ${Number(lastOut) + 1}`,
+        score: lost.score,
       };
     }
   },
@@ -307,7 +330,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
           takeCommand(G, playerId, ship, hand[captainIndex], shipClass);
 
-          // Clear the player's draft hand
+          // The captain not picked lives, back at the bottom of the deck (#265); the hand is cleared
+          G.captainDeck.push(...hand.filter((_, i) => i !== captainIndex));
           G.draftHands[playerId] = [];
         },
       },
@@ -321,24 +345,28 @@ export const Caribbean: Game<CaribbeanState> = {
     main: {
       turn: {
         ...movesBudgetTurn,
-        // A player whose ship was lost is dealt a new captain's hand as their turn begins (#265)
-        onBegin: ({ G, ctx }) => {
+        // A player whose ship was lost is dealt a new captain's hand as their
+        // turn begins; with no captain left to deal they are out of the game,
+        // and the turn passes on at once (#265)
+        onBegin: ({ G, ctx, events }) => {
           movesBudgetTurn.onBegin({ G });
           dealReplacementHand(G, ctx.currentPlayer);
+          if (isEliminated(G, ctx.currentPlayer)) events.endTurn();
         },
         order: {
           // boardgame.io's default order, except that a seat which has just
           // lost its ship (no hand dealt yet) is passed over once: its turn
           // ended with the fight that lost it, and its next turn deals it a
-          // new captain's hand (#265). Never a seat stuck with no ship.
+          // new captain's hand. A seat out of the game is passed over for
+          // good (#265). Never a seat stuck with no ship.
           first: ({ G, ctx }) => {
             const seats = ctx.playOrder.length;
-            const first = ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % seats;
+            let first = ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % seats;
             const seat = ctx.playOrder[first];
-            const justLost = awaitingCaptain(G, seat) && (G.draftHands[seat]?.length ?? 0) === 0;
-            return justLost ? (first + 1) % seats : first;
+            if (G.lostShips?.[seat] && (G.draftHands[seat]?.length ?? 0) === 0) first = (first + 1) % seats;
+            return seatStillIn(G, ctx.playOrder, first);
           },
-          next: ({ ctx }) => (ctx.playOrderPos + 1) % ctx.playOrder.length,
+          next: ({ G, ctx }) => seatStillIn(G, ctx.playOrder, (ctx.playOrderPos + 1) % ctx.playOrder.length),
         },
         onEnd: ({ G, random }) => {
           // Don't move NPCs if combat is starting
@@ -841,6 +869,8 @@ export const Caribbean: Game<CaribbeanState> = {
 
           // Check for sunk/derelict
           let combatEnded = false;
+          // Player ships sunk this exchange: lost once both sides' glory and bounties are settled
+          const sunk: string[] = [];
 
           // Check if NPC defender is sunk
           if (isNPC) {
@@ -887,8 +917,7 @@ export const Caribbean: Game<CaribbeanState> = {
 
               const loot = createLootFromShip(defenderShip);
               G.floatingLoot.push(loot);
-              // The ship leaves G.ships here, and its captain dies with it (#265)
-              loseShip(G, G.combat.defenderId, "sunk");
+              sunk.push(G.combat.defenderId);
               combatEnded = true;
             } else if (isDerelict(defenderShip)) {
               defenderShip.isDerelict = true;
@@ -908,13 +937,15 @@ export const Caribbean: Game<CaribbeanState> = {
 
             const loot = createLootFromShip(attacker);
             G.floatingLoot.push(loot);
-            // The ship leaves G.ships here, and its captain dies with it (#265)
-            loseShip(G, G.combat.attackerId, "sunk");
+            sunk.push(G.combat.attackerId);
             combatEnded = true;
           } else if (isDerelict(attacker)) {
             attacker.isDerelict = true;
             combatEnded = true;
           }
+
+          // The sunk ships leave G.ships here, and their captains die with them (#265)
+          for (const id of sunk) loseShip(G, id, "sunk");
 
           // After a failed flee attempt, combat ends after the parting shot
           if (G.combat.fleeOutcome === "caught") {

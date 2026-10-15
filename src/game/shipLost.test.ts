@@ -211,3 +211,74 @@ describe("a ship sunk in combat (#265)", () => {
     expect(stateOf(client).G.draftHands["1"]).toEqual([captain("drake"), captain("morgan")]);
   });
 });
+
+describe("out of captains (#265)", () => {
+  it("a sunk player with no captain left to deal is out: their turns are skipped for good", () => {
+    const client = startGame({ "0": ship(0, 0, "blackbeard", true), "1": ship(1, 0, "surcouf", false) }, { captainDeck: [] });
+    client.moves.attackShip("1");
+    fireOnce(client);
+    client.events.endTurn!();
+
+    const { G, ctx } = stateOf(client);
+    expect(G.lostShips?.["1"]?.eliminated).toBe(true);
+    expect(ctx.currentPlayer).toBe("0");
+    expect(ctx.gameover).toBeUndefined();
+    client.events.endTurn!();
+    client.events.endTurn!();
+    expect(stateOf(client).ctx.currentPlayer).toBe("0");
+    expect(stateOf(client).G.draftHands["1"] ?? []).toEqual([]);
+  });
+
+  it("when every seat is out, the game ends and the most glory wins", () => {
+    const attacker = ship(0, 0, "blackbeard", true);
+    const defender = ship(1, 0, "surcouf", true);
+    attacker.stats!.hull = { current: 1, max: 1 };
+    defender.stats!.hull = { current: 1, max: 1 };
+    defender.score = 2;
+    const client = startGame({ "0": attacker, "1": defender }, { captainDeck: [] });
+    client.moves.attackShip("1");
+    fireOnce(client);
+
+    expect(stateOf(client).ctx.gameover).toMatchObject({ winner: "1", score: 3 });
+  });
+
+  it("solo: the player picks the last captain, and is out with an empty deck, which ends the game", () => {
+    const solo = startGame({ "0": ship(0, 0, "blackbeard", false) }, { captainDeck: [captain("drake")], npcs: { flotilla: flotilla(1, 0) } });
+    solo.moves.attackNPC("flotilla");
+    fireOnce(solo);
+    expect(stateOf(solo).ctx.currentPlayer).toBe("0");
+    expect(stateOf(solo).G.draftHands["0"]).toEqual([captain("drake")]);
+    solo.moves.pickCaptain(0, "Sloop");
+    expect(stateOf(solo).G.ships["0"].captain).toEqual(captain("drake"));
+
+    const out = startGame({ "0": ship(0, 0, "blackbeard", false) }, { captainDeck: [], npcs: { flotilla: flotilla(1, 0) } });
+    out.moves.attackNPC("flotilla");
+    fireOnce(out);
+    expect(stateOf(out).ctx.gameover).toMatchObject({ winner: "0" });
+  });
+});
+
+describe("the opening draft (#265)", () => {
+  it("returns the captains not picked to the bottom of the deck: they are alive", () => {
+    const game: Game<CaribbeanState> = {
+      ...Caribbean,
+      setup: () => ({
+        cells,
+        ships: { "0": createShipState(hex(0, 0)), "1": createShipState(hex(0, 0)) },
+        mapSize: "small",
+        captainDeck: [captain("hein", "Netherlands")],
+        draftHands: { "0": [captain("drake"), captain("morgan")], "1": [captain("surcouf", "France"), captain("ducasse", "France")] },
+        floatingLoot: [],
+        npcs: {},
+        npcIdCounter: 0,
+        wrap: null,
+      }),
+    };
+    const client = Client<CaribbeanState>({ game: withHotseatView(game), numPlayers: 2 });
+    client.start();
+    client.moves.pickCaptain(0, "Sloop");
+    client.moves.pickCaptain(1, "Flute");
+    expect(stateOf(client).ctx.phase).toBe("main");
+    expect(stateOf(client).G.captainDeck.map((c) => c.id)).toEqual(["hein", "morgan", "surcouf"]);
+  });
+});

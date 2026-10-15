@@ -587,8 +587,13 @@ describe("combat phase - resolution", () => {
     client.moves.applyResolution();
 
     const { ctx, G } = client.getState()!;
-    if (!G.combat) {
+    // Both ships sunk with no captain left to deal (an empty deck) ends the game instead (#265)
+    if (!G.combat && !ctx.gameover) {
       expect(ctx.phase).toBe("main");
+    }
+    if (ctx.gameover) {
+      expect(G.ships).toEqual({});
+      expect(Object.values(G.lostShips ?? {}).every((lost) => lost.eliminated)).toBe(true);
     }
   });
 });
