@@ -65,7 +65,8 @@ export function e2eBackend(): Plugin {
     name: "e2e-backend",
     apply: "serve",
     async configureServer(server) {
-      // Fail closed: only an explicit opt-in (set by e2e/playwright.config.ts) starts it, and never on Vercel or in production.
+      // Fail closed: only an explicit opt-in (set by e2e/playwright.config.ts)
+      // starts it, and never on Vercel or in production.
       if (process.env.E2E_BACKEND !== "1" || process.env.VERCEL || process.env.NODE_ENV === "production") {
         throw new Error("The e2e backend runs only for the local browser tests (E2E_BACKEND=1).");
       }
