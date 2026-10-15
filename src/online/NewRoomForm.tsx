@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { MapSizeId } from "../game/mapConfig";
+import { isValidMapSeed } from "../game/mapSeed";
 import { roomPath } from "./onlineRoute";
 import type { RoomApi } from "./roomApi";
 import { BTN_BRASS, INPUT, LABEL } from "./shellStyles";
@@ -13,15 +14,21 @@ const TURN_TIMERS: { seconds: number; label: string }[] = [
 export function NewRoomForm({ api }: { api: RoomApi }) {
   const [seats, setSeats] = useState(2);
   const [mapSize, setMapSize] = useState<MapSizeId>("small");
+  const [mapSeed, setMapSeed] = useState("");
   const [turnTimerSeconds, setTurnTimerSeconds] = useState(TURN_TIMERS[0].seconds);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const seed = mapSeed.trim() === "" ? undefined : Number(mapSeed.trim());
+    if (seed !== undefined && !isValidMapSeed(seed)) {
+      setError("A map seed is a whole number between −2147483648 and 2147483647, or leave it empty.");
+      return;
+    }
     setBusy(true);
     setError(undefined);
-    const result = await api.createRoom({ seats, mapSize, turnTimerSeconds });
+    const result = await api.createRoom({ seats, mapSize, ...(seed !== undefined ? { mapSeed: seed } : {}), turnTimerSeconds });
     if (result.ok) {
       window.location.assign(roomPath(result.room.id));
     } else {
@@ -53,6 +60,20 @@ export function NewRoomForm({ api }: { api: RoomApi }) {
           <option value="medium">Medium</option>
           <option value="large">Large</option>
         </select>
+      </div>
+      <div>
+        <label htmlFor="room-seed" className={LABEL}>
+          Map seed (optional: the same seed gives the same waters)
+        </label>
+        <input
+          id="room-seed"
+          type="text"
+          inputMode="numeric"
+          placeholder="Leave empty for new waters"
+          value={mapSeed}
+          onChange={(e) => setMapSeed(e.target.value)}
+          className={INPUT}
+        />
       </div>
       <div>
         <label htmlFor="room-timer" className={LABEL}>

@@ -130,10 +130,30 @@ describe.skipIf(!dbTestsEnabled)("rooms, seats and matches (local Supabase)", ()
       p_map_size: "small",
       p_map_seed: 1,
       p_turn_timer_seconds: 86400,
+      p_limit: 1000,
+      p_window_seconds: 1,
     });
     expect(create.error).not.toBeNull();
     const reset = await anne.client.rpc("consume_rate_limit", { p_user: anne.id, p_action: "create_room", p_limit: 1000, p_window_seconds: 1 });
     expect(reset.error).not.toBeNull();
+
+    const jack = await players.create();
+    const room = await newRoom(anne, 2);
+    const join = await jack.client.rpc("join_room", { p_invite_code: room.inviteCode, p_user: jack.id });
+    expect(join.error).not.toBeNull();
+    const claim = await anne.client.rpc("claim_start", { p_room: room.id, p_user: anne.id });
+    expect(claim.error).not.toBeNull();
+    const start = await anne.client.rpc("start_match", { p_room: room.id, p_user: anne.id, p_state: {}, p_state_id: 0, p_phase: "draft" });
+    expect(start.error).not.toBeNull();
+    const release = await anne.client.rpc("release_start", { p_room: room.id });
+    expect(release.error).not.toBeNull();
+    for (const client of [anon, anne.client]) {
+      const membership = await client.rpc("is_room_member", { p_room: room.id });
+      if (client === anon) expect(membership.error).not.toBeNull();
+      else expect(membership.data).toBe(true);
+    }
+    expect((await admin.from("seats").select("user_id").eq("room_id", room.id)).data).toEqual([{ user_id: anne.id }]);
+    expect((await admin.from("rooms").select("status").eq("id", room.id).single()).data).toEqual({ status: "open" });
   });
 
   it("seats joiners in order, keeps a seat on a second visit, and turns away the next once full", async () => {
@@ -184,6 +204,57 @@ describe.skipIf(!dbTestsEnabled)("rooms, seats and matches (local Supabase)", ()
     expect(all.error).not.toBeNull();
 
     expect((await api("POST", `/api/rooms/${room.id}/start`, anne)).status).toBe(409);
+  });
+
+  it("keeps the match row from anyone without a seat, and its state from every client, embedded selects included", async () => {
+    const anne = await players.create();
+    const jack = await players.create();
+    const stranger = await players.create();
+    const room = await newRoom(anne, 2);
+    await api("POST", "/api/rooms/join", jack, { inviteCode: room.inviteCode });
+    const started = await roomOf(await api("POST", `/api/rooms/${room.id}/start`, anne));
+
+    for (const outsider of [stranger.client, anon]) {
+      const rows = await outsider.from("matches").select("id").eq("id", started.matchId!);
+      expect(rows.data ?? []).toEqual([]);
+    }
+    for (const select of ["*, matches(state)", "id, matches(*)", "id, matches(id, state)"]) {
+      const embedded = await jack.client.from("rooms").select(select).eq("id", room.id);
+      expect(embedded.error, select).not.toBeNull();
+    }
+    const fromSeats = await jack.client.from("seats").select("seat_index, rooms(matches(state))").eq("room_id", room.id);
+    expect(fromSeats.error).not.toBeNull();
+    const allowed = await jack.client.from("rooms").select("id, matches(id, state_id)").eq("id", room.id).single();
+    expect(allowed.error).toBeNull();
+    expect(JSON.stringify(allowed.data)).not.toContain("draftHands");
+  });
+
+  it("starts one match when the host starts a room twice at once", async () => {
+    const anne = await players.create();
+    const jack = await players.create();
+    const room = await newRoom(anne, 2);
+    await api("POST", "/api/rooms/join", jack, { inviteCode: room.inviteCode });
+    const results = await Promise.all([1, 2, 3].map(() => api("POST", `/api/rooms/${room.id}/start`, anne)));
+    expect(results.map((r) => r.status).sort()).toEqual([201, 409, 409]);
+    const matches = (await admin.from("matches").select("id").eq("room_id", room.id)).data ?? [];
+    expect(matches).toHaveLength(1);
+  });
+
+  it("seeds each match's dice with 128 random bits, not the clock", async () => {
+    const anne = await players.create();
+    const jack = await players.create();
+    const seeds: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const room = await newRoom(anne, 2);
+      await api("POST", "/api/rooms/join", jack, { inviteCode: room.inviteCode });
+      const started = await roomOf(await api("POST", `/api/rooms/${room.id}/start`, anne));
+      const row = (await admin.from("matches").select("state").eq("id", started.matchId!).single()).data as {
+        state: { plugins: { random: { data: { seed: string } } } };
+      };
+      seeds.push(row.state.plugins.random.data.seed);
+    }
+    for (const seed of seeds) expect(seed).toMatch(/^[0-9a-f]{32}$/);
+    expect(seeds[0]).not.toBe(seeds[1]);
   });
 
   it("counts room creation in Postgres: five an hour, then 429", async () => {

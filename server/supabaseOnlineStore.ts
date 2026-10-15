@@ -7,7 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MapSizeId } from "../src/game/mapConfig";
 import type { AuthVerifier } from "./handleApiRequest";
-import type { JoinOutcome, OnlineStore, RoomRecord, RoomStatus, StartOutcome } from "./onlineStore";
+import type { ClaimOutcome, JoinOutcome, OnlineStore, RoomRecord, RoomStatus, StartOutcome } from "./onlineStore";
 
 export type ServiceClient = SupabaseClient;
 
@@ -38,7 +38,7 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
       ) as boolean;
     },
 
-    async createRoom(room) {
+    async createRoom(room, { limit, windowSeconds }) {
       const db = await client();
       return check(
         await db.rpc("create_room", {
@@ -48,8 +48,10 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
           p_map_size: room.mapSize,
           p_map_seed: room.mapSeed,
           p_turn_timer_seconds: room.turnTimerSeconds,
+          p_limit: limit,
+          p_window_seconds: windowSeconds,
         }),
-      ) as string;
+      ) as string | null;
     },
 
     async joinRoom(inviteCode, userId) {
@@ -92,6 +94,16 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         matchId: match?.id ?? null,
       };
       return record;
+    },
+
+    async claimStart(roomId, userId) {
+      const db = await client();
+      return { outcome: check(await db.rpc("claim_start", { p_room: roomId, p_user: userId })) as ClaimOutcome };
+    },
+
+    async releaseStart(roomId) {
+      const db = await client();
+      check(await db.rpc("release_start", { p_room: roomId }));
     },
 
     async startMatch(roomId, userId, match) {

@@ -18,15 +18,29 @@ export interface MatchAction {
 }
 
 const reducer = CreateGameReducer({ game: Caribbean });
+
+/**
+ * Every move the game defines, by its own name: the top-level moves and each
+ * phase's. Only own keys, so `__proto__`, `constructor`, `toString` and the
+ * rest of Object.prototype never pass as a move name (#113 security review).
+ */
+export const MOVE_NAMES: ReadonlySet<string> = new Set([
+  ...Object.keys(Caribbean.moves ?? {}),
+  ...Object.values(Caribbean.phases ?? {}).flatMap((phase) => Object.keys(phase.moves ?? {})),
+]);
+
+/** No move of the game takes more arguments than this. */
+export const MAX_MOVE_ARGS = 4;
 const filterView = getFilterPlayerView(ProcessGameConfig(Caribbean));
 
 /**
- * A new match's whole state: `numPlayers` seats on the map `setupData` names.
- * boardgame.io seeds the match's random numbers here; the seed stays in the
- * state, which only the server ever reads whole.
+ * A new match's whole state: `numPlayers` seats on the map `setupData` names,
+ * its dice and deck seeded with `seed` (`newMatchSeed`, never boardgame.io's
+ * clock-based default). The seed stays in the state, which only the server
+ * ever reads whole; every view drops it.
  */
-export function createMatchState(numPlayers: number, setupData: Required<CaribbeanSetupData>): MatchState {
-  return InitializeGame({ game: Caribbean, numPlayers, setupData }) as MatchState;
+export function createMatchState(numPlayers: number, setupData: Required<CaribbeanSetupData>, seed: string): MatchState {
+  return InitializeGame({ game: { ...Caribbean, seed }, numPlayers, setupData }) as MatchState;
 }
 
 /**
@@ -58,14 +72,20 @@ export type ParsedAction = { ok: true; action: MatchAction } | { ok: false; erro
  * game's moves change phase themselves, and a client that could do it would
  * break the game's state (a fight left half-resolved, a turn order skipped).
  */
-export function parseAction(state: MatchState, raw: unknown): ParsedAction {
+export function parseAction(state: MatchState, seat: string, raw: unknown): ParsedAction {
   if (typeof raw !== "object" || raw === null) return { ok: false, error: "expected an action" };
   const { type, payload } = raw as { type?: unknown; payload?: unknown };
   if (typeof payload !== "object" || payload === null) return { ok: false, error: "expected an action" };
-  const { type: name, args = [] } = payload as { type?: unknown; args?: unknown };
+  const { type: name, args = [], playerID } = payload as { type?: unknown; args?: unknown; playerID?: unknown };
   if (typeof name !== "string" || name.length === 0 || name.length > 64) return { ok: false, error: "expected an action name" };
   if (!Array.isArray(args)) return { ok: false, error: "action arguments must be an array" };
-  if (type === "MAKE_MOVE") return { ok: true, action: { type, payload: { type: name, args } } };
+  if (args.length > MAX_MOVE_ARGS) return { ok: false, error: "too many action arguments" };
+  // The server acts for the caller's seat; an action naming any other is refused, not rewritten.
+  if (playerID !== undefined && playerID !== seat) return { ok: false, error: "an action acts for your own seat only" };
+  if (type === "MAKE_MOVE") {
+    if (!MOVE_NAMES.has(name)) return { ok: false, error: "no such move" };
+    return { ok: true, action: { type, payload: { type: name, args } } };
+  }
   if (type === "GAME_EVENT") {
     if (name !== "endTurn" || args.length > 0) return { ok: false, error: `event not allowed: ${name}` };
     if (state.ctx.phase !== "main") return { ok: false, error: "End Turn only in the main phase" };
@@ -92,5 +112,6 @@ export function applyAction(state: MatchState, seat: string, action: MatchAction
   const { transients: _transients, deltalog: _deltalog, ...clean } = next;
   void _transients;
   void _deltalog;
-  return { ok: true, state: clean as MatchState };
+  // Undo is never allowed online, so its history (a copy of G per move) is not kept.
+  return { ok: true, state: { ...clean, _undo: [], _redo: [] } as MatchState };
 }

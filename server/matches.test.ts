@@ -18,6 +18,7 @@ let clock: number;
 type View = State<CaribbeanState>;
 interface MatchBody {
   ok: boolean;
+  code?: string;
   matchId: string;
   seat: string;
   state: View;
@@ -76,6 +77,7 @@ beforeEach(() => {
     store,
     newInviteCode: () => `invite-code-${String(++codes).padStart(10, "0")}`,
     newMapSeed: () => 1,
+    newMatchSeed: () => "f".repeat(32),
   };
 });
 
@@ -91,6 +93,8 @@ describe("GET /api/matches/:id", () => {
     expect(anne.state.G.draftHands["0"]).toEqual(whole.G.draftHands["0"]);
     expect(anne.state.G.captainDeck).toEqual([]);
     expect(anne.state.plugins.random?.data).toBeUndefined();
+    expect((anne.state.ctx as { _random?: unknown })._random).toBeUndefined();
+    expect(JSON.stringify(anne)).not.toContain("f".repeat(32));
     expect(JSON.stringify(anne.state)).not.toContain(JSON.stringify(whole.G.draftHands["1"]));
 
     const jack = await view(matchId, "jack");
@@ -130,6 +134,8 @@ describe("POST /api/matches/:id/actions", () => {
     expect(after.G.captainDeck).toEqual([]);
     expect(Object.keys(after.G.draftHands)).toEqual(["0"]);
     expect(after.plugins.random?.data).toBeUndefined();
+    expect(JSON.stringify(after)).not.toContain("f".repeat(32));
+    expect(((await store.peekMatch(matchId))!.state as View).plugins.random.data).toMatchObject({ seed: "f".repeat(32) });
     expect((await store.peekMatch(matchId))!.stateId).toBe(after._stateID);
   });
 
@@ -150,7 +156,7 @@ describe("POST /api/matches/:id/actions", () => {
     const { state } = await view(matchId, "jack");
     const res = await act(matchId, "jack", move(state._stateID, "pickCaptain", 0, "Sloop"));
     expect(res.status).toBe(403);
-    expect(await res.json()).toMatchObject({ error: "not your turn" });
+    expect(await res.json()).toMatchObject({ code: "not_your_turn" });
     const stranger = await act(matchId, "mary", move(state._stateID, "pickCaptain", 0, "Sloop"));
     expect(stranger.status).toBe(404);
     expect((await store.peekMatch(matchId))!.stateId).toBe(state._stateID);
@@ -163,7 +169,7 @@ describe("POST /api/matches/:id/actions", () => {
     const res = await act(matchId, "anne", move(state._stateID - 1, "pickCaptain", 0, "Sloop"));
     expect(res.status).toBe(409);
     const body = (await res.json()) as MatchBody;
-    expect(body.error).toBe("stale state");
+    expect(body).toMatchObject({ code: "stale_state" });
     expect(body.state._stateID).toBe(state._stateID);
     expect(Object.keys(body.state.G.draftHands)).toEqual(["0"]);
     expect(await store.peekMoves(matchId)).toEqual([]);
@@ -238,5 +244,80 @@ describe("POST /api/matches/:id/actions", () => {
     expect(statuses[10]).toBe(429);
     clock += 1000;
     expect((await act(matchId, "anne", move(state._stateID, "pickCaptain", 0, "Sloop"))).status).toBe(200);
+  });
+});
+
+describe("what a request may cost (#113 security review)", () => {
+  it("refuses move names that are not the game's own, inherited Object members included", async () => {
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    for (const name of ["__proto__", "constructor", "toString", "hasOwnProperty", "valueOf", "isPrototypeOf", "__defineGetter__", "moveShip.bind", ""]) {
+      clock += 1000;
+      const res = await act(matchId, "anne", move(state._stateID, name, 0, "Sloop"));
+      expect(res.status, name).toBe(400);
+    }
+    expect(await store.peekMoves(matchId)).toEqual([]);
+  });
+
+  it("refuses an action that names another seat as its player", async () => {
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    const res = await act(matchId, "anne", {
+      stateID: state._stateID,
+      action: { type: "MAKE_MOVE", payload: { type: "pickCaptain", args: [0, "Sloop"], playerID: "1" } },
+    });
+    expect(res.status).toBe(400);
+    const own = await act(matchId, "anne", {
+      stateID: state._stateID,
+      action: { type: "MAKE_MOVE", payload: { type: "pickCaptain", args: [0, "Sloop"], playerID: "0" } },
+    });
+    expect(own.status).toBe(200);
+  });
+
+  it("refuses an oversized body with 413 before reading the match", async () => {
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    const res = await act(matchId, "anne", move(state._stateID, "pickCaptain", 0, "x".repeat(20_000)));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ code: "payload_too_large" });
+  });
+
+  it("refuses more arguments than any move takes", async () => {
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    const res = await act(matchId, "anne", move(state._stateID, "pickCaptain", ...Array(9).fill(0)));
+    expect(res.status).toBe(400);
+  });
+
+  it("stores no undo history, log or anything else that grows with every move", async () => {
+    const matchId = await startedMatch();
+    let state = await draftBoth(matchId);
+    const sizes: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      clock += 1000;
+      const current = state.ctx.currentPlayer === "0" ? "anne" : "jack";
+      const res = await act(matchId, current, event(state._stateID, "endTurn"));
+      expect(res.status).toBe(200);
+      state = ((await res.json()) as MatchBody).state;
+      const stored = (await store.peekMatch(matchId))!.state as View & { _undo: unknown[]; _redo: unknown[]; deltalog?: unknown };
+      expect(stored._undo).toEqual([]);
+      expect(stored._redo).toEqual([]);
+      expect(stored.deltalog).toBeUndefined();
+      sizes.push(JSON.stringify(stored).length);
+    }
+    // NPCs move and spawn between turns, so allow a little drift, never steady growth.
+    expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThan(5_000);
+  });
+
+  it("allows 120 actions a minute per player, whatever the pace", async () => {
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    const statuses: number[] = [];
+    for (let i = 0; i < 121; i++) {
+      if (i % 10 === 0) clock += 1000;
+      statuses.push((await act(matchId, "anne", move(state._stateID, "pickCaptain", 9, "Sloop"))).status);
+    }
+    expect(statuses.filter((s) => s === 429)).toHaveLength(1);
+    expect(statuses[120]).toBe(429);
   });
 });

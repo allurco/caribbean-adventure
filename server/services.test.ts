@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { newInviteCode, newMapSeed, servicesFromEnv } from "./services";
+import { newInviteCode, newMapSeed, newMatchSeed, servicesFromEnv } from "./services";
 import { isValidMapSeed } from "../src/game/mapSeed";
 import { parseOnlineRoute } from "../src/online/onlineRoute";
 
@@ -31,5 +31,13 @@ describe("newInviteCode", () => {
 describe("newMapSeed", () => {
   it("is a valid map seed", () => {
     for (let i = 0; i < 100; i++) expect(isValidMapSeed(newMapSeed())).toBe(true);
+  });
+});
+
+describe("newMatchSeed", () => {
+  it("is 128 random bits in hex, different every time, whatever the clock says", () => {
+    const seeds = new Set(Array.from({ length: 200 }, () => newMatchSeed()));
+    expect(seeds.size).toBe(200);
+    for (const seed of seeds) expect(seed).toMatch(/^[0-9a-f]{32}$/);
   });
 });

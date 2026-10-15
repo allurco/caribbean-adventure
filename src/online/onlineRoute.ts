@@ -4,12 +4,13 @@
  * room's lobby, and `?view=join&invite=<code>` the invite link a host shares.
  * Pure; the server builds the invite link with `joinPath` too.
  */
+import { isUuid } from "./uuid";
+
 export type OnlineRoute =
   | { kind: "newRoom" }
   | { kind: "room"; id: string | null }
   | { kind: "join"; inviteCode: string | null };
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** 128 random bits, base64url: what the server issues (`newInviteCode`). */
 const INVITE_CODE = /^[A-Za-z0-9_-]{22}$/;
 
@@ -21,7 +22,7 @@ export function parseOnlineRoute(search: string): OnlineRoute | null {
       return { kind: "newRoom" };
     case "room": {
       const id = params.get("id");
-      return { kind: "room", id: id !== null && UUID.test(id) ? id.toLowerCase() : null };
+      return { kind: "room", id: id !== null && isUuid(id) ? id.toLowerCase() : null };
     }
     case "join": {
       const code = params.get("invite");

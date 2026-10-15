@@ -11,6 +11,7 @@ const ROOM = {
   turnTimerSeconds: 86400,
   status: "open",
   isHost: true,
+  hostSeat: 0,
   yourSeat: 0,
   seats: [{ index: 0, userId: "u1", displayName: "Anne" }],
   matchId: null,
@@ -67,26 +68,30 @@ describe("the rooms API client", () => {
   });
 
   it("turns the server's refusals into readable errors", async () => {
+    // By the server's stable codes, whatever its sentences say.
     const cases: [number, string, string][] = [
-      [409, "room full", "Every seat in that room is taken."],
-      [409, "match already started", "That match has already set sail."],
-      [409, "seats still free", "Wait until every seat is taken."],
-      [404, "no such room", "No room behind that link. Ask its host for a fresh one."],
-      [429, "too many rooms: try again within the hour", "Too many rooms in an hour. Try again later."],
-      [403, "only the host starts the match", "Only the host can start the match."],
-      [500, "something went wrong", "Something went wrong (500). Try again."],
+      [409, "room_full", "Every seat in that room is taken."],
+      [409, "match_started", "That match has already set sail."],
+      [409, "match_starting", "The match is being started. Give it a moment."],
+      [409, "seats_free", "Wait until every seat is taken."],
+      [404, "not_found", "No room behind that link. Ask its host for a fresh one."],
+      [429, "rate_limited", "Too many rooms in an hour. Try again later."],
+      [403, "not_host", "Only the host can start the match."],
+      [401, "unauthorized", "Sign in first."],
+      [500, "internal", "Something went wrong (500). Try again."],
+      [418, "a_code_from_the_future", "Something went wrong (418). Try again."],
     ];
-    for (const [status, error, message] of cases) {
-      const { fetch } = fakeFetch(status, { ok: false, error });
+    for (const [status, code, message] of cases) {
+      const { fetch } = fakeFetch(status, { ok: false, code, error: "any sentence" });
       const result = await createRoomApi({ fetch, accessToken: async () => "tok" }).joinRoom("x");
-      expect(result, error).toEqual({ ok: false, status, error: message });
+      expect(result, code).toEqual({ ok: false, status, code, error: message });
     }
   });
 
   it("asks a signed-out player to sign in, without calling the server", async () => {
     const { fetch, calls } = fakeFetch(200, { ok: true, room: ROOM });
     const result = await createRoomApi({ fetch, accessToken: async () => null }).getRoom(ROOM.id);
-    expect(result).toEqual({ ok: false, status: 401, error: "Sign in first." });
+    expect(result).toEqual({ ok: false, status: 401, code: "unauthorized", error: "Sign in first." });
     expect(calls).toEqual([]);
   });
 
@@ -95,6 +100,6 @@ describe("the rooms API client", () => {
       throw new TypeError("Failed to fetch");
     };
     const result = await createRoomApi({ fetch, accessToken: async () => "tok" }).getRoom(ROOM.id);
-    expect(result).toEqual({ ok: false, status: 0, error: "Could not reach the harbour. Check your connection." });
+    expect(result).toEqual({ ok: false, status: 0, code: "network", error: "Could not reach the harbour. Check your connection." });
   });
 });
