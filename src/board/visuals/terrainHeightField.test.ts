@@ -171,6 +171,10 @@ describe("terrainHeightField", () => {
           );
           // Steps of a thousandth of the way: the steepest slopes (jungle up
           // to a peak) climb ~0.0065 a step, so a seam would show above 0.01.
+          // A seam is a jump at a point, whatever the step, so this catches
+          // one six times smaller than the old 0.06 over a hundred steps did;
+          // the slope it allows is looser (0.01 a thousandth, against 0.06 a
+          // hundredth), as the regional maps' peaks climb ~0.064 a hundredth.
           expect(maxJump).toBeLessThan(0.01);
           expect(minHeight).toBeGreaterThan(0);
           pairs++;
