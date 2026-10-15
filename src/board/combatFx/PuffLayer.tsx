@@ -9,13 +9,15 @@ import {
   NormalBlending,
   PlaneGeometry,
   ShaderMaterial,
+  Vector2,
   UniformsLib,
   UniformsUtils,
   Vector3,
 } from "three";
 import { SCENE_LIGHTING } from "../visuals/sceneLighting";
 import type { ParticlePool } from "./particlePool";
-import { writePuffs, type PuffShape } from "./frameWriters";
+import { viewAxis, writePuffs, type PuffShape } from "./frameWriters";
+import { SCENE_WIND } from "../visuals/sceneWind";
 import { PUFF_FRAGMENT, PUFF_VERTEX } from "./puffShader";
 
 /** How a kind of puff looks. */
@@ -28,13 +30,16 @@ export interface PuffLook extends PuffShape {
   /** Colour multiplier, above 1 to bloom. */
   intensity: number;
   additive: boolean;
-  /** How much wider than tall, for a low bank of smoke. */
+  /** How much longer than wide, for a low bank of smoke. */
   stretch: number;
+  /** Stretched along the wind as the camera sees it (smoke); else along the screen's x. */
+  alongWind: boolean;
   /** Lies on the sea instead of facing the camera (foam). */
   flat: boolean;
 }
 
 const sunWorld = new Vector3(...SCENE_LIGHTING.sun.direction);
+const axis: [number, number] = [1, 0];
 
 /** One pool of puffs, drawn in one instanced call; its buffers are written in place each frame (#263). */
 export function PuffLayer({ pool, look }: { pool: ParticlePool; look: PuffLook }) {
@@ -62,6 +67,7 @@ export function PuffLayer({ pool, look }: { pool: ParticlePool; look: PuffLook }
           uSunView: { value: new Vector3() },
           uLit: { value: look.lit },
           uStretch: { value: look.stretch },
+          uAxis: { value: new Vector2(1, 0) },
           uFlat: { value: look.flat ? 1 : 0 },
         },
       ]),
@@ -82,6 +88,10 @@ export function PuffLayer({ pool, look }: { pool: ParticlePool; look: PuffLook }
 
   useFrame(({ camera }) => {
     material.uniforms.uSunView.value.copy(sunWorld).transformDirection(camera.matrixWorldInverse);
+    if (look.alongWind) {
+      viewAxis(SCENE_WIND.toward[0], SCENE_WIND.toward[1], camera.matrixWorldInverse, axis);
+      material.uniforms.uAxis.value.set(axis[0], axis[1]);
+    }
     writePuffs(pool, look, buffers, geometry);
   });
   return <mesh geometry={geometry} material={material} frustumCulled={false} renderOrder={2} />;

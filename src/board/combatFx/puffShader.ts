@@ -1,7 +1,7 @@
 /**
  * The shader of the combat's soft puffs (#263): smoke, muzzle flash, spray,
  * mist and foam, one instanced quad each. A puff faces the camera (a
- * billboard), stretched sideways for a bank of smoke, or lies flat on the
+ * billboard), stretched along the wind for a bank of smoke, or lies flat on the
  * sea for foam. Its edge is lumpy and different for every puff, so the
  * clouds read as billows rather than discs, and it is lit from the sun's side.
  */
@@ -11,6 +11,7 @@ export const PUFF_VERTEX = /* glsl */ `
   attribute float iAlpha;
   attribute float iSeed;
   uniform float uStretch;
+  uniform vec2 uAxis;
   uniform float uFlat;
   varying vec2 vUv;
   varying float vAlpha;
@@ -28,7 +29,9 @@ export const PUFF_VERTEX = /* glsl */ `
       mvPosition = modelViewMatrix * vec4(iOffset + vec3(p.x, 0.0, -p.y) * iSize + vec3(0.0, 0.012, 0.0), 1.0);
     } else {
       mvPosition = modelViewMatrix * vec4(iOffset, 1.0);
-      mvPosition.xy += vec2(p.x * uStretch, p.y) * iSize;
+      // Stretched along uAxis: the wind as the camera sees it, for a bank of smoke (screen x otherwise).
+      vec2 across = vec2(-uAxis.y, uAxis.x);
+      mvPosition.xy += (uAxis * dot(p, uAxis) * uStretch + across * dot(p, across)) * iSize;
     }
     gl_Position = projectionMatrix * mvPosition;
     #include <fog_vertex>

@@ -5,6 +5,7 @@ import { SCENE_WIND } from "../visuals/sceneWind";
 import { useSeaSurface } from "../visuals/seaSurfaceContext";
 import type { CombatDirector } from "./combatDirector";
 import { createSeaReader } from "./frameWriters";
+import { windDrift } from "./windDrift";
 import { PuffLayer, type PuffLook } from "./PuffLayer";
 import { DebrisLayer } from "./DebrisLayer";
 import { ShotLayer } from "./ShotLayer";
@@ -17,14 +18,14 @@ const COMBAT_FX_PRIORITY = -0.5;
 /** The longest frame the effects step over, s: a stalled tab does not throw the smoke across the map. */
 const MAX_STEP = 0.1;
 
-const SMOKE: PuffLook = { color: "#ece8df", shade: "#8e8a84", lit: 1, intensity: 1, additive: false, opacity: 0.3, grow: 2.6, growSeconds: 5, fadeIn: 0.02, fadeOut: 0.55, stretch: 3.4, flat: false };
-const FLASH: PuffLook = { color: "#ffc46b", shade: "#ffc46b", lit: 0, intensity: 3.2, additive: true, opacity: 1, grow: 1.4, growSeconds: 0.05, fadeIn: 0, fadeOut: 0.7, stretch: 1, flat: false };
+const SMOKE: PuffLook = { color: "#ece8df", shade: "#8e8a84", lit: 1, intensity: 1, additive: false, opacity: 0.3, grow: 2.6, growSeconds: 5, fadeIn: 0.02, fadeOut: 0.55, stretch: 3.4, alongWind: true, flat: false };
+const FLASH: PuffLook = { color: "#ffc46b", shade: "#ffc46b", lit: 0, intensity: 3.2, additive: true, opacity: 1, grow: 1.4, growSeconds: 0.05, fadeIn: 0, fadeOut: 0.7, stretch: 1, alongWind: false, flat: false };
 // Sparks and embers glow (additive), held to a modest brightness for the bloom.
-const SPARK: PuffLook = { color: "#ffb347", shade: "#ffb347", lit: 0, intensity: 2.2, additive: true, opacity: 1, grow: 0, growSeconds: 1, fadeIn: 0, fadeOut: 0.6, stretch: 1, flat: false };
-const EMBER: PuffLook = { color: "#ff7a2a", shade: "#ff7a2a", lit: 0, intensity: 1.8, additive: true, opacity: 0.9, grow: 0, growSeconds: 1, fadeIn: 0.1, fadeOut: 0.6, stretch: 1, flat: false };
-const SPRAY: PuffLook = { color: "#eef4f4", shade: "#9fb3b8", lit: 0.6, intensity: 1, additive: false, opacity: 0.8, grow: 0.6, growSeconds: 0.6, fadeIn: 0, fadeOut: 0.3, stretch: 1, flat: false };
-const MIST: PuffLook = { color: "#e8eeee", shade: "#a9b4b6", lit: 0.7, intensity: 1, additive: false, opacity: 0.35, grow: 2.5, growSeconds: 1, fadeIn: 0.05, fadeOut: 0.6, stretch: 1.4, flat: false };
-const FOAM: PuffLook = { color: "#e6efee", shade: "#cfd9da", lit: 0, intensity: 1, additive: false, opacity: 0.32, grow: 1.5, growSeconds: 2.5, fadeIn: 0.15, fadeOut: 0.6, stretch: 1, flat: true };
+const SPARK: PuffLook = { color: "#ffb347", shade: "#ffb347", lit: 0, intensity: 2.2, additive: true, opacity: 1, grow: 0, growSeconds: 1, fadeIn: 0, fadeOut: 0.6, stretch: 1, alongWind: false, flat: false };
+const EMBER: PuffLook = { color: "#ff7a2a", shade: "#ff7a2a", lit: 0, intensity: 1.8, additive: true, opacity: 0.9, grow: 0, growSeconds: 1, fadeIn: 0.1, fadeOut: 0.6, stretch: 1, alongWind: false, flat: false };
+const SPRAY: PuffLook = { color: "#eef4f4", shade: "#9fb3b8", lit: 0.6, intensity: 1, additive: false, opacity: 0.8, grow: 0.6, growSeconds: 0.6, fadeIn: 0, fadeOut: 0.3, stretch: 1, alongWind: false, flat: false };
+const MIST: PuffLook = { color: "#e8eeee", shade: "#a9b4b6", lit: 0.7, intensity: 1, additive: false, opacity: 0.35, grow: 2.5, growSeconds: 1, fadeIn: 0.05, fadeOut: 0.6, stretch: 1.4, alongWind: false, flat: false };
+const FOAM: PuffLook = { color: "#e6efee", shade: "#cfd9da", lit: 0, intensity: 1, additive: false, opacity: 0.32, grow: 1.5, growSeconds: 2.5, fadeIn: 0.15, fadeOut: 0.6, stretch: 1, alongWind: false, flat: true };
 
 /**
  * The fight's effects on the board (#263): steps the combat director once a
@@ -35,7 +36,7 @@ const FOAM: PuffLook = { color: "#e6efee", shade: "#cfd9da", lit: 0, intensity: 
 export function CombatEffects({ director }: { director: CombatDirector }) {
   const group = useRef<Group>(null);
   const sea = useSeaSurface();
-  const reader = useMemo(() => createSeaReader(SCENE_WIND.toward[0] * WIND_DRIFT, SCENE_WIND.toward[1] * WIND_DRIFT), []);
+  const reader = useMemo(() => createSeaReader(...windDrift(SCENE_WIND, WIND_DRIFT)), []);
   useFrame(({ camera, size }, delta) => {
     if (sea) reader.sync(sea.surface, sea.clock.waveTimeAt(), camera.position);
     if (camera instanceof PerspectiveCamera) director.setView(camera.fov, size.width / Math.max(1, size.height));

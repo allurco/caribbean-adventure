@@ -139,6 +139,25 @@ describe("the combat director: beats played on the board (#263)", () => {
     expect(fresh(a.director)).toEqual(fresh(b.director));
   });
 
+  it("the smoke first blows out of the gun ports, square to the hull on the firing side", () => {
+    const { director, poses } = setup();
+    director.enqueue([declare, volley], CLASSES);
+    play(director, 2.02); // the first gun has just fired
+    const shooter = poses.held("0")!;
+    // The firing side's outward normal: square to the keel, toward the target (east).
+    const [fx, fz] = forward(shooter.heading);
+    let nx = -fz, nz = fx;
+    if (nx < 0) [nx, nz] = [-nx, -nz];
+    const p = director.pools.smoke;
+    let vx = 0, vz = 0;
+    for (let i = 0; i < p.capacity; i++) if (p.state[i]) {
+      vx += p.vx[i];
+      vz += p.vz[i];
+    }
+    const along = (vx * nx + vz * nz) / Math.hypot(vx, vz);
+    expect(along).toBeGreaterThan(0.9);
+  });
+
   it("the guns heel the shooter away from them and the hit makes the target lurch, both steadying after", () => {
     const { director, poses } = setup();
     director.enqueue([declare, volley], CLASSES);

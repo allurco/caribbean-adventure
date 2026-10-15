@@ -3,7 +3,7 @@
  * (#263): the sea reader, the instance buffers, the grapple lines, kept out
  * of the components as plain functions. None allocates.
  */
-import type { InstancedBufferAttribute, InstancedBufferGeometry, Vector3 } from "three";
+import type { InstancedBufferAttribute, InstancedBufferGeometry, Matrix4, Vector3 } from "three";
 import type { SeaSurface } from "../visuals/seaSurface";
 import { envelope, type ParticlePool, type SeaEnvironment } from "./particlePool";
 import { shotArc, type Vec3 } from "./broadside";
@@ -75,4 +75,23 @@ export function ropePoint(from: Vector3, to: Vector3, u: number, s: number, sag:
   }
   out.lerpVectors(from, to, u);
   out.y -= sag * 4 * u * (1 - u);
+}
+
+/**
+ * A world XZ direction as the camera sees it: the unit screen-space (view x,
+ * y) direction of (x, 0, z) under the view matrix `view` (the camera's
+ * world inverse), written to `out`. A direction seen end on gives (1, 0).
+ */
+export function viewAxis(x: number, z: number, view: Matrix4, out: [number, number]): void {
+  const e = view.elements;
+  const vx = e[0] * x + e[8] * z;
+  const vy = e[1] * x + e[9] * z;
+  const length = Math.hypot(vx, vy);
+  if (length < 1e-6) {
+    out[0] = 1;
+    out[1] = 0;
+    return;
+  }
+  out[0] = vx / length;
+  out[1] = vy / length;
 }

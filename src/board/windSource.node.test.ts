@@ -100,6 +100,7 @@ describe("one wind (#204)", () => {
       "board/Board.tsx",
       "board/Ship.tsx",
       "board/combatFx/CombatEffects.tsx",
+      "board/combatFx/PuffLayer.tsx",
       "board/visuals/oceanWaves.ts",
       "board/visuals/palmSway.ts",
       "board/visuals/shoreFoam.ts",
