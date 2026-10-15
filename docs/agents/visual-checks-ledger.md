@@ -27,6 +27,23 @@ Wait for the board's loading screen to go (the progress bar `[role=progressbar]`
 - **Don't judge lighting, glow or bloom from a software-rendered screenshot.** A bright or invalid pixel can come out differently there, and bloom smears it into a disc. Confirm any lighting finding in a browser on a real GPU before filing or fixing it.
 - Say which renderer a screenshot used when reporting it (see Screenshot provenance below).
 
+## Open
+
+Reports still being chased. Move an entry to "Investigated, not a bug" or close it with its fix once it ends.
+
+### 2026-10-15: the 3D view flickers black whenever the camera moves (a reporter's machine only)
+
+- **Symptom:** on a reporter's machine, whole 3D frames alternate between a normal render and pure black (0, 0, 0) on any pan, zoom or turn, and stop when the camera stops. The HUD is untouched and the console is empty (no context loss, no GL or shader errors). Medium map, docked at a port, `line` region borders.
+- **Branch and commit:** `a04f058` (main) against `894edb4`, branch `fix/black-flicker` (PR #292) and branch `fix/black-flicker-review` (PR #296); also the production deployment.
+- **Renderer:** headless Chromium on a real GPU (ANGLE on Metal; also ANGLE on OpenGL) and headless WebKit, at 1280 × 800 (DPR 1 and 2), 1440 × 900 (DPR 2) and 1920 × 1080 (DPR 2).
+- **View:** dev builds at `?size=small&seed=1` and `?size=medium` (its seed was not recorded), the production deployment at `?skipLogin=1` (a random map); the medium map docked at a port. Camera: from its default start, stepped zoom to distances 28, 20, 14, 10, 7, 5, 4, 3, 2, 1.5 and 1, ten wheel steps in and ten out, two drag pans of about 320 px and 200 px, and a scripted path of 400 frames (the target circling 0.08 units a frame, the distance swinging between 1 and 11) followed by a 60-step pointer sweep for hover.
+- **Not reproduced:** a per-frame pixel readback and a NaN/Infinity scan of every uniform found no black frame and no bad uniform. The A/B switches (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`, and `fx=0&ink=0&bloom=0`) all draw a normal picture in motion.
+- **Measured, `894edb4` → `a04f058`, medium map, 1440 × 900 at DPR 2, same camera path:** GPU memory the same (about 650 MB: textures 317, buffers 72, renderbuffers 260) and no growth over repeated camera motion or hover. Per frame, about 6 more draw calls and about 440 k more triangles: #281's idle combat layers (shot, splinters, grapples), drawn at zero size even with no fight.
+- **Changed in PR #292:** idle instanced layers are not drawn and cast no shadow; the sun glint and the sea's output are held finite; the canvas DPR is capped at 1.5 (about 650 → 480 MB; frame time median 13.4 → 10.1 ms on the test GPU); switches `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`.
+- **Changed in PR #296:** the idle combat layers stay in the scene, empty, while the loading screen is up, so their shaders still compile behind it; NaN and Infinity in the sea's colour are found from the float's bits (fast-math can fold `isnan` and `isinf` away), and the glint's cap is raised to 4096 so no real sparkle is dimmed. More switches for the base scene and the GL context: `?shadows=0`, `?aa=0` (canvas and composer), `?ocean=0`, `?land=0`, `?dpr=1`, `?power=low`, `?pdb=1`, and `?gpuinfo=1`, an on-screen readout of the context, the frame and context losses.
+- **Ruled out by the reporter:** the flicker survives `fx=0&ink=0&bloom=0` (and `post=0`), so the combat effects, the region ink and the post-processing are not the cause.
+- **Open:** which of PR #296's switches, if any, stops the reporter's flicker, and what `?gpuinfo=1` shows on that machine.
+
 ## Investigated, not a bug
 
 One entry per report. Newest first.
@@ -95,6 +112,20 @@ When an agent reports screenshots, it states for the batch:
 That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
+
+### 2026-10-15: NPCs sail once after a fight (#288, PR #293)
+
+- **Branch and commit:** `fix/288-npc-after-fight` at `b717174`.
+- **Renderer:** headless Chromium on the GPU, "ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Max, Unspecified Version)", 1280×800, debug panel hidden (`.`).
+- **View:** two seats, `?players=2&size=small&seed=1&skipLogin=1&cx=6&cz=19.9&dist=9` (over Thornwood Bay); solo, `?size=small&seed=1&skipLogin=1&cx=8.5&cz=20&dist=11` (over Marisma Bay). The fight camera reframes the two ships once the fight starts; in some runs the view was zoomed out with the mouse wheel to keep the other NPCs in frame.
+- **How the fights were set up:** captains and ships drafted through the draft screen. No NPC had spawned yet, so the match state was rewritten in the client's store (an `UPDATE` with a new `G`): a Flute merchant with no cannons beside the player's ship as the prey (hull 1 to sink it, crew 1 to board it, hull 4 for a fight over several rounds), and two or three more merchants nearby, bound for far ports, to watch. The rest went through the UI: Attack!, a click on the red hex, then the combat panel's buttons, and End Turn.
+- **Findings:**
+  - Two seats, prey sunk: nothing moves while the fight's rounds play. On Apply Damage the turn ends (turn 4 to 5), every other NPC sails once (two hexes, a Flute's moves) with wakes, and the sunk merchant only goes down where she lay. She does not reappear.
+  - Solo, prey boarded: the fight resolves on Board (turn 3 to 4). The prize closes alongside while the grapples fly (#263's effect) and then is gone. The others sail once and the camera flies back to the ship.
+  - Solo, a fight over five rounds that ends in the merchant's escape (pursuit check and parting shot): no NPC moved in any round. Afterwards each sailed once, the escaped merchant too. A merchant that reached its home port in that step was simply gone during the hand-off, as the PR describes.
+  - A turn with no fight, two seats and solo: the NPCs sail during the hand-off as before, then the camera flies to the next captain.
+  - No page errors.
+- **For the maintainer (not from this PR):** after a two-seat fight the camera stays on the fight and does not fly to the next captain's ship, though the HUD and "Your turn" switch to them. It comes from `announceTurn`'s `combatDirector.holding()` (#263); this PR doesn't touch it.
 
 ### 2026-10-15: players out of the game (#265, PR #283)
 

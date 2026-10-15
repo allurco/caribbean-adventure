@@ -43,6 +43,7 @@ import { useSeaSurface } from "./seaSurfaceContext";
 import { WHITECAP_FOAM_GLSL } from "./whitecapFoam";
 import { SHIP_FOAM_CAP, SHIP_FOAM_FLOATS_A, SHIP_FOAM_FLOATS_B, shipFoamSources } from "../shipFoamSources";
 import { REGION_CHART_GLSL, REGION_NAME_INK, REGION_SEAM_INK } from "./regionChart";
+import { FINITE_COLOUR_GLSL } from "./finiteColour";
 import { regionNameStrength } from "../regionMap";
 
 /** After the cascades have drawn this frame's whitecaps, before the seabed prepass (0.5). */
@@ -156,6 +157,7 @@ const fragmentShader = `
   uniform vec4 mapBounds; // minX, maxX, minZ, maxZ
   ${TERRAIN_FIELD_GLSL}
   // The regions' names, and their seams, written into the water (#239, regionChart.ts).
+  ${FINITE_COLOUR_GLSL}
   ${REGION_CHART_GLSL}
 
   varying vec3 vWorld;  // the displaced surface point
@@ -524,7 +526,9 @@ const fragmentShader = `
     // its glint, as a diffuse layer lit by the sun and the sky.
     seaColor = mix(seaColor, foamRadiance(nShade, light, sunIrradiance, skyDiffuse), foam);
 
-    gl_FragColor = vec4(seaColor, 1.0);
+    // Held finite: one NaN or overflowing pixel here would black out the
+    // whole frame through the bloom's half-float blur (finiteColour.ts).
+    gl_FragColor = vec4(finiteColour(seaColor, HDR_COLOUR_MAX), 1.0);
     #include <fog_fragment>
   }
 `;

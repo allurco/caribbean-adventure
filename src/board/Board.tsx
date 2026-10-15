@@ -77,6 +77,12 @@ import { useRegionBorders } from "./useRegionBorders";
 import { regionAt } from "./regionMap";
 import { placeRegionNames } from "./regionNamePlacement";
 import { DEFAULT_REGION_BORDER_MODE, type RegionBorderMode } from "./regionBorderMode";
+import type { GpuCheck, RenderOff } from "./devUrlParams";
+import { PlainRender } from "./visuals/PlainRender";
+import { canvasSetup } from "./canvasSetup";
+import { GpuInfoProbe } from "./GpuInfoProbe";
+import { createGpuInfoFeed, gpuSetupLines } from "./gpuInfo";
+import { GpuInfoOverlay } from "./GpuInfoOverlay";
 import { useRegionChart } from "./visuals/useRegionChart";
 import { useTurnHandoff } from "./useTurnHandoff";
 import { controlsLocked, holdsNpcs, turnsInPlay } from "./turnHandoff";
@@ -153,6 +159,10 @@ const REACH_RING_WIDTH = 0.03;
 const REACH_TINT_Y = 0.012;
 const REACH_LINE_Y = 0.02;
 
+/** Nothing left out of the picture, and the GL context as the game sets it up (no A/B switch, canvasSetup.ts). */
+const NOTHING_OFF: RenderOff = {};
+const NO_GPU_CHECK: GpuCheck = {};
+
 /** A hex whose route shows after a first click, and the `selectionKey` of the ship it was made for. */
 interface RouteSelection {
   hex: Hex;
@@ -194,7 +204,10 @@ function Scene({
   onCameraCut,
   seaBuoys,
   regionBorder,
+  renderOff,
+  composerMultisampling,
   onReady,
+  warmUp,
 }: {
   G: CaribbeanState;
   currentPlayer: string;
@@ -247,8 +260,14 @@ function Scene({
   seaBuoys: boolean;
   /** How the region borders are drawn: seams in the water or lines (dev, #239). */
   regionBorder: RegionBorderMode;
+  /** Parts of the picture left out for an A/B check (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`). */
+  renderOff: RenderOff;
+  /** The composer's multisampling: 0 under `?aa=0` (canvasSetup.ts). */
+  composerMultisampling: number;
   /** Reports the loading gate's tasks done here: "world" once built, "sky" once baked (useSceneReadiness.ts). */
   onReady: (task: string) => void;
+  /** The loading gate is still open: idle layers stay in the scene so their shaders compile behind it. */
+  warmUp: boolean;
 }) {
   const currentShipState = G.ships[currentPlayer];
   const controlsRef = useRef<MapControlsType>(null);
@@ -586,7 +605,7 @@ function Scene({
           displaced by the large wave cascades and sized so its edge is never
           on screen. One grid for every copy of the world. Waits for the sky
           it reflects. */}
-      {skyEnvironment && (
+      {skyEnvironment && !renderOff.ocean && (
         <Ocean
           terrainField={terrainField}
           sun={lighting.sun.direction}
@@ -599,7 +618,7 @@ function Scene({
           waveSlopes={waveSlopes}
           waveWhitecaps={waves.whitecaps}
           waveDisplacements={waves.displacements}
-          regionChart={regionChart}
+          regionChart={renderOff.regionInk ? null : regionChart}
           regionSeams={regionBorder === "water"}
         />
       )}
@@ -612,10 +631,10 @@ function Scene({
       {(copy) => (
       <>
       {/* Islands: one continuous mesh from the terrain height field */}
-      <LandTerrain terrain={landTerrain} />
+      {!renderOff.land && <LandTerrain terrain={landTerrain} />}
 
       {/* Terrain decorations: trees, rocks, shore boulders, piers */}
-      <TerrainDecorations layout={decorations} waveSlopes={waveSlopes} />
+      {!renderOff.land && <TerrainDecorations layout={decorations} waveSlopes={waveSlopes} />}
 
       <HexGrid grid={grid} copy={copy} />
 
@@ -686,7 +705,7 @@ function Scene({
       </WorldCopies>
 
       {/* The fight's smoke, flashes, shot, splinters, spray, foam and grapples (#263) */}
-      <CombatEffects director={combatDirector} />
+      {!renderOff.combatFx && <CombatEffects director={combatDirector} warm={warmUp} />}
 
       {/* Ship Tooltip, once, in the copy under the pointer */}
       {hoveredShipId && (G.ships[hoveredShipId] || npcs[hoveredShipId]) && (() => {
@@ -757,7 +776,7 @@ function Scene({
       />
 
       {/* Post-processing: bloom, vignette, ACES at the lighting's exposure, warm grade */}
-      <PostEffects lighting={lighting} />
+      {renderOff.postProcessing ? <PlainRender /> : <PostEffects lighting={lighting} withoutBloom={renderOff.bloom === true} multisampling={composerMultisampling} />}
     </>
     </SeaSurfaceContext.Provider>
   );
@@ -772,6 +791,10 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   seaBuoys?: boolean;
   /** How the region borders are drawn (dev, #239): `DEFAULT_REGION_BORDER_MODE` when left out. */
   regionBorder?: RegionBorderMode;
+  /** Parts of the picture left out for an A/B check on a real GPU (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`). */
+  renderOff?: RenderOff;
+  /** How the GL context is set up, and its on-screen readout (`?dpr=1`, `?power=low`, `?pdb=1`, `?gpuinfo=1`), read in production builds too. */
+  gpu?: GpuCheck;
   /** Show the fps, draw calls and triangles readout (dev, #162); ignored in production builds. */
   renderStats?: boolean;
   /** A seed-gallery shot (dev, #161): the draft picks itself and the frame is posted to the gallery; ignored in production builds. */
@@ -779,15 +802,22 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
-  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, regionBorder, renderStats, gallerySnapshot } = props;
+  const { G, ctx, cameraTarget, cameraDistance, seaBuoys, regionBorder, renderOff, gpu, renderStats, gallerySnapshot } = props;
   const snapshot = import.meta.env.DEV && gallerySnapshot === true;
   // Dev seed gallery (#161): each seat takes its first captain and starter ship, so the shot reaches the main phase.
+  // Once per seat: StrictMode runs the effect twice, and a second pick for the same seat is an invalid move.
   const { pickCaptain } = props.moves;
+  const snapshotPicked = useRef<string | null>(null);
   useEffect(() => {
-    if (snapshot && ctx.phase === "draft") pickCaptain(0, STARTER_SHIP_CLASSES[0]);
+    if (!snapshot || ctx.phase !== "draft" || snapshotPicked.current === ctx.currentPlayer) return;
+    snapshotPicked.current = ctx.currentPlayer;
+    pickCaptain(0, STARTER_SHIP_CLASSES[0]);
   }, [snapshot, ctx.phase, ctx.currentPlayer, pickCaptain]);
   // Dev `stats=1` (#162): the probe in the Canvas reports to the overlay through this feed.
   const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
+  // The A/B switches for a real GPU: how the canvas and composer are set up, and `?gpuinfo=1`'s readout
+  const setup = useMemo(() => canvasSetup(gpu ?? NO_GPU_CHECK, renderOff ?? NOTHING_OFF), [gpu, renderOff]);
+  const gpuInfoFeed = useMemo(() => (gpu?.info ? createGpuInfoFeed() : null), [gpu?.info]);
   // The loading gate: the board shows once every asset, shader and a few frames are ready
   const portNames = useMemo(() => G.cells.flatMap((c) => (c.portName ? [c.portName] : [])).join(""), [G.cells]);
   const readiness = useSceneReadiness(portNames);
@@ -1062,7 +1092,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   return (
     <div className="relative w-screen h-screen font-body bg-[#0a1929]">
       <Canvas
-        shadows={{ type: SHADOW_MAP_TYPE }}
+        dpr={setup.dpr}
+        gl={setup.gl}
+        shadows={setup.shadows ? { type: SHADOW_MAP_TYPE } : false}
         camera={{
           // Start due south of the middle of the map (the rectangle's corner
           // is the origin), looking north along CAMERA_DIRECTION
@@ -1119,7 +1151,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onCameraCut={cameraCut}
           seaBuoys={seaBuoys ?? false}
           regionBorder={regionBorder ?? DEFAULT_REGION_BORDER_MODE}
+          renderOff={renderOff ?? NOTHING_OFF}
+          composerMultisampling={setup.composerMultisampling}
           onReady={readiness.complete}
+          warmUp={!readiness.view.ready}
         />
         <SceneReadinessProbe
           compileShaders={readiness.view.compileShaders}
@@ -1130,7 +1165,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           frame={readiness.frame}
         />
         {/* Dev: fps, draw calls and triangles (#162); the DEV guard drops it from production builds */}
-        {import.meta.env.DEV && renderStatsFeed && <RenderStatsProbe onStats={renderStatsFeed.publish} />}
+        {import.meta.env.DEV && renderStatsFeed && !gpuInfoFeed && <RenderStatsProbe onStats={renderStatsFeed.publish} />}
+        {/* `?gpuinfo=1`: the GL context and its frames, read in production builds too; it stands in for the stats probe */}
+        {gpuInfoFeed && <GpuInfoProbe feed={gpuInfoFeed} onStats={renderStatsFeed?.publish} />}
         {/* Dev: a seed-gallery shot (#161); the DEV guard drops it from production builds */}
         {import.meta.env.DEV && snapshot && <GallerySnapshot ready={readiness.view.ready && !drafting} />}
       </Canvas>
@@ -1159,6 +1196,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {import.meta.env.DEV && renderStatsFeed && <RenderStatsOverlay feed={renderStatsFeed} />}
+      {gpuInfoFeed && (
+        <GpuInfoOverlay
+          feed={gpuInfoFeed}
+          setupLines={gpuSetupLines(gpu ?? NO_GPU_CHECK, renderOff ?? NOTHING_OFF, setup)}
+        />
+      )}
       {/* Dev: the seed control (#161); the DEV guard drops it from production builds */}
       {import.meta.env.DEV && !snapshot && G.mapSeed !== undefined && <DevSeedControl mapSize={G.mapSize} mapSeed={G.mapSeed} />}
 

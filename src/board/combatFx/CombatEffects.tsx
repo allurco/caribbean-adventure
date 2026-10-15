@@ -32,9 +32,11 @@ const FOAM: PuffLook = { color: "#e6efee", shade: "#cfd9da", lit: 0, intensity: 
  * The fight's effects on the board (#263): steps the combat director once a
  * frame against the one sea surface and the one wind, and draws its pools,
  * shots and grapples, each in one instanced call. The group stands on the
- * copy of the wrapping world the camera is in.
+ * copy of the wrapping world the camera is in. While `warm` (the loading
+ * gate is open) every layer stays in the scene, empty, so its shaders compile
+ * behind the loading screen (frameWriters.ts, `ShowOptions`).
  */
-export function CombatEffects({ director }: { director: CombatDirector }) {
+export function CombatEffects({ director, warm }: { director: CombatDirector; warm: boolean }) {
   const group = useRef<Group>(null);
   const sea = useSeaSurface();
   const reader = useMemo(() => createSeaReader(...windDrift(SCENE_WIND, WIND_DRIFT)), []);
@@ -50,16 +52,16 @@ export function CombatEffects({ director }: { director: CombatDirector }) {
   const { pools, zoom } = director;
   return (
     <group ref={group}>
-      <PuffLayer pool={pools.foam} look={FOAM} />
-      <PuffLayer pool={pools.smoke} look={SMOKE} />
-      <PuffLayer pool={pools.mist} look={MIST} />
-      <PuffLayer pool={pools.spray} look={SPRAY} />
-      <PuffLayer pool={pools.flash} look={FLASH} zoom={zoom} />
-      <PuffLayer pool={pools.spark} look={SPARK} zoom={zoom} />
-      <PuffLayer pool={pools.ember} look={EMBER} zoom={zoom} />
-      <DebrisLayer pool={pools.splinter} />
-      <ShotLayer shots={director.shots} zoom={zoom} />
-      <GrappleLayer director={director} />
+      <PuffLayer pool={pools.foam} look={FOAM} warm={warm} />
+      <PuffLayer pool={pools.smoke} look={SMOKE} warm={warm} />
+      <PuffLayer pool={pools.mist} look={MIST} warm={warm} />
+      <PuffLayer pool={pools.spray} look={SPRAY} warm={warm} />
+      <PuffLayer pool={pools.flash} look={FLASH} zoom={zoom} warm={warm} />
+      <PuffLayer pool={pools.spark} look={SPARK} zoom={zoom} warm={warm} />
+      <PuffLayer pool={pools.ember} look={EMBER} zoom={zoom} warm={warm} />
+      <DebrisLayer pool={pools.splinter} warm={warm} />
+      <ShotLayer shots={director.shots} zoom={zoom} warm={warm} />
+      <GrappleLayer director={director} warm={warm} />
     </group>
   );
 }
