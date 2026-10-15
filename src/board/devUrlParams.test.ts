@@ -124,6 +124,26 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?fx=1&ink=&bloom=no")).toEqual({});
   });
 
+  it("turns parts of the base scene off too: shadows, multisampling, the ocean, the land", () => {
+    expect(parseDevUrlParams("?shadows=0")).toEqual({ renderOff: { shadows: true } });
+    expect(parseDevUrlParams("?aa=0")).toEqual({ renderOff: { msaa: true } });
+    expect(parseDevUrlParams("?ocean=0")).toEqual({ renderOff: { ocean: true } });
+    expect(parseDevUrlParams("?land=0")).toEqual({ renderOff: { land: true } });
+    expect(parseDevUrlParams("?shadows=no&aa=1&ocean=&land=false")).toEqual({});
+  });
+
+  it("sets up the GL context for a check on a real GPU, and shows what it got, in production builds too", () => {
+    expect(parseDevUrlParams("?dpr=1")).toEqual({ gpu: { dpr1: true } });
+    expect(parseDevUrlParams("?power=low")).toEqual({ gpu: { lowPower: true } });
+    expect(parseDevUrlParams("?pdb=1")).toEqual({ gpu: { preserveDrawingBuffer: true } });
+    expect(parseDevUrlParams("?gpuinfo=1")).toEqual({ gpu: { info: true } });
+    expect(parseDevUrlParams("?dpr=2&power=high&pdb=0&gpuinfo=yes")).toEqual({});
+    expect(parseDevUrlParams("?gpuinfo=1&dpr=1&aa=0&fx=0")).toEqual({
+      gpu: { info: true, dpr1: true },
+      renderOff: { msaa: true, combatFx: true },
+    });
+  });
+
   it("reads every parameter from one URL", () => {
     expect(parseDevUrlParams("?size=small&seed=1&cx=12&cz=13.9&dist=4.3&stats=1")).toEqual({
       setupData: { mapSize: "small", mapSeed: 1 },

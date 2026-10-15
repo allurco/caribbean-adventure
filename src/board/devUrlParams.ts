@@ -33,19 +33,41 @@ export interface DevUrlParams {
   gallerySnapshot?: true;
   /** `?seats=1`: every seat of the match on one page, through boardgame.io's local transport, one seat shown at a time (#110), in dev builds only. */
   localSeats?: true;
-  /** `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`: the combat effects, the regions' ink in the sea, the bloom or all the post-processing left out, to tell on a real GPU which one a rendering fault comes from; read in production builds too. */
+  /** `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`, `?shadows=0`, `?aa=0`, `?ocean=0`, `?land=0`: parts of the picture left out, to tell on a real GPU which one a rendering fault comes from; read in production builds too. */
   renderOff?: RenderOff;
+  /** `?dpr=1`, `?power=low`, `?pdb=1`, `?gpuinfo=1`: how the GL context is set up, and a readout of what it got, for the same checks; read in production builds too. */
+  gpu?: GpuCheck;
   /** `?players=1..4`: the match's seats, a hotseat game for testing (#278), in dev builds only; solo without it (`seatCount`). */
   players?: number;
 }
 
-/** Parts of the picture left out (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`). */
+/** Parts of the picture left out (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`, `?shadows=0`, `?aa=0`, `?ocean=0`, `?land=0`). */
 export interface RenderOff {
   combatFx?: true;
   regionInk?: true;
   bloom?: true;
   /** `?post=0`: no post-processing at all; the scene is drawn straight to the screen. */
   postProcessing?: true;
+  /** `?shadows=0`: no shadow maps. */
+  shadows?: true;
+  /** `?aa=0`: no multisampling, on the canvas or in the composer. */
+  msaa?: true;
+  /** `?ocean=0`: no sea surface. */
+  ocean?: true;
+  /** `?land=0`: no land mesh and none of its decorations. */
+  land?: true;
+}
+
+/** How the GL context is set up for a check on a real GPU (`?dpr=1`, `?power=low`, `?pdb=1`), and `?gpuinfo=1`. */
+export interface GpuCheck {
+  /** `?dpr=1`: the canvas at pixel ratio 1. */
+  dpr1?: true;
+  /** `?power=low`: `powerPreference: "low-power"`. */
+  lowPower?: true;
+  /** `?pdb=1`: `preserveDrawingBuffer: true`. */
+  preserveDrawingBuffer?: true;
+  /** `?gpuinfo=1`: an on-screen readout of the GL context and its frame (GpuInfoOverlay). */
+  info?: true;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -80,7 +102,17 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   if (params.get("ink") === "0") renderOff.regionInk = true;
   if (params.get("bloom") === "0") renderOff.bloom = true;
   if (params.get("post") === "0") renderOff.postProcessing = true;
+  if (params.get("shadows") === "0") renderOff.shadows = true;
+  if (params.get("aa") === "0") renderOff.msaa = true;
+  if (params.get("ocean") === "0") renderOff.ocean = true;
+  if (params.get("land") === "0") renderOff.land = true;
   if (Object.keys(renderOff).length > 0) out.renderOff = renderOff;
+  const gpu: GpuCheck = {};
+  if (params.get("dpr") === "1") gpu.dpr1 = true;
+  if (params.get("power") === "low") gpu.lowPower = true;
+  if (params.get("pdb") === "1") gpu.preserveDrawingBuffer = true;
+  if (params.get("gpuinfo") === "1") gpu.info = true;
+  if (Object.keys(gpu).length > 0) out.gpu = gpu;
   // Dev-only routes (#161): the DEV guard drops even their names from production builds.
   if (import.meta.env.DEV) {
     if (params.get("seedGallery") === "1") out.seedGallery = true;

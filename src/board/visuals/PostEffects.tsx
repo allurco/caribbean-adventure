@@ -26,6 +26,8 @@ interface PostEffectsProps {
   lighting: Lighting;
   /** Leave the bloom out (`?bloom=0`, an A/B check on a real GPU). */
   withoutBloom?: boolean;
+  /** The composer's multisampling (`?aa=0` gives 0); @react-three/postprocessing's default, 8, when left out. */
+  multisampling?: number;
 }
 
 /**
@@ -34,7 +36,7 @@ interface PostEffectsProps {
  * into one effect pass after the render pass (bloom's blur runs its own
  * mip chain), so the grade adds no pass.
  */
-export function PostEffects({ lighting, withoutBloom = false }: PostEffectsProps) {
+export function PostEffects({ lighting, withoutBloom = false, multisampling = 8 }: PostEffectsProps) {
   const gl = useThree((state) => state.gl);
   const { bloom, vignette, grade } = lighting;
 
@@ -55,7 +57,7 @@ export function PostEffects({ lighting, withoutBloom = false }: PostEffectsProps
   }, [gradeEffect, grade.gain]);
 
   return (
-    <EffectComposer>
+    <EffectComposer multisampling={multisampling}>
       {/* A keyed array, not `{!withoutBloom && <Bloom />}`: the composer's children are typed
           `JSX.Element | JSX.Element[]`, so a `false` child does not type-check; the keys keep the
           other passes mounted, in order, when the bloom is left out. */}
