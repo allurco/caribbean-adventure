@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { regionChartSize, REGION_CHART_MAX_SIZE, REGION_CHART_TEXELS_PER_UNIT } from "./regionChart";
+import { inkedSea, regionChartSize, REGION_NAME_INK, REGION_CHART_MAX_SIZE, REGION_CHART_TEXELS_PER_UNIT } from "./regionChart";
 
 describe("regionChartSize (#239)", () => {
   it("draws a small map's chart at the full density", () => {
@@ -13,5 +13,52 @@ describe("regionChartSize (#239)", () => {
     expect(size.width).toBeLessThanOrEqual(REGION_CHART_MAX_SIZE);
     expect(size.width / 75).toBeCloseTo(size.height / 80, 1);
     expect(size.texelsPerUnit).toBeCloseTo(25.6, 5);
+  });
+});
+
+describe("inkedSea: the ink printed over what the sea shows (#239)", () => {
+  const body = [0.02, 0.08, 0.16] as const;
+  const sky = [0.7, 0.75, 0.8] as const;
+  const noGlint = [0, 0, 0] as const;
+
+  it("darkens a sea that shows only the sky's reflection", () => {
+    const [r, g, b] = inkedSea(body, sky, noGlint, 1, 0.42);
+    expect(r).toBeLessThan(0.7 * 0.9);
+    expect(g).toBeLessThan(0.75 * 0.9);
+    expect(b).toBeLessThan(0.8 * 0.9);
+  });
+
+  it("leaves the sea as it is where there is no ink (ship zoom, off the names)", () => {
+    const [r, g, b] = inkedSea(body, sky, noGlint, 0.6, 0);
+    expect(r).toBeCloseTo(0.02 * 0.4 + 0.7 * 0.6, 10);
+    expect(g).toBeCloseTo(0.08 * 0.4 + 0.75 * 0.6, 10);
+    expect(b).toBeCloseTo(0.16 * 0.4 + 0.8 * 0.6, 10);
+  });
+
+  it("only ever darkens, more with more ink, at every Fresnel split", () => {
+    for (const fresnel of [0, 0.3, 0.7, 1]) {
+      let previous = inkedSea(body, sky, noGlint, fresnel, 0);
+      for (const ink of [0.1, 0.3, 0.42, 0.7, 1]) {
+        const now = inkedSea(body, sky, noGlint, fresnel, ink);
+        now.forEach((c, i) => expect(c).toBeLessThan(previous[i]));
+        previous = now;
+      }
+    }
+  });
+
+  it("prints as deeper, bluer water, not black, at the names' full strength", () => {
+    const grey = [0.5, 0.5, 0.5] as const;
+    const [r, g, b] = inkedSea(grey, grey, noGlint, 0.5, REGION_NAME_INK);
+    for (const c of [r, g, b]) expect(c).toBeGreaterThan(0.5 * 0.15);
+    expect(b).toBeGreaterThan(g);
+    expect(g).toBeGreaterThan(r);
+  });
+
+
+  it("darkens the sun's glint too, so a name in the sun's path still reads", () => {
+    const glint = [4, 3.6, 3] as const;
+    const plain = inkedSea(body, sky, glint, 0.1, 0);
+    const inked = inkedSea(body, sky, glint, 0.1, 0.9);
+    inked.forEach((c, i) => expect(c).toBeLessThan(plain[i] * 0.4));
   });
 });

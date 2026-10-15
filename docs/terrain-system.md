@@ -1421,8 +1421,11 @@ names, G the seams between regions when the borders are drawn in the water,
 tiles it across the seam like the field. The fragment stage samples it at
 the displaced surface point nudged by the drawn slope, so the letters ride
 the swell and waver with it; the ink calms the slope it shades with (a
-slick) and darkens only the light from the water body, so the sky's
-reflection, the glint and the foam lie over it as over any water. The names'
+slick) and is printed over what the sea shows, like a chart's ink: it
+darkens the water body's light, the sky's reflection and the sun's glint
+together to a deep blue (`inkedSea`, `REGION_INK_SHADE`), and only the foam
+lies over it. Ink on the water body alone did not show at the game's pitch,
+where reflection, glint and haze are much of the sea's light. The names'
 strength fades with camera distance (`regionNameStrength`, gone at ship
 zoom); the seams do not.
 
