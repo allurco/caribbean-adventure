@@ -12,7 +12,7 @@ const dummy = new Object3D();
  * instances, dead slots not drawn, and no shadow cast while there are none. They tumble through the air, then float on the
  * swell, rocking with it, and sink out of sight at the end of their life.
  */
-export function DebrisLayer({ pool }: { pool: ParticlePool }) {
+export function DebrisLayer({ pool, warm }: { pool: ParticlePool; warm: boolean }) {
   const mesh = useRef<InstancedMesh>(null);
   const { geometry, material } = useMemo(
     () => ({ geometry: new BoxGeometry(1, 1, 1), material: new MeshStandardMaterial({ roughness: 0.85, metalness: 0 }) }),
@@ -64,9 +64,9 @@ export function DebrisLayer({ pool }: { pool: ParticlePool }) {
     const m = mesh.current;
     if (!m) return;
     frame.current = clock.elapsedTime;
-    if (drawLiveInstances(m, pool.capacity, isLive, write, true) === 0) return;
+    if (drawLiveInstances(m, pool.capacity, isLive, write, { castsShadow: true, warm }) === 0) return;
     m.instanceMatrix.needsUpdate = true;
     if (m.instanceColor) m.instanceColor.needsUpdate = true;
   });
-  return <instancedMesh ref={mesh} args={[geometry, material, pool.capacity]} count={0} visible={false} frustumCulled={false} />;
+  return <instancedMesh ref={mesh} args={[geometry, material, pool.capacity]} count={0} visible={warm} castShadow={warm} frustumCulled={false} />;
 }

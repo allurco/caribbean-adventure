@@ -16,7 +16,7 @@ const flight = new Vector3();
  * a little long along its flight and larger as the camera zooms out. The
  * shots in flight are packed into the instances; idle slots are not drawn.
  */
-export function ShotLayer({ shots, zoom }: { shots: readonly Shot[]; zoom: PuffZoom }) {
+export function ShotLayer({ shots, zoom, warm }: { shots: readonly Shot[]; zoom: PuffZoom; warm: boolean }) {
   const mesh = useRef<InstancedMesh>(null);
   const { geometry, material } = useMemo(
     () => ({
@@ -55,7 +55,7 @@ export function ShotLayer({ shots, zoom }: { shots: readonly Shot[]; zoom: PuffZ
   useFrame(() => {
     const m = mesh.current;
     if (!m) return;
-    if (drawLiveInstances(m, shots.length, isLive, write) > 0) m.instanceMatrix.needsUpdate = true;
+    if (drawLiveInstances(m, shots.length, isLive, write, { warm }) > 0) m.instanceMatrix.needsUpdate = true;
   });
-  return <instancedMesh ref={mesh} args={[geometry, material, shots.length]} count={0} visible={false} frustumCulled={false} />;
+  return <instancedMesh ref={mesh} args={[geometry, material, shots.length]} count={0} visible={warm} frustumCulled={false} />;
 }

@@ -17,7 +17,7 @@ import {
 } from "three";
 import { SCENE_LIGHTING } from "../visuals/sceneLighting";
 import type { ParticlePool } from "./particlePool";
-import { viewAxis, writePuffs, writeUniform, type PuffShape } from "./frameWriters";
+import { showLayer, viewAxis, writePuffs, writeUniform, type PuffShape } from "./frameWriters";
 import { SCENE_WIND } from "../visuals/sceneWind";
 import { PUFF_FRAGMENT, PUFF_VERTEX } from "./puffShader";
 
@@ -48,7 +48,7 @@ export interface PuffZoom {
   scale: number;
 }
 
-export function PuffLayer({ pool, look, zoom }: { pool: ParticlePool; look: PuffLook; zoom?: PuffZoom }) {
+export function PuffLayer({ pool, look, zoom, warm }: { pool: ParticlePool; look: PuffLook; zoom?: PuffZoom; warm: boolean }) {
   const { geometry, material, buffers } = useMemo(() => {
     const quad = new PlaneGeometry(1, 1);
     const g = new InstancedBufferGeometry();
@@ -102,8 +102,8 @@ export function PuffLayer({ pool, look, zoom }: { pool: ParticlePool; look: Puff
       material.uniforms.uAxis.value.set(axis[0], axis[1]);
     }
     const live = writePuffs(pool, look, buffers, geometry);
-    // An empty pool draws nothing at all (frameWriters.ts, showInstances)
-    if (mesh.current) mesh.current.visible = live > 0;
+    // An empty pool draws nothing at all, once the loading gate has compiled its shader (frameWriters.ts)
+    if (mesh.current) showLayer(mesh.current, live, { warm });
   });
-  return <mesh ref={mesh} geometry={geometry} material={material} frustumCulled={false} renderOrder={2} visible={false} />;
+  return <mesh ref={mesh} geometry={geometry} material={material} frustumCulled={false} renderOrder={2} visible={warm} />;
 }
