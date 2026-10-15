@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { Client as HeadlessClient } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { SHIP_MODELS, shipModelUrl } from "./board/shipModels";
-import { PLAYER_COUNT, type CaribbeanState } from "./game/Game";
+import type { CaribbeanState } from "./game/Game";
 import { parseDevUrlParams, showsDebugPanel } from "./board/devUrlParams";
 
 const preload = vi.hoisted(() => vi.fn());
@@ -27,23 +27,32 @@ describe("loading the game client", () => {
     for (const url of urls) expect(preload).toHaveBeenCalledWith(url, false, false);
   });
 
+  it("starts solo by default: one seat, one captain hand (#278)", async () => {
+    const { loadGameClient } = await import("./loadGameClient");
+    const { game, numPlayers } = (await loadGameClient(undefined)) as unknown as { game: Game<CaribbeanState>; numPlayers: number };
+    expect(numPlayers).toBe(1);
+    const client = HeadlessClient<CaribbeanState>({ game, numPlayers });
+    expect(Object.keys(client.getState()!.G.draftHands)).toEqual(["0"]);
+  });
+
   it("keeps the hotseat client's view of the whole table: every seat's draft hand (#109)", async () => {
     const { loadGameClient } = await import("./loadGameClient");
-    const { game } = (await loadGameClient(undefined)) as unknown as { game: Game<CaribbeanState> };
+    const { game, numPlayers } = (await loadGameClient(undefined, true, 2)) as unknown as { game: Game<CaribbeanState>; numPlayers: number };
+    expect(numPlayers).toBe(2);
     // Like the hotseat client: one shared screen, no seat.
-    const client = HeadlessClient<CaribbeanState>({ game, numPlayers: 2 });
+    const client = HeadlessClient<CaribbeanState>({ game, numPlayers });
     expect(Object.keys(client.getState()!.G.draftHands)).toEqual(["0", "1"]);
   });
 
   it("gives every seat on one page only its own view, through the local transport (#110)", async () => {
     const { loadSeatClient } = await import("./loadGameClient");
-    const { game, multiplayer, numPlayers } = (await loadSeatClient(undefined, false)) as unknown as {
+    const { game, multiplayer, numPlayers } = (await loadSeatClient(undefined, false, 3)) as unknown as {
       game: Game<CaribbeanState>;
       multiplayer: unknown;
       numPlayers: number;
     };
     expect(multiplayer).toBeDefined();
-    expect(numPlayers).toBe(PLAYER_COUNT);
+    expect(numPlayers).toBe(3);
     // Not the hotseat's whole table: a seat sees its own hand only.
     const seat = HeadlessClient<CaribbeanState>({ game, numPlayers, playerID: "1" });
     expect(Object.keys(seat.getState()!.G.draftHands)).toEqual(["1"]);

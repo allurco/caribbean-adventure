@@ -11,6 +11,12 @@ describe("shipOwnerColour", () => {
     expect(shipOwnerColour({ kind: "player", playerId: "0" })).not.toBe(shipOwnerColour({ kind: "player", playerId: "1" }));
   });
 
+  it("gives each of the four seats a colour of its own (#278)", () => {
+    const colours = ["0", "1", "2", "3"].map((playerId) => shipOwnerColour({ kind: "player", playerId }));
+    expect(colours).not.toContain(UNKNOWN_PLAYER_COLOUR);
+    expect(new Set(colours).size).toBe(4);
+  });
+
   it("gives a player with no colour of their own the neutral grey", () => {
     expect(shipOwnerColour({ kind: "player", playerId: "9" })).toBe(UNKNOWN_PLAYER_COLOUR);
   });

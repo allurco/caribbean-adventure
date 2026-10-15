@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { hex, hexEquals, hexGrid } from "./hex";
+import { hex, hexEquals, hexGrid, neighbors } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, Nation, NPCShip, ShipState } from "./types";
-import { Caribbean, withHotseatView } from "./Game";
+import { Caribbean, withGeneratedMap, withHotseatView } from "./Game";
+import { findHomeStart } from "./captains";
+import { generateMapFor } from "./mapRequest";
 import { createShipState } from "./economy";
 
 /**
@@ -212,6 +214,51 @@ describe("a ship sunk in combat (#265)", () => {
   });
 });
 
+describe("a solo player's only ship sunk (#265, #278)", () => {
+  /** One seat, sunk on its own turn by the flotilla it attacked. */
+  function sunkSolo() {
+    const client = startGame({ "0": ship(0, 0, "blackbeard", false) }, { npcs: { flotilla: flotilla(1, 0) } });
+    client.moves.attackNPC("flotilla");
+    fireOnce(client);
+    return client;
+  }
+
+  it("the turn comes straight back to the one seat, its new captain's hand dealt", () => {
+    const client = sunkSolo();
+    const { G, ctx } = stateOf(client);
+    expect(G.ships["0"]).toBeUndefined();
+    expect(ctx.phase).toBe("main");
+    expect(ctx.currentPlayer).toBe("0");
+    expect(ctx.gameover).toBeUndefined();
+    expect(G.draftHands["0"]).toEqual([captain("drake"), captain("morgan")]);
+  });
+
+  it("picks a new captain and sails from the home port, turn after turn", () => {
+    const client = sunkSolo();
+    client.moves.pickCaptain(0, "Sloop");
+    expect(stateOf(client).G.ships["0"].captain).toEqual(captain("drake"));
+    expect(hexEquals(stateOf(client).G.ships["0"].position, DOCK)).toBe(true);
+    client.moves.moveShip(-2, 0);
+    expect(hexEquals(stateOf(client).G.ships["0"].position, hex(-2, 0))).toBe(true);
+
+    const turn = stateOf(client).ctx.turn;
+    client.events.endTurn!();
+    client.events.endTurn!();
+    expect(stateOf(client).ctx).toMatchObject({ currentPlayer: "0", phase: "main", turn: turn + 2 });
+  });
+
+  it("does not stall if the turn ends before the pick: the hand waits for the next", () => {
+    const client = sunkSolo();
+    const turn = stateOf(client).ctx.turn;
+    client.events.endTurn!();
+    const { G, ctx } = stateOf(client);
+    expect(ctx).toMatchObject({ currentPlayer: "0", phase: "main", turn: turn + 1 });
+    expect(G.draftHands["0"]).toEqual([captain("drake"), captain("morgan")]);
+    client.moves.pickCaptain(1, "Flute");
+    expect(stateOf(client).G.ships["0"].captain).toEqual(captain("morgan"));
+  });
+});
+
 describe("out of captains (#265)", () => {
   it("a sunk player with no captain left to deal is out: their turns are skipped for good", () => {
     const client = startGame({ "0": ship(0, 0, "blackbeard", true), "1": ship(1, 0, "surcouf", false) }, { captainDeck: [] });
@@ -255,6 +302,57 @@ describe("out of captains (#265)", () => {
     out.moves.attackNPC("flotilla");
     fireOnce(out);
     expect(stateOf(out).ctx.gameover).toMatchObject({ winner: "0" });
+  });
+});
+
+describe("a real solo match out of captains (#265, #278)", () => {
+  it("drafts, loses its ship until no captain is left, goes out, and the game ends", () => {
+    const request = { mapSize: "small", mapSeed: 7 } as const;
+    const real = withGeneratedMap(Caribbean, { ...request, ...generateMapFor(request) });
+    // The real one-seat setup, its deck emptied but for the captain the draft returns, and a heavy flotilla waiting off the first captain's home port
+    const game: Game<CaribbeanState> = {
+      ...real,
+      seed: "solo-out-265",
+      setup: (context, setupData) => {
+        const G = real.setup!(context, setupData);
+        const start = findHomeStart(G.draftHands["0"][0].nation, G.cells, [], G.regions, G.wrap)!;
+        const water = neighbors(start.position).find((h) =>
+          G.cells.some((c) => hexEquals(c.hex, h) && c.terrain === "water")
+        )!;
+        return { ...G, captainDeck: [], npcs: { flotilla: flotilla(water.q, water.r) } };
+      },
+    };
+    const client = Client<CaribbeanState>({ game: withHotseatView(game), numPlayers: 1 });
+    client.start();
+    expect(stateOf(client).ctx.phase).toBe("draft");
+    client.moves.pickCaptain(0, "Sloop");
+    expect(stateOf(client).ctx.phase).toBe("main");
+
+    /** Attack the flotilla and fire until the fight is over. */
+    const fight = () => {
+      client.moves.attackNPC("flotilla");
+      expect(stateOf(client).G.combat).toBeDefined();
+      for (let round = 0; round < 20 && stateOf(client).G.combat; round++) {
+        client.moves.rollSeamanship();
+        client.moves.chooseCombatAction("fire");
+        client.moves.rollCannons();
+        client.moves.applyResolution();
+      }
+      expect(stateOf(client).G.ships["0"]).toBeUndefined();
+    };
+
+    // The captain not picked in the draft went back into the deck: the one hand left
+    fight();
+    expect(stateOf(client).ctx.gameover).toBeUndefined();
+    expect(stateOf(client).G.draftHands["0"]).toHaveLength(1);
+    client.moves.pickCaptain(0, "Sloop");
+    expect(stateOf(client).G.ships["0"]).toBeDefined();
+
+    // Sunk again, with no captain left to deal: out, and the game is over
+    fight();
+    const { G, ctx } = stateOf(client);
+    expect(G.lostShips?.["0"]?.eliminated).toBe(true);
+    expect(ctx.gameover).toMatchObject({ winner: "0" });
   });
 });
 

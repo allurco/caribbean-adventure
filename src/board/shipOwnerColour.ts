@@ -9,6 +9,8 @@ import type { NPCRole } from "../game/types";
 export const PLAYER_COLOURS: Readonly<Record<string, string>> = {
   "0": "#3b82f6", // blue
   "1": "#ef4444", // red
+  "2": "#22c55e", // green
+  "3": "#eab308", // yellow
 };
 
 /** A player without a colour of their own. */

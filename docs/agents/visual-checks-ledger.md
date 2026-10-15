@@ -68,6 +68,15 @@ One entry per report. Newest first.
 - **Conclusion:** an artifact of the headless software-rendered capture, not of the game. No change made.
 - **Confirmed 2026-10-15:** the same view (small map, seed 1, opening ship zoom) in headless Chromium on the GPU (setup above) shows no blob; on SwiftShader it is still there.
 
+## Batches
+
+### 2026-10-15: combat effects on the board (#263)
+
+- **Branch and commit:** `feat/combat-effects`, shot from 6648a28 to 2ac6893 as the smoke, foam, flash and camera were tuned.
+- **Renderer:** headless Chromium on the real GPU (ANGLE Metal, `--use-angle=metal --enable-gpu --ignore-gpu-blocklist`), not SwiftShader, at 1440×900, with boardgame.io's debug panel hidden (`.`).
+- **View:** `?size=small&seed=4242`. Each seat drafts its first captain; the match state is then rewritten in the client's store (an `UPDATE` with a new `G`): player 0 a Frigate on open water, the target one hex off (player 1's Galleon at hull 1, or a Spanish Flute merchant at hull 1). The fight is started with `attackShip`/`attackNPC` and played with the real combat buttons (Roll Seamanship, Fire!/Flee/Board, Fire Cannons!, Apply Damage). Rolls are random, so who fires, hits and sinks varies run to run.
+- **Learned:** the flat foam quads drew nothing until they faced up (a plane laid onto x/z with its y on +z faces down and is culled). The hull foam lay where a ship was before the fight turned her until it was written from the fight's pose. The turn change after a combat phase starts flew the camera off the fight (it now stays while the fight plays). A muzzle flash lives a quarter of a second, so stills catch it only now and then; judge the flash by eye in a live browser. The "your turn" banner that shows when the combat phase starts is the existing turn hand-off, not this work.
+
 ## Screenshot provenance
 
 When an agent reports screenshots, it states for the batch:

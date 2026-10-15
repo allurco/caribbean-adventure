@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import notice from "../../NOTICE?raw";
-import { SOUNDS, soundById, soundUrl } from "./soundRegistry";
+import { SOUNDS, soundById, soundUrl, soundVariants } from "./soundRegistry";
 
 /** The files under public/sounds (the keys only; nothing is imported). */
 const SHIPPED = Object.keys(import.meta.glob("../../public/sounds/*")).map((path) => path.split("/").pop());
@@ -50,5 +50,14 @@ describe("sound registry", () => {
     const sound = SOUNDS[0];
     expect(soundUrl(sound, "/")).toBe(`/sounds/${sound.file}`);
     expect(soundUrl(sound, "/caribbean/")).toBe(`/caribbean/sounds/${sound.file}`);
+  });
+
+  it("gathers a sound's numbered variations in order", () => {
+    expect(soundVariants("ball-splash")).toEqual(["ball-splash-1", "ball-splash-2", "ball-splash-3"]);
+  });
+
+  it("finds no variations for a sound that has none", () => {
+    expect(soundVariants("hull-groan")).toEqual([]);
+    expect(soundVariants("cannon")).toEqual([]);
   });
 });
