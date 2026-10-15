@@ -333,7 +333,13 @@ a sub-face across) and a tone from smooth value noise (`pavingTone`), the
 same in every face that meets there, so the paving does not show its
 triangles as a checkerboard as flat per-face shading did. `landSurface` samples the same
 sub-triangles (each refined triangle's heights cached once), so buildings
-and clutter stand on the ground as drawn, and its `creasesWithin` lists
+and clutter stand on the ground as drawn. `townGround.test.ts` holds this
+over a sweep of seeds and map sizes, probing each vertex at its lattice
+point (#261). The failures that issue reported were the test's precision,
+not the field: the mesh stores positions in single precision, off by up to
+2e-6 past 32 world units, and on a steep bank (slope 2 to 4) that is a
+height off by more than the five places checked. The test asserts that no
+vertex moves more than 1e-5 to its lattice point. Its `creasesWithin` lists
 the refined lattice's vertices and edges (the coarse lattice at a
 `TOWN_REFINE`th of the pitch), so a footprint's probes find the lowest and
 highest drawn ground under it. Cost: on the large map the land triangles
@@ -1014,7 +1020,12 @@ the grid under them, so a building on the coarse lattice outside the
 refined town ground (where a town spills) is not buried past its rule.
 `townDetailLayout.ts` adds the works (dry-stone retaining walls on the
 riser faces, kerbs on the main street, edge stones on the lanes, none in a
-building's walls, `streetEdgeStones`) and the
+building's walls, `streetEdgeStones`; each kerb runs wherever its street's
+edge stands above the shore band and clear of the other streets
+(`kerbRuns`), as many stones as fill each such stretch at their mean
+length, stretched or shrunk by at most a quarter to fill it end to end
+(`fitKerbStones`), held over a sweep of seeds and map sizes in
+`townDetailLayout.test.ts`, #261) and the
 clutter (a fountain, stalls and carts on the square, cargo by the
 warehouses, boats and net racks on the beach, gardens, palms), each piece
 off the streets, the harbour, the risers, the buildings and steep banks.

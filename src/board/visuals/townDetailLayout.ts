@@ -199,19 +199,90 @@ export interface EdgeStone extends PlanRect {
   kerb: boolean;
 }
 
+/** Shortest stretch of street edge a kerb is laid along, as a share of a stone's length: a shorter one would be a lone shard. */
+const KERB_MIN_RUN = 0.5;
+/** Step along a street edge in the search for where its kerb runs, and how finely each end of a run is found (world units). */
+const KERB_RUN_STEP = 0.004;
+const KERB_RUN_PRECISION = 0.0001;
+
+/**
+ * The stretches `[from, to]` of `[start, end]` where `kerbed(t)` holds, each
+ * end found to `KERB_RUN_PRECISION` (#261): the kerb is laid over each one
+ * end to end, so it runs on to wherever the street stops being kerbed.
+ */
+export function kerbRuns(start: number, end: number, kerbed: (t: number) => boolean): [number, number][] {
+  const runs: [number, number][] = [];
+  /** Where between `a` (where `kerbed` is `fromA`) and `b` it changes. */
+  const flipAt = (a: number, b: number, fromA: boolean): number => {
+    while (b - a > KERB_RUN_PRECISION) {
+      const m = (a + b) / 2;
+      if (kerbed(m) === fromA) a = m;
+      else b = m;
+    }
+    return fromA ? a : b;
+  };
+  let t = start;
+  let on = kerbed(t);
+  let from = start;
+  while (t < end) {
+    const next = Math.min(end, t + KERB_RUN_STEP);
+    const there = kerbed(next);
+    if (there !== on) {
+      const at = flipAt(t, next, on);
+      if (on) runs.push([from, at]);
+      else from = at;
+      on = there;
+    }
+    t = next;
+  }
+  if (on) runs.push([from, end]);
+  return runs;
+}
+
+/** How far the stones of a run may be stretched or shrunk from their drawn lengths to fill it (#261). */
+const KERB_FIT: readonly [number, number] = [0.8, 1.25];
+
+/** How many stones of mean length `mean`, `gap` apart, fill a run of length `run` most nearly (at least one). */
+export function kerbStoneCount(run: number, mean: number, gap: number): number {
+  return Math.max(1, Math.round((run + gap) / (mean + gap)));
+}
+
+/**
+ * The stones drawn at `lengths`, `gap` apart, fitted to the run `[from, to]`
+ * (#261): each stretched or shrunk alike to fill it end to end, by no more
+ * than `KERB_FIT`; where that is not enough, the stones are centred on the
+ * run. Each stone as its centre along the street and its length.
+ */
+export function fitKerbStones(from: number, to: number, lengths: readonly number[], gap: number): { at: number; length: number }[] {
+  const drawn = lengths.reduce((sum, l) => sum + l, 0);
+  const gaps = gap * (lengths.length - 1);
+  const fit = Math.min(KERB_FIT[1], Math.max(KERB_FIT[0], (to - from - gaps) / drawn));
+  let here = (from + to) / 2 - (drawn * fit + gaps) / 2;
+  return lengths.map((l) => {
+    const length = l * fit;
+    const stone = { at: here + length / 2, length };
+    here += length + gap;
+    return stone;
+  });
+}
+
 /**
  * Kerbs along both edges of every street, at building scale `k` (#91): on
  * the main street dressed stones laid end to end; on the lanes a rougher,
  * lower run, its stones of uneven length, a little off the line and off
  * level, so it reads as old fieldstone and not as a clean slab, yet as one
- * kerb rather than scattered debris. Broken where another street crosses,
- * and left out wherever one would stand in a building's `walls` (the kit's
- * or the village's), so no kerb runs through a wall.
+ * kerb rather than scattered debris. Broken where another street crosses
+ * and where the street's edge runs down into the shore band, onto the beach
+ * it is not carved into (#176); between those the stones are fitted to fill
+ * each stretch from end to end (#261). Left out wherever one would stand in
+ * a building's `walls` (the kit's or the village's), so no kerb runs
+ * through a wall.
  */
 export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number, walls: readonly PlanRect[], town: TownSeed): EdgeStone[] {
   const stones: EdgeStone[] = [];
   const inWalls = (stone: PlanRect) => walls.some((w) => overlaps(w, stone, 0));
   const kerbW = KERB_WIDTH * k;
+  const gap = KERB_GAP * k;
   p.streets.forEach((street, streetIndex) => {
     const [x0, z0] = street.from;
     const [x1, z1] = street.to;
@@ -223,31 +294,43 @@ export function streetEdgeStones(p: TownPlateau, ground: GroundField, k: number,
     const main = street.kind === "main";
     const others = p.streets.filter((s) => s !== street);
     const next = stream(subSeed(town.worldSeed, SEED_FEATURES.kerbs, town.portId, streetIndex));
+    /** The next stone's length (before it is fitted to its run), how far off the line and off level it sits, and its shade. */
+    const draw = () => ({
+      length: KERB_LENGTH * k * (main ? 1 : LANE_KERB_LENGTH[0] + next() * (LANE_KERB_LENGTH[1] - LANE_KERB_LENGTH[0])),
+      wander: main ? 0 : (next() * 2 - 1) * LANE_KERB_WANDER * k,
+      heave: main ? 0 : (next() * 2 - 1) * LANE_KERB_HEAVE * k,
+      shade: main ? 0.85 + next() * 0.3 : 0.72 + next() * 0.38,
+    });
     for (const side of [-1, 1]) {
+      const at = (t: number, d: number): [number, number] => [x0 + tx * t + nx * side * d, z0 + tz * t + nz * side * d];
+      // Kerbed where the street's edge stands above the shore band and the kerb's line is clear of every other street.
+      const kerbed = (t: number) => {
+        const [ex, ez] = at(t, street.halfWidth);
+        if (ground.sampleHeight(ex, ez) < SHORE_KEEP_TOP) return false;
+        const [kx, kz] = at(t, street.halfWidth - kerbW / 2);
+        return !others.some((o) => streetDistance(o, kx, kz) < o.halfWidth + kerbW);
+      };
       // The main street's kerb starts where the square's paving ends.
-      const start = main ? Math.max(0, p.squareRadius * SQUARE_PAVED - Math.hypot(x0 - p.x, z0 - p.z)) : 0;
-      let t = start;
-      while (t < len) {
-        const stone = KERB_LENGTH * k * (main ? 1 : LANE_KERB_LENGTH[0] + next() * (LANE_KERB_LENGTH[1] - LANE_KERB_LENGTH[0]));
-        const wander = main ? 0 : (next() * 2 - 1) * LANE_KERB_WANDER * k;
-        const heave = main ? 0 : (next() * 2 - 1) * LANE_KERB_HEAVE * k;
-        const shade = main ? 0.85 + next() * 0.3 : 0.72 + next() * 0.38;
-        const here = t;
-        t += stone + KERB_GAP * k;
-        if (here + stone > len) break;
-        const d = street.halfWidth - kerbW / 2 + wander;
-        const x = x0 + tx * (here + stone / 2) + nx * side * d;
-        const z = z0 + tz * (here + stone / 2) + nz * side * d;
-        if (others.some((o) => streetDistance(o, x, z) < o.halfWidth + kerbW)) continue;
-        const outside = ground.sampleHeight(x + nx * side * kerbW, z + nz * side * kerbW);
-        const inside = ground.sampleHeight(x - nx * side * kerbW, z - nz * side * kerbW);
-        const under = ground.sampleHeight(x, z);
-        // Where a street runs out onto the beach (at ×2.5 one can, #176) it is not carved, and no kerb lines it.
-        if (Math.min(inside, outside, under) < SHORE_KEEP_TOP) continue;
-        const proud = (main ? KERB_PROUD : LANE_KERB_PROUD) * k + heave;
-        // Proud of the ground beside it, and of the ground under it where a bank falls away outside.
-        const kerb: EdgeStone = { x, z, fx: tx, fz: tz, halfW: kerbW / 2, halfD: stone / 2, y0: Math.min(inside, outside, under) - kerbW, y1: Math.max(outside, under) + proud, shade, kerb: main };
-        if (!inWalls(kerb)) stones.push(kerb);
+      const start = main ? Math.min(len, Math.max(0, p.squareRadius * SQUARE_PAVED - Math.hypot(x0 - p.x, z0 - p.z))) : 0;
+      for (const [from, to] of kerbRuns(start, len, kerbed)) {
+        const run = to - from;
+        if (run < KERB_LENGTH * k * KERB_MIN_RUN) continue;
+        // As many stones as fill the run most nearly at their mean length (the lanes' range is centred on
+        // `KERB_LENGTH`), fitted to it.
+        const laid = Array.from({ length: kerbStoneCount(run, KERB_LENGTH * k, gap) }, draw);
+        const fitted = fitKerbStones(from, to, laid.map((s) => s.length), gap);
+        for (let i = 0; i < laid.length; i++) {
+          const { wander, heave, shade } = laid[i];
+          const { at: centre, length: stone } = fitted[i];
+          const [x, z] = at(centre, street.halfWidth - kerbW / 2 + wander);
+          const outside = ground.sampleHeight(x + nx * side * kerbW, z + nz * side * kerbW);
+          const inside = ground.sampleHeight(x - nx * side * kerbW, z - nz * side * kerbW);
+          const under = ground.sampleHeight(x, z);
+          const proud = (main ? KERB_PROUD : LANE_KERB_PROUD) * k + heave;
+          // Proud of the ground beside it, and of the ground under it where a bank falls away outside.
+          const kerb: EdgeStone = { x, z, fx: tx, fz: tz, halfW: kerbW / 2, halfD: stone / 2, y0: Math.min(inside, outside, under) - kerbW, y1: Math.max(outside, under) + proud, shade, kerb: main };
+          if (!inWalls(kerb)) stones.push(kerb);
+        }
       }
     }
   });

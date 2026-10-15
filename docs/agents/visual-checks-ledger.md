@@ -113,6 +113,13 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-15: kerbs along a lane in the shore band (#261)
+
+- **Branch and commit:** `fix/261-town-kerbs`, uncommitted work on `a04f058` (main) that landed as `b359ecf` (PR #295), against `a04f058` unchanged (the fix stashed) for the before shots. A follow-up commit on the same PR then capped how far a stone is stretched to fill its run; it was not re-shot.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1280×800, `snapshot=1`, 5 s after the loading screen went.
+- **View:** `?size=small&seed=1&cx=15.64&cz=24.80` at `dist=1.2` and `dist=2.5`: the back lane of the port on plateau 4 where the kerb test failed, the stretch where the lane runs along the shore band. The captain (and so the ship's port in the HUD) is random per load; the camera is pinned, so the view is the same.
+- **Findings:** before, the lane's seaward kerb stops short where the street's floor dips into the shore band though its edge stands above it, leaving a gap along the bank; after, the kerb runs on along that edge and ends where the edge goes down onto the beach. The rest of the frame differs only where stones moved (each run is now filled end to end). At `dist=2.5` the kerbs are too small to judge.
+
 ### 2026-10-15: NPCs sail once after a fight (#288, PR #293)
 
 - **Branch and commit:** `fix/288-npc-after-fight` at `b717174`.

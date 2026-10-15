@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
-import { getMapPreset } from "../../game/mapConfig";
+import { getMapPreset, type MapSizeId } from "../../game/mapConfig";
 import { createWrap } from "../../game/hex";
 import { createTerrainHeightField, SEA_LEVEL, type TerrainHeightField } from "./terrainHeightField";
-import { buildLandMesh, landSurface, TOWN_FLAG_MARGIN } from "./landMesh";
+import { buildLandMesh, landLattice, landSurface, TOWN_FLAG_MARGIN, type LandLattice } from "./landMesh";
 import { PAVING_TONE, pavingTone, townGround, TOWN_REFINE } from "./townGround";
 import { nearestCopyX, plateauPoint, streetDistance } from "./townPlateau";
 import { BUILDING_ENLARGEMENT } from "./worldScale";
@@ -162,29 +162,78 @@ describe("town ground (#87)", () => {
     expect(hi).toBeLessThanOrEqual(PAVING_TONE[1]);
     expect(hi - lo).toBeGreaterThan((PAVING_TONE[1] - PAVING_TONE[0]) * 0.5);
   });
+});
 
-  it("is sampled by the placement surface exactly as drawn, at the vertices and inside the triangles", () => {
-    const { positions } = fine.land;
+/** The map sizes and seeds the town ground is held on (#261): one pinned seed hid the others. */
+const SWEEP: readonly (readonly [MapSizeId, readonly number[]])[] = [
+  ["small", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]],
+  ["medium", [1, 2]],
+  ["large", [1, 2]],
+];
+
+/**
+ * Where the lattice put a mesh vertex the mesh stores in single precision.
+ * Every vertex lies on a grid: the town's fine lattice (`TOWN_REFINE` cuts
+ * per lattice edge, its odd rows shifted half a fine step) and the
+ * centroids of the coarse triangles the fans beside it meet at, a third of
+ * a row up, so x in steps of a lattice step over 2·`TOWN_REFINE` and z in
+ * rows over 3·`TOWN_REFINE`. A position stored in single precision is off
+ * by up to half a unit in its last place (2e-6 past 32 world units, 4e-6
+ * past 64), and on a street's bank (a slope of 3 or more) that is a height
+ * off by more than the five places checked (#261): the vertex's height was
+ * sampled where the lattice put it, not where single precision rounds it.
+ */
+function latticePoint(lattice: LandLattice, x: number, z: number): [number, number] {
+  const dx = lattice.spacing / (2 * TOWN_REFINE);
+  const dz = lattice.rowHeight / (3 * TOWN_REFINE);
+  return [lattice.minX + Math.round((x - lattice.minX) / dx) * dx, lattice.minZ + Math.round((z - lattice.minZ) / dz) * dz];
+}
+
+/** Most a vertex may move to its lattice point: a few units in the last place of a single-precision position, so a vertex off the grid fails rather than being moved. */
+const SNAP_TOLERANCE = 1e-5;
+
+describe.each(SWEEP)("town ground on %s maps (#87, #261)", (size, seeds) => {
+  it.each(seeds)("is sampled by the placement surface exactly as drawn, at the vertices and inside the triangles, on seed %i", (seed) => {
+    const preset = getMapPreset(size);
+    const wrap = createWrap(preset.columns);
+    const town = createTerrainHeightField(generateMap(preset, seed, wrap), seed, { wrap });
+    const { positions } = buildLandMesh(town).land;
     const surface = landSurface(town);
+    const lattice = landLattice(town);
+    const plateaus = town.townPlateaus;
+    /** Corner `k` of triangle `t` at its lattice point, and how far it moved to get there. */
+    const corner = (t: number, k: number): [number, number, number] => {
+      const x = positions[t * 9 + k * 3];
+      const z = positions[t * 9 + k * 3 + 2];
+      const [lx, lz] = latticePoint(lattice, x, z);
+      return [lx, lz, Math.max(Math.abs(lx - x), Math.abs(lz - z))];
+    };
+    // The largest differences, asserted once: two expects per triangle were most of the test's time.
+    let moved = 0;
+    let worst = 0;
     let checked = 0;
     for (let t = 0; t < positions.length / 9; t += 3) {
-      const x0 = positions[t * 9];
-      const z0 = positions[t * 9 + 2];
+      const [x0, z0] = corner(t, 0);
       if (!plateaus.some((p) => Math.hypot(x0 - p.x, z0 - p.z) < p.reach)) continue;
       // A corner, and a point inside the face (weights 0.2, 0.3, 0.5).
-      expect(surface.sampleHeight(x0, z0)).toBeCloseTo(positions[t * 9 + 1], 5);
+      worst = Math.max(worst, Math.abs(surface.sampleHeight(x0, z0) - positions[t * 9 + 1]));
       const w = [0.2, 0.3, 0.5];
       let x = 0;
       let y = 0;
       let z = 0;
       for (let k = 0; k < 3; k++) {
-        x += positions[t * 9 + k * 3] * w[k];
+        const [cx, cz, m] = corner(t, k);
+        moved = Math.max(moved, m);
+        x += cx * w[k];
         y += positions[t * 9 + k * 3 + 1] * w[k];
-        z += positions[t * 9 + k * 3 + 2] * w[k];
+        z += cz * w[k];
       }
-      expect(surface.sampleHeight(x, z)).toBeCloseTo(y, 5);
+      worst = Math.max(worst, Math.abs(surface.sampleHeight(x, z) - y));
       checked++;
     }
+    expect(moved, `a vertex ${moved} off its lattice point`).toBeLessThan(SNAP_TOLERANCE);
+    // toBeCloseTo(…, 5)'s bound (NaN fails it too).
+    expect(worst < 5e-6, `largest difference ${worst}`).toBe(true);
     expect(checked).toBeGreaterThan(500);
   });
 });
