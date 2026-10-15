@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDevUrlParams, showsDebugPanel } from "./devUrlParams";
+import { parseDevUrlParams, seatCount, showsDebugPanel } from "./devUrlParams";
 
 describe("parseDevUrlParams", () => {
   it("pins nothing for a bare URL", () => {
@@ -94,6 +94,13 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?seats=yes")).toEqual({});
   });
 
+  it("sets the match's seats, 1 to 4, for a hotseat game (#278)", () => {
+    expect(parseDevUrlParams("?players=2")).toEqual({ players: 2 });
+    expect(parseDevUrlParams("?players=4&seats=1")).toEqual({ players: 4, localSeats: true });
+    expect(parseDevUrlParams("?players=1")).toEqual({ players: 1 });
+    for (const bad of ["0", "5", "2.5", "two", "", "02x"]) expect(parseDevUrlParams(`?players=${bad}`)).toEqual({});
+  });
+
   it("shows the render stats overlay", () => {
     expect(parseDevUrlParams("?stats=1")).toEqual({ renderStats: true });
     expect(parseDevUrlParams("?stats=0")).toEqual({});
@@ -108,6 +115,16 @@ describe("parseDevUrlParams", () => {
       cameraDistance: 4.3,
       renderStats: true,
     });
+  });
+});
+
+describe("seatCount", () => {
+  it("is solo unless the URL asks for more seats, and the seats on one page use the same count (#278)", () => {
+    expect(seatCount(parseDevUrlParams(""))).toBe(1);
+    expect(seatCount(parseDevUrlParams("?seats=1"))).toBe(1);
+    expect(seatCount(parseDevUrlParams("?players=2"))).toBe(2);
+    expect(seatCount(parseDevUrlParams("?seats=1&players=3"))).toBe(3);
+    expect(seatCount(parseDevUrlParams("?players=9"))).toBe(1);
   });
 });
 

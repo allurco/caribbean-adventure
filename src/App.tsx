@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { ShaderLab } from "./lab/ShaderLab";
 import { PropViewer } from "./board/PropViewer";
 import { SoundLab } from "./lab/SoundLab";
-import { parseDevUrlParams, showsDebugPanel } from "./board/devUrlParams";
+import { parseDevUrlParams, seatCount, showsDebugPanel } from "./board/devUrlParams";
 import { loadGameClient, loadSeatClient, type GameClient } from "./loadGameClient";
 import { GameClientLoader } from "./GameClientLoader";
 import { LocalSeats } from "./LocalSeats";
@@ -43,9 +43,11 @@ let gameClientPromise: Promise<GameClient> | undefined;
 function gameClient(): Promise<GameClient> {
   // Dev `?seats=1` (#110): every seat on one page, through the local transport
   const debugPanel = showsDebugPanel(devParams);
+  // Solo, one captain against the NPCs, unless dev `?players=` asks for more seats (#278)
+  const seats = seatCount(devParams);
   gameClientPromise ??= devParams.localSeats
-    ? loadSeatClient(devParams.setupData, debugPanel)
-    : loadGameClient(devParams.setupData, debugPanel);
+    ? loadSeatClient(devParams.setupData, debugPanel, seats)
+    : loadGameClient(devParams.setupData, debugPanel, seats);
   return gameClientPromise;
 }
 if (showsGame && !loginGate) void gameClient();
@@ -95,19 +97,19 @@ export default function App() {
   return <Game />;
 }
 
-/** The local hotseat game, with the account link when a backend is configured. */
+/** The local game (solo, or hotseat with dev `?players=`), with the account link when a backend is configured. */
 function Game() {
-  const Loader = devParams.localSeats ? LocalSeats : GameClientLoader;
+  const loaderProps = {
+    client: gameClient(),
+    cameraTarget: devParams.cameraTarget,
+    cameraDistance: devParams.cameraDistance,
+    seaBuoys: devParams.seaBuoys,
+    renderStats: devParams.renderStats,
+    gallerySnapshot: devParams.gallerySnapshot,
+  };
   return (
     <>
-      <Loader
-        client={gameClient()}
-        cameraTarget={devParams.cameraTarget}
-        cameraDistance={devParams.cameraDistance}
-        seaBuoys={devParams.seaBuoys}
-        renderStats={devParams.renderStats}
-        gallerySnapshot={devParams.gallerySnapshot}
-      />
+      {devParams.localSeats ? <LocalSeats {...loaderProps} seats={seatCount(devParams)} /> : <GameClientLoader {...loaderProps} />}
       {supabaseConfig && (
         <Suspense fallback={null}>
           <AccountLink config={supabaseConfig} />

@@ -1,6 +1,7 @@
 import type { CaribbeanSetupData } from "../game/types";
 import type { MapSizeId } from "../game/mapConfig";
 import { isValidMapSeed } from "../game/mapSeed";
+import { DEFAULT_SEATS, isValidSeatCount } from "../game/seats";
 
 /**
  * Dev-only URL parameters (#74), so a URL alone reproduces a map and a view
@@ -29,6 +30,8 @@ export interface DevUrlParams {
   gallerySnapshot?: true;
   /** `?seats=1`: every seat of the match on one page, through boardgame.io's local transport, one seat shown at a time (#110), in dev builds only. */
   localSeats?: true;
+  /** `?players=1..4`: the match's seats, a hotseat game for testing (#278), in dev builds only; solo without it (`seatCount`). */
+  players?: number;
 }
 
 const MAP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
@@ -60,9 +63,19 @@ export function parseDevUrlParams(search: string): DevUrlParams {
     if (params.get("seedGallery") === "1") out.seedGallery = true;
     if (params.get("snapshot") === "1") out.gallerySnapshot = true;
     if (params.get("seats") === "1") out.localSeats = true;
+    const players = integer(params.get("players"));
+    if (players !== undefined && isValidSeatCount(players)) out.players = players;
   }
 
   return out;
+}
+
+/**
+ * How many seats the local match has (#278): `?players=`, else solo. The
+ * seats on one page (`?seats=1`) use the same count.
+ */
+export function seatCount(params: DevUrlParams): number {
+  return params.players ?? DEFAULT_SEATS;
 }
 
 /**
