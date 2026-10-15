@@ -13,6 +13,8 @@ import { supabaseConfig } from "./online/supabaseClient";
 // hotseat game, exactly as before. Each is its own chunk.
 const AccountPage = lazy(() => import("./online/AccountPage").then((m) => ({ default: m.AccountPage })));
 const ProfilePage = lazy(() => import("./online/ProfilePage").then((m) => ({ default: m.ProfilePage })));
+// The combat animation lab (prototype, PRD #259): its own chunk.
+const CombatLab = lazy(() => import("./lab/combatLab/CombatLab"));
 const SignInGate = lazy(() => import("./online/SignInGate").then((m) => ({ default: m.SignInGate })));
 const AccountLink = lazy(() => import("./online/AccountLink").then((m) => ({ default: m.AccountLink })));
 
@@ -28,7 +30,7 @@ const accountRoute = supabaseConfig ? parseAccountRoute(window.location.search) 
 const SeedGallery = import.meta.env.DEV ? lazy(() => import("./lab/SeedGallery")) : null;
 const showSeedGallery = SeedGallery !== null && devParams.seedGallery === true;
 
-const showsGame = !(isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || accountRoute);
+const showsGame = !(isLab || devParams.propViewer || devParams.soundLab || devParams.combatLab || showSeedGallery || accountRoute);
 
 // With a backend configured the root URL is the sign-in screen, and the game
 // sits behind it; `?skipLogin=1` goes straight to the game (temporary, until
@@ -48,7 +50,8 @@ if (showsGame && !loginGate) void gameClient();
 export default function App() {
   // Visit http://localhost:5173/#lab for the shader sandbox,
   // http://localhost:5173/?view=props for the prop viewer (#59),
-  // http://localhost:5173/?view=sound for the sound lab (#73) and
+  // http://localhost:5173/?view=sound for the sound lab (#73),
+  // http://localhost:5173/?view=combatlab for the combat animation lab (#259) and
   // http://localhost:5173/?seedGallery=1 for the seed gallery (#161);
   // anything else loads the normal game. All stay fully isolated from game code.
   if (isLab) {
@@ -72,6 +75,13 @@ export default function App() {
     return (
       <Suspense fallback={null}>
         <SeedGallery mapSize={devParams.setupData?.mapSize} />
+      </Suspense>
+    );
+  }
+  if (devParams.combatLab) {
+    return (
+      <Suspense fallback={null}>
+        <CombatLab />
       </Suspense>
     );
   }

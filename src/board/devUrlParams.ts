@@ -19,6 +19,8 @@ export interface DevUrlParams {
   propViewer?: { focus?: number };
   /** `?view=sound`: the sound lab (#73). */
   soundLab?: true;
+  /** `?view=combatlab`: the combat animation lab (prototype, PRD #259). */
+  combatLab?: true;
   /** `?buoys=1`: buoys on the CPU sea surface around the camera focus, to check it rides the drawn water (#141). */
   seaBuoys?: true;
   /** `?stats=1`: a corner readout of fps, draw calls and triangles (#162), in dev builds only. */
@@ -51,6 +53,7 @@ export function parseDevUrlParams(search: string): DevUrlParams {
     out.propViewer = focus !== undefined && focus >= 0 ? { focus } : {};
   }
   if (params.get("view") === "sound") out.soundLab = true;
+  if (params.get("view") === "combatlab") out.combatLab = true;
   if (params.get("buoys") === "1") out.seaBuoys = true;
   if (params.get("stats") === "1") out.renderStats = true;
   // Dev-only routes (#161): the DEV guard drops even their names from production builds.

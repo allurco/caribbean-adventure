@@ -66,6 +66,10 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?view=sounds")).toEqual({});
   });
 
+  it("opens the combat animation lab", () => {
+    expect(parseDevUrlParams("?view=combatlab")).toEqual({ combatLab: true });
+  });
+
   it("floats the sea surface buoys", () => {
     expect(parseDevUrlParams("?buoys=1")).toEqual({ seaBuoys: true });
     expect(parseDevUrlParams("?buoys=0")).toEqual({});
