@@ -43,7 +43,7 @@ export function OwnProfile({ client, session, profile, onSaved }: OwnProfileProp
           </p>
         </>
       )}
-      <div className="flex items-center justify-between gap-3 border-t border-[#7a5c3a]/35 pt-4">
+      <div className="flex items-center justify-between gap-3 border-t border-shell-rule/35 pt-4">
         <span className="min-w-0 truncate text-[15px] text-shell-ink-soft">{session.email ?? ""}</span>
         <button
           type="button"

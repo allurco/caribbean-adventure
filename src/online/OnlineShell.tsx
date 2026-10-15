@@ -1,23 +1,16 @@
-import type { AccountClient } from "./accountClient";
 import type { AccountSession, Profile } from "./accountService";
-import { ComingSheet } from "./ComingSheet";
 import { HarbourBackdrop } from "./HarbourBackdrop";
-import { OnlineView } from "./OnlineView";
-import { OwnProfile } from "./OwnProfile";
-import { PlaySheet } from "./PlaySheet";
-import { PublicProfile } from "./PublicProfile";
 import { ShellFrame } from "./ShellFrame";
 import type { ShellPage } from "./shellRoute";
+import { ShellSheet } from "./ShellSheet";
 import { ShellSignIn } from "./ShellSignIn";
 import { ShellStatus } from "./ShellStatus";
 import type { SupabaseConfig } from "./supabaseConfig";
 import { useAccountClient, useAccountSession } from "./useAccount";
 import { useProfile, type ProfileState } from "./useProfile";
-import { useRoomApi } from "./useRoomApi";
 import { useShellFonts } from "./useShellFonts";
 import { useShellLayout } from "./useShellLayout";
 import { useShellNavigation } from "./useShellNavigation";
-import { YourVoyages } from "./YourVoyages";
 
 /**
  * The online entry point (#125, the "Harbour launcher" of #104): the harbour,
@@ -30,7 +23,7 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
   useShellFonts();
   const client = useAccountClient(config);
   const session = useAccountSession(client);
-  const layout = useShellLayout();
+  const fit = useShellLayout();
   const { page, onClick } = useShellNavigation(initialPage);
   const signedIn = session.status === "signedIn" ? session.session : null;
   const [ownProfile, setOwnProfile] = useProfile(client, signedIn?.userId ?? null);
@@ -45,7 +38,7 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
       {!ready ? (
         <ShellStatus />
       ) : signedIn || publicPage ? (
-        <ShellFrame layout={layout} page={page} captain={signedIn ? captainOf(signedIn, ownProfile) : null}>
+        <ShellFrame fit={fit} page={page} captain={signedIn ? captainOf(signedIn, ownProfile) : null}>
           <ShellSheet key={pageKey(page)} page={page} client={client} session={signedIn} ownProfile={ownProfile} onProfileSaved={setOwnProfile} />
         </ShellFrame>
       ) : (
@@ -53,39 +46,6 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
       )}
     </div>
   );
-}
-
-interface ShellSheetProps {
-  page: ShellPage;
-  client: AccountClient;
-  /** Null only on a public profile viewed signed out. */
-  session: AccountSession | null;
-  ownProfile: ProfileState;
-  onProfileSaved: (profile: Profile) => void;
-}
-
-/** The sheet's content for `page`. */
-function ShellSheet({ page, client, session, ownProfile, onProfileSaved }: ShellSheetProps) {
-  if (page.kind === "profile") return <PublicProfile client={client} id={page.id} />;
-  if (!session) return null;
-  switch (page.kind) {
-    case "play":
-      return <PlayPage client={client} saved={page.saved === true} />;
-    case "coming":
-      return <ComingSheet screen={page.screen} />;
-    case "account":
-      return <OwnProfile client={client} session={session} profile={ownProfile} onSaved={onProfileSaved} />;
-    case "newRoom":
-    case "room":
-    case "join":
-      return <OnlineView client={client} route={page} />;
-  }
-}
-
-/** Play, with the player's voyages (#301) read through the rooms API. */
-function PlayPage({ client, saved }: { client: AccountClient; saved: boolean }) {
-  const api = useRoomApi(client);
-  return <PlaySheet voyages={<YourVoyages api={api} />} saved={saved} />;
 }
 
 /** The signed-in captain for the nav board: their profile once read, else a nameless seal on their id. */

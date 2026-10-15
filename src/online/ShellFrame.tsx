@@ -4,15 +4,16 @@ import { Nameboard } from "./Nameboard";
 import { NameboardShort } from "./NameboardShort";
 import { PartyDock } from "./PartyDock";
 import { SealCluster } from "./SealCluster";
-import type { ShellLayout } from "./shellLayout";
-import { activeNav, nameboardFor } from "./shellNav";
+import { activeNav, nameboardFor, showsPartyBoard } from "./shellNav";
 import { ShellNavBoard } from "./ShellNavBoard";
 import type { ShellPage } from "./shellRoute";
 import { ShellSideNav } from "./ShellSideNav";
 import { SHEET } from "./shellStyles";
+import type { ShellFit } from "./useShellLayout";
 
 interface ShellFrameProps {
-  layout: ShellLayout;
+  /** The layout, and whether the desktop party board fits under the nav board. */
+  fit: ShellFit;
   page: ShellPage;
   /** The signed-in captain; null when signed out (a public profile). */
   captain: Profile | null;
@@ -38,26 +39,24 @@ interface ShellFrameProps {
  * 12 px gutters, widened to the safe-area inset on the notch side (the insets
  * read as 0 until #123 sets `viewport-fit=cover`); the page never scrolls.
  */
-export function ShellFrame({ layout, page, captain, children }: ShellFrameProps) {
+export function ShellFrame({ fit, page, captain, children }: ShellFrameProps) {
   const active = activeNav(page, captain?.id ?? null);
   const board = nameboardFor(page);
-  // On the party screen the party board would only repeat it.
-  const showParty = !(page.kind === "coming" && page.screen === "party");
+  const showParty = showsPartyBoard(page, captain);
 
-  if (layout === "compact") {
-    const clusterShown = showParty && captain !== null;
+  if (fit.layout === "compact") {
     return (
       <>
         <ShellSideNav active={active} captain={captain} />
         <div className="absolute top-0 right-[max(12px,env(safe-area-inset-right))] bottom-[max(12px,env(safe-area-inset-bottom))] left-[calc(max(12px,env(safe-area-inset-left))+88px)] flex flex-col">
-          <header className={`flex h-[54px] shrink-0 items-end pl-3 ${clusterShown ? "pr-[64px]" : "pr-3"}`}>
+          <header className={`flex h-[54px] shrink-0 items-end pl-3 ${showParty ? "pr-[64px]" : "pr-3"}`}>
             <NameboardShort {...board} />
           </header>
           <main className={`${SHEET} mx-auto mt-2.5 min-h-0 w-full max-w-[844px] flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 py-4 sm:px-6 sm:py-5`}>
             {children}
           </main>
         </div>
-        {clusterShown && <SealCluster captain={captain} />}
+        {showParty && captain && <SealCluster captain={captain} />}
       </>
     );
   }
@@ -74,7 +73,8 @@ export function ShellFrame({ layout, page, captain, children }: ShellFrameProps)
           </main>
         </div>
       </div>
-      {showParty && <PartyDock />}
+      {/* Too short a window for both boards: Party stays on the nav board. */}
+      {showParty && fit.partyDock && <PartyDock />}
     </>
   );
 }

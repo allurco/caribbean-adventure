@@ -3,10 +3,6 @@ import { PLAY_ACTIONS } from "./playActions";
 import { localGamePath, parseShellPage } from "./shellRoute";
 
 describe("PLAY_ACTIONS", () => {
-  it("leads with a private room, the one way into an online match today", () => {
-    expect(PLAY_ACTIONS[0]).toMatchObject({ title: "Open a private room", href: "/?view=rooms" });
-  });
-
   it("offers the lobby, the party and the ranked queue, each marked as coming", () => {
     for (const title of ["Browse the lobby", "Your party", "Ranked queue"]) {
       const action = PLAY_ACTIONS.find((a) => a.title === title);

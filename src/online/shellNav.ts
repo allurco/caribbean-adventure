@@ -4,6 +4,7 @@
  * nameboard over the sheet. Pure, no React.
  */
 import { accountPath } from "./accountRoute";
+import type { Profile } from "./accountService";
 import { comingPath, playPath, type ShellPage } from "./shellRoute";
 
 export type ShellIconName = "anchor" | "board" | "crew" | "crown" | "compass" | "plus" | "sail";
@@ -44,6 +45,15 @@ export function activeNav(page: ShellPage, ownId: string | null): NavKey | null 
     case "profile":
       return ownId !== null && page.id === ownId ? "profile" : null;
   }
+}
+
+/**
+ * Whether the party board (the desktop dock, or the seal cluster on a phone)
+ * shows: only to a signed-in `captain` (null when signed out, on a public
+ * profile), and not on the party screen, which it would only repeat.
+ */
+export function showsPartyBoard(page: ShellPage, captain: Profile | null): boolean {
+  return captain !== null && !(page.kind === "coming" && page.screen === "party");
 }
 
 export interface Nameboard {

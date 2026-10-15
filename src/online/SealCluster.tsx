@@ -37,7 +37,7 @@ export function SealCluster({ captain }: { captain: Profile }) {
 
       {open && (
         <>
-          <div aria-hidden="true" onClick={() => setOpen(false)} className="absolute inset-0 z-20 bg-[#050c12]/45" />
+          <div aria-hidden="true" onClick={() => setOpen(false)} className="absolute inset-0 z-20 bg-shell-scrim/45" />
           <div
             id="shell-party-overlay"
             role="dialog"

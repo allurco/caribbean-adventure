@@ -13,7 +13,7 @@ export function PartyBoard({ onNavigate }: { onNavigate?: () => void }) {
       <a
         href={comingPath("party")}
         onClick={onNavigate}
-        className={`${FOCUS_RING} font-fell text-[22px] text-shell-timber-text hover:text-[#f6e6b8]`}
+        className={`${FOCUS_RING} font-fell text-[22px] text-shell-timber-text hover:text-shell-timber-lit`}
       >
         Party
       </a>

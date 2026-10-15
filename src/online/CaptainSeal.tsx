@@ -33,7 +33,7 @@ export function CaptainSeal({ id, displayName, avatarUrl = null, size = "md" }: 
   return (
     <span
       aria-hidden="true"
-      style={{ background: `radial-gradient(circle at 35% 30%, ${seal.wax}, #1c0f08 140%)` }}
+      style={{ background: `radial-gradient(circle at 35% 30%, ${seal.wax}, var(--color-shell-seal-shadow) 140%)` }}
       className={`${SIZES[size]} flex shrink-0 items-center justify-center rounded-full font-fell-sc text-amber-100/90 ring-2 ring-black/30 shadow-[inset_0_-3px_6px_rgba(0,0,0,0.45),inset_0_2px_3px_rgba(255,255,255,0.15)]`}
     >
       {seal.initials}

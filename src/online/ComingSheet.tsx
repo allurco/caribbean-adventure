@@ -14,7 +14,7 @@ const COMING: Record<ComingScreen, { lead: string; body: string }> = {
   },
   ranked: {
     lead: "The ranked queue is still being fitted out.",
-    body: "Captains will be matched here by rating, and every ranked match will move it.",
+    body: "Captains will be matched here by rating.",
   },
 };
 

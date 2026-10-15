@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
-import { parseShellPage, shellPageForHref, type ShellPage } from "./shellRoute";
+import { parseShellPage, shellPageForHref, shouldInterceptClick, type ShellPage } from "./shellRoute";
 
 /**
  * The shell's page, moved between without a reload (#125): a click on a link
@@ -18,9 +18,8 @@ export function useShellNavigation(initial: ShellPage): { page: ShellPage; onCli
   }, []);
 
   const onClick = useCallback((event: MouseEvent) => {
-    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const anchor = event.target instanceof Element ? event.target.closest("a") : null;
-    if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
+    if (!anchor || !shouldInterceptClick(event, { target: anchor.target, download: anchor.hasAttribute("download") })) return;
     const next = shellPageForHref(anchor.href, window.location.origin);
     if (!next) return;
     event.preventDefault();

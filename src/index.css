@@ -40,6 +40,31 @@
   --color-shell-verdigris: #5f9a86;
   --color-shell-harbour: #082633;
   --color-shell-sea: #1d5f86;
+  /* Lettering and fittings on the shell's timber boards (#125): the lit and
+     unlit nav items, the nameboard's title and line, its ropes and nails, the
+     brass mark beside the lit item and the dark under carved letters. */
+  --color-shell-timber-lit: #f6e6b8;
+  --color-shell-timber-dim: #cfb27a;
+  --color-shell-nameboard: #f0d79a;
+  --color-shell-nameboard-soft: #d9c08a;
+  --color-shell-rope: #d4b47a;
+  --color-shell-rope-dark: #7a5a2e;
+  --color-shell-nail: #f1d999;
+  --color-shell-nail-dark: #6b4a18;
+  --color-shell-brass-light: #ecd08a;
+  --color-shell-brass-dark: #8c6526;
+  --color-shell-char: #120a04;
+  /* On the sheet: its hairlines and the umber of its icons. */
+  --color-shell-rule: #7a5c3a;
+  --color-shell-umber: #6b4a20;
+  /* Over the harbour: the sign-in screen's sail-white lettering, the scrim
+     behind an overlay, the wax seal's shadow and the glow on bare tar. */
+  --color-shell-sail: #fbefcf;
+  --color-shell-sail-soft: #f6ead0;
+  --color-shell-sail-dim: #f3e3b6;
+  --color-shell-scrim: #050c12;
+  --color-shell-seal-shadow: #1c0f08;
+  --color-shell-tar-glow: #2a1b10;
 
   /* The "turn ends" beat between turns (#216): in, hold, out over its length. */
   --animate-turn-ended: turn-ended 1.1s ease-in-out forwards;
@@ -62,10 +87,10 @@
   }
 }
 
-/* A window held sideways and too short for the shell's floating boards: a
-   phone in landscape (#125). Agrees with DESKTOP_MIN_HEIGHT in
-   src/online/shellLayout.ts, which picks the compact layout in script. */
-@custom-variant short-landscape (@media (orientation: landscape) and (max-height: 599px));
+/* A window held sideways and shorter than a phone's top: a phone in landscape
+   (#125). Switches below COMPACT_BELOW_HEIGHT in src/online/shellLayout.ts,
+   which picks the compact layout in script; shellLayout.test.ts pins the two. */
+@custom-variant short-landscape (@media (orientation: landscape) and (max-height: 499px));
 
 html,
 body,

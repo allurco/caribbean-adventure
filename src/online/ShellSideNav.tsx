@@ -3,7 +3,7 @@ import { NavActiveMark } from "./NavActiveMark";
 import { ShellIcon } from "./ShellIcon";
 import { SHELL_NAV } from "./shellNav";
 import type { NavProps } from "./ShellNavBoard";
-import { BOARD_V, FOCUS_RING } from "./shellStyles";
+import { BOARD_V, FOCUS_RING, NAV_LIT, NAV_UNLIT } from "./shellStyles";
 
 /**
  * The nav board on a phone held sideways, or any short window (#125): the
@@ -25,7 +25,7 @@ export function ShellSideNav({ active, captain }: NavProps) {
                 href={item.href}
                 aria-current={on ? "page" : undefined}
                 className={`${FOCUS_RING} relative flex min-h-[48px] w-full flex-col items-center justify-center gap-0.5 font-fell-sc text-[13px] leading-none ${
-                  on ? "bg-[linear-gradient(90deg,rgba(230,199,126,0.2),transparent)] text-[#f6e6b8]" : "text-[#cfb27a]/80 active:text-shell-timber-text"
+                  on ? NAV_LIT : NAV_UNLIT
                 }`}
               >
                 {on && <NavActiveMark />}

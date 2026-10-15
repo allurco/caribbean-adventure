@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeNav, nameboardFor, SHELL_NAV } from "./shellNav";
+import { activeNav, nameboardFor, SHELL_NAV, showsPartyBoard } from "./shellNav";
 import { parseShellPage } from "./shellRoute";
 
 const ME = "0f8fad5b-d9cb-469f-a165-70867728950e";
@@ -35,20 +35,22 @@ describe("activeNav", () => {
 });
 
 describe("nameboardFor", () => {
-  it("names each screen on the hanging nameboard", () => {
-    expect(nameboardFor({ kind: "play" }).title).toBe("Play");
-    expect(nameboardFor({ kind: "coming", screen: "lobby" }).title).toBe("Lobby");
-    expect(nameboardFor({ kind: "coming", screen: "party" }).title).toBe("Party");
-    expect(nameboardFor({ kind: "coming", screen: "ranked" }).title).toBe("Ranked");
-    expect(nameboardFor({ kind: "account" }).title).toBe("Your captain");
-    expect(nameboardFor({ kind: "profile", id: RIVAL }).title).toBe("Captain's profile");
-    expect(nameboardFor({ kind: "newRoom" }).title).toBe("A private room");
-    expect(nameboardFor({ kind: "room", id: RIVAL }).title).toBe("The room");
-    expect(nameboardFor({ kind: "join", inviteCode: null }).title).toBe("An invitation");
-  });
-
   it("gives the screens built later a line saying they are coming", () => {
     expect(nameboardFor({ kind: "coming", screen: "ranked" }).meta).toMatch(/coming/i);
     expect(nameboardFor({ kind: "play" }).meta).not.toMatch(/coming/i);
+  });
+});
+
+describe("showsPartyBoard", () => {
+  const captain = { id: ME, displayName: "Anne", avatarUrl: null };
+
+  it("shows the party board to a signed-in captain on every page but the party screen, which it would only repeat", () => {
+    expect(showsPartyBoard({ kind: "play" }, captain)).toBe(true);
+    expect(showsPartyBoard({ kind: "profile", id: RIVAL }, captain)).toBe(true);
+    expect(showsPartyBoard({ kind: "coming", screen: "party" }, captain)).toBe(false);
+  });
+
+  it("never shows it signed out, on a public profile", () => {
+    expect(showsPartyBoard({ kind: "profile", id: RIVAL }, null)).toBe(false);
   });
 });

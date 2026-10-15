@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { accountPath, profilePath } from "./accountRoute";
 import { joinPath, matchPath, newRoomPath, roomPath } from "./onlineRoute";
-import { comingPath, harbourPath, localGamePath, parseShellPage, playPath, shellPageForHref } from "./shellRoute";
+import { comingPath, harbourPath, localGamePath, parseShellPage, playPath, shellPageForHref, shouldInterceptClick } from "./shellRoute";
 
 const ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const CODE = "AbC-_0123456789xyzXYZ0";
@@ -16,6 +16,17 @@ describe("parseShellPage", () => {
   it("still opens Play when the sign-in link comes back with its own parameters", () => {
     expect(parseShellPage("?code=abc")).toEqual({ kind: "play" });
     expect(parseShellPage("?error=access_denied&error_code=otp_expired&error_description=x")).toEqual({ kind: "play" });
+  });
+
+  it("ignores query parameters it does not know, such as a link tracker's, and still opens Play", () => {
+    expect(parseShellPage("?fbclid=1")).toEqual({ kind: "play" });
+    expect(parseShellPage("?utm_source=x")).toEqual({ kind: "play" });
+    expect(parseShellPage("?utm_source=x&saved=1")).toEqual({ kind: "play", saved: true });
+  });
+
+  it("opens the local game for a dev parameter it can read (#74), not for one it cannot", () => {
+    expect(parseShellPage("?seed=5")).toBeNull();
+    expect(parseShellPage("?seed=banana")).toEqual({ kind: "play" });
   });
 
   it("carries the word that an online match was left and saved, back to Play (#301)", () => {
@@ -78,5 +89,32 @@ describe("shellPageForHref", () => {
 
   it("is null for an invite link: joining takes a seat, so it loads as a page of its own", () => {
     expect(shellPageForHref(`${ORIGIN}${joinPath(CODE)}`, ORIGIN)).toBeNull();
+  });
+});
+
+describe("shouldInterceptClick", () => {
+  const plain = { defaultPrevented: false, button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false };
+  const link = { target: "", download: false };
+
+  it("takes a plain left click on a plain link, to move within the shell in place", () => {
+    expect(shouldInterceptClick(plain, link)).toBe(true);
+  });
+
+  it("leaves a click someone else already handled", () => {
+    expect(shouldInterceptClick({ ...plain, defaultPrevented: true }, link)).toBe(false);
+  });
+
+  it("leaves a middle or right click, and a click with a modifier key, to the browser (new tab, new window, save)", () => {
+    expect(shouldInterceptClick({ ...plain, button: 1 }, link)).toBe(false);
+    expect(shouldInterceptClick({ ...plain, button: 2 }, link)).toBe(false);
+    expect(shouldInterceptClick({ ...plain, metaKey: true }, link)).toBe(false);
+    expect(shouldInterceptClick({ ...plain, ctrlKey: true }, link)).toBe(false);
+    expect(shouldInterceptClick({ ...plain, shiftKey: true }, link)).toBe(false);
+    expect(shouldInterceptClick({ ...plain, altKey: true }, link)).toBe(false);
+  });
+
+  it("leaves a link that names a target or downloads a file", () => {
+    expect(shouldInterceptClick(plain, { target: "_blank", download: false })).toBe(false);
+    expect(shouldInterceptClick(plain, { target: "", download: true })).toBe(false);
   });
 });

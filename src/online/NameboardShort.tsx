@@ -1,9 +1,8 @@
 import type { Nameboard } from "./shellNav";
-import { BOARD_H } from "./shellStyles";
+import { BOARD_H, NAIL, NAMEBOARD_META, NAMEBOARD_TITLE, ROPE } from "./shellStyles";
 
-const ROPE =
-  "absolute bottom-full h-3 w-[3px] bg-[repeating-linear-gradient(35deg,#d4b47a_0_2px,#7a5a2e_2px_4px)] shadow-[1px_0_2px_rgba(0,0,0,0.4)]";
-const NAIL = "absolute top-1 h-1.5 w-1.5 rounded-full bg-[radial-gradient(circle_at_35%_35%,#f1d999,#6b4a18)]";
+const ROPE_SHORT = `${ROPE} bottom-full h-3`;
+const NAIL_SMALL = `${NAIL} top-1 h-1.5 w-1.5`;
 
 /**
  * The nameboard cut down for a phone held sideways (#125): one line, hung on
@@ -13,14 +12,14 @@ const NAIL = "absolute top-1 h-1.5 w-1.5 rounded-full bg-[radial-gradient(circle
 export function NameboardShort({ title, meta }: Nameboard) {
   return (
     <div className={`${BOARD_H} relative flex max-w-full min-w-0 items-baseline gap-3 px-6 py-1.5`}>
-      <span className={`${ROPE} left-[10.5px]`} />
-      <span className={`${ROPE} right-[10.5px]`} />
-      <span className={`${NAIL} left-[9px]`} />
-      <span className={`${NAIL} right-[9px]`} />
-      <h1 className="shrink-0 font-fell-sc text-[22px] leading-none text-[#f0d79a] [text-shadow:0_-1px_0_rgba(0,0,0,0.8),0_1px_0_rgba(255,226,160,0.18)]">
+      <span className={`${ROPE_SHORT} left-[10.5px]`} />
+      <span className={`${ROPE_SHORT} right-[10.5px]`} />
+      <span className={`${NAIL_SMALL} left-[9px]`} />
+      <span className={`${NAIL_SMALL} right-[9px]`} />
+      <h1 className={`${NAMEBOARD_TITLE} shrink-0 text-[22px]`}>
         {title}
       </h1>
-      {meta && <p className="min-w-0 truncate font-garamond text-[14px] text-[#d9c08a]/85 italic">{meta}</p>}
+      {meta && <p className={`${NAMEBOARD_META} min-w-0 text-[14px]`}>{meta}</p>}
     </div>
   );
 }

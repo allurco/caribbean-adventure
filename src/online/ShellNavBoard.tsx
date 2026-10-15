@@ -1,10 +1,10 @@
 import type { Profile } from "./accountService";
-import { CaptainSeal } from "./CaptainSeal";
+import { CaptainFooter } from "./CaptainFooter";
 import { ShellIcon } from "./ShellIcon";
 import { SHELL_NAV, type NavKey } from "./shellNav";
 import { playPath } from "./shellRoute";
 import { NavActiveMark } from "./NavActiveMark";
-import { BOARD_V, FOCUS_RING } from "./shellStyles";
+import { BOARD_V, FOCUS_RING, NAV_LIT, NAV_UNLIT } from "./shellStyles";
 
 export interface NavProps {
   active: NavKey | null;
@@ -22,7 +22,7 @@ export function ShellNavBoard({ active, captain }: NavProps) {
     <nav aria-label="Main" className={`${BOARD_V} absolute top-6 left-6 z-10 flex w-56 flex-col overflow-hidden`}>
       <a href={playPath()} className={`${FOCUS_RING} block border-b border-shell-tar/80 px-5 pt-6 pb-5 shadow-[0_1px_0_rgba(255,220,160,0.06)]`}>
         <span className="block font-fell-sc text-[15px] leading-none text-shell-timber-soft">Project</span>
-        <span className="block font-fell text-[34px] leading-[0.95] italic text-shell-timber-text [text-shadow:0_2px_0_#120a04]">
+        <span className="block font-fell text-[34px] leading-[0.95] italic text-shell-timber-text [text-shadow:0_2px_0_var(--color-shell-char)]">
           Caribbean
         </span>
       </a>
@@ -34,11 +34,7 @@ export function ShellNavBoard({ active, captain }: NavProps) {
               <a
                 href={item.href}
                 aria-current={on ? "page" : undefined}
-                className={`${FOCUS_RING} relative flex w-full items-center gap-3 px-5 py-2.5 font-fell-sc text-[19px] ${
-                  on
-                    ? "bg-[linear-gradient(90deg,rgba(230,199,126,0.18),transparent)] text-[#f6e6b8]"
-                    : "text-[#cfb27a]/80 hover:bg-white/[0.03] hover:text-shell-timber-text"
-                }`}
+                className={`${FOCUS_RING} relative flex w-full items-center gap-3 px-5 py-2.5 font-fell-sc text-[19px] ${on ? NAV_LIT : NAV_UNLIT}`}
               >
                 {on && <NavActiveMark />}
                 <ShellIcon name={item.icon} className={`h-5 w-5 ${on ? "text-shell-gold" : ""}`} />
@@ -50,24 +46,5 @@ export function ShellNavBoard({ active, captain }: NavProps) {
       </ul>
       <CaptainFooter captain={captain} />
     </nav>
-  );
-}
-
-function CaptainFooter({ captain }: { captain: Profile | null }) {
-  const box = "flex items-center gap-3 border-t border-shell-tar/80 bg-black/20 px-4 py-4 font-garamond";
-  if (!captain) {
-    return (
-      <div className={box}>
-        <a href={playPath()} className={`${FOCUS_RING} text-[16px] text-shell-timber-text underline decoration-shell-brass underline-offset-2`}>
-          Sign in to sail
-        </a>
-      </div>
-    );
-  }
-  return (
-    <div className={box}>
-      <CaptainSeal id={captain.id} displayName={captain.displayName} avatarUrl={captain.avatarUrl} />
-      <span className="min-w-0 truncate text-[16px] leading-tight text-shell-timber-text">{captain.displayName || "…"}</span>
-    </div>
   );
 }
