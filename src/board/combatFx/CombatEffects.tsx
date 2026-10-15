@@ -19,6 +19,9 @@ const MAX_STEP = 0.1;
 
 const SMOKE: PuffLook = { color: "#ece8df", shade: "#8e8a84", lit: 1, intensity: 1, additive: false, opacity: 0.3, grow: 2.6, growSeconds: 5, fadeIn: 0.02, fadeOut: 0.55, stretch: 3.4, flat: false };
 const FLASH: PuffLook = { color: "#ffc46b", shade: "#ffc46b", lit: 0, intensity: 3.2, additive: true, opacity: 1, grow: 1.4, growSeconds: 0.05, fadeIn: 0, fadeOut: 0.7, stretch: 1, flat: false };
+// Sparks and embers glow (additive), held to a modest brightness for the bloom.
+const SPARK: PuffLook = { color: "#ffb347", shade: "#ffb347", lit: 0, intensity: 2.2, additive: true, opacity: 1, grow: 0, growSeconds: 1, fadeIn: 0, fadeOut: 0.6, stretch: 1, flat: false };
+const EMBER: PuffLook = { color: "#ff7a2a", shade: "#ff7a2a", lit: 0, intensity: 1.8, additive: true, opacity: 0.9, grow: 0, growSeconds: 1, fadeIn: 0.1, fadeOut: 0.6, stretch: 1, flat: false };
 const SPRAY: PuffLook = { color: "#eef4f4", shade: "#9fb3b8", lit: 0.6, intensity: 1, additive: false, opacity: 0.8, grow: 0.6, growSeconds: 0.6, fadeIn: 0, fadeOut: 0.3, stretch: 1, flat: false };
 const MIST: PuffLook = { color: "#e8eeee", shade: "#a9b4b6", lit: 0.7, intensity: 1, additive: false, opacity: 0.35, grow: 2.5, growSeconds: 1, fadeIn: 0.05, fadeOut: 0.6, stretch: 1.4, flat: false };
 const FOAM: PuffLook = { color: "#e6efee", shade: "#cfd9da", lit: 0, intensity: 1, additive: false, opacity: 0.32, grow: 1.5, growSeconds: 2.5, fadeIn: 0.15, fadeOut: 0.6, stretch: 1, flat: true };
@@ -47,6 +50,8 @@ export function CombatEffects({ director }: { director: CombatDirector }) {
       <PuffLayer pool={pools.mist} look={MIST} />
       <PuffLayer pool={pools.spray} look={SPRAY} />
       <PuffLayer pool={pools.flash} look={FLASH} />
+      <PuffLayer pool={pools.spark} look={SPARK} />
+      <PuffLayer pool={pools.ember} look={EMBER} />
       <DebrisLayer pool={pools.splinter} />
       <ShotLayer shots={director.shots} />
       <GrappleLayer director={director} />

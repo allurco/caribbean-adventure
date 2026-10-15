@@ -29,12 +29,18 @@ import { createPool, spawn, stepPool, type ParticleKind, type ParticlePool, type
 import { CLOSE_IN_APPROACH_GAP, closeInPath, headingBefore, forward, pathPose, sharedBeamHeading, sideOf, starboard, turnHeading, type ShipPath } from "./shipPaths";
 import { shipGuns, shipSize } from "./shipGuns";
 import { stream } from "../visuals/variationStream";
+import { subSeed } from "../visuals/subSeed";
+import { SEED_FEATURES } from "../visuals/seedFeatures";
 
 /** How each effect's particles move (particlePool.ts). World units and seconds. */
 export const KINDS = {
   // Powder smoke: blown out of the ports, then held in a low bank on the water, drifting downwind.
   smoke: { gravity: -0.01, drag: 1.3, windFollow: 1, onSea: "pass", life: 22, ceiling: 0.1 },
-  flash: { gravity: 0, drag: 6, windFollow: 0, onSea: "pass", life: 0.25 },
+  flash: { gravity: 0, drag: 6, windFollow: 0, onSea: "pass", life: 0.4 },
+  // Hot sparks out of the muzzle and off a hit: they arc down under gravity and die in the air or the sea.
+  spark: { gravity: 2.2, drag: 0.9, windFollow: 0.15, onSea: "die", life: 0.6 },
+  // A few embers lifting out of the smoke for a moment, carried by the wind.
+  ember: { gravity: -0.06, drag: 1.5, windFollow: 1, onSea: "pass", life: 1.6 },
   spray: { gravity: 2.6, drag: 0.35, windFollow: 0.2, onSea: "die", life: 2.5 },
   mist: { gravity: -0.01, drag: 2.5, windFollow: 0.6, onSea: "pass", life: 2.4, ceiling: 0.16 },
   splinter: { gravity: 2.6, drag: 0.3, windFollow: 0.1, onSea: "float", life: 14 },
@@ -43,7 +49,7 @@ export const KINDS = {
 } as const satisfies Record<string, ParticleKind>;
 export type PoolName = keyof typeof KINDS;
 
-const CAPACITY: Record<PoolName, number> = { smoke: 720, flash: 48, spray: 640, mist: 160, splinter: 320, foam: 240 };
+const CAPACITY: Record<PoolName, number> = { smoke: 720, flash: 48, spark: 480, ember: 96, spray: 640, mist: 160, splinter: 320, foam: 240 };
 const SHOT_CAPACITY = 48;
 const GRAPPLE_COUNT = 5;
 const IMPULSES = 8;
@@ -158,7 +164,8 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
   }));
   const player = createCuePlayer();
   const ships = new Map<string, ShipFx>();
-  const random = stream(seed);
+  // Each beat draws from its own stream, named by the beat (its seedKey), so its variety is the same on every seat.
+  let random = stream(subSeed(seed, SEED_FEATURES.combatEffects, "start"));
   const tmp = new Vector3();
   const tmp2 = new Vector3();
   const matrix = new Matrix4();
@@ -352,6 +359,16 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
     const [kx, kz] = forward(fx.held.heading);
     const ox = side * sx, oz = side * sz;
     spawn(pools.flash, KINDS.flash, { x: muzzle.x + ox * 0.015, y: muzzle.y, z: muzzle.z + oz * 0.015, vx: ox * 0.3, vy: 0, vz: oz * 0.3, size: 0.12 + 0.05 * random(), seed: random() });
+    sparkBurst(muzzle, ox, oz, reduced ? 5 : 14, 0.9);
+    for (let k = 0; k < (reduced ? 1 : 3); k++) {
+      spawn(pools.ember, KINDS.ember, {
+        x: muzzle.x + ox * 0.03, y: muzzle.y, z: muzzle.z + oz * 0.03,
+        vx: ox * (0.1 + 0.2 * random()), vy: 0.05 + 0.08 * random(), vz: oz * (0.1 + 0.2 * random()),
+        size: 0.008 + 0.006 * random(),
+        life: (reduced ? 0.8 : 1.2) + 0.8 * random(),
+        seed: random(),
+      });
+    }
     const life = reduced ? 7 : 16;
     for (let k = 0; k < 14; k++) {
       const out = 0.12 + 0.8 * random();
@@ -363,6 +380,21 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
         vz: oz * out + kz * (random() - 0.5) * 0.15,
         size: 0.045 + 0.04 * random(),
         life: life + 6 * random(),
+        seed: random(),
+      });
+    }
+  }
+
+  /** Sparks thrown out along (ox, oz) from `at`, fanning and arcing down; `speed` scales their throw. */
+  function sparkBurst(at: Vector3, ox: number, oz: number, count: number, speed: number): void {
+    for (let k = 0; k < count; k++) {
+      const v = speed * (0.4 + 0.9 * random());
+      const fan = (random() - 0.5) * 0.9;
+      spawn(pools.spark, KINDS.spark, {
+        x: at.x, y: at.y, z: at.z,
+        vx: (ox - oz * fan) * v, vy: 0.15 + 0.5 * random(), vz: (oz + ox * fan) * v,
+        size: 0.007 + 0.009 * random(),
+        life: (reduced ? 0.2 : 0.35) + (reduced ? 0.15 : 0.35) * random(),
         seed: random(),
       });
     }
@@ -417,6 +449,9 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
       return;
     }
     burst("splinter", at, reduced ? 6 : 10, 0.35, 0.4, 1, 30);
+    // A smaller shower of sparks off the strike, back toward the shooter.
+    tmp2.subVectors(shot.from, shot.to).setY(0).normalize();
+    sparkBurst(at, tmp2.x, tmp2.z, reduced ? 3 : 7, 0.5);
     burst("mist", at, 2, 0.08, 0.02, 0.05);
     const target = shipFx(volley.targetId);
     const shooter = shipFx(volley.shooterId);
@@ -463,6 +498,7 @@ export function createCombatDirector({ poses, seed, playSound, onBanner }: Comba
   }
 
   function beatStart(beat: CombatBeat): void {
+    random = stream(subSeed(seed, SEED_FEATURES.combatEffects, beat.seedKey ?? beat.kind));
     switch (beat.kind) {
       case "declare": {
         const a = shipFx(beat.attackerId);

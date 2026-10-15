@@ -38,6 +38,12 @@ export interface Volley {
 interface BeatBase {
   /** How long the beat plays, s; its smoke and wreckage linger after. */
   seconds: number;
+  /**
+   * The beat's name in its fight (ids, round, move): its effects draw their
+   * variety from it, so every seat sees the same sparks and smoke whatever
+   * it played before. Beats made by hand (tests) may leave it out.
+   */
+  seedKey?: string;
 }
 
 export interface DeclareBeat extends BeatBase {
@@ -148,7 +154,9 @@ function volleyBeat(next: CaribbeanState, combat: CombatState): VolleyBeat | nul
     start = shots[shots.length - 1].fireAt + REPLY_GAP;
     end = Math.max(end, ...shots.map((s) => s.landAt));
   }
-  return volleys.length > 0 ? { kind: "volley", volleys, seconds: end + VOLLEY_TAIL } : null;
+  return volleys.length > 0
+    ? { kind: "volley", volleys, seconds: end + VOLLEY_TAIL, seedKey: `${combat.attackerId}:${combat.defenderId}:${combat.round}:volley` }
+    : null;
 }
 
 /** Ships and NPCs that left `G` as new wreckage appeared: they went down. */
@@ -168,20 +176,22 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
   const before = prev.combat;
   const after = next.combat;
   const beats: CombatBeat[] = [];
+  const fight = before ?? after;
+  const keyOf = (move: string) => (fight ? `${fight.attackerId}:${fight.defenderId}:${fight.round}:${move}` : move);
 
   if (!before && after) {
-    beats.push({ kind: "declare", attackerId: after.attackerId, defenderId: after.defenderId, seconds: paced(BEATS.declare.seconds) });
+    beats.push({ kind: "declare", attackerId: after.attackerId, defenderId: after.defenderId, seconds: paced(BEATS.declare.seconds), seedKey: keyOf("declare") });
   }
 
   if (before?.stage === "fleeAttempt" && (!after || after.stage === "cannons")) {
     const fleeingId = before.seamanshipWinner ?? before.defenderId;
     const pursuerId = fleeingId === before.attackerId ? before.defenderId : before.attackerId;
-    beats.push({ kind: "flee", fleeingId, pursuerId, outcome: after ? "caught" : "escaped", seconds: paced(BEATS.flee.seconds) });
+    beats.push({ kind: "flee", fleeingId, pursuerId, outcome: after ? "caught" : "escaped", seconds: paced(BEATS.flee.seconds), seedKey: keyOf("flee") });
   }
 
   if (before?.stage === "chooseAction" && !after && before.distance <= 1 && sunkIds(prev, next).length === 0) {
     // Boarding is the one choice that ends the fight at once.
-    beats.push({ kind: "closeAlongside", attackerId: before.attackerId, defenderId: before.defenderId, seconds: paced(BEATS.closeAlongside.seconds) });
+    beats.push({ kind: "closeAlongside", attackerId: before.attackerId, defenderId: before.defenderId, seconds: paced(BEATS.closeAlongside.seconds), seedKey: keyOf("board") });
   }
 
   if (before?.stage === "cannons" && after?.stage === "resolution") {
@@ -192,7 +202,7 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
   for (const shipId of sunkIds(prev, next)) {
     const other = before ? (shipId === before.attackerId ? before.defenderId : before.attackerId) : null;
     const shooterId = other !== null && (other in next.ships || other in next.npcs) ? other : null;
-    beats.push({ kind: "sink", shipId, shooterId, seconds: paced(BEATS.sink.seconds) });
+    beats.push({ kind: "sink", shipId, shooterId, seconds: paced(BEATS.sink.seconds), seedKey: keyOf(`sink:${shipId}`) });
   }
 
   return beats;

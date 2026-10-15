@@ -208,6 +208,18 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(combatBeatsFrom(before, after)).toEqual([expect.objectContaining({ kind: "sink", shipId: npc.id, shooterId: "0" })]);
   });
 
+  it("names each beat for its fight, round and move, so its effects are seeded alike on every seat", () => {
+    const volleyIn = (round: number) =>
+      combatBeatsFrom(
+        makeState({ combat: makeCombat({ stage: "cannons", round }) }),
+        makeState({ combat: makeCombat({ stage: "resolution", round, attackerHits: 1 }) })
+      )[0].seedKey;
+    expect(volleyIn(1)).toBe(volleyIn(1));
+    expect(volleyIn(2)).not.toBe(volleyIn(1));
+    const [declare] = combatBeatsFrom(makeState(), makeState({ combat: makeCombat() }));
+    expect(declare.seedKey).not.toBe(volleyIn(1));
+  });
+
   it("reduced motion plays shorter beats", () => {
     const before = makeState();
     const after = makeState({ combat: makeCombat() });

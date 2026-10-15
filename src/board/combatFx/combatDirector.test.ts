@@ -88,6 +88,57 @@ describe("the combat director: beats played on the board (#263)", () => {
     expect(aliveCount(director.pools.spray)).toBeGreaterThan(0);
   });
 
+  it("each gun throws hot sparks out of the muzzle that arc down and die within a second; a hit throws a few more", () => {
+    const { director } = setup();
+    director.enqueue([declare, volley], CLASSES);
+    play(director, 2.05);
+    const atGun = aliveCount(director.pools.spark);
+    expect(atGun).toBeGreaterThan(5);
+    play(director, 0.4); // the hit has landed (and the second gun fired)
+    expect(aliveCount(director.pools.spark)).toBeGreaterThan(atGun);
+    play(director, 2);
+    expect(aliveCount(director.pools.spark)).toBe(0);
+  });
+
+  it("embers drift up out of the smoke for a moment", () => {
+    const { director } = setup();
+    director.enqueue([declare, volley], CLASSES);
+    play(director, 2.1);
+    expect(aliveCount(director.pools.ember)).toBeGreaterThan(0);
+    play(director, 5);
+    expect(aliveCount(director.pools.ember)).toBe(0);
+  });
+
+  it("fewer sparks under reduced motion", () => {
+    const full = setup();
+    const calm = setup(true);
+    for (const { director } of [full, calm]) {
+      director.enqueue([declare, volley], CLASSES);
+      play(director, 2.05);
+    }
+    expect(aliveCount(calm.director.pools.spark)).toBeLessThan(aliveCount(full.director.pools.spark));
+  });
+
+  it("a beat's sparks are seeded by the beat, not by what the page played before: every seat sees the same", () => {
+    const keyed: CombatBeat = { ...volley, seedKey: "0:1:1:volley" };
+    const a = setup();
+    const b = setup();
+    // One seat watched an earlier fight; the other loaded just now. (Directions differ with the ships' headings; the draws do not.)
+    a.director.enqueue([{ ...declare, seedKey: "earlier" }, { ...volley, seedKey: "earlier-volley" }], CLASSES);
+    play(a.director, 8);
+    for (const { director } of [a, b]) director.enqueue([keyed], CLASSES);
+    const sparks = (d: CombatDirector) => {
+      const p = d.pools.spark;
+      return Array.from(p.state).flatMap((alive, i) => (alive ? [Math.round(p.vy[i] * 1e5), Math.round(p.size[i] * 1e5), Math.round(p.life[i] * 1e5)] : [])).sort();
+    };
+    const fresh = (d: CombatDirector) => {
+      d.pools.spark.state.fill(0);
+      d.update(1 / 120, flatSea);
+      return sparks(d);
+    };
+    expect(fresh(a.director)).toEqual(fresh(b.director));
+  });
+
   it("the guns heel the shooter away from them and the hit makes the target lurch, both steadying after", () => {
     const { director, poses } = setup();
     director.enqueue([declare, volley], CLASSES);
