@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { AccountClient } from "./accountClient";
 import { profilePath } from "./accountRoute";
+import { newRoomPath } from "./onlineRoute";
 import { signOut, type AccountSession } from "./accountService";
 import { DisplayNameForm } from "./DisplayNameForm";
 import { OnlineSheet } from "./OnlineSheet";
@@ -26,9 +27,12 @@ export function OwnProfile({ client, session }: { client: AccountClient; session
         <>
           <ProfileCard profile={profile.profile} />
           <DisplayNameForm key={profile.profile.id} client={client} profile={profile.profile} onSaved={setProfile} />
-          <p>
+          <p className="flex flex-wrap gap-x-5 gap-y-1">
             <a href={profilePath(session.userId)} className={LINK}>
               Your public profile
+            </a>
+            <a href={newRoomPath()} className={LINK}>
+              Open a private room
             </a>
           </p>
         </>

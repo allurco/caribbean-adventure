@@ -62,3 +62,19 @@ describe("inkedSea: the ink printed over what the sea shows (#239)", () => {
     inked.forEach((c, i) => expect(c).toBeLessThan(plain[i] * 0.4));
   });
 });
+
+describe("inkedSea keeps the sea finite whatever the glint does", () => {
+  const body = [0.02, 0.08, 0.16] as const;
+  const sky = [0.7, 0.75, 0.8] as const;
+
+  it("an infinite glint, under ink or not, gives a finite sea", () => {
+    for (const ink of [0, 0.5, 1]) {
+      for (const c of inkedSea(body, sky, [Infinity, Infinity, Infinity], 0.2, ink)) expect(Number.isFinite(c)).toBe(true);
+    }
+  });
+
+  it("a NaN glint adds nothing rather than turning the sea NaN", () => {
+    const plain = inkedSea(body, sky, [0, 0, 0], 0.2, 0.5);
+    expect(inkedSea(body, sky, [NaN, 1, 1], 0.2, 0.5)).toEqual(plain);
+  });
+});

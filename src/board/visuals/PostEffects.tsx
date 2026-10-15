@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useThree } from "@react-three/fiber";
 import { EffectComposer, Bloom, Vignette, ToneMapping } from "@react-three/postprocessing";
+import { COMPOSER_MULTISAMPLING } from "../canvasSetup";
 import { BlendFunction, Effect, ToneMappingMode } from "postprocessing";
 import { Uniform, Vector3, type WebGLRenderer } from "three";
 import type { Lighting } from "./lighting";
@@ -24,6 +25,10 @@ function setRendererExposure(renderer: WebGLRenderer, exposure: number): () => v
 
 interface PostEffectsProps {
   lighting: Lighting;
+  /** Leave the bloom out (`?bloom=0`, an A/B check on a real GPU). */
+  withoutBloom?: boolean;
+  /** The composer's multisampling (`?aa=0` gives 0); `COMPOSER_MULTISAMPLING` when left out. */
+  multisampling?: number;
 }
 
 /**
@@ -32,7 +37,7 @@ interface PostEffectsProps {
  * into one effect pass after the render pass (bloom's blur runs its own
  * mip chain), so the grade adds no pass.
  */
-export function PostEffects({ lighting }: PostEffectsProps) {
+export function PostEffects({ lighting, withoutBloom = false, multisampling = COMPOSER_MULTISAMPLING }: PostEffectsProps) {
   const gl = useThree((state) => state.gl);
   const { bloom, vignette, grade } = lighting;
 
@@ -53,11 +58,16 @@ export function PostEffects({ lighting }: PostEffectsProps) {
   }, [gradeEffect, grade.gain]);
 
   return (
-    <EffectComposer>
-      <Bloom intensity={bloom.intensity} luminanceThreshold={bloom.threshold} luminanceSmoothing={bloom.smoothing} />
-      <Vignette darkness={vignette.darkness} offset={vignette.offset} />
-      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      <primitive object={gradeEffect} />
+    <EffectComposer multisampling={multisampling}>
+      {/* A keyed array, not `{!withoutBloom && <Bloom />}`: the composer's children are typed
+          `JSX.Element | JSX.Element[]`, so a `false` child does not type-check; the keys keep the
+          other passes mounted, in order, when the bloom is left out. */}
+      {[
+        ...(withoutBloom ? [] : [<Bloom key="bloom" intensity={bloom.intensity} luminanceThreshold={bloom.threshold} luminanceSmoothing={bloom.smoothing} />]),
+        <Vignette key="vignette" darkness={vignette.darkness} offset={vignette.offset} />,
+        <ToneMapping key="tone" mode={ToneMappingMode.ACES_FILMIC} />,
+        <primitive key="grade" object={gradeEffect} />,
+      ]}
     </EffectComposer>
   );
 }

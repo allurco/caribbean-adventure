@@ -4,9 +4,9 @@
  * page (or the sign-in form), `?view=profile&id=<uuid>` anyone's public
  * profile. Pure, no React.
  */
-export type AccountRoute = { kind: "account" } | { kind: "profile"; id: string | null };
+import { isUuid } from "./uuid";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export type AccountRoute = { kind: "account" } | { kind: "profile"; id: string | null };
 
 /** The route in `search` (`window.location.search`), or null for any other view. */
 export function parseAccountRoute(search: string): AccountRoute | null {
@@ -15,7 +15,7 @@ export function parseAccountRoute(search: string): AccountRoute | null {
   if (view === "account") return { kind: "account" };
   if (view === "profile") {
     const id = params.get("id");
-    return { kind: "profile", id: id !== null && UUID.test(id) ? id.toLowerCase() : null };
+    return { kind: "profile", id: id !== null && isUuid(id) ? id.toLowerCase() : null };
   }
   return null;
 }

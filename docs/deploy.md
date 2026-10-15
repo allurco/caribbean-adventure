@@ -2,7 +2,7 @@
 
 The online backend (PRD #104, first slice #105) runs on Vercel and Supabase:
 
-- **Vercel** builds the Vite app (`npm run build`, output `dist/`) and serves it as a single-page app. Every `/api/*` request goes to the one Vercel Function, `api/index.ts`, which routes it in `server/handleApiRequest.ts`. `vercel.json` holds the build settings and both rewrites.
+- **Vercel** builds the Vite app (`npm run build`, output `dist/`) and serves it as a single-page app. Every `/api/*` request goes to the one Vercel Function, `api/index.ts`, which routes it in `server/handleApiRequest.ts`. `vercel.json` holds the build settings, both rewrites, and the `includeFiles` that ships the bundled server with the function: `npm run build` ends with `npm run build:api`, which bundles the server and the game code into `api/_server.mjs` (git-ignored; ADR 0008).
 - **Supabase**, added from the Vercel Marketplace, provides Postgres, Auth (email magic links for now) and, later, Realtime. The schema is the SQL under `supabase/migrations/`.
 
 With no Supabase settings the app is the local hotseat game, exactly as before: no sign-in link and no backend calls. CI runs that way.
@@ -15,7 +15,7 @@ The repo is public. Keys and URLs of the real project live only in Vercel's and 
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | The Supabase Marketplace integration | The browser (the app) |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The Supabase Marketplace integration | The browser (the app) |
-| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | The Supabase Marketplace integration | `/api` only (today just reported by `/api/health` as configured or not) |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | The Supabase Marketplace integration | `/api` only: the online routes (rooms, #112) act with this service-role key after checking the caller's access token. `SUPABASE_SERVICE_ROLE_KEY` is read when there is no `SUPABASE_SECRET_KEY`. Without them the online routes answer 503. |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (or `VITE_SUPABASE_PUBLISHABLE_KEY`) | You, in `.env.local` for local development | The browser (the app) |
 
 The integration also injects `POSTGRES_*` and other variables; nothing reads them yet.
@@ -44,8 +44,11 @@ The app reads either naming: `vite.config.ts` exposes the `VITE_` and `NEXT_PUBL
 
 ### Check it
 
+After a pull request that adds a migration is merged, run `npx supabase db push` (step 3) before playing online: the rooms (#112) need `supabase/migrations/20261015000000_rooms.sql`.
+
 - `https://<project>.vercel.app/api/health` answers `{"ok":true,"version":"<commit>","environment":"production","supabase":{"configured":true}}`.
 - The game shows a **Sign in** button at the top right. `/?view=account` asks for an email and sends a link; opening it signs you in and shows your captain, whose display name you can change. **Your public profile** opens `/?view=profile&id=<your id>`, which anyone can read, signed in or not.
+- **Open a private room** (`/?view=rooms`) creates a room and opens its lobby (`/?view=room&id=…`) with the invite link (`/?view=join&invite=…`). A second account that opens the link, signed in, takes a seat; the host's **Start match** then creates the match. `POST https://<project>.vercel.app/api/rooms` without a token answers 401 (503 means the server's Supabase variables are missing).
 
 ## Local development
 
@@ -65,9 +68,9 @@ Open `http://localhost:5173/?view=account` and ask for a link. Local Supabase se
 
 `npx supabase db reset` rebuilds the local database from the migrations; `npx supabase stop` shuts the stack down. A new migration: `npx supabase migration new <name>`, then write its SQL.
 
-To try the `/api` function locally, use `npx vercel dev` (this needs `vercel link` to a project), or call `handleApiRequest` from a test as `server/handleApiRequest.test.ts` does.
+To try the `/api` function locally, use `npx vercel dev` (this needs `vercel link` to a project, and `npm run build:api` first), or call `handleApiRequest` from a test as `server/rooms.test.ts` does. The Vite dev server does not serve `/api`, so the room pages need `vercel dev` (with `SUPABASE_URL` and `SUPABASE_SECRET_KEY` set to the local stack's API URL and service-role key) to work locally.
 
 ## Tests
 
 - `npm test`: the unit tests, the account code against a fake client included. The database tests are skipped.
-- `npm run test:db`: the row-level security tests in `supabase/tests/`, against the local Supabase from `npx supabase start`. They read the URL and keys from `npx supabase status`, or from `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY` and `SUPABASE_TEST_SERVICE_ROLE_KEY` when those are set. They create throwaway users and delete them afterwards.
+- `npm run test:db`: the row-level security tests in `supabase/tests/` (profiles; rooms, seats and matches, including the `/api` routes run against the real database), against the local Supabase from `npx supabase start`. They read the URL and keys from `npx supabase status`, or from `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY` and `SUPABASE_TEST_SERVICE_ROLE_KEY` when those are set. They create throwaway users and delete them afterwards.

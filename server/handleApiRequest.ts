@@ -2,11 +2,68 @@
  * The `/api` routes (#105, PRD #104): one web-standard handler that the single
  * Vercel Function in `api/index.ts` serves for every `/api/*` path
  * (`vercel.json` rewrites them there), so later slices add routes here, not
- * new functions. Pure apart from what `env` holds; tested with plain Requests.
+ * new functions. Tested with plain Requests and in-memory `services`.
+ *
+ * Online play (#112) needs `services`: the database and the sign-in check,
+ * built from the server's environment (`services.ts`). Without them (no
+ * Supabase configured) those routes answer 503 and only health works.
  */
+import { bearerToken, fail, json } from "./http";
+import type { OnlineStore } from "./onlineStore";
+import { createRoom, getRoom, joinRoom, startRoom } from "./rooms";
+
 export type ServerEnv = Readonly<Record<string, string | undefined>>;
 
-export async function handleApiRequest(request: Request, env: ServerEnv): Promise<Response> {
+/**
+ * Who a Supabase access token belongs to: the user's id, or null for a
+ * missing, forged or expired token.
+ */
+export type AuthVerifier = (accessToken: string) => Promise<string | null>;
+
+export interface ApiServices {
+  auth: AuthVerifier;
+  store: OnlineStore;
+  /** A new room's invite code: unguessable (128 random bits). */
+  newInviteCode(): string;
+  /** A map seed for a room that names none. */
+  newMapSeed(): number;
+  /** A new match's random seed: unguessable (128 random bits). */
+  newMatchSeed(): string;
+}
+
+type Route = (request: Request, userId: string, services: ApiServices) => Promise<Response>;
+
+interface RouteEntry {
+  method: string;
+  /** The path's parameters when it matches, else null. */
+  match(path: string): string[] | null;
+  run(request: Request, userId: string, services: ApiServices, params: string[]): Promise<Response>;
+}
+
+const exact = (want: string) => (path: string) => (path === want ? [] : null);
+const pattern = (re: RegExp) => (path: string) => {
+  const m = re.exec(path);
+  if (!m) return null;
+  try {
+    return m.slice(1).map(decodeURIComponent);
+  } catch {
+    // A malformed escape (`%ZZ`) names nothing: no such route.
+    return null;
+  }
+};
+
+const ROUTES: RouteEntry[] = [
+  { method: "POST", match: exact("/api/rooms"), run: (req, user, s) => createRoom(req, user, s) },
+  { method: "POST", match: exact("/api/rooms/join"), run: (req, user, s) => joinRoom(req, user, s) },
+  { method: "POST", match: pattern(/^\/api\/rooms\/([^/]+)\/start$/), run: (_req, user, s, [id]) => startRoom(id, user, s) },
+  {
+    method: "GET",
+    match: (path) => (path === "/api/rooms/join" ? null : pattern(/^\/api\/rooms\/([^/]+)$/)(path)),
+    run: (_req, user, s, [id]) => getRoom(id, user, s),
+  },
+];
+
+export async function handleApiRequest(request: Request, env: ServerEnv, services: ApiServices | null = null): Promise<Response> {
   const path = new URL(request.url).pathname.replace(/\/+$/, "");
   if (path === "/api/health") {
     if (request.method !== "GET" && request.method !== "HEAD") {
@@ -14,7 +71,32 @@ export async function handleApiRequest(request: Request, env: ServerEnv): Promis
     }
     return json(health(env));
   }
-  return json({ ok: false, error: "not found" }, 404);
+
+  try {
+    const route = findRoute(request.method, path);
+    if (route === "not found") return fail(404, "not_found", "not found");
+    if (route === "method not allowed") return fail(405, "method_not_allowed", "method not allowed");
+    if (!services) return fail(503, "not_configured", "online play is not configured");
+    const token = bearerToken(request);
+    const userId = token ? await services.auth(token) : null;
+    if (!userId) return fail(401, "unauthorized", "sign in first");
+    return await route(request, userId, services);
+  } catch (error) {
+    // The details stay in the function's log, never in the response.
+    console.error(error);
+    return fail(500, "internal", "something went wrong");
+  }
+}
+
+function findRoute(method: string, path: string): Route | "not found" | "method not allowed" {
+  let pathMatched = false;
+  for (const entry of ROUTES) {
+    const params = entry.match(path);
+    if (!params) continue;
+    pathMatched = true;
+    if (entry.method === method) return (request, userId, services) => entry.run(request, userId, services, params);
+  }
+  return pathMatched ? "method not allowed" : "not found";
 }
 
 /** Liveness, the commit deployed, and whether the backend is wired, without a single setting's value. */
@@ -27,11 +109,4 @@ function health(env: ServerEnv) {
       configured: Boolean(env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)),
     },
   };
-}
-
-function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers },
-  });
 }

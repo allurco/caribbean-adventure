@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseDevUrlParams, seatCount, showsDebugPanel } from "./devUrlParams";
+import { renderSwitches, parseDevUrlParams, seatCount, showsDebugPanel } from "./devUrlParams";
 
 describe("parseDevUrlParams", () => {
   it("pins nothing for a bare URL", () => {
@@ -113,6 +113,43 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?regionBorder=line")).toEqual({ regionBorder: "line" });
     expect(parseDevUrlParams("?regionBorder=dotted")).toEqual({});
     expect(parseDevUrlParams("?regionBorder=")).toEqual({});
+  });
+
+  it("turns parts of the picture off for an A/B check on a real GPU, in production builds too", () => {
+    expect(parseDevUrlParams("?fx=0")).toEqual({ renderOff: { combatFx: true } });
+    expect(parseDevUrlParams("?ink=0")).toEqual({ renderOff: { regionInk: true } });
+    expect(parseDevUrlParams("?bloom=0")).toEqual({ renderOff: { bloom: true } });
+    expect(parseDevUrlParams("?post=0")).toEqual({ renderOff: { postProcessing: true } });
+    expect(parseDevUrlParams("?fx=0&ink=0&bloom=0")).toEqual({ renderOff: { combatFx: true, regionInk: true, bloom: true } });
+    expect(parseDevUrlParams("?fx=1&ink=&bloom=no")).toEqual({});
+  });
+
+  it("turns parts of the base scene off too: shadows, multisampling, the ocean, the land", () => {
+    expect(parseDevUrlParams("?shadows=0")).toEqual({ renderOff: { shadows: true } });
+    expect(parseDevUrlParams("?aa=0")).toEqual({ renderOff: { msaa: true } });
+    expect(parseDevUrlParams("?ocean=0")).toEqual({ renderOff: { ocean: true } });
+    expect(parseDevUrlParams("?land=0")).toEqual({ renderOff: { land: true } });
+    expect(parseDevUrlParams("?shadows=no&aa=1&ocean=&land=false")).toEqual({});
+  });
+
+  it("sets up the GL context for a check on a real GPU, and shows what it got, in production builds too", () => {
+    expect(parseDevUrlParams("?dpr=1")).toEqual({ gpu: { dpr1: true } });
+    expect(parseDevUrlParams("?power=low")).toEqual({ gpu: { lowPower: true } });
+    expect(parseDevUrlParams("?pdb=1")).toEqual({ gpu: { preserveDrawingBuffer: true } });
+    expect(parseDevUrlParams("?gpuinfo=1")).toEqual({ gpu: { info: true } });
+    expect(parseDevUrlParams("?dpr=2&power=high&pdb=0&gpuinfo=yes")).toEqual({});
+    expect(parseDevUrlParams("?gpuinfo=1&dpr=1&aa=0&fx=0")).toEqual({
+      gpu: { info: true, dpr1: true },
+      renderOff: { msaa: true, combatFx: true },
+    });
+  });
+
+  it("writes the A/B switches in effect back out as the URL spells them, and nothing else", () => {
+    const search = "?fx=0&ink=0&bloom=0&post=0&shadows=0&aa=0&ocean=0&land=0&dpr=1&power=low&pdb=1&gpuinfo=1";
+    const { renderOff, gpu } = parseDevUrlParams(`${search}&seed=7&email=someone`);
+    expect(renderSwitches(renderOff ?? {}, gpu ?? {})).toEqual(search.slice(1).split("&"));
+    expect(parseDevUrlParams(`?${renderSwitches(renderOff ?? {}, gpu ?? {}).join("&")}`)).toEqual({ renderOff, gpu });
+    expect(renderSwitches({}, {})).toEqual([]);
   });
 
   it("reads every parameter from one URL", () => {

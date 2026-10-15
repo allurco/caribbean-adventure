@@ -48,6 +48,6 @@ describe("unknown routes", () => {
   it("are a JSON 404", async () => {
     const res = await get("/api/nope");
     expect(res.status).toBe(404);
-    expect(await res.json()).toEqual({ ok: false, error: "not found" });
+    expect(await res.json()).toEqual({ ok: false, code: "not_found", error: "not found" });
   });
 });

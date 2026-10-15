@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AccountClient, ProfileRow, RowResult, SessionLike } from "./accountClient";
-import { fetchProfile, saveDisplayName, sendMagicLink, signOut, watchSession } from "./accountService";
+import { accessToken, fetchProfile, saveDisplayName, sendMagicLink, signOut, watchSession } from "./accountService";
 
 const ID = "3f1c2b4a-9d8e-4f7a-b6c5-1a2b3c4d5e6f";
 
@@ -188,5 +188,17 @@ describe("saveDisplayName", () => {
   it("reports a backend error", async () => {
     const { client } = fakeClient({ update: { data: null, error: { message: "denied" } } });
     expect(await saveDisplayName(client, ID, "Anne")).toEqual({ ok: false, error: "denied" });
+  });
+});
+
+describe("accessToken", () => {
+  it("is the signed-in session's token, for /api (#112)", async () => {
+    const { client } = fakeClient({ session: { user: { id: ID }, access_token: "jwt" } });
+    expect(await accessToken(client)).toBe("jwt");
+  });
+
+  it("is null when signed out", async () => {
+    const { client } = fakeClient({ session: null });
+    expect(await accessToken(client)).toBeNull();
   });
 });

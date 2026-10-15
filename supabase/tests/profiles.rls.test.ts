@@ -1,65 +1,20 @@
 /**
  * Row-level security of `public.profiles` (#105), against a local Supabase
- * (`npx supabase start`, which needs Docker). Skipped unless
- * SUPABASE_DB_TESTS=1, so `npm test` and CI never need a database; run them
- * with `npm run test:db`. The URL and keys come from SUPABASE_TEST_URL,
- * SUPABASE_TEST_ANON_KEY and SUPABASE_TEST_SERVICE_ROLE_KEY when set, else
- * from `supabase status` (the local stack's well-known development keys).
+ * (`npx supabase start`, which needs Docker; see `localStack.ts`). Skipped
+ * unless SUPABASE_DB_TESTS=1, so `npm test` and CI never need a database;
+ * run them with `npm run test:db`.
  */
-import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { dbTestsEnabled, localStack, NO_SESSION, testPlayers, type LocalStack } from "./localStack";
+import { randomUUID } from "node:crypto";
 
-const enabled = process.env.SUPABASE_DB_TESTS === "1";
-
-interface LocalStack {
-  url: string;
-  anonKey: string;
-  serviceKey: string;
-}
-
-function localStack(): LocalStack {
-  const env = process.env;
-  if (env.SUPABASE_TEST_URL && env.SUPABASE_TEST_ANON_KEY && env.SUPABASE_TEST_SERVICE_ROLE_KEY) {
-    return { url: env.SUPABASE_TEST_URL, anonKey: env.SUPABASE_TEST_ANON_KEY, serviceKey: env.SUPABASE_TEST_SERVICE_ROLE_KEY };
-  }
-  const status = JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], { encoding: "utf8" })) as Record<
-    string,
-    string | undefined
-  >;
-  const url = status.API_URL;
-  const anonKey = status.ANON_KEY ?? status.PUBLISHABLE_KEY;
-  const serviceKey = status.SERVICE_ROLE_KEY ?? status.SECRET_KEY;
-  if (!url || !anonKey || !serviceKey) throw new Error("`supabase status` gave no API URL and keys: is `npx supabase start` running?");
-  return { url, anonKey, serviceKey };
-}
-
-const NO_SESSION = { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } };
-const PASSWORD = "local-test-password-1";
-
-describe.skipIf(!enabled)("profiles row-level security (local Supabase)", () => {
+describe.skipIf(!dbTestsEnabled)("profiles row-level security (local Supabase)", () => {
   let stack: LocalStack;
   let admin: SupabaseClient;
   let anon: SupabaseClient;
-  const players: { id: string; client: SupabaseClient }[] = [];
-
-  async function newPlayer(userMetadata?: Record<string, string>): Promise<{ id: string; client: SupabaseClient }> {
-    const email = `rls-${randomUUID()}@example.test`;
-    const { data, error } = await admin.auth.admin.createUser({
-      email,
-      password: PASSWORD,
-      email_confirm: true,
-      user_metadata: userMetadata,
-    });
-    if (error || !data.user) throw error ?? new Error("no user");
-    const client = createClient(stack.url, stack.anonKey, NO_SESSION);
-    const signIn = await client.auth.signInWithPassword({ email, password: PASSWORD });
-    if (signIn.error) throw signIn.error;
-    const player = { id: data.user.id, client };
-    players.push(player);
-    return player;
-  }
+  const players = testPlayers(() => stack, () => admin);
+  const newPlayer = (userMetadata?: Record<string, string>) => players.create(userMetadata);
 
   async function nameOf(id: string): Promise<string | undefined> {
     const { data } = await admin.from("profiles").select("display_name").eq("id", id).maybeSingle();
@@ -73,7 +28,7 @@ describe.skipIf(!enabled)("profiles row-level security (local Supabase)", () => 
   });
 
   afterAll(async () => {
-    for (const p of players) await admin.auth.admin.deleteUser(p.id);
+    await players.deleteAll();
   });
 
   it("creates a profile when a player signs up, with a placeholder name and no email in it", async () => {

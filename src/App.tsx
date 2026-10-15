@@ -7,6 +7,7 @@ import { loadGameClient, loadSeatClient, type GameClient } from "./loadGameClien
 import { GameClientLoader } from "./GameClientLoader";
 import { LocalSeats } from "./LocalSeats";
 import { parseAccountRoute, skipsLogin } from "./online/accountRoute";
+import { parseOnlineRoute } from "./online/onlineRoute";
 import { supabaseConfig } from "./online/supabaseClient";
 
 // The online pages (#105) and their corner link exist only when a backend is
@@ -16,6 +17,7 @@ const AccountPage = lazy(() => import("./online/AccountPage").then((m) => ({ def
 const ProfilePage = lazy(() => import("./online/ProfilePage").then((m) => ({ default: m.ProfilePage })));
 const SignInGate = lazy(() => import("./online/SignInGate").then((m) => ({ default: m.SignInGate })));
 const AccountLink = lazy(() => import("./online/AccountLink").then((m) => ({ default: m.AccountLink })));
+const OnlinePage = lazy(() => import("./online/OnlinePage").then((m) => ({ default: m.OnlinePage })));
 
 // Dev URL parameters (#74), read once: a map size and seed pin the generated
 // map, cx/cz/dist pin the camera's first view, view=props opens the prop
@@ -24,12 +26,14 @@ const AccountLink = lazy(() => import("./online/AccountLink").then((m) => ({ def
 const devParams = parseDevUrlParams(window.location.search);
 const isLab = window.location.hash === "#lab";
 const accountRoute = supabaseConfig ? parseAccountRoute(window.location.search) : null;
+// Online play (#112): a new room, a room's lobby, an invite link. Only with a backend.
+const onlineRoute = supabaseConfig ? parseOnlineRoute(window.location.search) : null;
 
 // The seed gallery (#161) is dev only: the DEV guard drops it, and its chunk, from production builds.
 const SeedGallery = import.meta.env.DEV ? lazy(() => import("./lab/SeedGallery")) : null;
 const showSeedGallery = SeedGallery !== null && devParams.seedGallery === true;
 
-const showsGame = !(isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || accountRoute);
+const showsGame = !(isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || accountRoute || onlineRoute);
 
 // With a backend configured the root URL is the sign-in screen, and the game
 // sits behind it; `?skipLogin=1` goes straight to the game (temporary, until
@@ -72,6 +76,13 @@ export default function App() {
       </Suspense>
     );
   }
+  if (supabaseConfig && onlineRoute) {
+    return (
+      <Suspense fallback={null}>
+        <OnlinePage config={supabaseConfig} route={onlineRoute} />
+      </Suspense>
+    );
+  }
   if (devParams.propViewer) {
     return <PropViewer focus={devParams.propViewer.focus} />;
   }
@@ -105,6 +116,8 @@ function Game() {
     cameraDistance: devParams.cameraDistance,
     seaBuoys: devParams.seaBuoys,
     regionBorder: devParams.regionBorder,
+    renderOff: devParams.renderOff,
+    gpu: devParams.gpu,
     renderStats: devParams.renderStats,
     gallerySnapshot: devParams.gallerySnapshot,
   };
