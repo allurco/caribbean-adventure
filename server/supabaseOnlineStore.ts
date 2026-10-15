@@ -107,6 +107,43 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
       ) as { outcome: StartOutcome; match_id: string | null }[];
       return { outcome: rows[0].outcome, matchId: rows[0].match_id };
     },
+
+    async getMatch(matchId) {
+      const db = await client();
+      const row = check(
+        await db.from("matches").select("id, room_id, state, state_id").eq("id", matchId).maybeSingle(),
+      ) as { id: string; room_id: string; state: unknown; state_id: number } | null;
+      if (!row) return null;
+      const seats = check(
+        await db.from("seats").select("seat_index, user_id").eq("room_id", row.room_id).order("seat_index"),
+      ) as { seat_index: number; user_id: string }[];
+      return {
+        id: row.id,
+        roomId: row.room_id,
+        state: row.state,
+        stateId: row.state_id,
+        seats: seats.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: null })),
+      };
+    },
+
+    async commitMove(update) {
+      const db = await client();
+      return check(
+        await db.rpc("commit_move", {
+          p_match: update.matchId,
+          p_expected_state_id: update.expectedStateId,
+          p_state: update.state,
+          p_state_id: update.stateId,
+          p_phase: update.phase,
+          p_finished: update.finished,
+          p_seat: update.move.seat,
+          p_user: update.move.userId,
+          p_kind: update.move.kind,
+          p_name: update.move.name,
+          p_args: update.move.args,
+        }),
+      ) as boolean;
+    },
   };
 }
 

@@ -10,6 +10,7 @@
  */
 import { bearerToken, fail, json } from "./http";
 import type { OnlineStore } from "./onlineStore";
+import { getMatch, postAction } from "./matches";
 import { createRoom, getRoom, joinRoom, startRoom } from "./rooms";
 
 export type ServerEnv = Readonly<Record<string, string | undefined>>;
@@ -52,6 +53,12 @@ const ROUTES: RouteEntry[] = [
     method: "GET",
     match: (path) => (path === "/api/rooms/join" ? null : pattern(/^\/api\/rooms\/([^/]+)$/)(path)),
     run: (_req, user, s, [id]) => getRoom(id, user, s),
+  },
+  { method: "GET", match: pattern(/^\/api\/matches\/([^/]+)$/), run: (req, user, s, [id]) => getMatch(req, id, user, s.store) },
+  {
+    method: "POST",
+    match: pattern(/^\/api\/matches\/([^/]+)\/actions$/),
+    run: (req, user, s, [id]) => postAction(req, id, user, s.store),
   },
 ];
 
