@@ -16,7 +16,7 @@ const dummy = new Object3D();
  * rail to the target's, then the line hauled taut between the ships, a
  * little sag left. Pale hemp against the sea, so the lines read as lines.
  */
-export function GrappleLayer({ director }: { director: CombatDirector }) {
+export function GrappleLayer({ director, warm }: { director: CombatDirector; warm: boolean }) {
   const ropes = useRef<InstancedMesh>(null);
   const hooks = useRef<InstancedMesh>(null);
   const count = director.grapples.length;
@@ -83,8 +83,8 @@ export function GrappleLayer({ director }: { director: CombatDirector }) {
         r.setMatrixAt(ropesShown++, dummy.matrix);
       }
     }
-    showInstances(h, hooksShown);
-    showInstances(r, ropesShown);
+    showInstances(h, hooksShown, { warm });
+    showInstances(r, ropesShown, { warm });
     if (hooksShown > 0) {
       r.instanceMatrix.needsUpdate = true;
       h.instanceMatrix.needsUpdate = true;
@@ -93,8 +93,8 @@ export function GrappleLayer({ director }: { director: CombatDirector }) {
 
   return (
     <>
-      <instancedMesh ref={ropes} args={[parts.rope, parts.ropeMaterial, count * ROPE_SEGMENTS]} count={0} visible={false} frustumCulled={false} />
-      <instancedMesh ref={hooks} args={[parts.hook, parts.hookMaterial, count]} count={0} visible={false} frustumCulled={false} />
+      <instancedMesh ref={ropes} args={[parts.rope, parts.ropeMaterial, count * ROPE_SEGMENTS]} count={0} visible={warm} frustumCulled={false} />
+      <instancedMesh ref={hooks} args={[parts.hook, parts.hookMaterial, count]} count={0} visible={warm} frustumCulled={false} />
     </>
   );
 }

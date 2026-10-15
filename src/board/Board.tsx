@@ -151,6 +151,10 @@ const WRAP_COPY_MARGIN = 3;
 
 /** The reach's lines and tint over the sea (#213): widths in world units, heights above sea level. */
 const REACH_OUTLINE_WIDTH = 0.04;
+const REACH_RING_WIDTH = 0.03;
+const REACH_TINT_Y = 0.012;
+const REACH_LINE_Y = 0.02;
+
 /**
  * The canvas's pixel ratio: the device's, capped at 1.5. At 2 on a Retina
  * screen the drawing buffer, its multisampled copy and the composer's HDR
@@ -158,11 +162,8 @@ const REACH_OUTLINE_WIDTH = 0.04;
  * for a picture hardly softer (the post-processing smooths it).
  */
 const CANVAS_DPR: [number, number] = [1, 1.5];
-/** Nothing left out of the picture (no `?fx=0`, `?ink=0` or `?bloom=0`). */
+/** Nothing left out of the picture (no `?fx=0`, `?ink=0`, `?bloom=0` or `?post=0`). */
 const NOTHING_OFF: RenderOff = {};
-const REACH_RING_WIDTH = 0.03;
-const REACH_TINT_Y = 0.012;
-const REACH_LINE_Y = 0.02;
 
 /** A hex whose route shows after a first click, and the `selectionKey` of the ship it was made for. */
 interface RouteSelection {
@@ -207,6 +208,7 @@ function Scene({
   regionBorder,
   renderOff,
   onReady,
+  warmUp,
 }: {
   G: CaribbeanState;
   currentPlayer: string;
@@ -259,10 +261,12 @@ function Scene({
   seaBuoys: boolean;
   /** How the region borders are drawn: seams in the water or lines (dev, #239). */
   regionBorder: RegionBorderMode;
-  /** Parts of the picture left out for an A/B check (`?fx=0`, `?ink=0`, `?bloom=0`). */
+  /** Parts of the picture left out for an A/B check (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`). */
   renderOff: RenderOff;
   /** Reports the loading gate's tasks done here: "world" once built, "sky" once baked (useSceneReadiness.ts). */
   onReady: (task: string) => void;
+  /** The loading gate is still open: idle layers stay in the scene so their shaders compile behind it. */
+  warmUp: boolean;
 }) {
   const currentShipState = G.ships[currentPlayer];
   const controlsRef = useRef<MapControlsType>(null);
@@ -700,7 +704,7 @@ function Scene({
       </WorldCopies>
 
       {/* The fight's smoke, flashes, shot, splinters, spray, foam and grapples (#263) */}
-      {!renderOff.combatFx && <CombatEffects director={combatDirector} />}
+      {!renderOff.combatFx && <CombatEffects director={combatDirector} warm={warmUp} />}
 
       {/* Ship Tooltip, once, in the copy under the pointer */}
       {hoveredShipId && (G.ships[hoveredShipId] || npcs[hoveredShipId]) && (() => {
@@ -786,7 +790,7 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   seaBuoys?: boolean;
   /** How the region borders are drawn (dev, #239): `DEFAULT_REGION_BORDER_MODE` when left out. */
   regionBorder?: RegionBorderMode;
-  /** Parts of the picture left out for an A/B check on a real GPU (`?fx=0`, `?ink=0`, `?bloom=0`). */
+  /** Parts of the picture left out for an A/B check on a real GPU (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`). */
   renderOff?: RenderOff;
   /** Show the fps, draw calls and triangles readout (dev, #162); ignored in production builds. */
   renderStats?: boolean;
@@ -1142,6 +1146,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           regionBorder={regionBorder ?? DEFAULT_REGION_BORDER_MODE}
           renderOff={renderOff ?? NOTHING_OFF}
           onReady={readiness.complete}
+          warmUp={!readiness.view.ready}
         />
         <SceneReadinessProbe
           compileShaders={readiness.view.compileShaders}

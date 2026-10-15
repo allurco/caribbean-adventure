@@ -27,17 +27,24 @@ Wait for the board's loading screen to go (the progress bar `[role=progressbar]`
 - **Don't judge lighting, glow or bloom from a software-rendered screenshot.** A bright or invalid pixel can come out differently there, and bloom smears it into a disc. Confirm any lighting finding in a browser on a real GPU before filing or fixing it.
 - Say which renderer a screenshot used when reporting it (see Screenshot provenance below).
 
+## Open
+
+Reports still being chased. Move an entry to "Investigated, not a bug" or close it with its fix once it ends.
+
+### 2026-10-15: the 3D view flickers black whenever the camera moves (a reporter's machine only)
+
+- **Symptom:** on a reporter's machine, whole 3D frames alternate between a normal render and pure black (0, 0, 0) on any pan, zoom or turn, and stop when the camera stops. The HUD is untouched and the console is empty (no context loss, no GL or shader errors). Medium map, docked at a port, `line` region borders.
+- **Branch and commit:** `a04f058` (main) against `894edb4`, and branch `fix/black-flicker` (PR #292); also the production deployment.
+- **Renderer:** headless Chromium on a real GPU (ANGLE on Metal; also ANGLE on OpenGL) and headless WebKit, at 1280 × 800 (DPR 1 and 2), 1440 × 900 (DPR 2) and 1920 × 1080 (DPR 2).
+- **View:** dev builds at `?size=small&seed=1` and `?size=medium` (its seed was not recorded), the production deployment at `?skipLogin=1` (a random map); the medium map docked at a port. Camera: from its default start, stepped zoom to distances 28, 20, 14, 10, 7, 5, 4, 3, 2, 1.5 and 1, ten wheel steps in and ten out, two drag pans of about 320 px and 200 px, and a scripted path of 400 frames (the target circling 0.08 units a frame, the distance swinging between 1 and 11) followed by a 60-step pointer sweep for hover.
+- **Not reproduced:** a per-frame pixel readback and a NaN/Infinity scan of every uniform found no black frame and no bad uniform. The A/B switches (`?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`, and `fx=0&ink=0&bloom=0`) all draw a normal picture in motion.
+- **Measured, `894edb4` → `a04f058`, medium map, 1440 × 900 at DPR 2, same camera path:** GPU memory the same (about 650 MB: textures 317, buffers 72, renderbuffers 260) and no growth over repeated camera motion or hover. Per frame, about 6 more draw calls and about 440 k more triangles: #281's idle combat layers (shot, splinters, grapples), drawn at zero size even with no fight.
+- **Changed in PR #292:** idle instanced layers are not drawn and cast no shadow once the loading screen has gone (they stay in the scene, empty, while it is up, so their shaders still compile behind it); the sun glint and the sea's output are held finite, NaN and Infinity found from the float's bits; the canvas DPR is capped at 1.5 (about 650 → 480 MB; frame time median 13.4 → 10.1 ms on the test GPU).
+- **Open:** whether the reporter's flicker is gone with the PR's preview, and if not, which switch stops it.
+
 ## Investigated, not a bug
 
 One entry per report. Newest first.
-
-### 2026-10-15: the 3D view flickers black whenever the camera moves (one Mac mini only)
-
-- **Symptom:** on a 16 GB Mac mini, with many apps open, whole 3D frames alternate between a normal render and pure black (0, 0, 0) on any pan, zoom or turn. It stops when the camera stops. The HUD is untouched, the console is empty (no context loss, no GL or shader errors). Medium map, docked at a port, `line` region borders.
-- **Not reproduced headless:** on `a04f058` (main) and on the production deployment (`?skipLogin=1`), with headless Chromium on a real GPU (ANGLE Metal, Apple M1 Max) at DPR 1 and 2, with ANGLE on OpenGL, and in WebKit. Tried stepped zoom 28 → 1, wheel zoom, drag pans and 400 frames of continuous pan and zoom, with a per-frame pixel readback and a NaN/Infinity scan of every uniform: no black frame and no bad uniform. The maintainer saw no flicker on an M1 Max either.
-- **Measured, `894edb4` → `a04f058`, medium map, 1440 × 900 at DPR 2:** GPU memory the same (about 650 MB: textures 317, buffers 72, renderbuffers 260) and no growth over repeated camera motion or hover. Per frame, about 6 more draw calls and about 440 k more triangles: #281's idle combat layers (shot, splinters, grapples), drawn at zero size even with no fight.
-- **Changed in the PR (fix/black-flicker):** idle instanced layers are not drawn and cast no shadow when empty; the sun glint and the sea's output are held finite (a NaN or a half-float overflow there blacks out a whole frame through the bloom's mip blur); the canvas DPR is capped at 1.5 (650 → 480 MB, frame time median 13.4 → 10.1 ms on the M1 Max). A/B switches for a real GPU: `?fx=0`, `?ink=0`, `?bloom=0`, `?post=0`.
-- **Open:** whether that machine's flicker is gone with the PR's preview, and if not, which switch stops it.
 
 ### 2026-10-15: `?seats=1` behind the loading screen (merge of main into PR #262)
 
