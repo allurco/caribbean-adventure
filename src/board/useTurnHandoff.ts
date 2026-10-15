@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NPCShip } from "../game/types";
-import { startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } from "./turnHandoff";
+import { heldNpcsFor, startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } from "./turnHandoff";
 
 /**
  * Plays the hand-off between turns (turnHandoff.ts, #216) each frame from
@@ -46,7 +46,7 @@ export function useTurnHandoff({
     setTurnOf({ player: currentPlayer, turn });
     if (turnOf !== null) {
       setHandoff(startHandoff(turnOf.player, currentPlayer, null, reducedMotion));
-      setHeldNpcs(lastNpcs);
+      setHeldNpcs(heldNpcsFor(lastNpcs, npcs, turnOf, { player: currentPlayer, turn }));
     }
   }
   if (lastNpcs !== npcs) setLastNpcs(npcs);

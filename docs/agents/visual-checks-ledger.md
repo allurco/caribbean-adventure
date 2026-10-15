@@ -97,6 +97,20 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-15: NPCs sail once after a fight (#288, PR #293)
+
+- **Branch and commit:** `fix/288-npc-after-fight` at `b717174`.
+- **Renderer:** headless Chromium on the GPU, "ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Max, Unspecified Version)", 1280×800, debug panel hidden (`.`).
+- **View:** two seats, `?players=2&size=small&seed=1&skipLogin=1&cx=6&cz=19.9&dist=9` (over Thornwood Bay); solo, `?size=small&seed=1&skipLogin=1&cx=8.5&cz=20&dist=11` (over Marisma Bay). The fight camera reframes the two ships once the fight starts; in some runs the view was zoomed out with the mouse wheel to keep the other NPCs in frame.
+- **How the fights were set up:** captains and ships drafted through the draft screen. No NPC had spawned yet, so the match state was rewritten in the client's store (an `UPDATE` with a new `G`): a Flute merchant with no cannons beside the player's ship as the prey (hull 1 to sink it, crew 1 to board it, hull 4 for a fight over several rounds), and two or three more merchants nearby, bound for far ports, to watch. The rest went through the UI: Attack!, a click on the red hex, then the combat panel's buttons, and End Turn.
+- **Findings:**
+  - Two seats, prey sunk: nothing moves while the fight's rounds play. On Apply Damage the turn ends (turn 4 to 5), every other NPC sails once (two hexes, a Flute's moves) with wakes, and the sunk merchant only goes down where she lay. She does not reappear.
+  - Solo, prey boarded: the fight resolves on Board (turn 3 to 4). The prize closes alongside while the grapples fly (#263's effect) and then is gone. The others sail once and the camera flies back to the ship.
+  - Solo, a fight over five rounds that ends in the merchant's escape (pursuit check and parting shot): no NPC moved in any round. Afterwards each sailed once, the escaped merchant too. A merchant that reached its home port in that step was simply gone during the hand-off, as the PR describes.
+  - A turn with no fight, two seats and solo: the NPCs sail during the hand-off as before, then the camera flies to the next captain.
+  - No page errors.
+- **For the maintainer (not from this PR):** after a two-seat fight the camera stays on the fight and does not fly to the next captain's ship, though the HUD and "Your turn" switch to them. It comes from `announceTurn`'s `combatDirector.holding()` (#263); this PR doesn't touch it.
+
 ### 2026-10-15: players out of the game (#265, PR #283)
 
 - **Branch and commit:** `feat/265-captains-out` at `52c0fbb`.
