@@ -5,13 +5,14 @@ import {
   CAPTAINS,
   createCaptainDeck,
   dealHands,
-  findHomePort,
+  findHomeStart,
 } from "./captains";
 import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState } from "./Game";
 import { NATIONS } from "./types";
 import type { MapCell, Captain, Region } from "./types";
 import { hex, hexEquals } from "./hex";
+import type { Hex } from "./hex";
 import { createShipState } from "./economy";
 import type { MapSizeId } from "./mapConfig";
 
@@ -105,74 +106,73 @@ describe("dealHands", () => {
   });
 });
 
-describe("findHomePort", () => {
-  // Ships now dock at water hexes to access ports
-  const dockingHexEngland: MapCell = {
-    hex: hex(0, 0),
+describe("findHomeStart", () => {
+  // Ships dock at water hexes to access ports
+  const water = (q: number, r: number): MapCell => ({
+    hex: hex(q, r),
     terrain: "water", elevation: 0,
     hasPort: false,
-  };
-  const portEngland: MapCell = {
-    hex: hex(1, 0),
+  });
+  const land = (q: number, r: number): MapCell => ({
+    hex: hex(q, r),
     terrain: "island", elevation: 2,
-    hasPort: true,
-    nation: "England",
-    dockingHex: hex(0, 0),
-  };
-  const dockingHexFrance: MapCell = {
-    hex: hex(1, 1),
-    terrain: "water", elevation: 0,
     hasPort: false,
-  };
-  const portFrance: MapCell = {
-    hex: hex(2, 0),
+  });
+  const port = (q: number, r: number, nation: MapCell["nation"], dock: Hex): MapCell => ({
+    hex: hex(q, r),
     terrain: "island", elevation: 2,
     hasPort: true,
-    nation: "France",
-    dockingHex: hex(1, 1),
-  };
-  const dockingHexEngland2: MapCell = {
-    hex: hex(2, 1),
-    terrain: "water", elevation: 0,
-    hasPort: false,
-  };
-  const portEngland2: MapCell = {
-    hex: hex(3, 0),
-    terrain: "island", elevation: 2,
-    hasPort: true,
-    nation: "England",
-    dockingHex: hex(2, 1),
-  };
-  const cells = [dockingHexEngland, portEngland, dockingHexFrance, portFrance, dockingHexEngland2, portEngland2];
+    nation,
+    dockingHex: dock,
+  });
+  const portEngland = port(1, 0, "England", hex(0, 0));
+  const portFrance = port(2, 0, "France", hex(1, 1));
+  const portEngland2 = port(3, 0, "England", hex(2, 1));
+  const cells = [water(0, 0), portEngland, water(1, 1), portFrance, water(2, 1), portEngland2];
 
-  it("returns a port matching the given nation", () => {
-    const result = findHomePort("England", cells, []);
-    expect(result).toBeDefined();
-    expect(result!.nation).toBe("England");
+  const startOf = (h: Hex, p: MapCell) => ({ position: h, homePortHex: p.hex, homeDockingHex: p.dockingHex });
+
+  it("starts docked at a port of the captain's nation", () => {
+    expect(findHomeStart("England", cells, [])).toEqual(startOf(hex(0, 0), portEngland));
   });
 
-  it("skips ports with occupied docking hexes", () => {
-    // Occupy the first England port's docking hex (0,0)
-    const result = findHomePort("England", cells, [hex(0, 0)]);
-    expect(result).toBeDefined();
-    // Should return the second England port
-    expect(hexEquals(result!.hex, hex(3, 0))).toBe(true);
+  it("takes another port of the nation whose dock is free before starting beside a full one", () => {
+    expect(findHomeStart("England", cells, [hex(0, 0)])).toEqual(startOf(hex(2, 1), portEngland2));
   });
 
-  it("falls back to any unoccupied port if no matching nation port", () => {
-    const result = findHomePort("Spain", cells, []);
-    expect(result).toBeDefined();
-    expect(result!.hasPort).toBe(true);
+  it("starts on a free water hex beside the port when the nation's every dock is taken, the dock still home (#239)", () => {
+    const start = findHomeStart("England", cells, [hex(0, 0), hex(2, 1)]);
+    expect(start).toEqual(startOf(hex(1, 1), portEngland));
   });
 
-  it("shares a port of the nation when every one is taken, rather than send the captain abroad (#239)", () => {
-    const taken = [hex(0, 0), hex(2, 1)]; // Both English docking hexes
-    expect(findHomePort("England", cells, taken)?.nation).toBe("England");
+  it("starts at any free dock on the map when the nation has no port", () => {
+    expect(findHomeStart("Spain", cells, [])?.homePortHex).toBeDefined();
   });
 
-  it("returns undefined if all ports' docking hexes are occupied and none is the nation's", () => {
-    const result = findHomePort("Spain", cells, [hex(0, 0), hex(1, 1), hex(2, 1)]);
-    expect(result).toBeUndefined();
+  it("finds a foreign dock when the nation's one port has a full dock and no free water beside it", () => {
+    // England's only port at (1, 0): its dock (0, 0) taken, every other
+    // neighbour land or taken. France's port at (5, 0) docks at (4, 0).
+    const lonePort = port(1, 0, "England", hex(0, 0));
+    const french = port(5, 0, "France", hex(4, 0));
+    const grid = [
+      water(0, 0), lonePort,
+      land(2, 0), land(2, -1), land(1, -1), water(0, 1), land(1, 1),
+      french, water(4, 0),
+    ];
+    const start = findHomeStart("England", grid, [hex(0, 0), hex(0, 1)]);
+    expect(start).toEqual(startOf(hex(4, 0), french));
+  });
+
+  it("starts on water beside the port, docking there, when the port's dock is not water", () => {
+    const badDock = port(1, 0, "England", hex(2, 0));
+    const grid = [badDock, land(2, 0), water(0, 0)];
+    expect(findHomeStart("England", grid, [])).toEqual({
+      position: hex(0, 0), homePortHex: hex(1, 0), homeDockingHex: hex(0, 0),
+    });
+  });
+
+  it("is undefined only when no port on the map has free water at or beside it", () => {
+    expect(findHomeStart("Spain", cells, [hex(0, 0), hex(1, 1), hex(2, 1)])).toBeUndefined();
   });
 
   describe("with regions (#239)", () => {
@@ -186,19 +186,22 @@ describe("findHomePort", () => {
       { ...portEngland, region: 1 },
       { ...portFrance, region: 0 },
       { ...portEngland2, region: 1 },
-      dockingHexEngland,
-      dockingHexFrance,
-      dockingHexEngland2,
+      water(0, 0),
+      water(1, 1),
+      water(2, 1),
     ];
 
     it("picks a port in the nation's region, whatever flag it flies", () => {
-      expect(hexEquals(findHomePort("England", inRegions, [], regions)!.hex, portFrance.hex)).toBe(true);
-      expect(findHomePort("France", inRegions, [], regions)?.region).toBe(1);
+      expect(findHomeStart("England", inRegions, [], regions)?.homePortHex).toEqual(portFrance.hex);
+      expect(findHomeStart("France", inRegions, [], regions)?.homePortHex).toEqual(portEngland.hex);
     });
 
-    it("prefers a free one, then shares", () => {
-      expect(hexEquals(findHomePort("France", inRegions, [hex(0, 0)], regions)!.hex, portEngland2.hex)).toBe(true);
-      expect(findHomePort("England", inRegions, [hex(1, 1)], regions)?.region).toBe(0);
+    it("prefers a free dock in the region, then a water hex beside one of its ports", () => {
+      expect(findHomeStart("France", inRegions, [hex(0, 0)], regions)?.homePortHex).toEqual(portEngland2.hex);
+      const start = findHomeStart("England", inRegions, [hex(1, 1)], regions);
+      expect(start?.homePortHex).toEqual(portFrance.hex);
+      expect(start?.homeDockingHex).toEqual(hex(1, 1));
+      expect(start?.position).not.toEqual(hex(1, 1));
     });
   });
 });

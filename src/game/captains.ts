@@ -1,5 +1,6 @@
 import type { Hex } from "./hex";
-import { hexEquals } from "./hex";
+import { hexEquals, wrappedNeighbors } from "./hex";
+import type { MapWrap } from "./hex";
 import type { Captain, MapCell, Nation, Region } from "./types";
 
 export const CAPTAINS: Captain[] = [
@@ -107,24 +108,58 @@ export function dealHands(
   return { hands, remaining };
 }
 
+/** Where a drafted captain's ship starts, and the port it calls home. */
+export interface HomeStart {
+  position: Hex;
+  /** The home port's own (land) hex. */
+  homePortHex: Hex;
+  /** The water hex the ship docks at to use its home port. */
+  homeDockingHex: Hex;
+}
+
 /**
- * The home port for a captain of `nation`: a port in the nation's region
- * (#239; by the port's own flag on a map without regions) whose docking hex
- * is free. If every one of those is taken, one of them all the same (the
- * ship starts beside it, the draft finds where); only if the nation has no
- * port at all, any port with a free docking hex.
+ * Where a captain of `nation` starts (#239). Among the ports in the nation's
+ * region (by the port's own flag on a map without regions): docked at one
+ * whose dock is free; else on a free water hex beside one of them, its dock
+ * still home. Only if none of those has room, the same at any port on the
+ * map. A port whose docking hex is not water docks at the water hex beside
+ * it. Undefined only when no port (with a docking hex) has free water at
+ * or beside it.
  */
-export function findHomePort(
+export function findHomeStart(
   nation: Nation,
-  cells: MapCell[],
-  occupiedHexes: Hex[],
+  cells: readonly MapCell[],
+  occupiedHexes: readonly Hex[],
   regions: readonly Region[] = [],
-): MapCell | undefined {
-  const isOccupied = (h: Hex | undefined) =>
-    h ? occupiedHexes.some((o) => hexEquals(o, h)) : true;
+  wrap: MapWrap = null,
+): HomeStart | undefined {
+  const isWater = (h: Hex) => cells.some((c) => hexEquals(c.hex, h) && c.terrain === "water");
+  const isFree = (h: Hex) => isWater(h) && !occupiedHexes.some((o) => hexEquals(o, h));
   const inNationWaters = (c: MapCell) =>
     c.region !== undefined && regions[c.region] ? regions[c.region].nation === nation : c.nation === nation;
+
+  const docked = (port: MapCell): HomeStart | undefined =>
+    port.dockingHex && isFree(port.dockingHex)
+      ? { position: port.dockingHex, homePortHex: port.hex, homeDockingHex: port.dockingHex }
+      : undefined;
+  const beside = (port: MapCell): HomeStart | undefined => {
+    const free = wrappedNeighbors(port.hex, wrap).find(isFree);
+    if (!free) return undefined;
+    const dock = port.dockingHex && isWater(port.dockingHex) ? port.dockingHex : free;
+    return { position: free, homePortHex: port.hex, homeDockingHex: dock };
+  };
+  const firstOf = (ports: readonly MapCell[]): HomeStart | undefined => {
+    for (const p of ports) {
+      const start = docked(p);
+      if (start) return start;
+    }
+    for (const p of ports) {
+      const start = beside(p);
+      if (start) return start;
+    }
+    return undefined;
+  };
+
   const ports = cells.filter((c) => c.hasPort && c.dockingHex);
-  const home = ports.filter(inNationWaters);
-  return home.find((c) => !isOccupied(c.dockingHex)) ?? home[0] ?? ports.find((c) => !isOccupied(c.dockingHex));
+  return firstOf(ports.filter(inNationWaters)) ?? firstOf(ports);
 }
