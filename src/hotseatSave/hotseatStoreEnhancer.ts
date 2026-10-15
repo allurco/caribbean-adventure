@@ -7,14 +7,17 @@ type StoreEnhancer = NonNullable<Parameters<typeof Client>[0]["enhancer"]>;
 interface HotseatStoreOptions {
   /** The state to start the match in (a restored save), instead of the game's `setup()`. */
   start?: MatchState;
-  /** Called with the whole state after every action, and once with the state the store starts in. */
+  /** Called with the whole state after every action, and, when restoring, once with `start`. */
   onState: (state: MatchState) => void;
 }
 
 /**
  * A Redux store enhancer for boardgame.io's local client (its `enhancer`
  * option): it starts the store in `start` when given, the preloaded state
- * otherwise, and hands every state the store reaches to `onState`. The
+ * otherwise, and hands every state the store reaches to `onState`. A new
+ * match is first reported after its first action: under React's StrictMode
+ * a client is built twice and one never shown, and that one must not
+ * overwrite the save. A restored match is reported at once (it is the save). The
  * client keeps its own reducer, middleware and flow; only where the store
  * starts changes, so a restored match plays on as boardgame.io would.
  */
@@ -22,7 +25,7 @@ export function hotseatStoreEnhancer({ start, onState }: HotseatStoreOptions): S
   return (createStore) => (reducer, preloaded) => {
     const store = createStore(reducer, (start ?? preloaded) as typeof preloaded);
     store.subscribe(() => onState(store.getState() as unknown as MatchState));
-    onState(store.getState() as unknown as MatchState);
+    if (start) onState(start);
     return store;
   };
 }

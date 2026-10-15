@@ -33,6 +33,18 @@ function endTurns(client: Match, turns: number) {
   for (let i = 0; i < turns; i++) client.events.endTurn!();
 }
 
+/** Presses each step of the fight in turn, firing when a side must choose, until the first round is resolved. */
+function fightOneRound(client: Match) {
+  for (let step = 0; step < 10 && client.getState()!.G.combat?.round === 1; step++) {
+    const stage = client.getState()!.G.combat!.stage;
+    if (stage === "seamanship") client.moves.rollSeamanship();
+    else if (stage === "chooseAction") client.moves.chooseCombatAction("fire");
+    else if (stage === "fleeAttempt") client.moves.rollFleeAttempt();
+    else if (stage === "cannons") client.moves.rollCannons();
+    else if (stage === "resolution") client.moves.applyResolution();
+  }
+}
+
 /** The parts of a match that decide how it plays on, as JSON (G is JSON by contract: -0 and undefined keys do not survive it). */
 function playable(client: Match) {
   const { G, ctx, plugins, _stateID } = client.store.getState();
@@ -60,6 +72,28 @@ describe("a saved hotseat game", () => {
     // The turns spent the dice, and merchants came out on them
     expect(original.store.getState().plugins.random).not.toEqual(diceAtSave);
     expect(original.getState()!.G.npcIdCounter).toBeGreaterThan(0);
+  });
+
+  it("fights on, after a restore, with the same dice: one round of ship-to-ship combat", () => {
+    const opened = newMatch(2);
+    playOpening(opened);
+    // The seat to play lies alongside the other's ship, in range of its guns
+    const state: MatchState = opened.store.getState();
+    const attackerId = state.ctx.currentPlayer;
+    const defenderId = attackerId === "0" ? "1" : "0";
+    const { q, r } = state.G.ships[attackerId].position;
+    const alongside = { ...state.G.ships[defenderId], position: { q: q + 1, r, s: -q - 1 - r } };
+    const original = newMatch(2, { ...state, G: { ...state.G, ships: { ...state.G.ships, [defenderId]: alongside } } });
+
+    const restored = newMatch(2, restoreHotseat(throughStorage(original.store.getState()), map));
+    for (const match of [original, restored]) {
+      match.moves.attackShip(defenderId);
+      fightOneRound(match);
+    }
+    // Seamanship and cannons were rolled: both sides threw the same dice
+    expect(original.getState()!.ctx.phase).toBe("combat");
+    expect(original.getState()!.G.combat!.round).toBeGreaterThan(1);
+    expect(playable(restored)).toEqual(playable(original));
   });
 
   it("restores mid-draft, the hands still dealt", () => {
@@ -94,12 +128,21 @@ describe("a saved hotseat game", () => {
   it("records when it was saved, and the save's schema version", () => {
     const save = saveHotseat(newMatch(1).store.getState(), map, 1_234);
     expect(save.savedAt).toBe(1_234);
-    expect(save.version).toBe(1);
+    expect(save.version).toBe(2);
   });
 
   it("refuses a map that is not the save's", () => {
     const save = throughStorage(newMatch(1).store.getState());
     const other = { mapSize: "small", mapSeed: 8 } as const;
     expect(() => restoreHotseat(save, { ...other, ...generateMapFor(other) })).toThrow();
+  });
+
+  it("refuses the same size and seed when the generator now makes another world from them (an older build's save)", () => {
+    const save = throughStorage(newMatch(1).store.getState());
+    const portIndex = map.cells.findIndex((cell) => cell.market);
+    const regenerated = { ...map, cells: map.cells.map((cell, i) => (i === portIndex ? { ...cell, market: undefined } : cell)) };
+    expect(() => restoreHotseat(save, regenerated)).toThrow(/another world/);
+    const renamed = { ...map, regions: map.regions.map((region, i) => (i === 0 ? { ...region, name: "Elsewhere" } : region)) };
+    expect(() => restoreHotseat(save, renamed)).toThrow(/another world/);
   });
 });

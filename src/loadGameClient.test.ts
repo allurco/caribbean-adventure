@@ -26,7 +26,7 @@ vi.mock("@react-three/drei", async (importOriginal) => ({
 vi.mock("boardgame.io/react", () => ({ Client: (options: unknown) => options }));
 // A tiny map, so the test does not wait on the generator.
 vi.mock("./mapWorker/generateMapOffThread", () => ({
-  generateMapOffThread: async () => ({ mapSize: "small", mapSeed: 1, cells: [] }),
+  generateMapOffThread: async () => ({ mapSize: "small", mapSeed: 1, cells: [], regions: [] }),
 }));
 
 describe("loading the game client", () => {

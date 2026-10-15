@@ -31,9 +31,10 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
 }
 
 function isHotseatSave(value: Record<string, unknown>): value is Record<string, unknown> & HotseatSave {
-  const { version, savedAt, map, state, cellPatches, regions } = value;
+  const { version, savedAt, map, mapFingerprint, state, cellPatches, regions } = value;
   if (version !== HOTSEAT_SAVE_VERSION || typeof savedAt !== "number" || !Number.isFinite(savedAt)) return false;
   if (!isRecord(map) || !MAP_SIZES.includes(map.mapSize) || !isValidMapSeed(map.mapSeed)) return false;
+  if (typeof mapFingerprint !== "string") return false;
   if (!isRecord(state) || !isRecord(state.G) || !isRecord(state.ctx) || !isRecord(state.plugins)) return false;
   if (typeof state._stateID !== "number") return false;
   const { numPlayers, turn } = state.ctx;
