@@ -456,6 +456,12 @@ function Scene({
   // The route to the selected hex, else the hovered one, as dots on the water
   const hovered = reach && grid.hoveredHex && reachCost(reach, grid.hoveredHex) !== undefined ? grid.hoveredHex : null;
   const previewTarget = selected ?? hovered;
+  // The region of whatever sea hex is under the pointer, for its tooltip (#239)
+  const hoveredRegion = useMemo(() => {
+    const hex = grid.hoveredSeaHex;
+    const region = hex ? regionAt(G.cells, G.regions ?? [], hex) : undefined;
+    return hex && region ? { region, position: hexToWorld(hex) } : null;
+  }, [grid.hoveredSeaHex, G.cells, G.regions]);
   // The reach as an outline, cost rings and a light tint one move out, all on the water (reachOutline.ts)
   const reachShapes = useMemo(() => {
     if (!reach) return null;
@@ -662,15 +668,11 @@ function Scene({
       )}
 
       {/* The region of the hovered sea hex (#239) */}
-      {grid.hoveredHex && !hoveredShipId && !hoveredPort && (() => {
-        const region = regionAt(G.cells, G.regions ?? [], grid.hoveredHex);
-        if (!region) return null;
-        return (
-          <PointerCopy x={hexToWorld(grid.hoveredHex)[0]} period={period}>
-            <RegionTooltip position={hexToWorld(grid.hoveredHex)} region={region} />
-          </PointerCopy>
-        );
-      })()}
+      {hoveredRegion && !hoveredShipId && !hoveredPort && (
+        <PointerCopy x={hoveredRegion.position[0]} period={period}>
+          <RegionTooltip position={hoveredRegion.position} region={hoveredRegion.region} />
+        </PointerCopy>
+      )}
 
       <MapControls
         ref={controlsRef}
