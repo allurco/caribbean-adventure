@@ -779,14 +779,18 @@ function Scene({
       />
 
       {/* Post-processing: bloom, vignette, ACES at the lighting's exposure, warm grade */}
-      {renderOff.postProcessing ? <PlainRender /> : <PostEffects
+      {renderOff.postProcessing ? (
+        <PlainRender />
+      ) : (
+        <PostEffects
           lighting={lighting}
           withoutBloom={renderOff.bloom === true}
           multisampling={composerMultisampling}
           sanitizeBloomInput={!renderOff.bloomSanitize}
           mipmapBlur={!renderOff.bloomMipmapBlur}
           frameBuffer={composerFrameBuffer}
-        />}
+        />
+      )}
     </>
     </SeaSurfaceContext.Provider>
   );
