@@ -15,6 +15,12 @@ Headless Chromium usually has no GPU, so WebGL runs on a software renderer (Swif
 
 One entry per report. Newest first.
 
+### 2026-10-14: sea drawn white, or a dark patch round a docked ship (#110 check)
+
+- **Symptom:** in headless screenshots taken while checking PR #245 (`?seats=1` and hotseat, `size=small&seed=1`), the sea sometimes came out flat white with only hex lines, and once a dark blue polygon of water lay round a seat's docked ship while it was another seat's turn.
+- **Ruled out:** both showed with the same code from frame to frame and run to run, and the dark patch is not the reach: off-turn the board gets no moves and is locked, so no reach is built.
+- **Conclusion:** taken as an artifact of the software-rendered capture (water shader timing), not checked on a real GPU. Recheck there before filing anything.
+
 ### 2026-10-14: white glare blob beside the player's ship
 
 - **Symptom:** a large blown-out white disc on the water right beside the active ship, in close-up headless screenshots taken while checking #231, #232 and #233.
