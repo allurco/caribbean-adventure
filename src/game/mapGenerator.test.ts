@@ -292,13 +292,13 @@ describe("generateMap", () => {
     expect(map.some((c) => c.hasPort)).toBe(true);
   });
 
-  it("caps ports at 5, 10 and 15 on the small, medium and large maps", () => {
-    const caps = [5, 10, 15];
+  it("founds 9, 13 and 17 ports on the small, medium and large maps: 2, 3 or 4 a nation and the pirate haven (#239)", () => {
+    const counts = [9, 13, 17];
     MAP_PRESETS.forEach((preset, i) => {
       for (const seed of SEEDS.slice(0, 3)) {
-        const portCount = generateMap(preset, seed).filter((c) => c.hasPort).length;
-        expect(portCount).toBeLessThanOrEqual(caps[i]);
-        expect(portCount).toBeGreaterThan(0);
+        for (const wrap of [null, createWrap(preset.columns)]) {
+          expect(generateMap(preset, seed, wrap).filter((c) => c.hasPort)).toHaveLength(counts[i]);
+        }
       }
     });
   });

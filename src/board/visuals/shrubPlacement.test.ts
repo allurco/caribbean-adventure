@@ -252,7 +252,7 @@ describe("placeShrubs", () => {
   });
 
   it("places each shrub once from its canonical cell on a wrapping map", () => {
-    const wrapped = layoutOf("small", 11, createWrap(24));
+    const wrapped = layoutOf("small", 11, createWrap(getMapPreset("small").columns));
     expect(wrapped.shrubs.length).toBeGreaterThan(wrapped.cells.filter(takesShrubs).length * 0.8);
     const xs = wrapped.cells.filter(takesShrubs).map((c) => hexToWorld(c.hex)[0]);
     const [minX, maxX] = [Math.min(...xs) - SHRUB_SPREAD, Math.max(...xs) + SHRUB_SPREAD];

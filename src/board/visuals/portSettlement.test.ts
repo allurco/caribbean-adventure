@@ -378,8 +378,15 @@ describe("portBuildings", () => {
       const fort = (port.decorations ?? []).find((d) => d.type === "fort");
       if (fort) {
         const fortDirection = Math.atan2(fort.position[0], fort.position[2]);
-        const other = endSlots.find((a) => Math.abs(offLandward - a) > 1)!;
-        expect(angleDiff(direction, fortDirection)).toBeLessThanOrEqual(angleDiff(landward + other, fortDirection) + 1e-9);
+        // The end slot it took (it stands within a candidate step of it) is the one on the fort's side.
+        const taken = endSlots.find((a) => Math.abs(offLandward - a) < Math.PI / 15 + 1e-9)!;
+        const other = endSlots.find((a) => a !== taken)!;
+        expect(angleDiff(landward + taken, fortDirection)).toBeLessThanOrEqual(angleDiff(landward + other, fortDirection) + 1e-9);
+        // And the tower itself, where it actually stands, is on the fort's side of the landward line: no
+        // farther from the fort than from the fort's mirror image across that line (level with it only when
+        // the fort lies on the line, where either end will do).
+        const mirroredFort = 2 * landward - fortDirection;
+        expect(angleDiff(direction, fortDirection)).toBeLessThanOrEqual(angleDiff(direction, mirroredFort) + 1e-9);
       }
     }
     // On the real map no tower falls back to the hex centre, nor stands on the square.

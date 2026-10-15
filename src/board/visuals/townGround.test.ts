@@ -56,7 +56,7 @@ function openEdges(positions: Float32Array, seam: { minX: number; maxX: number }
 }
 
 describe("town ground (#87)", () => {
-  const { plain, town } = fields(1);
+  const { plain, town } = fields(2);
   const plateaus = town.townPlateaus;
   const coarse = buildLandMesh(plain);
   const fine = buildLandMesh(town);

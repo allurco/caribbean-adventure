@@ -1,6 +1,6 @@
 import type { Game } from "boardgame.io";
 import { INVALID_MOVE } from "boardgame.io/core";
-import { hex, hexEquals, canonicalHex, createWrap, wrappedDistance, wrappedNeighbors } from "./hex";
+import { hex, hexEquals, canonicalHex, createWrap, wrappedDistance } from "./hex";
 import type { MapWrap } from "./hex";
 import { getMapPreset } from "./mapConfig";
 import { generateMapFor, resolveMapRequest } from "./mapRequest";
@@ -46,7 +46,7 @@ import {
   canJuryRig,
   applyJuryRig,
 } from "./economy";
-import { createCaptainDeck, dealHands, findHomePort } from "./captains";
+import { createCaptainDeck, dealHands, findHomeStart } from "./captains";
 import { moveAllNPCs, spawnMerchant, spawnFlotillaForPlayer } from "./npcManager";
 import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
@@ -106,16 +106,19 @@ export function withGeneratedMap(game: Game<CaribbeanState>, map: GeneratedMap):
   return { ...game, setup: ({ random }) => createInitialState(map, random.Number) };
 }
 
+/** The seats a match is set up for. Every client's `numPlayers` must match it. */
+export const PLAYER_COUNT = 2;
+
 /**
  * The state a match starts in, on `map`: the players' ships, the captain draft, no NPCs yet.
  * `random` is boardgame.io's setup `random.Number`, so the match's seed reproduces the draft (#160).
  */
-function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: () => number): CaribbeanState {
+function createInitialState({ mapSize, mapSeed, cells, regions }: GeneratedMap, random: () => number): CaribbeanState {
   // The map is a rectangle that wraps east–west, a cylinder as wide as its
   // columns (#36); the generator and G share the wrap.
   const wrap: MapWrap = createWrap(getMapPreset(mapSize).columns);
 
-  const numPlayers = 2;
+  const numPlayers = PLAYER_COUNT;
   const deck = createCaptainDeck(random);
   const { hands, remaining } = dealHands(deck, numPlayers);
 
@@ -126,6 +129,7 @@ function createInitialState({ mapSize, mapSeed, cells }: GeneratedMap, random: (
 
   return {
     cells,
+    regions,
     ships,
     npcs: {},
     mapSize,
@@ -176,7 +180,7 @@ export const Caribbean: Game<CaribbeanState> = {
   setup: ({ random }, setupData?: CaribbeanSetupData) => {
     // The provided size and seed, else random ones (see resolveMapRequest).
     const request = resolveMapRequest(setupData, random.Number);
-    return createInitialState({ ...request, cells: generateMapFor(request) }, random.Number);
+    return createInitialState({ ...request, ...generateMapFor(request) }, random.Number);
   },
 
   // Top-level moves/turn serve as defaults when tests override phases
@@ -294,34 +298,15 @@ export const Caribbean: Game<CaribbeanState> = {
           ship.stats = stats;
           ship.maxCargo = stats.cargo;
 
-          // Find home port matching the captain's nation
+          // Start at a home port in the captain's nation's region (#239)
           const occupiedHexes = Object.entries(G.ships)
             .filter(([id, s]) => id !== playerId && s.captain !== undefined)
             .map(([, s]) => s.position);
-          const port = findHomePort(chosen.nation, G.cells, occupiedHexes);
-          if (port && port.dockingHex) {
-            // Validate that dockingHex is actually a water hex
-            const dockingCell = G.cells.find((c) => hexEquals(c.hex, port.dockingHex!));
-            if (dockingCell && dockingCell.terrain === "water") {
-              // Ship spawns at the docking water hex, not the port island
-              ship.position = port.dockingHex;
-              // homePortHex is the actual port (for display/scoring)
-              ship.homePortHex = port.hex;
-              // homeDockingHex is where the ship docks to access home port
-              ship.homeDockingHex = port.dockingHex;
-            } else {
-              // Fallback: find any water hex adjacent to the port
-              const portNeighbors = wrappedNeighbors(port.hex, G.wrap);
-              const waterNeighbor = portNeighbors.find((n) => {
-                const cell = G.cells.find((c) => hexEquals(c.hex, n));
-                return cell && cell.terrain === "water" && !occupiedHexes.some((o) => hexEquals(o, n));
-              });
-              if (waterNeighbor) {
-                ship.position = waterNeighbor;
-                ship.homePortHex = port.hex;
-                ship.homeDockingHex = waterNeighbor;
-              }
-            }
+          const start = findHomeStart(chosen.nation, G.cells, occupiedHexes, G.regions, G.wrap);
+          if (start) {
+            ship.position = start.position;
+            ship.homePortHex = start.homePortHex;
+            ship.homeDockingHex = start.homeDockingHex;
           }
 
           // Clear the player's draft hand
