@@ -17,7 +17,7 @@ import { useSeaSurface } from "../../board/visuals/seaSurfaceContext";
 import { mainMastCut, mastStations, splitTriangles } from "./mastSplit";
 import { toShipLocalScale, type Director, type ShipKey } from "./combatDirector";
 import type { Vec3 } from "./broadside";
-import { poseTopmast } from "./frameWriters";
+import { poseTopmast, type TopmastHeel } from "./frameWriters";
 
 /**
  * PROTOTYPE (combat animation lab): a ship the director moves. Like Ship.tsx
@@ -90,6 +90,7 @@ interface SplitModel {
   /** The whole ship, with the topmast's triangles under `pivot`. */
   group: Group;
   pivot: Group;
+  heel: TopmastHeel;
   guns: Vec3[];
   mastBreak: { y: number; z: number; length: number };
 }
@@ -172,7 +173,8 @@ function splitModel(scene: Object3D, model: ShipModel): SplitModel {
     guns.push(toShipLocalScale(v.x, v.y, v.z));
   });
   const brk = toShipLocalScale(0, cut.yBreak, cut.pivot[2]);
-  return { group, pivot, guns, mastBreak: { y: brk.y, z: brk.z, length: toShipLocalScale(0, top - cut.yBreak, 0).y } };
+  const heel: TopmastHeel = { break: cut.pivot, out: model.beamMetres / 2 + 0.6, lieY: 0.4 };
+  return { group, pivot, heel, guns, mastBreak: { y: brk.y, z: brk.z, length: toShipLocalScale(0, top - cut.yBreak, 0).y } };
 }
 
 function LabShipModel({ director, shipKey, model, colour, flag }: { director: Director; shipKey: ShipKey; model: ShipModel; colour: string; flag: ShipFlag | null }) {
@@ -184,7 +186,7 @@ function LabShipModel({ director, shipKey, model, colour, flag }: { director: Di
   useFrame(() => {
     const s = director.ships[shipKey];
     if (s.guns !== split.guns) director.fit(shipKey, split.guns, split.mastBreak);
-    poseTopmast(split.pivot, s.mast);
+    poseTopmast(split.pivot, s.mast, split.heel);
     const seconds = sea?.clock.waveTimeAt() ?? 0;
     writeShipWindPose(wind, shipWindPose({ heading: s.pose.heading, wind: SCENE_WIND, seconds, reducedMotion: false, sinking: s.sink !== null }));
   }, SHIP_POSE_PRIORITY);

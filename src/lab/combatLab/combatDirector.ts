@@ -475,8 +475,8 @@ export function createDirector(setup: DirectorSetup): Director {
     if (!b || !ship.mast) return;
     for (let k = 0; k < 5; k++) {
       const u = 0.35 + 0.65 * (k / 4);
-      // The topmast lies over the side: port is +x in the ship's frame.
-      local.x = ship.mast.side * b.length * u;
+      // The topmast lies in the sea over the side, out from the hull: port is +x in the ship's frame.
+      local.x = ship.mast.side * (ship.size.beam / 2 + b.length * u);
       local.y = 0;
       local.z = b.z;
       toWorld(ship, local, tmp);

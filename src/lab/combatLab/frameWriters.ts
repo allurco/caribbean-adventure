@@ -77,7 +77,24 @@ export function ropePoint(from: Vector3, to: Vector3, u: number, s: number, sag:
   out.y -= sag * 4 * u * (1 - u);
 }
 
-/** Turns the topmast's pivot to the mast's fall (1 port, -1 starboard). */
-export function poseTopmast(pivot: Group, mast: { side: 1 | -1; angle: number } | null): void {
+/** Where the topmast's heel stands and where it ends up, model frame (m): at the break, and in the sea beside the hull. */
+export interface TopmastHeel {
+  break: [number, number, number];
+  /** Out from the keel to where it lies (the half beam and a little), and its height there (about the waterline). */
+  out: number;
+  lieY: number;
+}
+
+/**
+ * Turns the topmast's pivot to the mast's fall (1 port, -1 starboard). Its
+ * heel slides down from the break and out over the side as it goes, so it
+ * comes to rest in the sea alongside, not hanging at the break's height.
+ */
+export function poseTopmast(pivot: Group, mast: { side: 1 | -1; angle: number } | null, heel: TopmastHeel): void {
   pivot.rotation.z = mast ? mast.side * mast.angle : 0;
+  const k = mast ? Math.min(1, Math.max(0, mast.angle / (Math.PI / 2))) : 0;
+  const slide = k * k;
+  const [x, y, z] = heel.break;
+  // Model frame: port is -x (the model is turned half round in the ship's frame).
+  pivot.position.set(x - (mast ? mast.side : 0) * heel.out * slide, y + (heel.lieY - y) * slide, z);
 }
