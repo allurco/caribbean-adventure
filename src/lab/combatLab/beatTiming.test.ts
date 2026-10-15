@@ -54,6 +54,13 @@ describe("declaring: the camera frames both ships", () => {
     expect(far.distance).toBeGreaterThan(near.distance);
   });
 
+  it("fits ships one behind the other in the screen's height, however wide the screen", () => {
+    const fovDeg = 45;
+    const halfSpan = 1.7 / 2 + 0.9 / 2 + 0.35;
+    const frame = frameShips({ x: 0, z: 0 }, { x: 0, z: -1.7 }, { fovDeg, aspect: 1.6, shipLength: 0.9 });
+    expect(frame.distance).toBeGreaterThanOrEqual(halfSpan / Math.tan((fovDeg * Math.PI) / 360) - 1e-9);
+  });
+
   it("pulls back on a narrow screen", () => {
     const wide = frameShips({ x: 0, z: 0 }, { x: 1.7, z: 0 }, { fovDeg: 45, aspect: 1.8, shipLength: 0.9 });
     const tall = frameShips({ x: 0, z: 0 }, { x: 1.7, z: 0 }, { fovDeg: 45, aspect: 0.5, shipLength: 0.9 });

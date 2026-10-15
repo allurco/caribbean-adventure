@@ -84,8 +84,11 @@ export function frameShips(
   b: { x: number; z: number },
   { fovDeg, aspect, shipLength }: { fovDeg: number; aspect: number; shipLength: number }
 ): { target: [number, number, number]; distance: number } {
-  const halfSpan = Math.hypot(a.x - b.x, a.z - b.z) / 2 + shipLength / 2 + 0.35;
+  const room = shipLength / 2 + 0.35;
+  const halfSpan = Math.hypot(a.x - b.x, a.z - b.z) / 2 + room;
+  // One behind the other (along the view, up the screen) they must fit the screen's height too.
+  const halfDepth = Math.abs(a.z - b.z) / 2 + room;
   const tanHalf = Math.tan((fovDeg * Math.PI) / 360);
-  const distance = Math.max(1.6, halfSpan / (tanHalf * Math.min(aspect, 1.5)));
+  const distance = Math.max(1.6, halfSpan / (tanHalf * Math.min(aspect, 1.5)), halfDepth / tanHalf);
   return { target: [(a.x + b.x) / 2, 0.12, (a.z + b.z) / 2], distance };
 }
