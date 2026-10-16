@@ -164,9 +164,11 @@ describe("POST /api/matches/:id/actions", () => {
     const afterJack = ((await jack.json()) as MatchBody).state;
     expect(afterJack.ctx).toMatchObject({ phase: "draft", currentPlayer: "0" });
     expect(afterJack.G.ships["1"].shipClass).toBe("Flute");
-    // Anne sees that Jack has picked, never his hand
+    // Anne sees that Jack has picked, never his hand, and until the draft is over not which captain or ship
     const anne = (await view(matchId, "anne")).state;
-    expect(anne.G.ships["1"].captain).toBeDefined();
+    expect(anne.G.ships["1"].draftPicked).toBe(true);
+    expect(anne.G.ships["1"].captain).toBeUndefined();
+    expect(anne.G.ships["1"].shipClass).toBeUndefined();
     expect(Object.keys(anne.G.draftHands)).toEqual(["0"]);
 
     // A seat picks once, from its own hand only
@@ -176,7 +178,11 @@ describe("POST /api/matches/:id/actions", () => {
 
     const last = await act(matchId, "anne", move(s0 + 1, "pickCaptain", 0, "Sloop"));
     expect(last.status).toBe(200);
-    expect(((await last.json()) as MatchBody).state.ctx).toMatchObject({ phase: "main", currentPlayer: "0" });
+    const main = ((await last.json()) as MatchBody).state;
+    expect(main.ctx).toMatchObject({ phase: "main", currentPlayer: "0" });
+    // The draft over, every captain and ship is shown
+    expect(main.G.ships["1"]).toMatchObject({ shipClass: "Flute", captain: expect.objectContaining({ name: expect.any(String) }) });
+    expect(main.G.ships["1"]).not.toHaveProperty("draftPicked");
   });
 
   it("refuses a move from a player who does not hold the current seat", async () => {

@@ -101,6 +101,12 @@ export interface ShipState {
   stashedGold: number;
   scoutedShips: string[]; // IDs of ships this player has scouted
   activeMission?: Mission; // Current active mission from tavern
+  /**
+   * Only in a seat's view of the draft (`playerViewFor`, #111): this other
+   * seat has picked, its captain and ship hidden until the draft ends. Never
+   * in the game's own state.
+   */
+  draftPicked?: true;
 }
 
 export type CombatAction = (typeof COMBAT_ACTIONS)[number];

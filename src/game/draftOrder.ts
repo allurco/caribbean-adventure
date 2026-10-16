@@ -8,10 +8,10 @@ import type { CaribbeanState } from "./types";
  * is, passes the pick from player to player as before.
  */
 
-/** Has this seat taken command: a captain and a ship class? */
+/** Has this seat taken command: a captain and a ship class, or, in a seat's view of the draft, a pick hidden from it (`draftPicked`)? */
 export function hasPicked(G: Pick<CaribbeanState, "ships">, seat: string): boolean {
   const ship = G.ships[seat];
-  return ship?.captain !== undefined && ship.shipClass !== undefined;
+  return ship?.draftPicked === true || (ship?.captain !== undefined && ship.shipClass !== undefined);
 }
 
 /** Has every seat picked? Then the draft is over. */

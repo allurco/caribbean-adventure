@@ -65,7 +65,12 @@ export function hudShip(G: Pick<CaribbeanState, "ships">, seat: string): ShipSta
 
 /** What the board calls a seat: its captain, or "Player n" (counting from 1) before it has one. */
 export function seatName(G: Pick<CaribbeanState, "ships">, seat: string): string {
-  return G.ships[seat]?.captain?.name ?? `Player ${Number(seat) + 1}`;
+  return G.ships[seat]?.captain?.name ?? seatLabel(seat);
+}
+
+/** A seat by its number, "Player n": how the draft names the other seats, whose captains stay hidden until it ends (#111). */
+function seatLabel(seat: string): string {
+  return `Player ${Number(seat) + 1}`;
 }
 
 /** "Waiting for <captain>", and what for when given ("to draft"): every waiting line on the board. */
@@ -101,7 +106,7 @@ export type DraftView =
   | { kind: "pick"; hand: Captain[]; passDevice: boolean; others?: DraftSeat[] }
   | { kind: "waiting"; line: string; others?: DraftSeat[] };
 
-/** Another seat in the draft, as a seat sees it: picked (named by its captain) or still choosing. */
+/** Another seat in the draft, as a seat sees it: picked or still choosing, named by its number, never its captain (#111). */
 export interface DraftSeat {
   seat: string;
   name: string;
@@ -112,7 +117,7 @@ export interface DraftSeat {
 function seatDraftView(G: Pick<CaribbeanState, "ships" | "draftHands">, seat: string): DraftView {
   const others = Object.keys(G.ships)
     .filter((other) => other !== seat)
-    .map((other) => ({ seat: other, name: seatName(G, other), picked: hasPicked(G, other) }));
+    .map((other) => ({ seat: other, name: seatLabel(other), picked: hasPicked(G, other) }));
   if (!hasPicked(G, seat)) return { kind: "pick", hand: G.draftHands[seat] ?? [], passDevice: false, others };
   const choosing = others.filter((other) => !other.picked).map((other) => other.name);
   const what = choosing.length === 1 ? "to choose a captain" : "to choose their captains";

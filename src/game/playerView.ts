@@ -1,4 +1,6 @@
-import { emptyCargo } from "./economy";
+import { createShipState, emptyCargo } from "./economy";
+import { hex } from "./hex";
+import { hasPicked } from "./draftOrder";
 import type { CaribbeanState, NPCShip, ShipState } from "./types";
 
 /**
@@ -18,7 +20,11 @@ import type { CaribbeanState, NPCShip, ShipState } from "./types";
  *   guessed to within ten gold per point);
  * - the cargo and gold of a rival ship the seat has not scouted, and of an
  *   NPC nobody has identified: the spyglass is what reveals them (the ship
- *   tooltip shows them only then). They read as an empty hold and no gold.
+ *   tooltip shows them only then). They read as an empty hold and no gold;
+ * - while the draft is on (`phase` "draft", #111), which captain and ship
+ *   another seat picked: every seat picks at once, so nobody waits, and none
+ *   picks knowing another's choice. A seat that has picked reads as a ship
+ *   not yet commanded, marked `draftPicked`; all is shown once the draft ends.
  *
  * Everything drawn on the board or used to decide visibility stays: the map,
  * positions, classes, captains, damage, glory, bounties, pirates, combat,
@@ -26,12 +32,14 @@ import type { CaribbeanState, NPCShip, ShipState } from "./types";
  * its `nation` and `role` too: the 3D ship flies its nation's flag and wears
  * its role's colour (`shipLook.ts`), so they are seen whatever the tooltip says.
  */
-export function playerViewFor(G: CaribbeanState, playerID: string | null | undefined): CaribbeanState {
+export function playerViewFor(G: CaribbeanState, playerID: string | null | undefined, phase?: string | null): CaribbeanState {
   const seat = playerID ?? null;
   const scouted = (seat !== null && G.ships[seat]?.scoutedShips) || [];
   const ships: Record<string, ShipState> = {};
   for (const [id, ship] of Object.entries(G.ships)) {
-    ships[id] = id === seat ? ship : rivalShip(ship, scouted.includes(id));
+    if (id === seat) ships[id] = ship;
+    else if (phase === "draft" && hasPicked(G, id)) ships[id] = hiddenPick();
+    else ships[id] = rivalShip(ship, scouted.includes(id));
   }
   const npcs: Record<string, NPCShip> = {};
   for (const [id, npc] of Object.entries(G.npcs)) {
@@ -48,6 +56,11 @@ export function playerViewFor(G: CaribbeanState, playerID: string | null | undef
     captainDeck: [],
     draftHands: seat !== null && seat in G.draftHands ? { [seat]: G.draftHands[seat] } : {},
   };
+}
+
+/** Another seat's ship once it has picked, in the draft: as it was dealt (`setup`), but marked picked. */
+function hiddenPick(): ShipState {
+  return { ...createShipState(hex(0, 0)), draftPicked: true };
 }
 
 /**

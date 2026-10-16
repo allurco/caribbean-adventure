@@ -146,8 +146,8 @@ describe("draftView: what the draft screen shows a seat", () => {
         { seat: "1", name: "Player 2", picked: false },
       ],
     });
-    expect(anne).toMatchObject({ kind: "pick", others: [{ seat: "1", picked: false }, { seat: "2", name: "Captain 2b", picked: true }] });
-    expect(jack).toMatchObject({ kind: "pick", others: [{ seat: "0", picked: false }, { seat: "2", name: "Captain 2b", picked: true }] });
+    expect(anne).toMatchObject({ kind: "pick", others: [{ seat: "1", picked: false }, { seat: "2", name: "Player 3", picked: true }] });
+    expect(jack).toMatchObject({ kind: "pick", others: [{ seat: "0", picked: false }, { seat: "2", name: "Player 3", picked: true }] });
 
     clients[0].moves.pickCaptain(0, "Sloop");
     expect(views(clients)[0]).toEqual({
@@ -155,10 +155,18 @@ describe("draftView: what the draft screen shows a seat", () => {
       line: "Waiting for Player 2 to choose a captain",
       others: [
         { seat: "1", name: "Player 2", picked: false },
-        { seat: "2", name: "Captain 2b", picked: true },
+        { seat: "2", name: "Player 3", picked: true },
       ],
     });
     clients.forEach((c) => c.stop());
+  });
+
+  it("never names another seat's captain while the draft is on, even from the whole table (#111)", () => {
+    const G = table(2);
+    G.ships["1"] = { ...G.ships["1"], captain: captain("1a", "Blackbeard"), shipClass: "Flute" };
+    const view = draftView(G, { playerID: "0", currentPlayer: "0" });
+    expect(view).toMatchObject({ kind: "pick", others: [{ seat: "1", name: "Player 2", picked: true }] });
+    expect(JSON.stringify(view)).not.toContain("Blackbeard");
   });
 
   it("hotseat: the current player picks from their hand, then passes the device", () => {

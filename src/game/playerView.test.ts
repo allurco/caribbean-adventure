@@ -3,6 +3,7 @@ import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { Caribbean, withHotseatView } from "./Game";
 import { playerViewFor } from "./playerView";
+import { hasPicked } from "./draftOrder";
 import { createShipState } from "./economy";
 import { hex } from "./hex";
 import { createNPCShip } from "./npcManager";
@@ -33,6 +34,50 @@ describe("playerViewFor: draft hands", () => {
   it("a seat sees its own hand and no other seat's", () => {
     const view = playerViewFor(table(), "0");
     expect(view.draftHands).toEqual({ "0": [captain("a"), captain("b")] });
+  });
+});
+
+describe("playerViewFor: picks in the draft (#111)", () => {
+  /** Mid-draft: seat 1 has picked Blackbeard's Flute and sailed to its home port; seat 0 still chooses. */
+  function midDraft(): CaribbeanState {
+    const G = table();
+    G.ships["0"] = createShipState(hex(0, 0));
+    G.ships["1"] = { ...createShipState(hex(5, -2), "Flute"), captain: captain("Blackbeard"), homePortHex: hex(5, -3), homeDockingHex: hex(5, -2) };
+    G.draftHands["1"] = [];
+    return G;
+  }
+
+  it("shows another seat as picked, never which captain or ship, while the draft is on", () => {
+    const view = playerViewFor(midDraft(), "0", "draft");
+    expect(hasPicked(view, "1")).toBe(true);
+    const rival = view.ships["1"];
+    expect(rival.captain).toBeUndefined();
+    expect(rival.shipClass).toBeUndefined();
+    expect(rival.stats).toBeUndefined();
+    expect(rival).not.toHaveProperty("homePortHex");
+    expect(rival).not.toHaveProperty("homeDockingHex");
+    expect(rival.position).toEqual(hex(0, 0));
+    expect(rival.maxCargo).toBe(createShipState(hex(0, 0)).maxCargo);
+    expect(JSON.stringify(view.ships)).not.toContain("Blackbeard");
+    expect(JSON.stringify(view.ships)).not.toContain("Flute");
+  });
+
+  it("shows a seat its own pick, and a seat still choosing as still choosing", () => {
+    const G = midDraft();
+    expect(playerViewFor(G, "1", "draft").ships["1"]).toEqual(G.ships["1"]);
+    expect(hasPicked(playerViewFor(G, "1", "draft"), "0")).toBe(false);
+  });
+
+  it("hides every pick from a spectator in the draft", () => {
+    const view = playerViewFor(midDraft(), null, "draft");
+    expect(hasPicked(view, "1")).toBe(true);
+    expect(JSON.stringify(view.ships)).not.toContain("Blackbeard");
+  });
+
+  it("shows every captain and ship once the draft is over", () => {
+    const G = midDraft();
+    expect(playerViewFor(G, "0", "main").ships["1"]).toMatchObject({ captain: captain("Blackbeard"), shipClass: "Flute" });
+    expect(playerViewFor(G, "0").ships["1"].captain).toEqual(captain("Blackbeard"));
   });
 });
 

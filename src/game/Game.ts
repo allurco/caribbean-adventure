@@ -189,7 +189,7 @@ export const Caribbean: Game<CaribbeanState> = {
   maxPlayers: MAX_SEATS,
 
   // Each seat sees only its own hidden information; a client with no seat is a spectator (#109).
-  playerView: ({ G, playerID }) => playerViewFor(G, playerID),
+  playerView: ({ G, ctx, playerID }) => playerViewFor(G, playerID, ctx.phase),
 
   endIf: ({ G, ctx }) => {
     const winner = findWinner(G.ships);
