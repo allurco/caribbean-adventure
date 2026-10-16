@@ -13,8 +13,8 @@ import { fail, isUuid, json, readBoundedJsonObject } from "./http";
 import { applyAction, parseAction, seatMayActNow, viewFor, type MatchState } from "./matchEngine";
 import type { ApiServices } from "./handleApiRequest";
 import type { MatchSignals } from "./matchSignals";
-import type { MatchSeat, OnlineStore } from "./onlineStore";
-import { seatsOnline, seenNeedsRefresh } from "./seatSeen";
+import type { SeatRecord, SeatSeen } from "./onlineStore";
+import { seatsOnline, seenNeedsRefresh, staleBefore } from "./seatSeen";
 
 /** PRD #104: ten actions a second per player; and, so a steady stream cannot run all day, 120 a minute. */
 export const MOVE_LIMITS = [
@@ -34,7 +34,7 @@ export const READ_LIMIT = { action: "read_match", limit: 150, windowSeconds: 60 
 export const MAX_ACTION_BODY_BYTES = 4096;
 
 /** The caller's seat among `seats`, as boardgame.io's playerID, or null. */
-function seatOf(seats: readonly MatchSeat[], userId: string): string | null {
+function seatOf(seats: readonly SeatRecord[], userId: string): string | null {
   const seat = seats.find((s) => s.userId === userId);
   return seat ? String(seat.index) : null;
 }
@@ -46,20 +46,30 @@ function seatView(matchId: string, seat: string, state: MatchState, online: stri
 
 /**
  * Records that the caller's seat was seen now (#114, `seatSeen.ts`), unless
- * it was seen lately, and says which seats are online. A write that fails is
- * logged, never the request's failure: the dot is a hint, not a rule.
+ * it was seen lately, and says which seats are online. Neither may fail the
+ * request or hold it up: a failure is logged, and costs only the online dot
+ * (a database without the column, before its migration, included); the
+ * write goes after the response where the platform allows (`defer`).
  */
-async function seeSeat(store: OnlineStore, roomId: string, seats: readonly MatchSeat[], seat: string, now: number): Promise<string[]> {
+async function seeSeat(services: ApiServices, roomId: string, seat: string): Promise<string[]> {
+  const { store } = services;
+  const at = now(services);
   const index = Number(seat);
-  const own = seats.find((s) => s.index === index);
-  if (own && seenNeedsRefresh(own.lastSeenAt, now)) {
-    try {
-      await store.markSeatSeen(roomId, index, new Date(now).toISOString());
-    } catch (error) {
-      console.error("recording a seat as seen failed", error);
-    }
+  let seen: SeatSeen[] = [];
+  try {
+    seen = await store.seatsLastSeen(roomId);
+  } catch (error) {
+    console.error("reading when seats were last seen failed", error);
   }
-  return seatsOnline(seats, index, now);
+  const own = seen.find((s) => s.index === index);
+  if (!own || seenNeedsRefresh(own.lastSeenAt, at)) {
+    const write = store.markSeatSeen(roomId, index, new Date(at).toISOString(), staleBefore(at)).catch((error: unknown) => {
+      console.error("recording a seat as seen failed", error);
+    });
+    if (services.defer) services.defer(write);
+    else await write;
+  }
+  return seatsOnline(seen, index, at);
 }
 
 /** `GET /api/matches/:id[?since=<stateID>]`: the caller's view, or only `changed: false` if it is still at `since`. */
@@ -76,7 +86,7 @@ export async function getMatch(request: Request, matchId: string, userId: string
   if (!head || seat === null) return fail(404, "not_found", "no such match");
   const since = new URL(request.url).searchParams.get("since");
   if (since !== null && !/^\d+$/.test(since)) return fail(400, "bad_request", "since must be a state id");
-  const online = await seeSeat(store, head.roomId, head.seats, seat, now(services));
+  const online = await seeSeat(services, head.roomId, seat);
   if (since !== null && Number(since) === head.stateId) {
     return json({ ok: true, matchId: head.id, seat, changed: false, stateID: head.stateId, online });
   }
@@ -105,7 +115,7 @@ export async function postAction(
   const match = await store.getMatch(matchId);
   const seat = match && seatOf(match.seats, userId);
   if (!match || seat === null) return fail(404, "not_found", "no such match");
-  const online = await seeSeat(store, match.roomId, match.seats, seat, now(services));
+  const online = await seeSeat(services, match.roomId, seat);
   const state = match.state as MatchState;
   const current = () => seatView(match.id, seat, state, online);
 

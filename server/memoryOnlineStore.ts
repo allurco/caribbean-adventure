@@ -8,7 +8,7 @@ import {
   type ClaimOutcome,
   type InitialMatch,
   type JoinOutcome,
-  type MatchSeat,
+  type SeatSeen,
   type MoveEntry,
   type NewRoom,
   type OnlineStore,
@@ -81,10 +81,6 @@ export function createMemoryOnlineStore({
       seats: taken.map(([index, userId]) => ({ index, userId, displayName: displayName(userId) })),
       matchId: match?.id ?? null,
     };
-  }
-
-  function matchSeats(roomId: string): MatchSeat[] {
-    return record(roomId)!.seats.map((s) => ({ ...s, lastSeenAt: seen.get(`${roomId}|${s.index}`) ?? null }));
   }
 
   function consume(userId: string, action: string, limit: number, windowSeconds: number, commit: boolean): boolean {
@@ -178,17 +174,25 @@ export function createMemoryOnlineStore({
     async getMatch(matchId) {
       const match = matches.get(matchId);
       if (!match) return null;
-      return { id: match.id, roomId: match.roomId, state: structuredClone(match.state), stateId: match.stateId, seats: matchSeats(match.roomId) };
+      return { id: match.id, roomId: match.roomId, state: structuredClone(match.state), stateId: match.stateId, seats: record(match.roomId)!.seats };
     },
 
     async getMatchHead(matchId) {
       const match = matches.get(matchId);
       if (!match) return null;
-      return { id: match.id, roomId: match.roomId, stateId: match.stateId, seats: matchSeats(match.roomId) };
+      return { id: match.id, roomId: match.roomId, stateId: match.stateId, seats: record(match.roomId)!.seats };
     },
 
-    async markSeatSeen(roomId, seatIndex, at) {
-      if (seats.get(roomId)?.has(seatIndex)) seen.set(`${roomId}|${seatIndex}`, at);
+    async seatsLastSeen(roomId): Promise<SeatSeen[]> {
+      return (record(roomId)?.seats ?? []).map((s) => ({ index: s.index, lastSeenAt: seen.get(`${roomId}|${s.index}`) ?? null }));
+    },
+
+    async markSeatSeen(roomId, seatIndex, at, staleBefore) {
+      if (!seats.get(roomId)?.has(seatIndex)) return;
+      const key = `${roomId}|${seatIndex}`;
+      const last = seen.get(key);
+      // As the SQL: only when never seen, or seen before `staleBefore`.
+      if (last === undefined || Date.parse(last) < Date.parse(staleBefore)) seen.set(key, at);
     },
 
     async commitMove(update) {

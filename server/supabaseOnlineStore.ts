@@ -7,7 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MapSizeId } from "../src/game/mapConfig";
 import type { AuthVerifier } from "./handleApiRequest";
-import type { ClaimOutcome, JoinOutcome, MatchSeat, OnlineStore, RoomRecord, RoomStatus, StartOutcome, VoyageFight } from "./onlineStore";
+import type { ClaimOutcome, JoinOutcome, OnlineStore, RoomRecord, RoomStatus, SeatRecord, StartOutcome, VoyageFight } from "./onlineStore";
 
 interface VoyageRow {
   room_id: string;
@@ -42,17 +42,12 @@ function check<T>({ data, error }: { data: T; error: { message: string } | null 
   return data;
 }
 
-/** A match's seats, with when each was last seen (#114). */
-async function matchSeats(db: ServiceClient, roomId: string): Promise<MatchSeat[]> {
+/** A match's seats. Never `last_seen_at`: a database without it still plays (`seatsLastSeen`). */
+async function matchSeats(db: ServiceClient, roomId: string): Promise<SeatRecord[]> {
   const rows = check(
-    await db.from("seats").select("seat_index, user_id, last_seen_at").eq("room_id", roomId).order("seat_index"),
-  ) as { seat_index: number; user_id: string; last_seen_at: string | null }[];
-  return rows.map((s) => ({
-    index: s.seat_index,
-    userId: s.user_id,
-    displayName: null,
-    lastSeenAt: s.last_seen_at === null ? null : new Date(s.last_seen_at).toISOString(),
-  }));
+    await db.from("seats").select("seat_index, user_id").eq("room_id", roomId).order("seat_index"),
+  ) as { seat_index: number; user_id: string }[];
+  return rows.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: null }));
 }
 
 export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>): OnlineStore {
@@ -220,9 +215,28 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
       ) as boolean;
     },
 
-    async markSeatSeen(roomId, seatIndex, at) {
+    async seatsLastSeen(roomId) {
       const db = await client();
-      check(await db.from("seats").update({ last_seen_at: at }).eq("room_id", roomId).eq("seat_index", seatIndex));
+      const rows = check(
+        await db.from("seats").select("seat_index, last_seen_at").eq("room_id", roomId).order("seat_index"),
+      ) as { seat_index: number; last_seen_at: string | null }[];
+      return rows.map((s) => ({
+        index: s.seat_index,
+        lastSeenAt: s.last_seen_at === null ? null : new Date(s.last_seen_at).toISOString(),
+      }));
+    },
+
+    async markSeatSeen(roomId, seatIndex, at, staleBefore) {
+      const db = await client();
+      // The throttle is in the write's own filter, so parallel requests do not each write.
+      check(
+        await db
+          .from("seats")
+          .update({ last_seen_at: at })
+          .eq("room_id", roomId)
+          .eq("seat_index", seatIndex)
+          .or(`last_seen_at.is.null,last_seen_at.lt."${staleBefore}"`),
+      );
     },
   };
 }

@@ -6,7 +6,7 @@
  * spend the project's realtime quota on it. Only which seats are online
  * leaves the server, never the times or anything else about a player.
  */
-import type { MatchSeat } from "./onlineStore";
+import type { SeatSeen } from "./onlineStore";
 
 /** A seat's last-seen time is written again only once it is this old, so polling does not write on every read. */
 export const SEEN_REFRESH_SECONDS = 20;
@@ -21,9 +21,15 @@ export function seenNeedsRefresh(lastSeenAt: string | null, now: number): boolea
   return !(ageMs(lastSeenAt, now) < SEEN_REFRESH_SECONDS * 1000);
 }
 
+/** The write's own throttle (`markSeatSeen`): a time seen before this is stale. */
+export function staleBefore(now: number): string {
+  return new Date(now - SEEN_REFRESH_SECONDS * 1000).toISOString();
+}
+
 /** The seats seen within the window, as boardgame.io playerIDs in seat order; `caller` is online, being seen now. */
-export function seatsOnline(seats: readonly MatchSeat[], caller: number, now: number): string[] {
-  return seats
+export function seatsOnline(seats: readonly SeatSeen[], caller: number, now: number): string[] {
+  const others = seats.filter((s) => s.index !== caller);
+  return [{ index: caller, lastSeenAt: null }, ...others]
     .filter((s) => s.index === caller || ageMs(s.lastSeenAt, now) <= ONLINE_WINDOW_SECONDS * 1000)
     .map((s) => s.index)
     .sort((a, b) => a - b)

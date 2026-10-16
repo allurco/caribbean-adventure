@@ -204,6 +204,8 @@ describe.skipIf(!dbTestsEnabled)("a match's realtime channel (local Supabase)", 
       expect(read.data ?? [], columns).toEqual([]);
     }
     const anon = createClient(stack.url, stack.anonKey, NO_SESSION);
-    expect((await anon.from("seats").select("last_seen_at")).data ?? []).toEqual([]);
+    const anonRead = await anon.from("seats").select("last_seen_at");
+    expect(anonRead.error).not.toBeNull();
+    expect(anonRead.data ?? []).toEqual([]);
   });
 });

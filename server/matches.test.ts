@@ -579,17 +579,37 @@ describe("which seats were seen lately: server-side, from each seat's own reads 
     expect(text).not.toContain(new Date(clock).toISOString().slice(0, 16));
   });
 
-  it("still answers the read when the last-seen write fails", async () => {
+  it("plays on before the last-seen column exists (the migration not yet pushed): only the online dot is lost", async () => {
     const matchId = await startedMatch();
-    store.markSeatSeen = async () => {
-      throw new Error("database is down");
+    const missingColumn = async () => {
+      throw Object.assign(new Error('column seats.last_seen_at does not exist'), { code: "42703" });
     };
+    store.seatsLastSeen = missingColumn;
+    store.markSeatSeen = missingColumn;
     const original = console.error;
     console.error = () => {};
     try {
-      expect((await call("GET", `/api/matches/${matchId}`, "anne")).status).toBe(200);
+      const read = await call("GET", `/api/matches/${matchId}`, "anne");
+      expect(read.status).toBe(200);
+      const body = (await read.json()) as MatchBody;
+      expect(body.online).toEqual(["0"]);
+      const since = await call("GET", `/api/matches/${matchId}?since=${body.state._stateID}`, "jack");
+      expect(since.status).toBe(200);
+      const moved = await act(matchId, "anne", move(body.state._stateID, "pickCaptain", 0, "Sloop"));
+      expect(moved.status).toBe(200);
+      expect(((await moved.json()) as MatchBody).online).toEqual(["0"]);
     } finally {
       console.error = original;
     }
+  });
+
+  it("records the seat after the response where the platform keeps work running, so no read or move waits on it", async () => {
+    const matchId = await startedMatch();
+    const deferred: Promise<unknown>[] = [];
+    services = { ...services, defer: (work) => void deferred.push(work) };
+    store.markSeatSeen = () => new Promise<void>(() => {});
+    const read = await call("GET", `/api/matches/${matchId}`, "anne");
+    expect(read.status).toBe(200);
+    expect(deferred).toHaveLength(1);
   });
 });
