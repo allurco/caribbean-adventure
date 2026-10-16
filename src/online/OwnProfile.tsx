@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { AccountClient } from "./accountClient";
 import { profilePath } from "./accountRoute";
 import { signOut, type AccountSession, type Profile } from "./accountService";
+import { DeleteAccount } from "./DeleteAccount";
 import { DisplayNameForm } from "./DisplayNameForm";
 import { ProfileCard } from "./ProfileCard";
 import { BTN_INK, LINK } from "./shellStyles";
@@ -17,8 +18,8 @@ interface OwnProfileProps {
 
 /**
  * The signed-in player's page, the shell's Profile sheet (#105, #125): their
- * profile, the name editor, sign-out. Deleting the account (#108) joins the
- * sign-out row.
+ * profile, the name editor, sign-out, and deleting the account (#108), which
+ * is offered here and on no one else's profile.
  */
 export function OwnProfile({ client, session, profile, onSaved }: OwnProfileProps) {
   const [signOutError, setSignOutError] = useState<string>();
@@ -32,7 +33,14 @@ export function OwnProfile({ client, session, profile, onSaved }: OwnProfileProp
           {profile.error}
         </p>
       )}
-      {profile.status === "ready" && (
+      {profile.status === "ready" && profile.profile.deleted && (
+        <>
+          <ProfileCard profile={profile.profile} />
+          {/* A deletion that stopped half way (#108): nothing personal is left; deleting again finishes it. */}
+          <p role="status">Your account was being deleted when something went wrong. Delete it again below to finish.</p>
+        </>
+      )}
+      {profile.status === "ready" && !profile.profile.deleted && (
         <>
           <ProfileCard profile={profile.profile} />
           <DisplayNameForm key={profile.profile.id} client={client} profile={profile.profile} onSaved={onSaved} />
@@ -61,6 +69,9 @@ export function OwnProfile({ client, session, profile, onSaved }: OwnProfileProp
           {signOutError}
         </p>
       )}
+      <div className="border-t border-shell-rule/35 pt-4">
+        <DeleteAccount client={client} />
+      </div>
     </div>
   );
 }

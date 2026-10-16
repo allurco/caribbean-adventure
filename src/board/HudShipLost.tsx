@@ -1,4 +1,6 @@
 import { tornEdgeClipPath } from "./parchment";
+import { HUD_EDGE } from "./hudLayout";
+import { safeInset } from "./safeArea";
 
 const TORN_EDGE = tornEdgeClipPath();
 
@@ -19,7 +21,8 @@ export function HudShipLost({ name, playerColor, out }: HudShipLostProps) {
   return (
     <section
       aria-label="Your ship is lost"
-      className="absolute bottom-4 left-4 drop-shadow-[0_6px_10px_rgba(0,0,0,0.55)]"
+      className="absolute drop-shadow-[0_6px_10px_rgba(0,0,0,0.55)]"
+      style={{ bottom: safeInset("bottom", HUD_EDGE), left: safeInset("left", HUD_EDGE) }}
     >
       <div
         className="w-64 p-3.5 border border-transparent text-ink bg-parchment bg-[radial-gradient(ellipse_at_40%_35%,var(--color-parchment)_45%,var(--color-parchment-dark))]"

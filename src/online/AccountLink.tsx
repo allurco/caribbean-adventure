@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { hudStackPresence, portPanelPresence } from "../board/hudPresence";
+import { useSafeAreaInsets } from "../board/useSafeAreaInsets";
 import { ACCOUNT_LINK_Z, accountLinkPlacement } from "./accountLinkPlacement";
 import { playPath } from "./shellRoute";
 import { BTN_BRASS } from "./shellStyles";
@@ -14,7 +15,7 @@ import { useViewportWidth } from "./useViewportWidth";
  * "Sign in". It stays above the captain draft, and on a phone held sideways
  * it is a full tap target: beside the HUD's top-left stack while the board
  * shows it, clear of the port panel while that is open, else in the empty
- * top-right corner (`accountLinkPlacement`).
+ * top-right corner (`accountLinkPlacement`), clear of a notch as the HUD is.
  */
 export function AccountLink({ config }: { config: SupabaseConfig }) {
   const client = useAccountClient(config);
@@ -23,8 +24,9 @@ export function AccountLink({ config }: { config: SupabaseConfig }) {
   const hudStack = useSyncExternalStore(hudStackPresence.subscribe, hudStackPresence.showing);
   const portPanel = useSyncExternalStore(portPanelPresence.subscribe, portPanelPresence.showing);
   const viewportWidth = useViewportWidth();
+  const insets = useSafeAreaInsets();
   if (session.status === "loading") return null;
-  const { top, right, left, minHeight, width } = accountLinkPlacement(layout, { hudStack, portPanel, viewportWidth });
+  const { top, right, left, minHeight, width } = accountLinkPlacement(layout, { hudStack, portPanel, viewportWidth, insets });
   return (
     <a
       href={playPath()}

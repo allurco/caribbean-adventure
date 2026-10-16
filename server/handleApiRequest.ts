@@ -8,8 +8,10 @@
  * built from the server's environment (`services.ts`). Without them (no
  * Supabase configured) those routes answer 503 and only health works.
  */
+import { deleteAccount } from "./account";
+import { backendStatus, type BackendStatus } from "./backendStatus";
 import { bearerToken, fail, json } from "./http";
-import type { OnlineStore } from "./onlineStore";
+import { isAccountGone, type OnlineStore } from "./onlineStore";
 import { getMatch, postAction } from "./matches";
 import { createRoom, getRoom, joinRoom, startRoom } from "./rooms";
 import { listVoyages } from "./voyages";
@@ -56,6 +58,7 @@ const pattern = (re: RegExp) => (path: string) => {
 
 const ROUTES: RouteEntry[] = [
   { method: "GET", match: exact("/api/me/rooms"), run: (_req, user, s) => listVoyages(user, s.store) },
+  { method: "POST", match: exact("/api/me/delete"), run: (_req, user, s) => deleteAccount(user, s.store) },
   { method: "POST", match: exact("/api/rooms"), run: (req, user, s) => createRoom(req, user, s) },
   { method: "POST", match: exact("/api/rooms/join"), run: (req, user, s) => joinRoom(req, user, s) },
   { method: "POST", match: pattern(/^\/api\/rooms\/([^/]+)\/start$/), run: (_req, user, s, [id]) => startRoom(id, user, s) },
@@ -91,6 +94,8 @@ export async function handleApiRequest(request: Request, env: ServerEnv, service
     if (!userId) return fail(401, "unauthorized", "sign in first");
     return await route(request, userId, services);
   } catch (error) {
+    // The account was deleted after the token was checked (#108): as a dead token.
+    if (isAccountGone(error)) return fail(401, "unauthorized", "sign in first");
     // The details stay in the function's log, never in the response.
     console.error(error);
     return fail(500, "internal", "something went wrong");
@@ -114,8 +119,20 @@ function health(env: ServerEnv) {
     ok: true,
     version: env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || "local",
     environment: env.VERCEL_ENV || "local",
-    supabase: {
-      configured: Boolean(env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)),
-    },
+    supabase: supabaseHealth(backendStatus(env)),
   };
+}
+
+/** A preview refused production's database, or whose guard is not configured, says so (#107). */
+function supabaseHealth(status: BackendStatus) {
+  switch (status) {
+    case "none":
+      return { configured: false };
+    case "refused":
+      return { configured: false, previewOnProduction: true };
+    case "unset-guard":
+      return { configured: true, guard: "unset" };
+    case "ok":
+      return { configured: true };
+  }
 }

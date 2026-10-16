@@ -1,6 +1,7 @@
 import { useAudioSettings } from "../audio/useAudioSettings";
 import { audioEngine } from "../audio/sharedAudioEngine";
-import { HUD_STACK_TOP } from "./hudLayout";
+import { HUD_SIDE_INSET, HUD_STACK_TOP } from "./hudLayout";
+import { safeInset } from "./safeArea";
 
 /**
  * Mute toggle and master volume, top left under the turn bar (#73), clear
@@ -17,7 +18,7 @@ export function HudSoundControl() {
   };
 
   return (
-    <div className="absolute left-5 flex items-center gap-2 px-2.5 py-1.5 bg-black/40 rounded-lg border border-amber-700/30 backdrop-blur-sm" style={{ top: HUD_STACK_TOP }}>
+    <div className="absolute flex items-center gap-2 px-2.5 py-1.5 bg-black/40 rounded-lg border border-amber-700/30 backdrop-blur-sm" style={{ top: safeInset("top", HUD_STACK_TOP), left: safeInset("left", HUD_SIDE_INSET) }}>
       <button
         type="button"
         onClick={toggleMute}

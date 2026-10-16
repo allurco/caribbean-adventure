@@ -7,6 +7,7 @@
 import type { AccountClient, ProfileRow } from "./accountClient";
 import { safeAvatarUrl } from "./avatarUrl";
 import { validateDisplayName } from "./displayName";
+import { callApi, type ApiDeps, type Messages } from "./roomApi";
 
 export type Result = { ok: true } | { ok: false; error: string };
 
@@ -16,6 +17,8 @@ export interface Profile {
   displayName: string;
   /** Only ever a safe https URL (`safeAvatarUrl`), else null. */
   avatarUrl: string | null;
+  /** The account was deleted (#108): this is the "deleted player" placeholder. */
+  deleted: boolean;
 }
 
 export type ProfileResult = { ok: true; profile: Profile | null } | { ok: false; error: string };
@@ -26,7 +29,7 @@ export interface AccountSession {
   email: string | null;
 }
 
-const PROFILE_COLUMNS = "id, display_name, avatar_url";
+const PROFILE_COLUMNS = "id, display_name, avatar_url, deleted_at";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Emails a sign-in link that brings the player back to `redirectTo`. */
@@ -89,8 +92,36 @@ export async function saveDisplayName(client: AccountClient, id: string, rawName
   return { ok: true, profile: toProfile(data) };
 }
 
-function toProfile(row: Pick<ProfileRow, "id" | "display_name" | "avatar_url">): Profile {
-  return { id: row.id, displayName: row.display_name, avatarUrl: safeAvatarUrl(row.avatar_url) };
+const DELETE_MESSAGES: Messages = {
+  rate_limited: "Too many tries. Wait an hour and try again.",
+  internal: "The account could not be deleted. Try again in a moment.",
+};
+
+/**
+ * Deletes the signed-in player's account (#108) through `POST /api/me/delete`,
+ * which acts for the access token's user alone, then drops this device's
+ * session: the server has removed the sign-in already, so there is nothing to
+ * sign out of but the local copy. On a refusal the player stays signed in.
+ *
+ * The server answering 401 to a token this device still holds means the
+ * sign-in is gone: another tab deleted the account, or this request's own
+ * answer was lost and the retry finds nothing. That counts as done.
+ */
+export async function deleteAccount(client: AccountClient, api: ApiDeps): Promise<Result> {
+  if (!(await api.accessToken())) return { ok: false, error: "Sign in first." };
+  const result = await callApi<object>(api, DELETE_MESSAGES, "POST", "/api/me/delete");
+  if (!result.ok && result.status !== 401) return { ok: false, error: result.error };
+  const { error } = await client.auth.signOut({ scope: "local" });
+  return error ? { ok: false, error: `Your account is deleted, but this device could not sign out: ${error.message}` } : { ok: true };
+}
+
+function toProfile(row: Pick<ProfileRow, "id" | "display_name" | "avatar_url" | "deleted_at">): Profile {
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    avatarUrl: safeAvatarUrl(row.avatar_url),
+    deleted: typeof row.deleted_at === "string",
+  };
 }
 
 function toAccountSession(session: { user: { id: string; email?: string } } | null): AccountSession | null {

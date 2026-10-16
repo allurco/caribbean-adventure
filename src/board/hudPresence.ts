@@ -14,7 +14,7 @@ export interface PresenceFlag {
   subscribe: (listener: () => void) => () => void;
 }
 
-function presenceFlag(): PresenceFlag {
+export function presenceFlag(): PresenceFlag {
   let holders = 0;
   const listeners = new Set<() => void>();
   const notify = () => {

@@ -7,8 +7,11 @@
  * screen that the tooltip would reach the HUD's top bar, it flips below the
  * ship's waterline; when there is room for neither, it is held just below the
  * bar. Port labels keep clear of the bar the same way (`portLabel.ts`).
+ * Under a notch (#123) every margin moves in by the screen's safe-area
+ * insets, as the HUD's pieces do: the bar sits lower by the top inset.
  */
 import { HUD_TOP_BAR_HEIGHT } from "./hudLayout";
+import { NO_INSETS, type SafeAreaInsets } from "./safeArea";
 
 export interface ScreenPoint {
   readonly x: number;
@@ -48,23 +51,29 @@ export interface ShipTooltipPlacementInput {
   readonly tooltip: ScreenSize;
   /** The canvas's size. */
   readonly viewport: ScreenSize;
+  /** The screen's safe-area insets (`useSafeAreaInsets`); none when left out. */
+  readonly insets?: SafeAreaInsets;
 }
 
-export function placeShipTooltip({ masthead, waterline, tooltip, viewport }: ShipTooltipPlacementInput): ShipTooltipPlacement {
-  const left = clampHorizontally(masthead.x - tooltip.width / 2, tooltip.width, viewport.width);
+export function placeShipTooltip({ masthead, waterline, tooltip, viewport, insets = NO_INSETS }: ShipTooltipPlacementInput): ShipTooltipPlacement {
+  const topMargin = SHIP_TOOLTIP_TOP_MARGIN + insets.top;
+  const bottom = viewport.height - insets.bottom;
+  const clamp = (centreX: number) => clampHorizontally(centreX - tooltip.width / 2, tooltip.width, viewport.width, insets);
+  const left = clamp(masthead.x);
   const above = masthead.y - tooltip.height;
-  if (above >= SHIP_TOOLTIP_TOP_MARGIN) return { left, top: above, side: "above" };
+  if (above >= topMargin) return { left, top: above, side: "above" };
   const below = waterline.y + SHIP_TOOLTIP_SHIP_GAP;
-  if (below >= SHIP_TOOLTIP_TOP_MARGIN && below + tooltip.height <= viewport.height) {
-    return { left: clampHorizontally(waterline.x - tooltip.width / 2, tooltip.width, viewport.width), top: below, side: "below" };
+  if (below >= topMargin && below + tooltip.height <= bottom) {
+    return { left: clamp(waterline.x), top: below, side: "below" };
   }
-  return { left, top: SHIP_TOOLTIP_TOP_MARGIN, side: "clamped" };
+  return { left, top: topMargin, side: "clamped" };
 }
 
-/** `left` moved so a tooltip `width` wide stays inside the viewport's side margins (the left one wins when it cannot fit). */
-function clampHorizontally(left: number, width: number, viewportWidth: number): number {
-  const max = viewportWidth - SHIP_TOOLTIP_SIDE_MARGIN - width;
-  return Math.max(SHIP_TOOLTIP_SIDE_MARGIN, Math.min(left, max));
+/** `left` moved so a tooltip `width` wide stays inside the viewport's side margins and insets (the left one wins when it cannot fit). */
+function clampHorizontally(left: number, width: number, viewportWidth: number, insets: SafeAreaInsets): number {
+  const min = SHIP_TOOLTIP_SIDE_MARGIN + insets.left;
+  const max = viewportWidth - SHIP_TOOLTIP_SIDE_MARGIN - insets.right - width;
+  return Math.max(min, Math.min(left, max));
 }
 
 /** A point in normalised device coordinates (−1 … 1, y up) on the canvas, in CSS pixels from its top-left corner, as drei's `Html` places its anchor. */

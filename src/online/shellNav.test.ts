@@ -42,7 +42,7 @@ describe("nameboardFor", () => {
 });
 
 describe("showsPartyBoard", () => {
-  const captain = { id: ME, displayName: "Anne", avatarUrl: null };
+  const captain = { id: ME, displayName: "Anne", avatarUrl: null, deleted: false };
 
   it("shows the party board to a signed-in captain on every page but the party screen, which it would only repeat", () => {
     expect(showsPartyBoard({ kind: "play" }, captain)).toBe(true);

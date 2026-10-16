@@ -79,6 +79,13 @@
     0% { opacity: 0.6; }
     100% { opacity: 0; }
   }
+  /* The rotate gate's phone (#123): rest upright, swing onto its side, hold, swing back. Only under motion-safe. */
+  --animate-turn-ship: turn-ship 3.6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  @keyframes turn-ship {
+    0%, 18% { transform: rotate(0deg); }
+    42%, 78% { transform: rotate(90deg); }
+    100% { transform: rotate(0deg); }
+  }
   --animate-turn-ended-still: turn-ended-still 0.5s ease-in-out forwards;
   @keyframes turn-ended-still {
     0% { opacity: 0; }
