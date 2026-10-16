@@ -2,6 +2,7 @@ import type { Handoff } from "./turnHandoff";
 import type { Captain, CaribbeanState, CombatStage, ShipState } from "../game/types";
 import { awaitingCaptain, isEliminated } from "../game/captainDeath";
 import { hasPicked } from "../game/draftOrder";
+import { listNames } from "../game/listNames";
 import { npcName } from "./npcName";
 import { combatActor, seatMayActInCombat, type FightSides, type FightStep, type SeatFight } from "../game/combatActor";
 
@@ -107,11 +108,6 @@ export interface DraftSeat {
   picked: boolean;
 }
 
-/** "A", "A and B", "A, B and C". */
-function listed(names: string[]): string {
-  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
 /** The draft as a seat's own client sees it: every seat at once (#111). */
 function seatDraftView(G: Pick<CaribbeanState, "ships" | "draftHands">, seat: string): DraftView {
   const others = Object.keys(G.ships)
@@ -120,7 +116,7 @@ function seatDraftView(G: Pick<CaribbeanState, "ships" | "draftHands">, seat: st
   if (!hasPicked(G, seat)) return { kind: "pick", hand: G.draftHands[seat] ?? [], passDevice: false, others };
   const choosing = others.filter((other) => !other.picked).map((other) => other.name);
   const what = choosing.length === 1 ? "to choose a captain" : "to choose their captains";
-  return { kind: "waiting", line: `Waiting for ${listed(choosing)} ${what}`, others };
+  return { kind: "waiting", line: `Waiting for ${listNames(choosing)} ${what}`, others };
 }
 
 export function draftView(G: Pick<CaribbeanState, "ships" | "draftHands" | "lostShips">, turn: SeatTurn): DraftView {
