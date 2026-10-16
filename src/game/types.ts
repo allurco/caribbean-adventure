@@ -251,6 +251,48 @@ export interface CaribbeanSetupData {
   mapSeed?: number;
 }
 
+/** A kind of event card (#240). Later slices add theirs here and to `EVENT_DECK_MIX` (eventDeck.ts). */
+export type EventCardKind = "calmSeas" | "merchantConvoy";
+
+/**
+ * What an event card did (#246), public facts only (what happened, where),
+ * never a ship's gold or cargo: every seat sees the log (`playerViewFor`
+ * passes it through).
+ */
+export type EventEffect =
+  | { kind: "calmSeas" }
+  | {
+      kind: "merchantConvoy";
+      /** The region of the port the convoy sailed from, null on a hand-built map without regions. */
+      region: RegionId | null;
+      /** The port it sailed from. */
+      port: string;
+      /** How many merchants put to sea, 1 or 2. */
+      merchants: number;
+      /** Each merchant's destination port, in the order they sailed. */
+      bound: string[];
+    };
+
+/** One event drawn (#246), as the event log and the HUD's card show it. */
+export type EventLogEntry = {
+  /** Its number in the match's draws, from 1: the HUD tells a new card from one it has shown by it. */
+  id: number;
+  /** The seat whose turn ended when it was drawn. */
+  seat: string;
+  /** The boardgame.io turn (`ctx.turn`) that ended. */
+  turn: number;
+} & EventEffect;
+
+/** The event deck in G (#246). Plain JSON. */
+export interface EventDeckState {
+  /** The cards still to draw, the top card last. Hidden from every seat (`playerViewFor`), like the undealt captains. */
+  drawPile: EventCardKind[];
+  /** The last few events drawn (`EVENT_LOG_LENGTH`), oldest first. Public. */
+  log: EventLogEntry[];
+  /** How many cards the match has drawn: the last entry's `id`. */
+  drawn: number;
+}
+
 export interface CaribbeanState {
   cells: MapCell[];
   /**
@@ -328,6 +370,13 @@ export interface CaribbeanState {
    * first wears a ship, and in matches from before it.
    */
   seaWear?: Record<string, number>;
+  /**
+   * The event deck (#246): the draw pile, hidden, and the public log of the
+   * last few events. Shuffled by `setup()`; optional because matches stored
+   * before it lack it, and a missing deck reads as an empty pile, which the
+   * first draw reshuffles (`drawEvent`), with an empty log.
+   */
+  eventDeck?: EventDeckState;
 }
 
 /** How a player's ship was lost: sunk, or (#258) taken by boarding. */

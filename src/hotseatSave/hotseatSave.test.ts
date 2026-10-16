@@ -7,7 +7,7 @@ import { Client } from "boardgame.io/client";
 import { Caribbean, withGeneratedMap, withHotseatView } from "../game/Game";
 import type { CaribbeanState } from "../game/Game";
 import { generateMapFor } from "../game/mapRequest";
-import { STARTER_SHIP_CLASSES } from "../game/types";
+import { STARTER_SHIP_CLASSES, type ShipState } from "../game/types";
 import { restoreHotseat, saveHotseat, type MatchState } from "./hotseatSave";
 import { hotseatStoreEnhancer } from "./hotseatStoreEnhancer";
 
@@ -77,13 +77,16 @@ describe("a saved hotseat game", () => {
   it("fights on, after a restore, with the same dice: one round of ship-to-ship combat", () => {
     const opened = newMatch(2);
     playOpening(opened);
-    // The seat to play lies alongside the other's ship, in range of its guns
+    // The seat to play lies alongside the other's ship, in range of its guns,
+    // and both hulls outlast round 1's broadsides, so the fight goes on to round 2
     const state: MatchState = opened.store.getState();
     const attackerId = state.ctx.currentPlayer;
     const defenderId = attackerId === "0" ? "1" : "0";
     const { q, r } = state.G.ships[attackerId].position;
-    const alongside = { ...state.G.ships[defenderId], position: { q: q + 1, r, s: -q - 1 - r } };
-    const original = newMatch(2, { ...state, G: { ...state.G, ships: { ...state.G.ships, [defenderId]: alongside } } });
+    const sturdy = (ship: ShipState): ShipState => ({ ...ship, stats: { ...ship.stats!, hull: { current: 40, max: 40 } } });
+    const attacker = sturdy(state.G.ships[attackerId]);
+    const alongside = { ...sturdy(state.G.ships[defenderId]), position: { q: q + 1, r, s: -q - 1 - r } };
+    const original = newMatch(2, { ...state, G: { ...state.G, ships: { ...state.G.ships, [attackerId]: attacker, [defenderId]: alongside } } });
 
     const restored = newMatch(2, restoreHotseat(throughStorage(original.store.getState()), map));
     for (const match of [original, restored]) {
@@ -128,7 +131,7 @@ describe("a saved hotseat game", () => {
   it("records when it was saved, and the save's schema version", () => {
     const save = saveHotseat(newMatch(1).store.getState(), map, 1_234);
     expect(save.savedAt).toBe(1_234);
-    expect(save.version).toBe(6);
+    expect(save.version).toBe(7);
   });
 
   it("refuses a map that is not the save's", () => {

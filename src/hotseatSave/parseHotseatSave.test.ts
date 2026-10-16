@@ -64,6 +64,14 @@ describe("reading a saved game back", () => {
     }
   });
 
+  it("reads a version 6 save, from before the event deck (#246), as this version's: its first draw shuffles a deck", () => {
+    const olderG = { ...save.state.G };
+    delete olderG.eventDeck;
+    const older = { ...save, version: 6, state: { ...save.state, G: olderG } };
+    // A missing deck reads as an empty pile, which the first draw reshuffles, and an empty log (`drawEvent`)
+    expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+  });
+
   it("reads a version 4 save made mid-fight at the draw through version 5 to this version's", () => {
     const combat = { attackerId: "0", defenderId: "1", round: 2, stage: "seamanship" };
     const older = { ...save, version: 4, state: { ...save.state, G: { ...save.state.G, combat } } };

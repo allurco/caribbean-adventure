@@ -42,7 +42,9 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
  * `G.seaWear` (#340), which means the sea has worn no ship yet. Version 5
  * rolled both dice of the draw at once; version 6 waits on each captain's
  * (#347), but a version 5 fight at the draw waits on the attacker's die
- * either way, so every version 5 save is version 6's.
+ * either way, so every version 5 save is version 6's. Version 6 lacks
+ * `G.eventDeck` (#246), which the game reads as an empty pile, shuffled at
+ * the first draw, and an empty log.
  */
 function migrate(value: Record<string, unknown>): Record<string, unknown> {
   let current = value;
@@ -50,6 +52,7 @@ function migrate(value: Record<string, unknown>): Record<string, unknown> {
   if (current.version === 3 && !midFight(current)) current = { ...current, version: 4 };
   if (current.version === 4) current = { ...current, version: 5 };
   if (current.version === 5) current = { ...current, version: 6 };
+  if (current.version === 6) current = { ...current, version: 7 };
   return current;
 }
 

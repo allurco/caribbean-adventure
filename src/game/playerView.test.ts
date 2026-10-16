@@ -133,6 +133,47 @@ function laden(): CaribbeanState {
   return G;
 }
 
+describe("playerViewFor: the event deck (#246)", () => {
+  /** A table whose deck has cards to draw and a convoy in its log, from a laden Spanish merchant nobody has identified. */
+  function withEvents(): CaribbeanState {
+    const G = table();
+    G.npcs = { m1: { ...createNPCShip("m1", hex(3, 0), hex(-3, 0), "Spain", "Galleon", () => 0.99), isIdentified: false } };
+    G.ships["1"].gold = 321;
+    G.eventDeck = {
+      drawPile: ["calmSeas", "merchantConvoy", "calmSeas"],
+      log: [
+        { id: 1, seat: "0", turn: 1, kind: "calmSeas" },
+        { id: 2, seat: "1", turn: 2, kind: "merchantConvoy", region: 1, port: "Havana", merchants: 1, bound: ["Port Royal"] },
+      ],
+      drawn: 2,
+    };
+    return G;
+  }
+
+  it("no seat, and no spectator, sees the draw pile: which cards are still to come, or their order", () => {
+    for (const seat of ["0", "1", null]) expect(playerViewFor(withEvents(), seat).eventDeck!.drawPile).toEqual([]);
+  });
+
+  it("every seat sees the event log and the count of cards drawn, as they are", () => {
+    const G = withEvents();
+    for (const seat of ["0", "1", null]) {
+      const view = playerViewFor(G, seat).eventDeck!;
+      expect(view.log).toBe(G.eventDeck!.log);
+      expect(view.drawn).toBe(2);
+    }
+  });
+
+  it("the log holds no gold or cargo: nothing of a hidden hold or purse", () => {
+    const G = withEvents();
+    const logText = JSON.stringify(playerViewFor(G, "0").eventDeck!.log);
+    expect(logText).not.toMatch(/gold|cargo|Wood|Sugar|Rum|Spice|321/i);
+  });
+
+  it("a match from before the deck has none in the view either", () => {
+    expect(playerViewFor(table(), "0")).not.toHaveProperty("eventDeck");
+  });
+});
+
 describe("playerViewFor: a rival's hold", () => {
   it("hides a rival's cargo and gold until the seat has scouted that ship", () => {
     const view = playerViewFor(laden(), "0");

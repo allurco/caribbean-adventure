@@ -233,30 +233,32 @@ export function findSpawnHex(G: CaribbeanState, port: MapCell): Hex | null {
   return free ? { ...free } : null;
 }
 
-export function spawnMerchant(
-  G: CaribbeanState,
-  rng: () => number
-): string | null {
-  // Only spawn from non-Pirate ports (Pirate havens don't have merchants)
-  const ports = getPortCells(G.cells).filter(
-    (p) => p.nation && p.nation !== "Pirate"
-  );
+/**
+ * The ports merchants trade between: every port flying a nation's flag (a
+ * pirate haven has none of its merchants), in the map's order. A merchant
+ * needs two of them, one to sail from and one to make for.
+ */
+export function merchantPorts(G: CaribbeanState): MapCell[] {
+  return getPortCells(G.cells).filter((p) => p.nation && p.nation !== "Pirate");
+}
 
-  // Ships launch from a port's docking hex, so only ports with one are spawn points
-  const spawnPorts = ports.filter((p) => p.dockingHex);
+/** The trading ports a merchant can put to sea from: those with a docking hex, since ships launch from it. */
+export function merchantSpawnPorts(G: CaribbeanState): MapCell[] {
+  return merchantPorts(G).length < 2 ? [] : merchantPorts(G).filter((p) => p.dockingHex);
+}
 
-  if (ports.length < 2 || spawnPorts.length === 0) {
-    return null;
-  }
-
-  // Pick random spawn port
-  const spawnPort = spawnPorts[Math.floor(rng() * spawnPorts.length)];
-
+/**
+ * A merchant put to sea from `spawnPort`, on the free water beside it, bound
+ * for another trading port picked with `rng`, which may lie in another
+ * region. Returns its id, or null when none sailed: no other port to make
+ * for, or no free water beside the port (an NPC never spawns on land).
+ */
+export function spawnMerchantFrom(G: CaribbeanState, spawnPort: MapCell, rng: () => number): string | null {
   // Pick random destination port (different from spawn)
-  const destinations = ports.filter((p) => !hexEquals(p.hex, spawnPort.hex));
+  const destinations = merchantPorts(G).filter((p) => !hexEquals(p.hex, spawnPort.hex));
+  if (destinations.length === 0) return null;
   const destPort = destinations[Math.floor(rng() * destinations.length)];
 
-  // Never spawn on land: no free water beside the port means no merchant this time
   const spawnHex = findSpawnHex(G, spawnPort);
   if (!spawnHex) return null;
 
@@ -270,7 +272,7 @@ export function spawnMerchant(
 
   // Create the NPC - nation is guaranteed to be a valid Nation (not Pirate).
   // It starts on the water, while spawnPortHex still names the port cell.
-  const npc = createNPCShip(
+  G.npcs[id] = createNPCShip(
     id,
     spawnHex,
     destPort.hex,
@@ -280,9 +282,17 @@ export function spawnMerchant(
     spawnPort.hex
   );
 
-  G.npcs[id] = npc;
-
   return id;
+}
+
+/** A merchant put to sea from a random trading port (`spawnMerchantFrom`), or null when none could sail. */
+export function spawnMerchant(
+  G: CaribbeanState,
+  rng: () => number
+): string | null {
+  const spawnPorts = merchantSpawnPorts(G);
+  if (spawnPorts.length === 0) return null;
+  return spawnMerchantFrom(G, spawnPorts[Math.floor(rng() * spawnPorts.length)], rng);
 }
 
 /**
@@ -383,26 +393,25 @@ export function moveNPC(G: CaribbeanState, npcId: string): boolean {
   return false;
 }
 
-export function moveAllNPCs(G: CaribbeanState): void {
-  const npcIds = Object.keys(G.npcs);
+/** Every flotilla sails a step toward its target. Flotillas never despawn: they hunt until destroyed. */
+export function moveFlotillas(G: CaribbeanState): void {
+  for (const npcId of Object.keys(G.npcs)) {
+    if (G.npcs[npcId]?.role === "FLOTILLA") moveNPC(G, npcId);
+  }
+}
 
-  for (const npcId of npcIds) {
+/** Every merchant sails a step toward its port, and leaves the board once there. */
+export function moveMerchants(G: CaribbeanState): void {
+  for (const npcId of Object.keys(G.npcs)) {
     const npc = G.npcs[npcId];
-    if (!npc) continue;
+    if (!npc || npc.role === "FLOTILLA") continue;
 
-    // Flotillas never despawn - they hunt until destroyed
-    if (npc.role === "FLOTILLA") {
-      moveNPC(G, npcId);
-      continue;
-    }
-
-    // Merchants: Check if should despawn first (already at destination)
+    // Check if should despawn first (already at destination)
     if (shouldDespawn(npc)) {
       despawnNPC(G, npcId);
       continue;
     }
 
-    // Move the NPC
     moveNPC(G, npcId);
 
     // Check if reached destination after moving
@@ -410,4 +419,10 @@ export function moveAllNPCs(G: CaribbeanState): void {
       despawnNPC(G, npcId);
     }
   }
+}
+
+/** Every NPC sails: the flotillas, then the merchants. */
+export function moveAllNPCs(G: CaribbeanState): void {
+  moveFlotillas(G);
+  moveMerchants(G);
 }

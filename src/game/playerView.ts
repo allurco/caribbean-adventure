@@ -21,6 +21,9 @@ import type { CaribbeanState, NPCShip, ShipState } from "./types";
  * - the cargo and gold of a rival ship the seat has not scouted, and of an
  *   NPC nobody has identified: the spyglass is what reveals them (the ship
  *   tooltip shows them only then). They read as an empty hold and no gold;
+ * - the event deck's draw pile (#246), from everyone, like the undealt
+ *   captains: which cards are still to come, and their order. The event log
+ *   stays, and how many cards were drawn; the log carries only public facts;
  * - how many missions other seats have drawn (`missionIdCounters`, #320):
  *   watched across updates, a count would tell when a seat visited a tavern.
  *   A seat keeps its own, which its missions' ids show anyway;
@@ -63,6 +66,7 @@ export function playerViewFor(G: CaribbeanState, playerID: string | null | undef
     ships,
     npcs,
     ...(lostShips ? { lostShips } : {}),
+    ...(G.eventDeck ? { eventDeck: { ...G.eventDeck, drawPile: [] } } : {}),
     captainDeck: [],
     draftHands: seat !== null && seat in G.draftHands ? { [seat]: G.draftHands[seat] } : {},
   };

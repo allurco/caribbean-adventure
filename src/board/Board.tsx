@@ -13,6 +13,10 @@ import { deepSeaHexes } from "../game/deepSea";
 import { endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
 import { SeaWearToast } from "./SeaWearToast";
 import { HudToastStack } from "./HudToastStack";
+import { eventCardView, eventLogRows, freshEventCard, lastEventId, type EventCardFace } from "./eventCardView";
+import { EventCard } from "./EventCard";
+import { HudEventLog } from "./HudEventLog";
+import { HudLeftColumn } from "./HudLeftColumn";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
 import { turnReach, routeTo, reachCost } from "../game/reach";
 import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
@@ -1005,6 +1009,18 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   }
   const clearSeaWearLines = useCallback(() => setSeaWearLines(null), []);
 
+  // The event deck (#246): the card drawn as a turn ends, shown to every
+  // player unless it is Calm seas; not for one already in G on load
+  const [seenEventId, setSeenEventId] = useState(() => lastEventId(G.eventDeck?.log));
+  const [eventCard, setEventCard] = useState<EventCardFace | null>(null);
+  const latestEventId = lastEventId(G.eventDeck?.log);
+  if (latestEventId !== seenEventId) {
+    const fresh = freshEventCard(seenEventId, G.eventDeck?.log);
+    setSeenEventId(latestEventId);
+    if (fresh) setEventCard(eventCardView(fresh, G.regions));
+  }
+  const clearEventCard = useCallback(() => setEventCard(null), []);
+
   // Detect mission completion
   useEffect(() => {
     const prev = prevMissionRef.current;
@@ -1313,9 +1329,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {/* A finished match is not saved (its save is cleared), so there is nothing to leave and come back to */}
       {props.onSaveAndLeave && !ctx.gameover && <HudSaveLeave onSaveAndLeave={props.onSaveAndLeave} />}
 
-      {/* Every captain's glory, which is public (#110) */}
+      {/* Every captain's glory, which is public (#110), and the last few events (#246) */}
       {!inCombat && currentShipState && (
-        <HudGloryBoard rows={gloryScoreboard(G, hudPlayer, props.onlineSeats)} colours={PLAYER_COLOURS} />
+        <HudLeftColumn>
+          <HudGloryBoard rows={gloryScoreboard(G, hudPlayer, props.onlineSeats)} colours={PLAYER_COLOURS} />
+          <HudEventLog rows={eventLogRows(G.eventDeck?.log, G.regions, hudLayoutKind === "compact" ? 2 : 4)} />
+        </HudLeftColumn>
       )}
 
       {/* Bottom-left: captain and ship cards on parchment */}
@@ -1457,6 +1476,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           {seaWearLines && <SeaWearToast lines={seaWearLines} onDone={clearSeaWearLines} />}
         </HudToastStack>
       )}
+
+      {/* The event card drawn as the last turn ended (#246), for every player, once the turn's hand-off is over */}
+      {eventCard && !handoff && !showTurnChange && !ctx.gameover && <EventCard card={eventCard} onDone={clearEventCard} />}
 
       {/* Turn Change Animation */}
       {showTurnChange && currentShipState && (

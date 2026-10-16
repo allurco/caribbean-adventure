@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { hex, hexDistance, hexEquals, hexGrid, type Hex } from "./hex";
+import { hex, hexEquals, hexGrid, type Hex } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import { WIN_SCORE, type Captain, type CaribbeanState, type NPCShip, type ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
@@ -14,13 +14,11 @@ import { createShipState } from "./economy";
  * sail once, after the fight resolves: not during it, and not twice, however
  * the fight ends.
  *
- * A witness merchant far from the fight sails one hex toward its port each
- * NPC step, so how far it has come counts the steps.
+ * Each step draws one event card (#246), so the cards drawn count the steps.
  */
 
 const PORT = hex(-4, 0);
 const DOCK = hex(-3, 0);
-const WITNESS_START = hex(5, -5);
 
 /** A second port, to the south, so a new merchant has somewhere to sail. */
 const HAVANA = hex(0, 5);
@@ -76,14 +74,12 @@ function merchant(id: string, at: Hex, speed: number): NPCShip {
   };
 }
 
-/** Seeds found to give the rolls a test needs: a flight caught, a merchant spawned after the fight. */
+/** A seed found to give the rolls a test needs: a flight caught. */
 const CAUGHT_SEED = "s2";
-const SPAWN_SEED = "s6";
 
-/** The merchant to attack, beside seat 0, and the witness far off. */
+/** The merchant to attack, beside seat 0. */
 const npcs = (): Record<string, NPCShip> => ({
   prey: merchant("prey", hex(-1, 0), 0),
-  witness: merchant("witness", WITNESS_START, 1),
 });
 
 function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanState> = {}, seed = "npc-step-after-fight-288") {
@@ -118,9 +114,8 @@ function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanSta
 type TestClient = ReturnType<typeof startGame>;
 const stateOf = (client: TestClient) => client.getState()!;
 
-/** How many NPC steps the witness has sailed. */
-const npcSteps = (client: TestClient): number =>
-  hexDistance(WITNESS_START, stateOf(client).G.npcs.witness.position);
+/** How many end-of-turn steps the world has taken: one event card is drawn in each. */
+const npcSteps = (client: TestClient): number => stateOf(client).G.eventDeck?.drawn ?? 0;
 
 /** Two seats side by side, seat 0 to attack seat 1. */
 const twoSeats = (guns: [boolean, boolean] = [true, true]): Record<string, ShipState> => ({
@@ -252,16 +247,15 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     expect(npcSteps(client)).toBe(1);
   });
 
-  it("a new merchant can put to sea in the step after a fight", () => {
-    // This seed's spawn roll comes up as the fight ends
-    const client = startGame(twoSeats(), {}, SPAWN_SEED);
+  it("a new merchant can put to sea in the step after a fight: a convoy drawn as it ends", () => {
+    const client = startGame(twoSeats(), { eventDeck: { drawPile: ["merchantConvoy"], log: [], drawn: 0 } });
     client.moves.attackNPC("prey");
     fireToTheEnd(client);
     expectFightOver(client);
     expect(npcSteps(client)).toBe(1);
-    const spawned = Object.keys(stateOf(client).G.npcs).filter((id) => id !== "witness");
-    expect(spawned).toHaveLength(1);
-    expect(stateOf(client).G.npcs[spawned[0]].role).toBe("MERCHANT");
+    const spawned = Object.values(stateOf(client).G.npcs);
+    expect(spawned.length).toBeGreaterThanOrEqual(1);
+    expect(spawned.every((npc) => npc.role === "MERCHANT")).toBe(true);
   });
 
   it("a defender the ambush sinks never fires back (#346): the NPCs sail once", () => {
