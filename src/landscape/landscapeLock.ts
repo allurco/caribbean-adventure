@@ -35,6 +35,11 @@ export async function lockLandscape(ports: LockPorts): Promise<boolean> {
   }
 }
 
+/** Whether this browser can lock the screen to landscape: `canLockLandscape` over `browserLockPorts()`. */
+export function browserCanLockLandscape(): boolean {
+  return canLockLandscape(browserLockPorts());
+}
+
 /** `ScreenOrientation.lock` is missing from TypeScript's DOM types, and from Safari. */
 type LockableOrientation = ScreenOrientation & { lock?: (orientation: "landscape") => Promise<void> };
 

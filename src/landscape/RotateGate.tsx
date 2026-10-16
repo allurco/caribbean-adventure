@@ -1,11 +1,12 @@
-import { useState } from "react";
-import { safeInset } from "../board/safeArea";
+import { useEffect, useRef, useState } from "react";
+import { shellSafeInset } from "../board/safeArea";
 import { HarbourStill } from "../online/HarbourStill";
 import { Nameboard } from "../online/Nameboard";
 import { BTN_BRASS, SHEET } from "../online/shellStyles";
 import { useShellFonts } from "../online/useShellFonts";
-import { browserLockPorts, canLockLandscape, lockLandscape } from "./landscapeLock";
+import { browserCanLockLandscape, browserLockPorts, lockLandscape } from "./landscapeLock";
 import { ROTATE_GATE_Z } from "./rotateGateLayer";
+import { rotateGatePresence } from "./rotateGatePresence";
 import { RotateGlyph } from "./RotateGlyph";
 
 /**
@@ -19,19 +20,26 @@ import { RotateGlyph } from "./RotateGlyph";
  */
 export function RotateGate() {
   useShellFonts();
-  const [canLock] = useState(() => canLockLandscape(browserLockPorts()));
+  const [canLock] = useState(browserCanLockLandscape);
+  const self = useRef<HTMLDivElement>(null);
+  // Up while mounted: window key handlers ignore keys, the board pauses its frames
+  useEffect(() => rotateGatePresence.show(), []);
+  // Focus comes in here: the app behind is inert, so focus there is lost
+  useEffect(() => self.current?.focus(), []);
   return (
     <div
+      ref={self}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-labelledby="rotate-gate-title"
-      className="fixed inset-0 flex touch-none flex-col overflow-hidden bg-shell-harbour select-none"
+      className="fixed inset-0 flex touch-none outline-none flex-col overflow-hidden bg-shell-harbour select-none"
       style={{
         zIndex: ROTATE_GATE_Z,
-        paddingTop: safeInset("top", 0),
-        paddingBottom: safeInset("bottom", 0),
-        paddingLeft: safeInset("left", 16),
-        paddingRight: safeInset("right", 16),
+        paddingTop: shellSafeInset("top", 0),
+        paddingBottom: shellSafeInset("bottom", 0),
+        paddingLeft: shellSafeInset("left", 16),
+        paddingRight: shellSafeInset("right", 16),
       }}
     >
       <HarbourStill />

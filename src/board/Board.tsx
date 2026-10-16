@@ -149,6 +149,8 @@ import { CombatBanner } from "./combatFx/CombatBanner";
 import type { CombatDirector } from "./combatFx/combatDirector";
 import type { DepartedShipView } from "./combatFx/useCombatFx";
 import type { Mission } from "../game/types";
+import { ignoredUnderGate } from "../landscape/rotateGatePresence";
+import { useRotateGateShowing } from "../landscape/useRotateGateShowing";
 
 
 /**
@@ -571,7 +573,8 @@ function Scene({
   // Enter sails the previewed route; Escape drops the selection
   useEffect(() => {
     if (!reach) return;
-    const onKey = (e: KeyboardEvent) => {
+    // Not under the rotate gate (#123): the route sails only once the phone is turned
+    const onKey = ignoredUnderGate((e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "Escape") onSelect(null);
       if (e.key === "Enter") {
@@ -581,7 +584,7 @@ function Scene({
         onSelect(null);
         onSailRoute(route);
       }
-    };
+    });
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [reach, selected, hovered, onSailRoute, onSelect]);
@@ -839,6 +842,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const renderStatsFeed = useMemo(() => (renderStats ? createRenderStatsFeed() : null), [renderStats]);
   // The A/B switches for a real GPU: how the canvas and composer are set up, and `?gpuinfo=1`'s readout
   const setup = useMemo(() => canvasSetup(gpu ?? NO_GPU_CHECK, renderOff ?? NOTHING_OFF), [gpu, renderOff]);
+  const gated = useRotateGateShowing();
   const gpuInfoFeed = useMemo(() => (gpu?.info ? createGpuInfoFeed() : null), [gpu?.info]);
   // The loading gate: the board shows once every asset, shader and a few frames are ready
   const portNames = useMemo(() => G.cells.flatMap((c) => (c.portName ? [c.portName] : [])).join(""), [G.cells]);
@@ -1127,6 +1131,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   return (
     <div className="relative w-screen h-screen font-body bg-[#0a1929]">
       <Canvas
+        // No frames under the rotate gate (#123). On resuming, R3F restarts its
+        // clock, so the first frame's delta is near zero, not the time away;
+        // the wave, surf and sway clocks clamp their steps besides.
+        frameloop={gated ? "never" : "always"}
         dpr={setup.dpr}
         gl={setup.gl}
         shadows={setup.shadows ? { type: SHADOW_MAP_TYPE } : false}

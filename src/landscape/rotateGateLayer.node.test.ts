@@ -33,4 +33,19 @@ describe("the rotate gate's layer", () => {
     expect(zs.length).toBeGreaterThan(0);
     expect(ROTATE_GATE_Z).toBeGreaterThan(highest(zs));
   });
+
+  it("sits above every layer kept as a constant, like the harbour link's ACCOUNT_LINK_Z", () => {
+    const sources = filesUnder(here(".."), (name) => /\.ts$/.test(name) && !name.includes(".test.") && name !== "rotateGateLayer.ts");
+    const zs = sources.flatMap((file) =>
+      [...readFileSync(file, "utf8").matchAll(/\bexport const \w+_Z\s*(?::\s*number\s*)?=\s*(\d+)/g)].map((m) => Number(m[1]))
+    );
+    expect(zs).toContain(58);
+    expect(ROTATE_GATE_Z).toBeGreaterThan(highest(zs));
+  });
+
+  it("sits above every layer the stylesheet sets", () => {
+    const css = readFileSync(here("../index.css"), "utf8");
+    const zs = [...css.matchAll(/z-index:\s*(\d+)|\bz-\[?(\d+)\]?/g)].map((m) => Number(m[1] ?? m[2]));
+    expect(ROTATE_GATE_Z).toBeGreaterThan(highest(zs));
+  });
 });

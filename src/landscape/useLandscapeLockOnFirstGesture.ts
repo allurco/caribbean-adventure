@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { onFirstGesture } from "./firstGesture";
-import { browserLockPorts, canLockLandscape, lockLandscape } from "./landscapeLock";
+import { browserCanLockLandscape, browserLockPorts, lockLandscape } from "./landscapeLock";
 import { isPhone } from "./phoneOrientation";
 import { sampleViewport } from "./usePortraitPhone";
 
@@ -11,7 +11,7 @@ import { sampleViewport } from "./usePortraitPhone";
  */
 export function useLandscapeLockOnFirstGesture(): void {
   useEffect(() => {
-    if (!canLockLandscape(browserLockPorts())) return;
+    if (!browserCanLockLandscape()) return;
     return onFirstGesture(window, () => {
       if (isPhone(sampleViewport())) void lockLandscape(browserLockPorts());
     });
