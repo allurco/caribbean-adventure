@@ -18,7 +18,10 @@ import type { CaribbeanState, NPCShip, ShipState } from "./types";
  *   guessed to within ten gold per point);
  * - the cargo and gold of a rival ship the seat has not scouted, and of an
  *   NPC nobody has identified: the spyglass is what reveals them (the ship
- *   tooltip shows them only then). They read as an empty hold and no gold.
+ *   tooltip shows them only then). They read as an empty hold and no gold;
+ * - how many missions other seats have drawn (`missionIdCounters`, #320):
+ *   watched across updates, a count would tell when a seat visited a tavern.
+ *   A seat keeps its own, which its missions' ids show anyway;
  *
  * Everything drawn on the board or used to decide visibility stays: the map,
  * positions, classes, captains, damage, glory, bounties, pirates, combat,
@@ -40,8 +43,10 @@ export function playerViewFor(G: CaribbeanState, playerID: string | null | undef
   const lostShips = G.lostShips && Object.fromEntries(
     Object.entries(G.lostShips).map(([id, lost]) => [id, id === seat ? lost : { ...lost, stashedGold: 0 }])
   );
+  const missionIdCounters = G.missionIdCounters && (seat !== null && seat in G.missionIdCounters ? { [seat]: G.missionIdCounters[seat] } : {});
   return {
     ...G,
+    ...(missionIdCounters ? { missionIdCounters } : {}),
     ships,
     npcs,
     ...(lostShips ? { lostShips } : {}),

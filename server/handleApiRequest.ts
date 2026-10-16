@@ -8,9 +8,11 @@
  * built from the server's environment (`services.ts`). Without them (no
  * Supabase configured) those routes answer 503 and only health works.
  */
+import { deleteAccount } from "./account";
 import { backendStatus, type BackendStatus } from "./backendStatus";
 import { bearerToken, fail, json } from "./http";
-import type { OnlineStore } from "./onlineStore";
+import type { MatchSignals } from "./matchSignals";
+import { isAccountGone, type OnlineStore } from "./onlineStore";
 import { getMatch, postAction } from "./matches";
 import { createRoom, getRoom, joinRoom, startRoom } from "./rooms";
 import { listVoyages } from "./voyages";
@@ -32,6 +34,20 @@ export interface ApiServices {
   newMapSeed(): number;
   /** A new match's random seed: unguessable (128 random bits). */
   newMatchSeed(): string;
+  /**
+   * Tells a match's seats that it changed (#114): Supabase Realtime in
+   * production; left out by the in-memory and e2e backends, whose clients
+   * poll.
+   */
+  signals?: MatchSignals;
+  /**
+   * Keeps work running after the response is sent (Vercel's `waitUntil`,
+   * `vercelHandler.ts`): the realtime signal, so a move never waits on it.
+   * Left out, the route awaits that work before it answers.
+   */
+  defer?: (work: Promise<unknown>) => void;
+  /** The clock, in ms since the epoch (#114: when a seat was last seen); `Date.now` when left out. */
+  now?: () => number;
 }
 
 type Route = (request: Request, userId: string, services: ApiServices) => Promise<Response>;
@@ -57,6 +73,7 @@ const pattern = (re: RegExp) => (path: string) => {
 
 const ROUTES: RouteEntry[] = [
   { method: "GET", match: exact("/api/me/rooms"), run: (_req, user, s) => listVoyages(user, s.store) },
+  { method: "POST", match: exact("/api/me/delete"), run: (_req, user, s) => deleteAccount(user, s.store) },
   { method: "POST", match: exact("/api/rooms"), run: (req, user, s) => createRoom(req, user, s) },
   { method: "POST", match: exact("/api/rooms/join"), run: (req, user, s) => joinRoom(req, user, s) },
   { method: "POST", match: pattern(/^\/api\/rooms\/([^/]+)\/start$/), run: (_req, user, s, [id]) => startRoom(id, user, s) },
@@ -65,11 +82,11 @@ const ROUTES: RouteEntry[] = [
     match: (path) => (path === "/api/rooms/join" ? null : pattern(/^\/api\/rooms\/([^/]+)$/)(path)),
     run: (_req, user, s, [id]) => getRoom(id, user, s),
   },
-  { method: "GET", match: pattern(/^\/api\/matches\/([^/]+)$/), run: (req, user, s, [id]) => getMatch(req, id, user, s.store) },
+  { method: "GET", match: pattern(/^\/api\/matches\/([^/]+)$/), run: (req, user, s, [id]) => getMatch(req, id, user, s) },
   {
     method: "POST",
     match: pattern(/^\/api\/matches\/([^/]+)\/actions$/),
-    run: (req, user, s, [id]) => postAction(req, id, user, s.store),
+    run: (req, user, s, [id]) => postAction(req, id, user, s),
   },
 ];
 
@@ -92,6 +109,8 @@ export async function handleApiRequest(request: Request, env: ServerEnv, service
     if (!userId) return fail(401, "unauthorized", "sign in first");
     return await route(request, userId, services);
   } catch (error) {
+    // The account was deleted after the token was checked (#108): as a dead token.
+    if (isAccountGone(error)) return fail(401, "unauthorized", "sign in first");
     // The details stay in the function's log, never in the response.
     console.error(error);
     return fail(500, "internal", "something went wrong");

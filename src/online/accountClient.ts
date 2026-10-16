@@ -4,12 +4,15 @@
  * `supabaseClient.ts`), and tests pass a small fake. Nothing here imports
  * supabase-js, so the hotseat bundle never loads it.
  */
+import type { OpenMatchChannel } from "./matchLive";
 
 /** A row of `public.profiles` (supabase/migrations): public fields only. */
 export interface ProfileRow {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  /** Set once the account was deleted (#108): the row is the "deleted player" placeholder. */
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,7 +36,8 @@ export interface AuthPort {
     email: string;
     options?: { emailRedirectTo?: string; shouldCreateUser?: boolean };
   }): PromiseLike<{ error: ClientError | null }>;
-  signOut(): PromiseLike<{ error: ClientError | null }>;
+  /** `local`: drop this device's session without asking Supabase Auth (the user may be gone already). */
+  signOut(options?: { scope?: "global" | "local" | "others" }): PromiseLike<{ error: ClientError | null }>;
   getSession(): PromiseLike<{ data: { session: SessionLike | null }; error: ClientError | null }>;
   onAuthStateChange(callback: (event: string, session: SessionLike | null) => void): {
     data: { subscription: Unsubscribable };
@@ -59,4 +63,6 @@ export interface ProfilesTable {
 export interface AccountClient {
   auth: AuthPort;
   from(table: "profiles"): ProfilesTable;
+  /** A match's private realtime channel (#114). Left out by fakes: an online board then polls. */
+  openMatchChannel?: OpenMatchChannel;
 }

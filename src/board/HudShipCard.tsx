@@ -108,6 +108,17 @@ export function HudShipCard({ ship }: HudShipCardProps) {
           </div>
         )}
 
+        {view.contract && (
+          <p
+            className="text-[11px] text-ink truncate"
+            title={view.contract.failed ? `${view.contract.title} (failed)` : view.contract.title}
+          >
+            <span className="text-ink-faded font-semibold">Contract: </span>
+            {view.contract.title}
+            {view.contract.failed && <span className="text-ink-red font-semibold"> (failed)</span>}
+          </p>
+        )}
+
         {view.stats.length > 0 && (
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
             {view.stats.map((s) => (

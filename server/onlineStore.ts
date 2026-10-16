@@ -47,6 +47,22 @@ export type JoinOutcome = "seated" | "not_found" | "full" | "started";
 export type ClaimOutcome = "claimed" | "not_found" | "not_host" | "not_full" | "starting" | "already_started";
 export type StartOutcome = "started" | "not_found" | "not_claimed";
 
+/**
+ * Thrown by a store operation acting for a player whose account is deleted
+ * (#108): the profile is the "deleted player" placeholder, or the sign-in is
+ * gone. A token can outlive either for a moment; `/api` answers 401, as for
+ * a token that no longer signs in.
+ */
+export function accountGone(): Error {
+  return Object.assign(new Error("the account is deleted"), { code: ACCOUNT_GONE });
+}
+
+export function isAccountGone(error: unknown): boolean {
+  return error instanceof Error && (error as Error & { code?: unknown }).code === ACCOUNT_GONE;
+}
+
+const ACCOUNT_GONE = "account_gone";
+
 /** A claimed start not finished in this long can be claimed again: the function building it died. */
 export const STALE_START_SECONDS = 120;
 
@@ -61,6 +77,13 @@ export interface InitialMatch {
   state: unknown;
   stateId: number;
   phase: string | null;
+}
+
+/** When a seat was last seen (#114, `seatSeen.ts`): kept on the server, never sent. */
+export interface SeatSeen {
+  index: number;
+  /** ISO 8601, or null before the seat's first read or move. */
+  lastSeenAt: string | null;
 }
 
 /** A started match as the move API loads it (#113). */
@@ -133,6 +156,11 @@ export interface OnlineStore {
    * Counts the creation against the host's allowance and creates the room
    * with its host in seat 0, in one transaction: the room's id, or null when
    * the allowance is used up. A creation that fails costs nothing.
+   *
+   * `createRoom`, `joinRoom` and `commitMove` throw `accountGone()` for a
+   * player whose profile is deleted, checked under a lock on the profile so a
+   * deletion cannot interleave; every operation that counts against an
+   * allowance throws it once the sign-in is gone.
    */
   createRoom(room: NewRoom, allowance: RateLimit): Promise<string | null>;
   /** Seats the player at the lowest free seat of the room with this invite code. */
@@ -162,4 +190,31 @@ export interface OnlineStore {
    * write got there first (the client then refetches).
    */
   commitMove(update: MatchUpdate): Promise<boolean>;
+  /**
+   * When each seat of the room was last seen (#114). Its own query, apart
+   * from `getMatch` and `getMatchHead`, so a database without the column (the
+   * migration not yet pushed) costs only the online dot, never the match.
+   */
+  seatsLastSeen(roomId: string): Promise<SeatSeen[]>;
+  /**
+   * Records that seat `seatIndex` of room `roomId` was seen at `at` (ISO
+   * 8601), its read or move of the match (#114), unless it was seen at or
+   * after `staleBefore`: the throttle is in the write, so requests in
+   * parallel do not each write.
+   */
+  markSeatSeen(roomId: string, seatIndex: number, at: string, staleBefore: string): Promise<void>;
+  /**
+   * The first half of deleting an account (#108), in one transaction:
+   * anonymises the profile (the "deleted player" placeholder, nothing
+   * personal kept) and leaves every room still open (the seat is freed, a room
+   * they hosted passes to the lowest seat left, a room left empty is closed).
+   * Seats in started and finished matches stay. Idempotent.
+   */
+  anonymiseAccount(userId: string): Promise<void>;
+  /**
+   * The second half: removes the sign-in identity (Supabase Auth's user and
+   * its identities), so the same email or provider signs up afresh. Done
+   * already counts as done.
+   */
+  deleteSignIn(userId: string): Promise<void>;
 }

@@ -59,7 +59,7 @@ function onlineSeat() {
     numPlayers: 2,
     playerID: "0",
     matchID: MATCH,
-    multiplayer: apiTransport(api, server.store.getState() as State as SeatView, () => {}),
+    multiplayer: apiTransport({ api, initial: server.store.getState() as State as SeatView, onError: () => {} }),
   });
   const shown: string[] = [];
   seat.subscribe((s) => {

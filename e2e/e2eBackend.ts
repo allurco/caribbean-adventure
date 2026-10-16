@@ -15,6 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import type { Plugin } from "vite";
 import type { ApiServices } from "../server/handleApiRequest";
+import { DELETED_PLAYER_NAME } from "../src/online/displayName";
 import { E2E_PLAYERS, E2E_SUPABASE_PATH } from "./e2ePlayers";
 
 type ServerEntry = typeof import("./e2eServerEntry");
@@ -71,9 +72,15 @@ export function e2eBackend(): Plugin {
         throw new Error("The e2e backend runs only for the local browser tests (E2E_BACKEND=1).");
       }
       const { handleApiRequest, createMemoryOnlineStore, newInviteCode, newMapSeed, newMatchSeed } = await loadServer();
+      const store = createMemoryOnlineStore({ displayName: (id) => players.find((p) => p.id === id)?.name ?? null });
+      // A token stops working once its account is deleted (#108), as with Supabase Auth.
+      const signedIn = async (token: string | undefined) => {
+        const player = players.find((p) => p.token === token);
+        return player && !(await store.peekSignInDeleted(player.id)) ? player : null;
+      };
       const services: ApiServices = {
-        auth: async (token) => players.find((p) => p.token === token)?.id ?? null,
-        store: createMemoryOnlineStore({ displayName: (id) => players.find((p) => p.id === id)?.name ?? null }),
+        auth: async (token) => (await signedIn(token))?.id ?? null,
+        store,
         newInviteCode,
         newMapSeed,
         newMatchSeed,
@@ -85,14 +92,20 @@ export function e2eBackend(): Plugin {
             return await send(res, await handleApiRequest(await toRequest(req, "http://localhost"), {}, services));
           }
           if (url.startsWith(`${E2E_SUPABASE_PATH}/auth/v1/user`)) {
-            const token = req.headers.authorization?.replace(/^Bearer\s+/i, "");
-            const player = players.find((p) => p.token === token);
+            const player = await signedIn(req.headers.authorization?.replace(/^Bearer\s+/i, ""));
             return player ? json(res, 200, { id: player.id, aud: "authenticated", role: "authenticated" }) : json(res, 401, {});
           }
           if (url.startsWith(`${E2E_SUPABASE_PATH}/rest/v1/profiles`)) {
             const id = new URL(url, "http://localhost").searchParams.get("id")?.replace(/^eq\./, "");
             const player = players.find((p) => p.id === id);
-            return json(res, 200, player ? { id: player.id, display_name: player.name, avatar_url: null } : null);
+            if (!player) return json(res, 200, null);
+            const deleted = await store.peekProfileDeleted(player.id);
+            return json(res, 200, {
+              id: player.id,
+              display_name: deleted ? DELETED_PLAYER_NAME : player.name,
+              avatar_url: null,
+              deleted_at: deleted ? new Date(0).toISOString() : null,
+            });
           }
           if (url.startsWith(E2E_SUPABASE_PATH)) return json(res, 200, {});
         } catch (error) {
