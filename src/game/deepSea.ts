@@ -55,9 +55,16 @@ export type SeaState = Pick<CaribbeanState, "cells" | "wrap" | "combat">;
  * point to spare (the sea never takes the last), and no fight on.
  */
 export function seaWillWear(state: SeaState, ship: Pick<ShipState, "position" | "stats">): boolean {
+  return seaWearsOnDeep(state, ship) && isDeepSea(state.cells, ship.position, state.wrap);
+}
+
+/**
+ * Whether deep sea would wear `ship` at all, wherever it is: a shallow-draft
+ * coaster with a hull point to spare, and no fight on.
+ */
+export function seaWearsOnDeep(state: Pick<SeaState, "combat">, ship: Pick<ShipState, "stats">): boolean {
   if (state.combat) return false;
-  if (!ship.stats?.shallowDraft || ship.stats.hull.current < 2) return false;
-  return isDeepSea(state.cells, ship.position, state.wrap);
+  return Boolean(ship.stats?.shallowDraft) && (ship.stats?.hull.current ?? 0) >= 2;
 }
 
 /**
