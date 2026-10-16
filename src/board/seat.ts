@@ -1,6 +1,7 @@
 import type { Handoff } from "./turnHandoff";
 import type { Captain, CaribbeanState, CombatStage, ShipState } from "../game/types";
 import { awaitingCaptain, isEliminated } from "../game/captainDeath";
+import { hasPicked } from "../game/draftOrder";
 import { npcName } from "./npcName";
 import { combatActor, seatMayActInCombat, type FightSides, type FightStep, type SeatFight } from "../game/combatActor";
 
@@ -89,15 +90,42 @@ export function choosingCaptain(G: Pick<CaribbeanState, "lostShips">, phase: str
  * What the draft screen shows: the hand to pick from (and, in hotseat, the
  * "pass the helm" screen after the pick), or a line to wait on. A seat never
  * sees another seat's hand: it reaches the seat emptied (`playerView`, #109).
- * A new captain for a lost ship (#265) is picked the same way, but the seat
- * then sails its turn, so there is no device to pass.
+ * A client holding a seat drafts at once with every other (#111): it picks
+ * from its own hand whoever's turn it is, then waits on the seats still
+ * choosing, and sees every other seat as picked or still choosing (`others`).
+ * A new captain for a lost ship (#265) is picked on the seat's own turn, but
+ * the seat then sails its turn, so there is no device to pass.
  */
 export type DraftView =
-  | { kind: "pick"; hand: Captain[]; passDevice: boolean }
-  | { kind: "waiting"; line: string };
+  | { kind: "pick"; hand: Captain[]; passDevice: boolean; others?: DraftSeat[] }
+  | { kind: "waiting"; line: string; others?: DraftSeat[] };
+
+/** Another seat in the draft, as a seat sees it: picked (named by its captain) or still choosing. */
+export interface DraftSeat {
+  seat: string;
+  name: string;
+  picked: boolean;
+}
+
+/** "A", "A and B", "A, B and C". */
+function listed(names: string[]): string {
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** The draft as a seat's own client sees it: every seat at once (#111). */
+function seatDraftView(G: Pick<CaribbeanState, "ships" | "draftHands">, seat: string): DraftView {
+  const others = Object.keys(G.ships)
+    .filter((other) => other !== seat)
+    .map((other) => ({ seat: other, name: seatName(G, other), picked: hasPicked(G, other) }));
+  if (!hasPicked(G, seat)) return { kind: "pick", hand: G.draftHands[seat] ?? [], passDevice: false, others };
+  const choosing = others.filter((other) => !other.picked).map((other) => other.name);
+  const what = choosing.length === 1 ? "to choose a captain" : "to choose their captains";
+  return { kind: "waiting", line: `Waiting for ${listed(choosing)} ${what}`, others };
+}
 
 export function draftView(G: Pick<CaribbeanState, "ships" | "draftHands" | "lostShips">, turn: SeatTurn): DraftView {
   const replacing = awaitingCaptain(G, turn.currentPlayer);
+  if (turn.playerID != null && !replacing) return seatDraftView(G, turn.playerID);
   if (!seatMayAct(turn)) {
     return { kind: "waiting", line: waitingLine(G, turn.currentPlayer, replacing ? "to pick a new captain" : "to draft") };
   }

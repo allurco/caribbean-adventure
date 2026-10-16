@@ -156,16 +156,39 @@ describe("POST /api/matches/:id/actions", () => {
     ]);
   });
 
+  it("lets every seat pick its captain at once in the draft, in any order, and then sails seat 0 first (#111)", async () => {
+    const matchId = await startedMatch();
+    const s0 = (await view(matchId, "jack")).state._stateID;
+    const jack = await act(matchId, "jack", move(s0, "pickCaptain", 1, "Flute"));
+    expect(jack.status).toBe(200);
+    const afterJack = ((await jack.json()) as MatchBody).state;
+    expect(afterJack.ctx).toMatchObject({ phase: "draft", currentPlayer: "0" });
+    expect(afterJack.G.ships["1"].shipClass).toBe("Flute");
+    // Anne sees that Jack has picked, never his hand
+    const anne = (await view(matchId, "anne")).state;
+    expect(anne.G.ships["1"].captain).toBeDefined();
+    expect(Object.keys(anne.G.draftHands)).toEqual(["0"]);
+
+    // A seat picks once, from its own hand only
+    for (const bad of [move(s0 + 1, "pickCaptain", 0, "Sloop"), move(s0 + 1, "pickCaptain", 2, "Sloop")]) {
+      expect((await act(matchId, "jack", bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+
+    const last = await act(matchId, "anne", move(s0 + 1, "pickCaptain", 0, "Sloop"));
+    expect(last.status).toBe(200);
+    expect(((await last.json()) as MatchBody).state.ctx).toMatchObject({ phase: "main", currentPlayer: "0" });
+  });
+
   it("refuses a move from a player who does not hold the current seat", async () => {
     const matchId = await startedMatch();
-    const { state } = await view(matchId, "jack");
-    const res = await act(matchId, "jack", move(state._stateID, "pickCaptain", 0, "Sloop"));
+    const { _stateID } = await draftBoth(matchId);
+    const res = await act(matchId, "jack", move(_stateID, "spyglass", "1"));
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ code: "not_your_turn" });
-    const stranger = await act(matchId, "mary", move(state._stateID, "pickCaptain", 0, "Sloop"));
+    const stranger = await act(matchId, "mary", move(_stateID, "spyglass", "1"));
     expect(stranger.status).toBe(404);
-    expect((await store.peekMatch(matchId))!.stateId).toBe(state._stateID);
-    expect(await store.peekMoves(matchId)).toEqual([]);
+    expect((await store.peekMatch(matchId))!.stateId).toBe(_stateID);
+    expect(await store.peekMoves(matchId)).toHaveLength(2);
   });
 
   it("rejects a move made against a stale state and sends the current view to refetch from", async () => {

@@ -1212,7 +1212,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         <div className="absolute inset-0 z-[55]">
           <DraftScreen
             view={draftView(G, turn)}
-            drafting={seatName(G, ctx.currentPlayer)}
+            drafting={seatName(G, viewerSeat(turn))}
             onPickCaptain={(index, shipClass) => props.moves.pickCaptain(index, shipClass)}
           />
         </div>
