@@ -128,7 +128,7 @@ describe("a saved hotseat game", () => {
   it("records when it was saved, and the save's schema version", () => {
     const save = saveHotseat(newMatch(1).store.getState(), map, 1_234);
     expect(save.savedAt).toBe(1_234);
-    expect(save.version).toBe(2);
+    expect(save.version).toBe(3);
   });
 
   it("refuses a map that is not the save's", () => {
@@ -144,5 +144,35 @@ describe("a saved hotseat game", () => {
     expect(() => restoreHotseat(save, regenerated)).toThrow(/another world/);
     const renamed = { ...map, regions: map.regions.map((region, i) => (i === 0 ? { ...region, name: "Elsewhere" } : region)) };
     expect(() => restoreHotseat(save, renamed)).toThrow(/another world/);
+  });
+
+  it("names missions and loot apart from those made before the save, once restored (#320)", () => {
+    const original = newMatch(1);
+    original.moves.pickCaptain(0, STARTER_SHIP_CLASSES[0]);
+    // The captain starts docked at their home port, where the tavern is
+    original.moves.listenForRumors();
+    const before = original.getState()!.G.ships["0"].activeMission!.id;
+    original.moves.abandonMission();
+
+    const restored = newMatch(1, restoreHotseat(throughStorage(original.store.getState()), map));
+    restored.moves.listenForRumors();
+    const after = restored.getState()!.G.ships["0"].activeMission!.id;
+    expect(after).not.toBe(before);
+  });
+
+  it("names new missions apart from an older save's clock-made ids, when that save lacks the counter (#320)", () => {
+    const original = newMatch(1);
+    original.moves.pickCaptain(0, STARTER_SHIP_CLASSES[0]);
+    const state: MatchState = original.store.getState();
+    const { missionIdCounters: _missions, lootIdCounter: _loot, ...olderG } = state.G;
+    void _missions;
+    void _loot;
+    const oldLoot = { id: "loot-1-1712345678901", hex: state.G.ships["0"].position, cargo: { Wood: 0, Sugar: 0, Rum: 0, Spice: 0 }, gold: 0 };
+    const older = { ...state, G: { ...olderG, floatingLoot: [oldLoot] } };
+
+    const restored = newMatch(1, restoreHotseat(throughStorage(older), map));
+    restored.moves.listenForRumors();
+    expect(restored.getState()!.G.ships["0"].activeMission!.id).toBe("mission-0-1");
+    expect(restored.getState()!.G.floatingLoot.map((loot) => loot.id)).toEqual(["loot-1-1712345678901"]);
   });
 });

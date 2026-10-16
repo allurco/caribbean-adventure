@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMatchSync, MATCH_POLL_MS, type MatchGetResult, type MatchSendResult, type MatchSyncApi, type SeatView } from "./matchSync";
+import { createMatchSync, LIVE_POLL_MS, MATCH_POLL_MS, SIGNAL_DEBOUNCE_MS, type MatchGetResult, type MatchSendResult, type MatchSyncApi, type SeatView } from "./matchSync";
 
 const MATCH = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const view = (stateID: number): SeatView => ({ _stateID: stateID, G: { n: stateID }, ctx: { currentPlayer: "0" } }) as unknown as SeatView;
@@ -204,6 +204,162 @@ describe("the online match sync (#113)", () => {
     await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
     expect(calls).toEqual(["get since=-", "get since=-"]);
     expect(views).toEqual([4]);
+    sync.stop();
+  });
+});
+
+describe("the realtime signal and the fallback poll (#114)", () => {
+  beforeEach(() => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
+  });
+
+  const unchanged = (since?: number): MatchGetResult => ({ ok: true, changed: false, seat: "0", stateID: since! });
+
+  it("on a 'changed' signal newer than the board, asks for the seat's own view: several signals at once, one read", async () => {
+    const { api, calls } = fakeApi();
+    const views: number[] = [];
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+    api.nextGet = () => ({ ok: true, changed: true, seat: "0", state: view(6) });
+    sync.signal(5);
+    sync.signal(6);
+    expect(calls).toEqual([]);
+    await vi.advanceTimersByTimeAsync(SIGNAL_DEBOUNCE_MS);
+    expect(calls).toEqual(["get since=4"]);
+    expect(views).toEqual([6]);
+  });
+
+  it("skips a signal the board is already at or past (its own move's, or a stale one)", async () => {
+    const { api, calls } = fakeApi();
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: () => {}, onError: () => {} });
+    sync.signal(4);
+    sync.signal(3);
+    await vi.advanceTimersByTimeAsync(SIGNAL_DEBOUNCE_MS * 4);
+    expect(calls).toEqual([]);
+  });
+
+  it("polls far less often while the channel is live, and every few seconds again once it is not", async () => {
+    const { api, calls } = fakeApi();
+    api.nextGet = unchanged;
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: () => {}, onError: () => {} });
+    sync.start();
+    sync.setLive(true);
+    await vi.advanceTimersByTimeAsync(0);
+    calls.length = 0; // the catch-up read on going live
+    await vi.advanceTimersByTimeAsync(LIVE_POLL_MS - 1);
+    expect(calls).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(calls).toEqual(["get since=4"]);
+    sync.setLive(false);
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    expect(calls).toEqual(["get since=4", "get since=4"]);
+    sync.stop();
+    await vi.advanceTimersByTimeAsync(LIVE_POLL_MS * 2);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("catches up once on going live, for any signal sent while the channel was down", async () => {
+    const { api, calls } = fakeApi();
+    api.nextGet = unchanged;
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: () => {}, onError: () => {} });
+    sync.start();
+    sync.setLive(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toEqual(["get since=4"]);
+    sync.setLive(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toHaveLength(1);
+    sync.stop();
+  });
+
+  it("reads a signal that came while an action was on its way once the action settles, if the board is still behind it", async () => {
+    const { api, calls, answer } = fakeApi();
+    const views: number[] = [];
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 2] } });
+    await vi.advanceTimersByTimeAsync(0);
+    sync.signal(5); // the action's own
+    sync.signal(6); // another seat's, right after
+    await vi.advanceTimersByTimeAsync(SIGNAL_DEBOUNCE_MS);
+    expect(calls).toEqual(["send moveShip at 4"]);
+    api.nextGet = () => ({ ok: true, changed: true, seat: "0", state: view(6) });
+    answer({ ok: true, state: view(5) });
+    await vi.advanceTimersByTimeAsync(SIGNAL_DEBOUNCE_MS);
+    expect(calls).toEqual(["send moveShip at 4", "get since=5"]);
+    expect(views).toEqual([5, 6]);
+  });
+
+  it("does not read a signal made stale by the action's own answer", async () => {
+    const { api, calls, answer } = fakeApi();
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: () => {}, onError: () => {} });
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 2] } });
+    await vi.advanceTimersByTimeAsync(0);
+    sync.signal(5);
+    answer({ ok: true, state: view(5) });
+    await vi.advanceTimersByTimeAsync(SIGNAL_DEBOUNCE_MS * 2);
+    expect(calls).toEqual(["send moveShip at 4"]);
+  });
+
+  for (const [how, failure] of [
+    ["is refused (a 429)", "refused"],
+    ["cannot reach the server", "thrown"],
+  ] as const) {
+    it(`polls every few seconds, even while live, after a signalled read that ${how}, until a read succeeds`, async () => {
+      const { api, calls } = fakeApi();
+      const views: number[] = [];
+      const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+      api.nextGet = unchanged;
+      sync.start();
+      sync.setLive(true);
+      await vi.advanceTimersByTimeAsync(0);
+      calls.length = 0;
+      let fails = 2;
+      api.nextGet = () => {
+        if (fails-- > 0) {
+          if (failure === "thrown") throw new TypeError("Failed to fetch");
+          return { ok: false, status: 429, code: "rate_limited", error: "Too many orders at once. Slow down." };
+        }
+        return { ok: true, changed: true, seat: "0", state: view(6) };
+      };
+      sync.signal(6);
+      await vi.advanceTimersByTimeAsync(SIGNAL_DEBOUNCE_MS);
+      expect(calls).toEqual(["get since=4"]);
+      await vi.advanceTimersByTimeAsync(MATCH_POLL_MS * 2);
+      expect(calls).toEqual(["get since=4", "get since=4", "get since=4"]);
+      expect(views).toEqual([6]);
+      // Caught up: back to the live channel's rare fallback poll.
+      api.nextGet = unchanged;
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS - 1);
+      expect(calls).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(calls).toHaveLength(4);
+      sync.stop();
+    });
+  }
+
+});
+
+describe("which seats are online (#114): from the server, on every answer", () => {
+  it("tells the board the seats the server saw lately, from reads, polls and actions alike", async () => {
+    const { api, answer } = fakeApi();
+    const online: string[][] = [];
+    const sync = createMatchSync({
+      api,
+      matchId: MATCH,
+      initialStateID: 4,
+      onView: () => {},
+      onError: () => {},
+      onOnline: (seats) => online.push([...seats]),
+    });
+    api.nextGet = (since) => ({ ok: true, changed: false, seat: "0", stateID: since!, online: ["0", "1"] });
+    sync.start();
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    expect(online).toEqual([["0", "1"]]);
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 2] } });
+    await vi.advanceTimersByTimeAsync(0);
+    answer({ ok: true, state: view(5), online: ["0"] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(online).toEqual([["0", "1"], ["0"]]);
     sync.stop();
   });
 });

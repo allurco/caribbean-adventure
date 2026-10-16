@@ -4,6 +4,8 @@
  * with no backend configured never fetches it.
  */
 import type { AccountClient, IdentityRow } from "./accountClient";
+import { MATCH_CHANGED_EVENT } from "./matchChannel";
+import type { ChannelStatus, OpenMatchChannel } from "./matchLive";
 import { readSupabaseConfig, type SupabaseConfig } from "./supabaseConfig";
 
 /** The backend this build talks to, or null for the local hotseat game alone. */
@@ -19,8 +21,20 @@ export function getAccountClient(config: SupabaseConfig): Promise<AccountClient>
     // Typed as the narrow port: these assignments check that the real client
     // still has the shape the account code and its fakes assume.
     const auth: AccountClient["auth"] = supabase.auth;
+    // A match's channel (#114): private, so Realtime checks the player's
+    // token against the policies on `realtime.messages` before it joins. It
+    // only listens: no presence, no broadcast of its own.
+    const openMatchChannel: OpenMatchChannel = async (topic, handlers) => {
+      await supabase.realtime.setAuth();
+      const channel = supabase.channel(topic, { config: { private: true } });
+      channel
+        .on("broadcast", { event: MATCH_CHANGED_EVENT }, (message) => handlers.onChanged(message.payload))
+        .subscribe((status) => handlers.onStatus(status as ChannelStatus));
+      return { close: () => void supabase.removeChannel(channel).catch(() => {}) };
+    };
     const port: AccountClient = {
       auth,
+      openMatchChannel,
       // Spelled out call by call: supabase-js' own query types are too deep
       // for TypeScript to compare with the port in one go.
       from: (table) => ({

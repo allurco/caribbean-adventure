@@ -4,6 +4,7 @@
  * `supabaseClient.ts`), and tests pass a small fake. Nothing here imports
  * supabase-js, so the hotseat bundle never loads it.
  */
+import type { OpenMatchChannel } from "./matchLive";
 
 import type { OAuthProvider } from "./oauthProviders";
 
@@ -85,4 +86,6 @@ export interface AccountClient {
   from(table: "profiles"): ProfilesTable;
   /** `public.profile_identities` (#106): the Discord and Google accounts a player signs in with. */
   identities(): IdentitiesTable;
+  /** A match's private realtime channel (#114). Left out by fakes: an online board then polls. */
+  openMatchChannel?: OpenMatchChannel;
 }

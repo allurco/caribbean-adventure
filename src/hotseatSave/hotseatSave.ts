@@ -14,9 +14,14 @@ export type MatchState = State<CaribbeanState>;
  * the state it holds (G, ctx, the plugins' data). A save from before the
  * change would restore into state the game no longer expects and could crash.
  * `hotseatSaveShape.test.ts` pins that shape and fails when it changes; bump
- * this, then update the pinned shape.
+ * this, then update the pinned shape. When an older save can be brought up
+ * to date, `parseHotseatSave` migrates it rather than setting it aside.
+ *
+ * - 3: G counts its mission and loot ids, `G.missionIdCounters` (by seat)
+ *   and `G.lootIdCounter` (#320). A version 2 save lacks them, which the game
+ *   reads as 0, so it migrates as it is.
  */
-export const HOTSEAT_SAVE_VERSION = 2;
+export const HOTSEAT_SAVE_VERSION = 3;
 
 /** G without the map, which is generated again from its size and seed. */
 export type SavedG = Omit<CaribbeanState, "cells" | "regions">;

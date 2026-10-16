@@ -7,6 +7,7 @@
 import { randomBytes, randomInt } from "node:crypto";
 import type { ApiServices, ServerEnv } from "./handleApiRequest";
 import { backendStatus, serviceKey } from "./backendStatus";
+import { realtimeSignals } from "./matchSignals";
 import { createSupabaseOnlineStore, supabaseAuthVerifier, type ServiceClient } from "./supabaseOnlineStore";
 
 /** The services, or null when Supabase is not configured (the routes then answer 503). */
@@ -28,6 +29,7 @@ export function servicesFromEnv(env: ServerEnv): ApiServices | null {
     newInviteCode,
     newMapSeed,
     newMatchSeed,
+    signals: realtimeSignals({ url, key }),
   };
 }
 
