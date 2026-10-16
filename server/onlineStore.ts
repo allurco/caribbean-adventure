@@ -79,6 +79,13 @@ export interface InitialMatch {
   phase: string | null;
 }
 
+/** When a seat was last seen (#114, `seatSeen.ts`): kept on the server, never sent. */
+export interface SeatSeen {
+  index: number;
+  /** ISO 8601, or null before the seat's first read or move. */
+  lastSeenAt: string | null;
+}
+
 /** A started match as the move API loads it (#113). */
 export interface MatchRecord {
   id: string;
@@ -183,6 +190,19 @@ export interface OnlineStore {
    * write got there first (the client then refetches).
    */
   commitMove(update: MatchUpdate): Promise<boolean>;
+  /**
+   * When each seat of the room was last seen (#114). Its own query, apart
+   * from `getMatch` and `getMatchHead`, so a database without the column (the
+   * migration not yet pushed) costs only the online dot, never the match.
+   */
+  seatsLastSeen(roomId: string): Promise<SeatSeen[]>;
+  /**
+   * Records that seat `seatIndex` of room `roomId` was seen at `at` (ISO
+   * 8601), its read or move of the match (#114), unless it was seen at or
+   * after `staleBefore`: the throttle is in the write, so requests in
+   * parallel do not each write.
+   */
+  markSeatSeen(roomId: string, seatIndex: number, at: string, staleBefore: string): Promise<void>;
   /**
    * The first half of deleting an account (#108), in one transaction:
    * anonymises the profile (the "deleted player" placeholder, nothing

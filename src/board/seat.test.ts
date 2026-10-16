@@ -226,6 +226,19 @@ describe("gloryScoreboard: every seat's captain and glory, which is public", () 
     expect(boards[0]).toHaveLength(3);
     clients.forEach((c) => c.stop());
   });
+
+  it("marks which seats are online in an online match (#114), and says nothing of it in hotseat or solo", () => {
+    const G = table(3);
+    G.ships["1"].score = 2;
+    expect(gloryScoreboard(G, "0", ["0", "1"]).map(({ seat, online }) => ({ seat, online }))).toEqual([
+      { seat: "1", online: true },
+      { seat: "0", online: true },
+      { seat: "2", online: false },
+    ]);
+    for (const unknown of [undefined, null]) {
+      for (const row of gloryScoreboard(G, "0", unknown)) expect(row).not.toHaveProperty("online");
+    }
+  });
 });
 
 describe("seatMayActInCombat: who presses each step of a fight", () => {
