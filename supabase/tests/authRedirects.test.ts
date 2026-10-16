@@ -47,7 +47,7 @@ describe("auth redirect URLs in supabase/config.toml (#107)", () => {
   });
 
   it("would catch a wildcard preview host", () => {
-    expect(unsafeRedirect("https://caribbean-adventure-*.vercel.app/**")).toMatch(/wildcard in host/);
+    expect(unsafeRedirect("https://<project>-*.vercel.app/**")).toMatch(/wildcard in host/);
     expect(unsafeRedirect("https://*-team.vercel.app/**")).toMatch(/wildcard in host/);
     expect(unsafeRedirect("http://example.com/**")).toBe("not https");
     expect(unsafeRedirect("http://localhost:5173/**")).toBeNull();
