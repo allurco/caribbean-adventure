@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { harbourPath } from "./shellRoute";
 import { PARCHMENT_SHEET, TIMBER_FRAME } from "./shellStyles";
 import { useShellFonts } from "./useShellFonts";
 
@@ -7,19 +8,16 @@ interface OnlineSheetProps {
   /** A line under the title, in soft ink. */
   subtitle?: string;
   children: ReactNode;
-  /** Whether to link back to the game under the sheet (default true). */
-  backLink?: boolean;
 }
 
 /**
- * A stand-in frame for the online pages (#105): one parchment sheet in a
- * timber frame on tar. The Harbour launcher shell (#125) replaces this frame
- * with its own (nav board, nameboard, harbour) and keeps what goes inside.
+ * One parchment sheet in a timber frame on tar, for a page outside the online
+ * shell (#125) that has something to say: the match board when it cannot load.
  */
-export function OnlineSheet({ title, subtitle, children, backLink = true }: OnlineSheetProps) {
+export function OnlineSheet({ title, subtitle, children }: OnlineSheetProps) {
   useShellFonts();
   return (
-    <main className="flex h-full w-full overflow-y-auto bg-shell-tar bg-[radial-gradient(ellipse_at_50%_30%,#2a1b10,var(--color-shell-tar)_70%)] px-4 py-8">
+    <main className="flex h-full w-full overflow-y-auto bg-shell-tar bg-[radial-gradient(ellipse_at_50%_30%,var(--color-shell-tar-glow),var(--color-shell-tar)_70%)] px-4 py-8">
       <div className="m-auto w-full max-w-[440px]">
         <div className={TIMBER_FRAME}>
           <section aria-labelledby="online-sheet-title" className={`${PARCHMENT_SHEET} px-6 py-6`}>
@@ -30,16 +28,14 @@ export function OnlineSheet({ title, subtitle, children, backLink = true }: Onli
             <div className="mt-5 space-y-5 text-[16px]">{children}</div>
           </section>
         </div>
-        {backLink && (
-          <p className="mt-5 text-center">
-            <a
-              href="/"
-              className="font-fell-sc text-[15px] text-shell-gold underline decoration-shell-gold/50 underline-offset-2 hover:text-shell-parchment focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-shell-gold"
-            >
-              Back to the game
-            </a>
-          </p>
-        )}
+        <p className="mt-5 text-center">
+          <a
+            href={harbourPath()}
+            className="font-fell-sc text-[15px] text-shell-gold underline decoration-shell-gold/50 underline-offset-2 hover:text-shell-parchment focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-shell-gold"
+          >
+            Back to the harbour
+          </a>
+        </p>
       </div>
     </main>
   );

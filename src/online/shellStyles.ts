@@ -31,5 +31,43 @@ export const TIMBER_FRAME =
 export const PARCHMENT_SHEET =
   "rounded-[2px] bg-shell-parchment bg-[radial-gradient(ellipse_at_25%_10%,rgba(255,250,228,0.55),transparent_55%),radial-gradient(ellipse_at_90%_100%,rgba(120,72,24,0.28),transparent_50%)] shadow-[inset_0_0_70px_rgba(116,68,22,0.42),inset_0_0_14px_rgba(84,46,12,0.45)] font-garamond text-shell-ink";
 
+/** The keyboard focus ring, for controls that take none of the button plates. */
+export const FOCUS_RING = FOCUS;
+
+const BOARD_EDGE =
+  "rounded-[3px] border-2 border-shell-tar shadow-[inset_0_1px_0_rgba(255,220,160,0.12),0_12px_28px_rgba(0,0,0,0.5)]";
+
+/** A timber board floating over the harbour, planks running across: the nameboard and the party board (#125). */
+export const BOARD_H = `shell-timber-h ${BOARD_EDGE}`;
+
+/** A timber board with its planks upright: the nav board (#125). */
+export const BOARD_V = `shell-timber-v ${BOARD_EDGE}`;
+
+/** The shell's one parchment sheet (#125), foxed and grained, under the nameboard. */
+export const SHEET = "shell-parchment rounded-[3px] font-garamond text-shell-ink";
+
+/** A small italic heading for a section on the sheet. */
+export const SECTION = "font-fell text-[19px] italic text-shell-ink-soft";
+
+/** A nav board item that is lit: the page the player is on (#125). */
+export const NAV_LIT = "bg-[linear-gradient(90deg,rgba(230,199,126,0.2),transparent)] text-shell-timber-lit";
+
+/** A nav board item that is not lit. */
+export const NAV_UNLIT = "text-shell-timber-dim/80 hover:bg-white/[0.03] hover:text-shell-timber-text active:text-shell-timber-text";
+
+/** A rope a nameboard hangs on; the nameboard sets its length and place. */
+export const ROPE =
+  "absolute w-[3px] bg-[repeating-linear-gradient(35deg,var(--color-shell-rope)_0_2px,var(--color-shell-rope-dark)_2px_4px)] shadow-[1px_0_2px_rgba(0,0,0,0.4)]";
+
+/** A nail where a rope meets a nameboard; the nameboard sets its size and place. */
+export const NAIL = "absolute rounded-full bg-[radial-gradient(circle_at_35%_35%,var(--color-shell-nail),var(--color-shell-nail-dark))]";
+
+/** A nameboard's title, carved into the timber; the nameboard sets its size. */
+export const NAMEBOARD_TITLE =
+  "font-fell-sc leading-none text-shell-nameboard [text-shadow:0_-1px_0_rgba(0,0,0,0.8),0_1px_0_rgba(255,226,160,0.18)]";
+
+/** The line after a nameboard's title. */
+export const NAMEBOARD_META = "truncate font-garamond text-shell-nameboard-soft/85 italic";
+
 /** Wax red: reserved for taking your turn (#125), never any other action. */
 export const BTN_WAX = `${FOCUS} ${PRESS} inline-flex items-center justify-center gap-2 px-5 py-2.5 font-fell-sc text-[17px] leading-none text-[#fbe9d0] rounded-[3px] border border-[#3f0d06] bg-shell-ink-wax bg-[linear-gradient(180deg,#b23a24,var(--color-shell-ink-wax)_60%,#651a0f)] shadow-[inset_0_1px_0_rgba(255,200,170,0.45),0_3px_0_#3f0d06,0_6px_14px_rgba(60,10,0,0.45)] hover:brightness-110 active:shadow-[inset_0_1px_0_rgba(255,200,170,0.3),0_1px_0_#3f0d06]`;

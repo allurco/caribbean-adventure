@@ -484,7 +484,7 @@ A ship whose move crosses the seam starts its animation a wrap width over
 
 Cost: the copies add ~25 draw calls and roughly double the triangle count
 (palms, rocks, piers and the grid lines are not frustum-culled), with no
-measurable change in frame time on an Apple M4. The faceted rocks (#49)
+measurable change in frame time on the development machine. The faceted rocks (#49)
 added two instanced draws per copy (three rock variants where there was one
 sphere).
 

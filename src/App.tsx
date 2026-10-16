@@ -7,16 +7,15 @@ import { loadGameClient, loadSeatClient, type GameClient } from "./loadGameClien
 import { GameClientLoader } from "./GameClientLoader";
 import { HotseatGame } from "./HotseatGame";
 import { LocalSeats } from "./LocalSeats";
-import { parseAccountRoute, skipsLogin } from "./online/accountRoute";
 import { parseOnlineRoute } from "./online/onlineRoute";
+import { parseShellPage } from "./online/shellRoute";
 import { supabaseConfig } from "./online/supabaseClient";
 
-// The online pages (#105) and their corner link exist only when a backend is
-// configured (src/online/supabaseConfig.ts); without one the app is the local
-// hotseat game, exactly as before. Each is its own chunk.
-const AccountPage = lazy(() => import("./online/AccountPage").then((m) => ({ default: m.AccountPage })));
-const ProfilePage = lazy(() => import("./online/ProfilePage").then((m) => ({ default: m.ProfilePage })));
-const SignInGate = lazy(() => import("./online/SignInGate").then((m) => ({ default: m.SignInGate })));
+// The online shell (#125), the match board (#113) and the corner link over
+// the local game exist only when a backend is configured
+// (src/online/supabaseConfig.ts); without one the app is the local hotseat
+// game, exactly as before. Each is its own chunk.
+const OnlineShell = lazy(() => import("./online/OnlineShell").then((m) => ({ default: m.OnlineShell })));
 const AccountLink = lazy(() => import("./online/AccountLink").then((m) => ({ default: m.AccountLink })));
 const OnlinePage = lazy(() => import("./online/OnlinePage").then((m) => ({ default: m.OnlinePage })));
 
@@ -26,24 +25,24 @@ const OnlinePage = lazy(() => import("./online/OnlinePage").then((m) => ({ defau
 // Absent, nothing changes. See "Dev URL parameters" in the README.
 const devParams = parseDevUrlParams(window.location.search);
 const isLab = window.location.hash === "#lab";
-const accountRoute = supabaseConfig ? parseAccountRoute(window.location.search) : null;
-// Online play (#112): a new room, a room's lobby, an invite link. Only with a backend.
-const onlineRoute = supabaseConfig ? parseOnlineRoute(window.location.search) : null;
 
 // The seed gallery (#161) is dev only: the DEV guard drops it, and its chunk, from production builds.
 const SeedGallery = import.meta.env.DEV ? lazy(() => import("./lab/SeedGallery")) : null;
 const showSeedGallery = SeedGallery !== null && devParams.seedGallery === true;
+const devView = isLab || devParams.propViewer || devParams.soundLab || showSeedGallery;
 
-const showsGame = !(isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || accountRoute || onlineRoute);
+// Only with a backend: the online shell (#125) at the root URL and its pages
+// (Play, the account pages, the rooms), and a started match's board (#113).
+// The root URL with `?skipLogin=1` or the dev parameters still opens the local game.
+const shellPage = supabaseConfig && !devView ? parseShellPage(window.location.search) : null;
+const onlineRoute = supabaseConfig && !devView ? parseOnlineRoute(window.location.search) : null;
+const matchRoute = onlineRoute?.kind === "match" ? onlineRoute : null;
 
-// With a backend configured the root URL is the sign-in screen, and the game
-// sits behind it; `?skipLogin=1` goes straight to the game (temporary, until
-// the online entry #125). Without a backend there is nothing to sign in to.
-const loginGate = showsGame && supabaseConfig !== null && !skipsLogin(window.location.search);
+const showsGame = !(devView || shellPage || matchRoute);
 
 // The game's map is generated in a worker (#124), started once and only for
 // the game itself, not the labs or the prop viewer: here at load so it runs
-// while React mounts, or behind the sign-in screen once a player is through.
+// while React mounts.
 let gameClientPromise: Promise<GameClient> | undefined;
 function gameClient(): Promise<GameClient> {
   // Dev `?seats=1` (#110): every seat on one page, through the local transport
@@ -59,7 +58,7 @@ function gameClient(): Promise<GameClient> {
 // match a dev URL pins (size, seed, the seats on one page), which never
 // touches the save, starts here.
 const savesHotseat = usesHotseatSave(devParams);
-if (showsGame && !loginGate && !savesHotseat) void gameClient();
+if (showsGame && !savesHotseat) void gameClient();
 
 export default function App() {
   // Visit http://localhost:5173/#lab for the shader sandbox,
@@ -70,21 +69,17 @@ export default function App() {
   if (isLab) {
     return <ShaderLab />;
   }
-  if (supabaseConfig && accountRoute) {
+  if (supabaseConfig && shellPage) {
     return (
       <Suspense fallback={null}>
-        {accountRoute.kind === "account" ? (
-          <AccountPage config={supabaseConfig} />
-        ) : (
-          <ProfilePage config={supabaseConfig} id={accountRoute.id} />
-        )}
+        <OnlineShell config={supabaseConfig} initialPage={shellPage} />
       </Suspense>
     );
   }
-  if (supabaseConfig && onlineRoute) {
+  if (supabaseConfig && matchRoute) {
     return (
       <Suspense fallback={null}>
-        <OnlinePage config={supabaseConfig} route={onlineRoute} />
+        <OnlinePage config={supabaseConfig} matchId={matchRoute.id} />
       </Suspense>
     );
   }
@@ -100,15 +95,6 @@ export default function App() {
   }
   if (devParams.soundLab || !showsGame) {
     return <SoundLab />;
-  }
-  if (supabaseConfig && loginGate) {
-    return (
-      <Suspense fallback={null}>
-        <SignInGate config={supabaseConfig} backLink={false}>
-          {() => <Game />}
-        </SignInGate>
-      </Suspense>
-    );
   }
   return <Game />;
 }

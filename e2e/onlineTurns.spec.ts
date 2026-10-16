@@ -96,11 +96,11 @@ test("two captains open a room, start it, and play their turns from two browsers
   await expect(endTurn(waiting)).toBeVisible({ timeout: 30_000 });
   await expect(endTurn(playing)).toBeHidden();
 
-  // Both captains leave to the harbour, where the voyage waits, saved, and come back to it (#301).
+  // Both captains leave to the harbour, the shell's Play (#125), where the voyage waits, saved, and come back to it (#301).
   const leave = async (page: Page) => {
     await page.bringToFront();
     await page.getByRole("link", { name: "Leave to harbour" }).click();
-    await expect(page).toHaveURL(/view=rooms&saved=1/);
+    await expect(page).toHaveURL(/\/\?saved=1$/);
     await expect(page.getByText("Your voyage is saved.")).toBeVisible();
   };
   await test.step("the seat waited on leaves, and takes its turn from the harbour", async () => {
