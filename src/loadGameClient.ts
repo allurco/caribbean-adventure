@@ -24,7 +24,8 @@ export interface HotseatPersistence {
  * `setup()` is synchronous, so the map is generated first, in a worker (on
  * the main thread where there is none), and the client's game starts on it.
  * `setupData` is the dev URL pin (#74): its size and seed, else random ones;
- * `debugPanel: false` hides boardgame.io's debug panel (devUrlParams.ts).
+ * `debugPanel: false` hides boardgame.io's debug panel (devUrlParams.ts);
+ * otherwise it opens collapsed (`debugOption`).
  * `seats` is the match's seat count (#278): solo by default, more for a dev
  * hotseat game (`?players=`, `seatCount`).
  * `persistence` saves the match as it is played (#300); with a `restore`
@@ -42,7 +43,7 @@ export async function loadGameClient(setupData: CaribbeanSetupData | undefined, 
     game: withHotseatView(withGeneratedMap(Caribbean, map)),
     board: CaribbeanBoard,
     numPlayers: restore ? restore.state.ctx.numPlayers : seats,
-    ...(debugPanel ? {} : { debug: false }),
+    debug: debugOption(debugPanel),
     ...(persistence
       ? {
           enhancer: hotseatStoreEnhancer({
@@ -70,8 +71,19 @@ export async function loadSeatClient(setupData: CaribbeanSetupData | undefined, 
     board: CaribbeanBoard,
     numPlayers: seats,
     multiplayer: Local(),
-    ...(debugPanel ? {} : { debug: false }),
+    debug: debugOption(debugPanel),
   });
+}
+
+/**
+ * boardgame.io's debug panel for a local client: hidden with `debugPanel`
+ * false, else collapsed on load, so it does not sit over the port panel and
+ * the tavern; '.' or its toggle opens it. Only a dev build has the panel at
+ * all: boardgame.io mounts it only when NODE_ENV is not production, and
+ * neither option here names an `impl` that would bring it back there.
+ */
+function debugOption(debugPanel: boolean) {
+  return debugPanel ? { collapseOnLoad: true } : false;
 }
 
 function generateMap(setupData: CaribbeanSetupData | undefined) {
