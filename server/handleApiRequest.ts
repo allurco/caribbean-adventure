@@ -21,7 +21,10 @@ export type ServerEnv = Readonly<Record<string, string | undefined>>;
 
 /**
  * Who a Supabase access token belongs to: the user's id, or null for a
- * missing, forged or expired token.
+ * missing, forged or expired token, or when the token could not be checked.
+ * Throws `accountGone()` for a sound token whose account is deleted (#108):
+ * /api answers that with its own code, `account_deleted`, so a client can
+ * tell a finished deletion from a sign-in problem.
  */
 export type AuthVerifier = (accessToken: string) => Promise<string | null>;
 
@@ -111,8 +114,8 @@ export async function handleApiRequest(request: Request, env: ServerEnv, service
     if (!userId) return fail(401, "unauthorized", "sign in first");
     return await route(request, userId, services);
   } catch (error) {
-    // The account was deleted after the token was checked (#108): as a dead token.
-    if (isAccountGone(error)) return fail(401, "unauthorized", "sign in first");
+    // The account is deleted (#108): by the token check, or by the store after it.
+    if (isAccountGone(error)) return fail(401, "account_deleted", "the account is deleted");
     // The details stay in the function's log, never in the response.
     console.error(error);
     return fail(500, "internal", "something went wrong");

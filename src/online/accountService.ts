@@ -118,6 +118,7 @@ export async function saveDisplayName(client: AccountClient, id: string, rawName
 }
 
 const DELETE_MESSAGES: Messages = {
+  unauthorized: "Your sign-in could not be checked. Sign out, sign in again and try once more.",
   rate_limited: "Too many tries. Wait an hour and try again.",
   internal: "The account could not be deleted. Try again in a moment.",
 };
@@ -128,14 +129,16 @@ const DELETE_MESSAGES: Messages = {
  * session: the server has removed the sign-in already, so there is nothing to
  * sign out of but the local copy. On a refusal the player stays signed in.
  *
- * The server answering 401 to a token this device still holds means the
- * sign-in is gone: another tab deleted the account, or this request's own
- * answer was lost and the retry finds nothing. That counts as done.
+ * The server answering `account_deleted` (401) to a token this device still
+ * holds means the account is gone already: another tab deleted it, or this
+ * request's own answer was lost and the retry finds nothing. That counts as
+ * done. Any other 401 (an expired token, the sign-in check failing) is a
+ * sign-in problem: the player stays signed in and is told so.
  */
 export async function deleteAccount(client: AccountClient, api: ApiDeps): Promise<Result> {
   if (!(await api.accessToken())) return { ok: false, error: "Sign in first." };
   const result = await callApi<object>(api, DELETE_MESSAGES, "POST", "/api/me/delete");
-  if (!result.ok && result.status !== 401) return { ok: false, error: result.error };
+  if (!result.ok && result.code !== "account_deleted") return { ok: false, error: result.error };
   const { error } = await client.auth.signOut({ scope: "local" });
   return error ? { ok: false, error: `Your account is deleted, but this device could not sign out: ${error.message}` } : { ok: true };
 }

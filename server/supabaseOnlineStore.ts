@@ -61,19 +61,21 @@ interface DatabaseError {
   code?: string;
 }
 
-/** `require_live_profile`'s refusal (supabase/migrations/*_delete_account.sql): invalid_authorization_specification. */
-const PROFILE_DELETED = "28000";
-const FOREIGN_KEY_VIOLATION = "23503";
+/**
+ * The database's refusal of a deleted account (#108), invalid_authorization_specification:
+ * raised by `require_live_profile` for the placeholder profile, and by
+ * `consume_rate_limit` for an auth user deleted since the token was checked
+ * (supabase/migrations/*_delete_account_followups.sql).
+ */
+const ACCOUNT_DELETED = "28000";
 
 /**
  * The error a store operation throws for a database error: `accountGone()`
- * when it says the account is deleted (#108), the profile refused by
- * `require_live_profile` or a rate counter for an auth user deleted since the
- * token was checked; otherwise the database's message.
+ * when the database refuses a deleted account (SQLSTATE 28000, never read
+ * from the message); otherwise the database's message.
  */
 export function storeError(error: DatabaseError): Error {
-  if (error.code === PROFILE_DELETED) return accountGone();
-  if (error.code === FOREIGN_KEY_VIOLATION && error.message.includes("rate_counters_user_id_fkey")) return accountGone();
+  if (error.code === ACCOUNT_DELETED) return accountGone();
   return new Error(error.message);
 }
 
@@ -298,12 +300,16 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
 
 /**
  * Checks an access token with Supabase Auth (`auth.getUser`), which rejects
- * forged, expired and signed-out tokens. Null for any of those.
+ * forged, expired and signed-out tokens: null for any of those, and for any
+ * other failure. Auth answers `user_not_found` only for a token it has
+ * verified whose user no longer exists: the account is deleted (#108), so it
+ * throws `accountGone()`.
  */
 export function supabaseAuthVerifier(client: () => Promise<ServiceClient>): AuthVerifier {
   return async (accessToken) => {
     const db = await client();
     const { data, error } = await db.auth.getUser(accessToken);
+    if (error?.code === "user_not_found") throw accountGone();
     return error || !data.user ? null : data.user.id;
   };
 }

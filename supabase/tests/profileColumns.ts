@@ -116,8 +116,10 @@ export function deletedProfileGuard(migrations: string[]): string[] {
 
 /**
  * The latest `public.anonymise_profile`: the columns it keeps, those it
- * clears, those its update writes, and the referencing tables whose rows it
- * keeps and those whose rows it deletes.
+ * clears, those its update writes, the referencing tables whose rows it
+ * keeps and those whose rows it deletes, and the columns it clears on rows
+ * it keeps (`clearedOnKept`, as `public.<table>.<column>`, from its updates
+ * of other tables).
  */
 export function anonymiserColumns(migrations: string[]): {
   kept: string[];
@@ -125,6 +127,7 @@ export function anonymiserColumns(migrations: string[]): {
   set: string[];
   keptTables: string[];
   clearedTables: string[];
+  clearedOnKept: string[];
 } {
   const body = latestFunctionBody(stripComments(migrations.join("\n")), "anonymise_profile");
   const update = /update\s+public\.profiles\s+set\s+([\s\S]*?)\s+where\b/i.exec(body);
@@ -135,6 +138,9 @@ export function anonymiserColumns(migrations: string[]): {
     set: splitTopLevel(update[1]).map((assignment) => assignment.split("=")[0].trim().toLowerCase()),
     keptTables: quotedList(body, "v_kept_tables", false),
     clearedTables: quotedList(body, "v_cleared_tables", false),
+    clearedOnKept: [...body.matchAll(/update\s+public\.(\w+)\s+set\s+([\s\S]*?)\s+where\b/gi)]
+      .filter((m) => m[1].toLowerCase() !== "profiles")
+      .flatMap((m) => splitTopLevel(m[2]).map((assignment) => `public.${m[1].toLowerCase()}.${assignment.split("=")[0].trim().toLowerCase()}`)),
   };
 }
 

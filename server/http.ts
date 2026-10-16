@@ -18,6 +18,8 @@ export function fail(status: number, code: ApiErrorCode, error: string, extra: R
 export type ApiErrorCode =
   | "bad_request"
   | "unauthorized"
+  /** A sound token whose account is deleted (#108); a client treats only this 401 as "already deleted". */
+  | "account_deleted"
   | "forbidden"
   | "not_found"
   | "method_not_allowed"

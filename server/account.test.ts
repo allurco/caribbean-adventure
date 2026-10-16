@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { handleApiRequest, type ApiServices } from "./handleApiRequest";
 import { createMemoryOnlineStore, type MemoryOnlineStore } from "./memoryOnlineStore";
 import { ACCOUNT_DELETION_LIMIT } from "./account";
+import { accountGone } from "./onlineStore";
 import { DELETED_PLAYER_NAME } from "../src/online/displayName";
 
 // Deleting your account (#108): `POST /api/me/delete` through handleApiRequest
@@ -21,10 +22,11 @@ beforeEach(() => {
   codes = 0;
   store = createMemoryOnlineStore({ displayName: (id) => NAMES[id] ?? null });
   services = {
-    // As Supabase Auth: a token stops working once its sign-in identity is deleted.
+    // As supabaseAuthVerifier: a token whose sign-in identity is deleted reads as a deleted account.
     auth: async (token) => {
       const id = TOKENS[token];
-      return id && !(await store.peekSignInDeleted(id)) ? id : null;
+      if (id && (await store.peekSignInDeleted(id))) throw accountGone();
+      return id ?? null;
     },
     store,
     newInviteCode: () => `invite-code-${String(++codes).padStart(10, "0")}`,
@@ -70,8 +72,17 @@ async function startedMatch(): Promise<RoomBody> {
 
 describe("POST /api/me/delete", () => {
   it("needs a signed-in player", async () => {
-    expect((await deleteAccount()).status).toBe(401);
-    expect((await deleteAccount("forged")).status).toBe(401);
+    for (const res of [await deleteAccount(), await deleteAccount("forged")]) {
+      expect(res.status).toBe(401);
+      expect(await res.json()).toMatchObject({ code: "unauthorized" });
+    }
+  });
+
+  it("answers a retry with the deleted account's token as account_deleted, apart from a dead token", async () => {
+    expect((await deleteAccount("anne")).status).toBe(200);
+    const retry = await deleteAccount("anne");
+    expect(retry.status).toBe(401);
+    expect(await retry.json()).toMatchObject({ code: "account_deleted" });
   });
 
   it("answers only POST", async () => {
@@ -107,6 +118,17 @@ describe("POST /api/me/delete", () => {
       { index: 1, userId: JACK, displayName: "Calico Jack" },
     ]);
     expect((await call("GET", `/api/matches/${room.matchId}`, "jack")).status).toBe(200);
+  });
+
+  it("clears when the deleted player's seats were last seen, keeping the others'", async () => {
+    const room = await startedMatch();
+    expect((await call("GET", `/api/matches/${room.matchId}`, "anne")).status).toBe(200);
+    expect((await call("GET", `/api/matches/${room.matchId}`, "jack")).status).toBe(200);
+    expect((await store.seatsLastSeen(room.id)).every((s) => s.lastSeenAt !== null)).toBe(true);
+    expect((await deleteAccount("anne")).status).toBe(200);
+    const seen = await store.seatsLastSeen(room.id);
+    expect(seen[0].lastSeenAt).toBeNull();
+    expect(seen[1].lastSeenAt).not.toBeNull();
   });
 
   it("leaves the rooms still open: the seat is freed, and a room they hosted passes to the lowest seat left", async () => {
@@ -181,6 +203,37 @@ describe("POST /api/me/delete", () => {
   });
 });
 
+describe("a deletion that lands while a match is being started (#108)", () => {
+  it("frees the seat and reopens the room: the start is refused, nothing is left half-started", async () => {
+    const room = await openRoom("anne");
+    await call("POST", "/api/rooms/join", "jack", { inviteCode: room.inviteCode });
+    const startMatch = store.startMatch;
+    // The host's account goes after the start is claimed, before the match is stored.
+    store.startMatch = async (...args) => {
+      await store.anonymiseAccount(ANNE);
+      return startMatch(...args);
+    };
+    const res = await call("POST", `/api/rooms/${room.id}/start`, "anne");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "account_deleted" });
+    expect(await store.getRoom(room.id)).toMatchObject({ status: "open", hostId: JACK, matchId: null });
+    expect((await store.getRoom(room.id))?.seats.map((s) => s.userId)).toEqual([JACK]);
+  });
+
+  it("frees a guest's seat too, and the host's start then finds the room open again", async () => {
+    const room = await openRoom("anne");
+    await call("POST", "/api/rooms/join", "jack", { inviteCode: room.inviteCode });
+    const startMatch = store.startMatch;
+    store.startMatch = async (...args) => {
+      await store.anonymiseAccount(JACK);
+      return startMatch(...args);
+    };
+    expect((await call("POST", `/api/rooms/${room.id}/start`, "anne")).status).toBe(409);
+    expect(await store.getRoom(room.id)).toMatchObject({ status: "open", hostId: ANNE, matchId: null });
+    expect((await store.getRoom(room.id))?.seats.map((s) => s.userId)).toEqual([ANNE]);
+  });
+});
+
 describe("a deleted profile whose sign-in still works (#108)", () => {
   // The profile is anonymised first and the sign-in deleted second, so a
   // token can outlive the profile for a moment, or for good if the second
@@ -198,7 +251,7 @@ describe("a deleted profile whose sign-in still works (#108)", () => {
     expect((await deleteAccount("anne")).status).toBe(500);
     const res = await call("POST", "/api/rooms", "anne", { seats: 2, mapSize: "small", mapSeed: 5 });
     expect(res.status).toBe(401);
-    expect(await res.json()).toMatchObject({ code: "unauthorized" });
+    expect(await res.json()).toMatchObject({ code: "account_deleted" });
   });
 
   it("cannot take a seat", async () => {
@@ -233,6 +286,6 @@ describe("a request that passed the sign-in check just before the account went (
     await store.deleteSignIn(ANNE);
     const res = await deleteAccount("anne");
     expect(res.status).toBe(401);
-    expect(await res.json()).toMatchObject({ code: "unauthorized" });
+    expect(await res.json()).toMatchObject({ code: "account_deleted" });
   });
 });

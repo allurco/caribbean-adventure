@@ -128,6 +128,24 @@ describe("the tables that reference a profile, and the anonymiser", () => {
   it("clears the sign-in providers (#106) whether or not their table exists yet", () => {
     expect(anonymiserColumns(migrations).clearedTables).toContain("public.profile_identities");
   });
+
+  it("reads the columns it clears on the rows it keeps, from its updates of other tables", () => {
+    const fn = `
+      create function public.anonymise_profile(p_user uuid) returns void language plpgsql as $$
+      declare
+        v_kept constant text[] := array['id'];
+        v_cleared constant text[] := array['display_name'];
+      begin
+        update public.profiles set display_name = 'Deleted player' where id = p_user;
+        update public.seats set last_seen_at = null, note = null where user_id = p_user;
+      end;
+      $$;`;
+    expect(anonymiserColumns([fn]).clearedOnKept).toEqual(["public.seats.last_seen_at", "public.seats.note"]);
+  });
+
+  it("clears when the player's seats were last seen (#114): the kept seat says nothing of their activity", () => {
+    expect(anonymiserColumns(migrations).clearedOnKept).toContain("public.seats.last_seen_at");
+  });
 });
 
 describe("the sign-up trigger's avatar (#106)", () => {

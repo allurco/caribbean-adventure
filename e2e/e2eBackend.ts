@@ -71,7 +71,7 @@ export function e2eBackend(): Plugin {
       if (process.env.E2E_BACKEND !== "1" || process.env.VERCEL || process.env.NODE_ENV === "production") {
         throw new Error("The e2e backend runs only for the local browser tests (E2E_BACKEND=1).");
       }
-      const { handleApiRequest, createMemoryOnlineStore, newInviteCode, newMapSeed, newMatchSeed } = await loadServer();
+      const { handleApiRequest, createMemoryOnlineStore, accountGone, newInviteCode, newMapSeed, newMatchSeed } = await loadServer();
       const store = createMemoryOnlineStore({ displayName: (id) => players.find((p) => p.id === id)?.name ?? null });
       // A token stops working once its account is deleted (#108), as with Supabase Auth.
       const signedIn = async (token: string | undefined) => {
@@ -79,7 +79,12 @@ export function e2eBackend(): Plugin {
         return player && !(await store.peekSignInDeleted(player.id)) ? player : null;
       };
       const services: ApiServices = {
-        auth: async (token) => (await signedIn(token))?.id ?? null,
+        // As supabaseAuthVerifier: a deleted account's token is `account_deleted`, not a dead token.
+        auth: async (token) => {
+          const player = players.find((p) => p.token === token);
+          if (player && (await store.peekSignInDeleted(player.id))) throw accountGone();
+          return player?.id ?? null;
+        },
         store,
         newInviteCode,
         newMapSeed,
