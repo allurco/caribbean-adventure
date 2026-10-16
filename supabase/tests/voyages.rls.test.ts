@@ -18,6 +18,7 @@ interface Voyage {
   yourSeat: number;
   currentSeat: number | null;
   drafting: boolean;
+  choosing: number[];
   yourTurn: boolean;
   updatedAt: string;
 }
@@ -73,16 +74,16 @@ describe.skipIf(!dbTestsEnabled)("a player's voyages (local Supabase)", () => {
 
     const annes = await voyages(anne);
     expect(annes.map((v) => v.roomId)).toEqual([room.id, waiting.id]);
-    expect(annes[0]).toMatchObject({ status: "started", yourSeat: 0, currentSeat: 0, drafting: true, yourTurn: true });
+    expect(annes[0]).toMatchObject({ status: "started", yourSeat: 0, currentSeat: null, drafting: true, choosing: [0, 1], yourTurn: true });
     expect(annes[0].seats).toEqual([
       { index: 0, displayName: "Anne Bonny" },
       { index: 1, displayName: "Calico Jack" },
     ]);
-    expect(annes[1]).toMatchObject({ status: "open", matchId: null, currentSeat: null, yourTurn: false });
+    expect(annes[1]).toMatchObject({ status: "open", matchId: null, currentSeat: null, choosing: [], yourTurn: false });
 
     const jacks = await voyages(jack);
     expect(jacks.map((v) => v.roomId)).toEqual([room.id]);
-    expect(jacks[0]).toMatchObject({ yourSeat: 1, currentSeat: 0, yourTurn: false });
+    expect(jacks[0]).toMatchObject({ yourSeat: 1, currentSeat: null, choosing: [0, 1], yourTurn: true });
 
     const body = JSON.stringify(jacks);
     expect(body).not.toContain(room.inviteCode);
@@ -120,7 +121,7 @@ describe.skipIf(!dbTestsEnabled)("a player's voyages (local Supabase)", () => {
       isNPCCombat: false,
       log: ["secret-log"],
     });
-    expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 1, drafting: false, yourTurn: false });
+    expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 1, drafting: false, choosing: [], yourTurn: false });
     expect((await voyages(jack))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
     const raw = await admin.rpc("list_voyages", { p_user: jack.id, p_limit: 1 });
     expect(raw.error).toBeNull();
@@ -139,6 +140,18 @@ describe.skipIf(!dbTestsEnabled)("a player's voyages (local Supabase)", () => {
     expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 1, yourTurn: false });
     const raw = await admin.rpc("list_voyages", { p_user: anne.id, p_limit: 1 });
     expect(JSON.stringify(raw.data)).not.toContain("npc-3");
+  });
+
+  it("in the draft, names every seat yet to pick, so a seat that has picked waits (#111)", async () => {
+    const { anne, jack, matchId } = await startedMatch();
+    const { state } = (await (await api("GET", `/api/matches/${matchId}`, jack)).json()) as { state: { _stateID: number } };
+    const picked = await api("POST", `/api/matches/${matchId}/actions`, jack, {
+      stateID: state._stateID,
+      action: { type: "MAKE_MOVE", payload: { type: "pickCaptain", args: [0, "Sloop"] } },
+    });
+    expect(picked.status).toBe(200);
+    expect((await voyages(anne))[0]).toMatchObject({ drafting: true, currentSeat: null, choosing: [0], yourTurn: true });
+    expect((await voyages(jack))[0]).toMatchObject({ drafting: true, currentSeat: null, choosing: [0], yourTurn: false });
   });
 
   it("does not let a client call list_voyages", async () => {

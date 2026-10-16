@@ -2,7 +2,7 @@
  * `GET /api/me/rooms`: the signed-in player's voyages, the rooms they hold a
  * seat in (waiting in the lobby, under way, finished), so they can leave a
  * match and come back to it. Only their own rooms, and of each match no more
- * than whose turn it is and whether it is drafting: never its state, an invite code, a seed or another
+ * than whose turn it is, whether it is drafting and who is yet to pick: never its state, an invite code, a seed or another
  * captain's account id.
  */
 import { fail, json } from "./http";
@@ -20,11 +20,14 @@ export const VOYAGES_READ_LIMIT = { action: "read_voyages", limit: 30, windowSec
  * A voyage as its seated player sees it in the list. The store says nothing
  * of a match not under way; here the seat whose step it is comes from the
  * fight when one is on (the attacker stays boardgame.io's current player, but
- * `combatActor` is who may act, as the move check enforces).
+ * `combatActor` is who may act, as the move check enforces). In the draft
+ * it is no one seat's turn but every seat's yet to pick (`choosing`, #111).
  */
 export function voyageView(voyage: VoyageRecord, userId: string) {
   const yourSeat = voyage.seats.find((s) => s.userId === userId)!.index;
-  const currentSeat = voyage.fight ? seatOf(combatActor(voyage.fight)) : voyage.currentSeat;
+  const drafting = voyage.phase === "draft";
+  // In the draft no one seat holds the turn: every seat yet to pick may (#111).
+  const currentSeat = drafting ? null : voyage.fight ? seatOf(combatActor(voyage.fight)) : voyage.currentSeat;
   return {
     roomId: voyage.roomId,
     matchId: voyage.matchId,
@@ -34,8 +37,9 @@ export function voyageView(voyage: VoyageRecord, userId: string) {
     seats: voyage.seats.map(({ index, displayName }) => ({ index, displayName })),
     yourSeat,
     currentSeat,
-    drafting: voyage.phase === "draft",
-    yourTurn: currentSeat !== null && currentSeat === yourSeat,
+    drafting,
+    choosing: drafting ? voyage.choosing : [],
+    yourTurn: drafting ? voyage.choosing.includes(yourSeat) : currentSeat !== null && currentSeat === yourSeat,
     updatedAt: voyage.updatedAt,
   };
 }

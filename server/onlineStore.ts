@@ -128,8 +128,8 @@ export type VoyageFight = Pick<CombatState, "stage" | "attackerId" | "seamanship
 /**
  * One of a player's rooms, for their list of voyages: what the list shows,
  * never the match's state. The store owns the rule that `currentSeat`,
- * `phase` and `fight` are said only of a match under way (status `started`):
- * null otherwise.
+ * `phase`, `fight` and `choosing` are said only of a match under way (status
+ * `started`): null, or none, otherwise.
  */
 export interface VoyageRecord {
   roomId: string;
@@ -145,6 +145,11 @@ export interface VoyageRecord {
   phase: string | null;
   /** The fight on (`G.combat`), if any. */
   fight: VoyageFight | null;
+  /**
+   * In the draft, the seats yet to pick their captain (#111), in seat order:
+   * every one of them may pick at once. Empty in any other phase.
+   */
+  choosing: number[];
   /** When the match last moved, or the room was opened: ISO 8601. */
   updatedAt: string;
 }

@@ -69,20 +69,24 @@ test("two captains open a room, start it, and play their turns from two browsers
   await expect(anne).toHaveURL(/view=match&id=/);
   await expect(jack).toHaveURL(/view=match&id=/);
 
-  // Turn 1 and 2: the draft, each seat picking on its own board in turn.
+  // The draft (#111): both seats choose at once, neither waiting for the other.
   const pages = [anne, jack];
   const captainChoice = (page: Page) => page.getByRole("heading", { name: "Choose Your Captain" });
-  const firstPick = await test.step("first seat drafts", async () => {
-    const page = await whoseTurn(pages, captainChoice);
-    await draft(page);
-    return page;
+  await test.step("both seats see their own hand at once", async () => {
+    for (const page of pages) await expect(captainChoice(page)).toBeVisible({ timeout: 90_000 });
   });
-  const other = firstPick === anne ? jack : anne;
+  await test.step("the second seat picks first, and waits on the first, still choosing", async () => {
+    await draft(jack);
+    await expect(jack.getByRole("list", { name: "Other captains" })).toContainText("Still choosing", { timeout: 15_000 });
+  });
   try {
-    await test.step("second seat drafts", () => draft(other));
+    await test.step("the first seat sees the second has picked, and picks", async () => {
+      await expect(anne.getByRole("list", { name: "Other captains" })).toContainText("Picked", { timeout: 30_000 });
+      await draft(anne);
+    });
   } catch (error) {
     // The failure report shows the first browser's page; say what the other one shows.
-    console.log(`second seat sees: ${await other.locator("body").innerText()}`);
+    console.log(`first seat sees: ${await anne.locator("body").innerText()}`);
     throw error;
   }
 

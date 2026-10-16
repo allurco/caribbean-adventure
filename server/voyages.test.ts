@@ -49,6 +49,7 @@ interface Voyage {
   yourSeat: number;
   currentSeat: number | null;
   drafting: boolean;
+  choosing: number[];
   yourTurn: boolean;
   updatedAt: string;
 }
@@ -88,6 +89,12 @@ async function commitState(matchId: string, change: (state: MatchState) => Match
   expect(committed).toBe(true);
 }
 
+/** The state with `seat`'s captain picked, as the draft leaves it. */
+function withCaptain(state: MatchState, seat: string): MatchState {
+  const ships = state.G.ships as Record<string, Record<string, unknown>>;
+  return { ...state, G: { ...state.G, ships: { ...ships, [seat]: { ...ships[seat], captain: { name: "Hidden" }, shipClass: "Sloop" } } } };
+}
+
 /** The state in a fight's phase, the attacker `currentPlayer` as boardgame.io keeps it. */
 function withFight(state: MatchState, currentPlayer: string, combat: Record<string, unknown>): MatchState {
   return { ...state, G: { ...state.G, combat }, ctx: { ...state.ctx, phase: "combat", currentPlayer } };
@@ -113,6 +120,7 @@ describe("GET /api/me/rooms", () => {
         yourSeat: 0,
         currentSeat: null,
         drafting: false,
+        choosing: [],
         yourTurn: false,
         updatedAt: new Date(clock).toISOString(),
       },
@@ -130,8 +138,11 @@ describe("GET /api/me/rooms", () => {
     const { roomId, matchId } = await startedMatch();
     const [anne] = await voyages("anne");
     const [jack] = await voyages("jack");
-    expect(anne).toMatchObject({ roomId, matchId, status: "started", yourSeat: 0, currentSeat: 0, yourTurn: true });
-    expect(jack).toMatchObject({ roomId, matchId, status: "started", yourSeat: 1, currentSeat: 0, yourTurn: false });
+    expect(anne).toMatchObject({ roomId, matchId, status: "started", yourSeat: 0, yourTurn: true });
+    expect(jack).toMatchObject({ roomId, matchId, status: "started", yourSeat: 1, yourTurn: true });
+    await commitState(matchId, (state) => ({ ...state, ctx: { ...state.ctx, phase: "main", currentPlayer: "0" } }), "main");
+    expect((await voyages("anne"))[0]).toMatchObject({ currentSeat: 0, yourTurn: true });
+    expect((await voyages("jack"))[0]).toMatchObject({ currentSeat: 0, yourTurn: false });
     expect(jack.seats).toEqual([
       { index: 0, displayName: "Anne Bonny" },
       { index: 1, displayName: "Calico Jack" },
@@ -146,6 +157,16 @@ describe("GET /api/me/rooms", () => {
     }
     expect(body).not.toContain(ANNE);
     expect(body).not.toContain("invite-code-");
+  });
+
+  it("in the draft, every seat yet to pick has its turn, and no one seat holds the turn (#111)", async () => {
+    const { matchId } = await startedMatch();
+    expect((await voyages("anne"))[0]).toMatchObject({ drafting: true, currentSeat: null, choosing: [0, 1], yourTurn: true });
+    expect((await voyages("jack"))[0]).toMatchObject({ drafting: true, currentSeat: null, choosing: [0, 1], yourTurn: true });
+    // Jack picks first; the turn stays at seat 0, still choosing
+    await commitState(matchId, (state) => withCaptain(state, "1"), "draft");
+    expect((await voyages("anne"))[0]).toMatchObject({ choosing: [0], yourTurn: true });
+    expect((await voyages("jack"))[0]).toMatchObject({ choosing: [0], yourTurn: false });
   });
 
   it("says a match is drafting its captains until the draft is over", async () => {
@@ -212,6 +233,7 @@ describe("GET /api/me/rooms", () => {
       status: "finished",
       currentSeat: null,
       drafting: false,
+      choosing: [],
       yourTurn: false,
       updatedAt: new Date(clock).toISOString(),
     });

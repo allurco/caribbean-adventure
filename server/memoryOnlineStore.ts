@@ -31,7 +31,17 @@ interface StoredMatch extends InitialMatch {
 /** The few keys of a stored state a voyage reads. */
 interface VoyageState {
   ctx?: { currentPlayer?: string };
-  G?: { combat?: VoyageFight };
+  G?: { combat?: VoyageFight; ships?: Record<string, { captain?: unknown; shipClass?: unknown }> };
+}
+
+/** The seats yet to pick their captain, as `list_voyages` projects them: a seat's ship with no captain object or no class string. */
+function seatsChoosing(state: VoyageState): number[] {
+  const picked = (ship: { captain?: unknown; shipClass?: unknown }) =>
+    typeof ship?.captain === "object" && ship.captain !== null && typeof ship.shipClass === "string";
+  return Object.entries(state.G?.ships ?? {})
+    .filter(([id, ship]) => isSeatId(id) && !picked(ship))
+    .map(([id]) => Number(id))
+    .sort((a, b) => a - b);
 }
 
 /**
@@ -182,6 +192,7 @@ export function createMemoryOnlineStore({
           currentSeat: state?.ctx?.currentPlayer !== undefined && isSeatId(state.ctx.currentPlayer) ? Number(state.ctx.currentPlayer) : null,
           phase: state ? (match?.phase ?? null) : null,
           fight: state?.G?.combat ? publicFight(state.G.combat) : null,
+          choosing: state && match?.phase === "draft" ? seatsChoosing(state) : [],
           updatedAt: new Date(match?.updatedAt ?? room.createdAt).toISOString(),
         });
       }

@@ -1,5 +1,5 @@
 import type { Game, MoveFn } from "boardgame.io";
-import { INVALID_MOVE } from "boardgame.io/core";
+import { ActivePlayers, INVALID_MOVE } from "boardgame.io/core";
 import { hex, hexEquals, canonicalHex, createWrap, wrappedDistance } from "./hex";
 import type { MapWrap } from "./hex";
 import { getMapPreset } from "./mapConfig";
@@ -48,6 +48,7 @@ import {
 } from "./economy";
 import { createCaptainDeck, dealHands, isCaptainPick, takeCommand } from "./captains";
 import { isOneOf, isOwnKey, isWhole } from "./moveArgs";
+import { draftOver, nextToPick } from "./draftOrder";
 import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
 import { spawnFlotillaForPlayer } from "./npcManager";
 import { npcTurnEndStep } from "./npcTurnStep";
@@ -191,7 +192,7 @@ export const Caribbean: Game<CaribbeanState> = {
   maxPlayers: MAX_SEATS,
 
   // Each seat sees only its own hidden information; a client with no seat is a spectator (#109).
-  playerView: ({ G, playerID }) => playerViewFor(G, playerID),
+  playerView: ({ G, ctx, playerID }) => playerViewFor(G, playerID, ctx.phase),
 
   endIf: ({ G, ctx }) => {
     const winner = findWinner(G.ships);
@@ -306,34 +307,40 @@ export const Caribbean: Game<CaribbeanState> = {
   phases: {
     draft: {
       start: true,
+      // Every seat still choosing may pick at once (#111); the turns walk the
+      // seats in order, each passing on as its seat picks, so the hotseat
+      // screen passes the pick from player to player (draftOrder.ts). The
+      // seat whose turn it is has always yet to pick, so the last pick is
+      // its own and ends its turn (maxMoves); the draft then ends on the
+      // last seat's turn, and main begins at seat 0.
       turn: {
         minMoves: 1,
         maxMoves: 1,
+        activePlayers: ActivePlayers.ALL,
+        order: {
+          first: () => 0,
+          next: ({ G, ctx }) => nextToPick(G, ctx.playOrder, ctx.playOrderPos),
+        },
       },
       moves: {
         pickCaptain: (
-          { G, ctx },
+          { G, playerID },
           captainIndex: number,
           shipClass: ShipClass,
         ) => {
-          const playerId = ctx.currentPlayer;
-          const hand = G.draftHands[playerId];
+          const hand = G.draftHands[playerID];
           if (!isCaptainPick(hand, captainIndex, shipClass)) return INVALID_MOVE;
-          const ship = G.ships[playerId];
-          if (ship.captain) return INVALID_MOVE;
+          const ship = G.ships[playerID];
+          if (!ship || ship.captain) return INVALID_MOVE;
 
-          takeCommand(G, playerId, ship, hand[captainIndex], shipClass);
+          takeCommand(G, playerID, ship, hand[captainIndex], shipClass);
 
           // The captain not picked lives, back at the bottom of the deck (#265); the hand is cleared
           G.captainDeck.push(...hand.filter((_, i) => i !== captainIndex));
-          G.draftHands[playerId] = [];
+          G.draftHands[playerID] = [];
         },
       },
-      endIf: ({ G }) => {
-        return Object.values(G.ships).every(
-          (s) => s.captain !== undefined && s.shipClass !== undefined,
-        );
-      },
+      endIf: ({ G, ctx }) => draftOver(G, ctx.playOrder, ctx.playOrderPos),
       next: "main",
     },
     main: {
