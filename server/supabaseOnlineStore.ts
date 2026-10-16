@@ -7,7 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MapSizeId } from "../src/game/mapConfig";
 import type { AuthVerifier } from "./handleApiRequest";
-import type { ClaimOutcome, JoinOutcome, OnlineStore, RoomRecord, RoomStatus, StartOutcome } from "./onlineStore";
+import type { ClaimOutcome, JoinOutcome, OnlineStore, RoomRecord, RoomStatus, StartOutcome, VoyageFight } from "./onlineStore";
 
 interface VoyageRow {
   room_id: string;
@@ -16,7 +16,8 @@ interface VoyageRow {
   map_size: MapSizeId;
   match_id: string | null;
   current_seat: number | null;
-  turn: number | null;
+  phase: string | null;
+  fight: { stage: VoyageFight["stage"]; attacker_id: string; seamanship_winner: string | null; is_npc_combat: boolean } | null;
   updated_at: string;
   seats: { seat_index: number; user_id: string; display_name: string | null }[];
 }
@@ -143,7 +144,13 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         seats: row.seats.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: s.display_name })),
         matchId: row.match_id,
         currentSeat: row.current_seat,
-        turn: row.turn,
+        phase: row.phase,
+        fight: row.fight && {
+          stage: row.fight.stage,
+          attackerId: row.fight.attacker_id,
+          seamanshipWinner: row.fight.seamanship_winner,
+          isNPCCombat: row.fight.is_npc_combat,
+        },
         updatedAt: new Date(row.updated_at).toISOString(),
       }));
     },

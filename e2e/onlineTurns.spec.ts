@@ -93,7 +93,13 @@ test("two captains open a room, start it, and play their turns from two browsers
   await expect(endTurn(waiting)).toBeHidden();
   await playing.bringToFront();
   await endTurn(playing).click();
-  await expect(endTurn(waiting)).toBeVisible({ timeout: 30_000 });
+  try {
+    // The hand-off locks End Turn for up to 12 s, counted on animation frames, which stall while two browsers render.
+    await expect(endTurn(waiting)).toBeVisible({ timeout: 90_000 });
+  } catch (error) {
+    console.log(`waiting seat sees: ${await waiting.locator("body").innerText()}`);
+    throw error;
+  }
   await expect(endTurn(playing)).toBeHidden();
 
   // Both captains leave to the harbour, the shell's Play (#125), where the voyage waits, saved, and come back to it (#301).

@@ -1,6 +1,6 @@
 /**
  * A player's voyages (`GET /api/me/rooms`, `list_voyages`) against a local
- * Supabase: only the caller's own rooms, whose turn it is and no state, and
+ * Supabase: only the caller's own rooms, whose turn (or fight step) it is and no state, and
  * the function closed to every client. Skipped unless SUPABASE_DB_TESTS=1;
  * run with `npm run test:db` after `npx supabase start` (see `localStack.ts`).
  */
@@ -17,6 +17,7 @@ interface Voyage {
   seats: { index: number; displayName: string | null }[];
   yourSeat: number;
   currentSeat: number | null;
+  drafting: boolean;
   yourTurn: boolean;
   updatedAt: string;
 }
@@ -72,7 +73,7 @@ describe.skipIf(!dbTestsEnabled)("a player's voyages (local Supabase)", () => {
 
     const annes = await voyages(anne);
     expect(annes.map((v) => v.roomId)).toEqual([room.id, waiting.id]);
-    expect(annes[0]).toMatchObject({ status: "started", yourSeat: 0, currentSeat: 0, turn: 1, yourTurn: true });
+    expect(annes[0]).toMatchObject({ status: "started", yourSeat: 0, currentSeat: 0, drafting: true, yourTurn: true });
     expect(annes[0].seats).toEqual([
       { index: 0, displayName: "Anne Bonny" },
       { index: 1, displayName: "Calico Jack" },
@@ -87,6 +88,57 @@ describe.skipIf(!dbTestsEnabled)("a player's voyages (local Supabase)", () => {
     expect(body).not.toContain(room.inviteCode);
     expect(body).not.toContain(anne.id);
     expect(body).not.toContain('"state"');
+  });
+
+  /** A started match between two new captains, Anne at seat 0 and Jack at 1. */
+  async function startedMatch(): Promise<{ anne: TestPlayer; jack: TestPlayer; matchId: string }> {
+    const anne = await players.create({ full_name: "Anne Bonny" });
+    const jack = await players.create({ full_name: "Calico Jack" });
+    const room = await newRoom(anne);
+    await api("POST", "/api/rooms/join", jack, { inviteCode: room.inviteCode });
+    const started = (await (await api("POST", `/api/rooms/${room.id}/start`, anne)).json()) as { room: { matchId: string } };
+    return { anne, jack, matchId: started.room.matchId };
+  }
+
+  /** Puts a fight in the match's stored state, the attacker its current player, as the combat phase keeps it. */
+  async function setFight(matchId: string, currentPlayer: string, combat: Record<string, unknown>): Promise<void> {
+    const read = await admin.from("matches").select("state").eq("id", matchId).single();
+    expect(read.error).toBeNull();
+    const state = read.data!.state as { G: Record<string, unknown>; ctx: Record<string, unknown> };
+    const next = { ...state, G: { ...state.G, combat }, ctx: { ...state.ctx, phase: "combat", currentPlayer } };
+    const write = await admin.from("matches").update({ state: next, phase: "combat" }).eq("id", matchId);
+    expect(write.error).toBeNull();
+  }
+
+  it("in a fight, names the defender once it wins the draw, and sends no more of the fight", async () => {
+    const { anne, jack, matchId } = await startedMatch();
+    await setFight(matchId, "0", {
+      stage: "chooseAction",
+      attackerId: "0",
+      defenderId: "1",
+      seamanshipWinner: "1",
+      isNPCCombat: false,
+      log: ["secret-log"],
+    });
+    expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 1, drafting: false, yourTurn: false });
+    expect((await voyages(jack))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
+    const raw = await admin.rpc("list_voyages", { p_user: jack.id, p_limit: 1 });
+    expect(raw.error).toBeNull();
+    expect((raw.data as { fight: unknown }[])[0].fight).toEqual({
+      stage: "chooseAction",
+      attacker_id: "0",
+      seamanship_winner: "1",
+      is_npc_combat: false,
+    });
+  });
+
+  it("in a fight against an NPC, names the attacker whoever won the draw, and never the NPC's id", async () => {
+    const { anne, jack, matchId } = await startedMatch();
+    await setFight(matchId, "1", { stage: "chooseAction", attackerId: "1", defenderId: "npc-3", seamanshipWinner: "npc-3", isNPCCombat: true });
+    expect((await voyages(jack))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
+    expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 1, yourTurn: false });
+    const raw = await admin.rpc("list_voyages", { p_user: anne.id, p_limit: 1 });
+    expect(JSON.stringify(raw.data)).not.toContain("npc-3");
   });
 
   it("does not let a client call list_voyages", async () => {

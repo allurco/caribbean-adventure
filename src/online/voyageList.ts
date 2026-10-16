@@ -8,25 +8,8 @@
  * Only what the server knows is said: no hours left (#115), glory or ranked
  * (#120) until it does.
  */
-import type { MapSizeId } from "../game/mapConfig";
 import { matchPath, roomPath } from "./onlineRoute";
-
-/** A voyage as the server sends it (`voyageView` in server/voyages.ts). */
-export interface VoyageView {
-  roomId: string;
-  matchId: string | null;
-  status: "open" | "starting" | "started" | "finished";
-  seatCount: number;
-  mapSize: MapSizeId;
-  seats: { index: number; displayName: string | null }[];
-  yourSeat: number;
-  /** Whose turn it is in a match under way; null otherwise. */
-  currentSeat: number | null;
-  /** boardgame.io's turn number in a match under way; null otherwise. */
-  turn: number | null;
-  yourTurn: boolean;
-  updatedAt: string;
-}
+import type { VoyageView } from "./roomApi";
 
 export interface VoyageLink {
   href: string;
@@ -66,15 +49,9 @@ function nameOf(voyage: VoyageView): string {
   return capitalised(list(voyage.seats.map((s) => s.displayName ?? UNNAMED)));
 }
 
-/** A round is every seat's turn once: turn 1 and 2 of two seats are round 1. */
-function roundOf(voyage: VoyageView): number | null {
-  return voyage.turn === null ? null : Math.ceil(voyage.turn / voyage.seatCount);
-}
-
-/** "Round 3, 2 captains, small map." */
+/** "2 captains, small map.", led by "Drafting captains" while the draft is on. No round: the server does not keep one. */
 function matchLine(voyage: VoyageView): string {
-  const round = roundOf(voyage);
-  return `${round === null ? "" : `Round ${round}, `}${voyage.seatCount} captains, ${voyage.mapSize} map.`;
+  return `${voyage.drafting ? "Drafting captains, " : ""}${voyage.seatCount} captains, ${voyage.mapSize} map.`;
 }
 
 function isUnderWay(voyage: VoyageView): voyage is VoyageView & { matchId: string } {

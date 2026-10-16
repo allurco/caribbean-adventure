@@ -4,7 +4,9 @@
  * call resolves to a result, never throws, so components show what comes back.
  */
 import type { MapSizeId } from "../game/mapConfig";
-import type { VoyageView } from "./voyageList";
+
+/** `starting`: the host's start is claimed and the match is being built (`RoomStatus` in server/onlineStore.ts). */
+export type RoomStatus = "open" | "starting" | "started" | "finished";
 
 /** A room as its members see it (`roomView` in server/rooms.ts). */
 export interface RoomView {
@@ -15,13 +17,30 @@ export interface RoomView {
   mapSize: MapSizeId;
   mapSeed: number;
   turnTimerSeconds: number;
-  status: "open" | "starting" | "started" | "finished";
+  status: RoomStatus;
   isHost: boolean;
   /** The host's seat (from the room's host, not seat 0); null once the host's account is gone. */
   hostSeat: number | null;
   yourSeat: number | null;
   seats: { index: number; userId: string; displayName: string | null }[];
   matchId: string | null;
+}
+
+/** One of the player's rooms, as `GET /api/me/rooms` sends it (`voyageView` in server/voyages.ts). */
+export interface VoyageView {
+  roomId: string;
+  matchId: string | null;
+  status: RoomStatus;
+  seatCount: number;
+  mapSize: MapSizeId;
+  seats: { index: number; displayName: string | null }[];
+  yourSeat: number;
+  /** The seat that may act in a match under way (in a fight, the one whose step it is); null otherwise. */
+  currentSeat: number | null;
+  /** The match is in its captain draft. */
+  drafting: boolean;
+  yourTurn: boolean;
+  updatedAt: string;
 }
 
 export interface NewRoomSettings {

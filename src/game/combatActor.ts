@@ -7,8 +7,11 @@ import type { CombatState } from "./types";
 /** Who fights whom: the sides of a fight, as the seat rules read them. */
 export type FightSides = Pick<CombatState, "attackerId" | "defenderId" | "isNPCCombat">;
 
-/** A fight's sides and the step it is on: the draw's winner is the faster ship. */
-export type FightStep = FightSides & Pick<CombatState, "stage" | "seamanshipWinner">;
+/** What says whose step it is: the step, the attacker, the draw's winner (the faster ship), and whether the foe is an NPC. */
+export type FightTurn = Pick<CombatState, "stage" | "attackerId" | "seamanshipWinner" | "isNPCCombat">;
+
+/** A fight's sides and the step it is on. */
+export type FightStep = FightSides & FightTurn;
 
 /** The client's seat (null or undefined in hotseat) and the fight on. */
 export interface SeatFight {
@@ -23,7 +26,7 @@ export interface SeatFight {
  * the draw; the faster ship presses the rest. Against an NPC the attacker
  * presses every step: when the NPC wins the draw the engine picks its action.
  */
-export function combatActor(combat: FightStep): string {
+export function combatActor(combat: FightTurn): string {
   if (combat.stage === "seamanship" || combat.isNPCCombat) return combat.attackerId;
   return combat.seamanshipWinner ?? combat.attackerId;
 }

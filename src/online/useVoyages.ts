@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import type { RoomApi } from "./roomApi";
-import type { VoyageView } from "./voyageList";
+import type { RoomApi, VoyageView } from "./roomApi";
 
 export type VoyagesState = { status: "loading" } | { status: "error"; error: string } | { status: "ready"; voyages: VoyageView[] };
 

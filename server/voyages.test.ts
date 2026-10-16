@@ -48,7 +48,7 @@ interface Voyage {
   seats: { index: number; displayName: string | null }[];
   yourSeat: number;
   currentSeat: number | null;
-  turn: number | null;
+  drafting: boolean;
   yourTurn: boolean;
   updatedAt: string;
 }
@@ -71,6 +71,28 @@ async function startedMatch(): Promise<{ roomId: string; matchId: string }> {
   return { roomId: room.id, matchId: started.room.matchId };
 }
 
+type MatchState = { G: Record<string, unknown>; ctx: Record<string, unknown> } & Record<string, unknown>;
+
+/** Stores a new state for the match, as a move would. */
+async function commitState(matchId: string, change: (state: MatchState) => MatchState, phase: string): Promise<void> {
+  const match = (await store.peekMatch(matchId))!;
+  const committed = await store.commitMove({
+    matchId,
+    expectedStateId: match.stateId,
+    state: change(match.state as MatchState),
+    stateId: match.stateId + 1,
+    phase,
+    finished: false,
+    move: { seat: 0, userId: ANNE, kind: "move", name: "x", args: [], stateIdBefore: match.stateId, stateIdAfter: match.stateId + 1 },
+  });
+  expect(committed).toBe(true);
+}
+
+/** The state in a fight's phase, the attacker `currentPlayer` as boardgame.io keeps it. */
+function withFight(state: MatchState, currentPlayer: string, combat: Record<string, unknown>): MatchState {
+  return { ...state, G: { ...state.G, combat }, ctx: { ...state.ctx, phase: "combat", currentPlayer } };
+}
+
 describe("GET /api/me/rooms", () => {
   it("needs a signed-in player", async () => {
     expect((await call("GET", "/api/me/rooms")).status).toBe(401);
@@ -90,7 +112,7 @@ describe("GET /api/me/rooms", () => {
         seats: [{ index: 0, displayName: "Anne Bonny" }],
         yourSeat: 0,
         currentSeat: null,
-        turn: null,
+        drafting: false,
         yourTurn: false,
         updatedAt: new Date(clock).toISOString(),
       },
@@ -108,7 +130,7 @@ describe("GET /api/me/rooms", () => {
     const { roomId, matchId } = await startedMatch();
     const [anne] = await voyages("anne");
     const [jack] = await voyages("jack");
-    expect(anne).toMatchObject({ roomId, matchId, status: "started", yourSeat: 0, currentSeat: 0, turn: 1, yourTurn: true });
+    expect(anne).toMatchObject({ roomId, matchId, status: "started", yourSeat: 0, currentSeat: 0, yourTurn: true });
     expect(jack).toMatchObject({ roomId, matchId, status: "started", yourSeat: 1, currentSeat: 0, yourTurn: false });
     expect(jack.seats).toEqual([
       { index: 0, displayName: "Anne Bonny" },
@@ -124,6 +146,53 @@ describe("GET /api/me/rooms", () => {
     }
     expect(body).not.toContain(ANNE);
     expect(body).not.toContain("invite-code-");
+  });
+
+  it("says a match is drafting its captains until the draft is over", async () => {
+    const { matchId } = await startedMatch();
+    expect((await voyages("anne"))[0]).toMatchObject({ drafting: true });
+    await commitState(matchId, (state) => ({ ...state, ctx: { ...state.ctx, phase: "main" } }), "main");
+    expect((await voyages("anne"))[0]).toMatchObject({ drafting: false });
+  });
+
+  it("in a fight, names the seat that presses its step: the defender once it wins the draw", async () => {
+    const { matchId } = await startedMatch();
+    const fight = { stage: "chooseAction", attackerId: "0", defenderId: "1", seamanshipWinner: "1", isNPCCombat: false };
+    await commitState(matchId, (state) => withFight(state, "0", fight), "combat");
+    expect((await voyages("anne"))[0]).toMatchObject({ currentSeat: 1, yourTurn: false });
+    expect((await voyages("jack"))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
+  });
+
+  it("in a fight against an NPC, names the attacker for every step, whoever won the draw", async () => {
+    const { matchId } = await startedMatch();
+    const fight = { stage: "chooseAction", attackerId: "1", defenderId: "npc-3", seamanshipWinner: "npc-3", isNPCCombat: true };
+    await commitState(matchId, (state) => withFight(state, "1", fight), "combat");
+    expect((await voyages("jack"))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
+    expect((await voyages("anne"))[0]).toMatchObject({ currentSeat: 1, yourTurn: false });
+  });
+
+  // A fight the SQL would not project is no fight: the turn falls back to boardgame.io's current player.
+  it.each([
+    ["a stage that is not a combat stage", { stage: "boarding" }],
+    ["no stage", { stage: undefined }],
+    ["isNPCCombat as a number", { isNPCCombat: 0 }],
+    ["isNPCCombat as an empty string", { isNPCCombat: "" }],
+    ["no isNPCCombat", { isNPCCombat: undefined }],
+  ])("reads a fight with %s as no fight", async (_name, broken) => {
+    const { matchId } = await startedMatch();
+    const fight = { stage: "chooseAction", attackerId: "0", defenderId: "1", seamanshipWinner: "1", isNPCCombat: false, ...broken };
+    await commitState(matchId, (state) => withFight(state, "0", fight), "combat");
+    expect((await voyages("jack"))[0]).toMatchObject({ currentSeat: 0, yourTurn: false });
+  });
+
+  it("sends of a fight no more than whose step it is", async () => {
+    const { matchId } = await startedMatch();
+    const fight = { stage: "cannons", attackerId: "0", defenderId: "1", seamanshipWinner: "0", isNPCCombat: false, log: ["secret-log"] };
+    await commitState(matchId, (state) => withFight(state, "0", fight), "combat");
+    const body = await (await call("GET", "/api/me/rooms", "jack")).text();
+    expect(body).not.toContain("combat");
+    expect(body).not.toContain("secret-log");
+    expect(body).not.toContain("cannons");
   });
 
   it("marks a finished match with no one to play", async () => {
@@ -142,7 +211,7 @@ describe("GET /api/me/rooms", () => {
     expect((await voyages("anne"))[0]).toMatchObject({
       status: "finished",
       currentSeat: null,
-      turn: null,
+      drafting: false,
       yourTurn: false,
       updatedAt: new Date(clock).toISOString(),
     });
