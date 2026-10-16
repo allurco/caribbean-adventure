@@ -13,7 +13,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { anonymiserColumns, deletedProfileGuard, profileColumns, profileReferences } from "./profileColumns";
+import { anonymiserColumns, deletedProfileGuard, newUserAvatar, profileColumns, profileReferences } from "./profileColumns";
 
 const MIGRATIONS = new URL("../migrations/", import.meta.url);
 const migrations = readdirSync(MIGRATIONS)
@@ -127,5 +127,27 @@ describe("the tables that reference a profile, and the anonymiser", () => {
 
   it("clears the sign-in providers (#106) whether or not their table exists yet", () => {
     expect(anonymiserColumns(migrations).clearedTables).toContain("public.profile_identities");
+  });
+});
+
+describe("the sign-up trigger's avatar (#106)", () => {
+  // #106 takes a new profile's avatar only from Discord or Google, so an
+  // email sign-up cannot choose its own picture; #108 redefines
+  // handle_new_user after it, and must keep that.
+  it("reads the expression the latest handle_new_user inserts as the avatar", () => {
+    const fn = (avatar: string) => `
+      create or replace function public.handle_new_user() returns trigger language plpgsql as $$
+      begin
+        insert into public.profiles (id, display_name, avatar_url)
+        values (new.id, case when true then 'x' end, ${avatar})
+        on conflict (id) do nothing;
+        return new;
+      end;
+      $$;`;
+    expect(newUserAvatar([fn("null"), fn("case when ok(a, b) then a end")])).toBe("case when ok(a, b) then a end");
+  });
+
+  it("takes the avatar only from a Discord or Google sign-up", () => {
+    expect(newUserAvatar(migrations)).toMatch(/new\.raw_app_meta_data\s*->>\s*'provider'\s+in\s*\(\s*'discord'\s*,\s*'google'\s*\)/i);
   });
 });

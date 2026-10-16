@@ -19,9 +19,10 @@
 --
 -- Security model:
 -- * `profiles.deleted_at` marks the placeholder. No client may write it (the
---   column grants stay display_name and avatar_url), and once it is set the
---   owner's update policy no longer matches: an access token that outlives
---   the deletion cannot rename the placeholder or give it an avatar.
+--   column grants are display_name, and avatar_url until #106 revokes it),
+--   and once it is set the owner's update policy no longer matches: an access
+--   token that outlives the deletion cannot rename the placeholder or give it
+--   an avatar.
 -- * Once it is set, a trigger holds the placeholder whatever writes the row
 --   later (the service role, another table's trigger such as #106's
 --   handle_identity_change): the name stays "Deleted player", the avatar
@@ -100,9 +101,12 @@ create policy "A player updates only their own profile"
   using ((select auth.uid()) = id and deleted_at is null)
   with check ((select auth.uid()) = id and deleted_at is null);
 
--- A new auth user gets a profile, as in 20261014000000_profiles.sql, except
--- that a provider's name equal to the reserved placeholder (any case) is
--- treated as no name: the sign-up never fails on the check above.
+-- A new auth user gets a profile, as in 20261014000000_profiles.sql and as
+-- #106 (20261019000000_profile_identities.sql) left it, except that a
+-- provider's name equal to the reserved placeholder (any case) is treated as
+-- no name: the sign-up never fails on the check above. As in #106, the
+-- avatar is taken only from a Discord or Google sign-up, never from an email
+-- or one-time-code sign-up's own metadata (profileColumns.test.ts holds it).
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -127,7 +131,8 @@ begin
       else provided_name
     end,
     case
-      when char_length(provided_avatar) <= 2048 and provided_avatar ~ '^https://[^[:space:][:cntrl:]]+$'
+      when new.raw_app_meta_data ->> 'provider' in ('discord', 'google')
+        and char_length(provided_avatar) <= 2048 and provided_avatar ~ '^https://[^[:space:][:cntrl:]]+$'
         then provided_avatar
     end
   )

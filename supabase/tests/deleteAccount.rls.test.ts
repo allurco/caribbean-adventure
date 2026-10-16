@@ -66,6 +66,11 @@ describe.skipIf(!dbTestsEnabled)("deleting an account (local Supabase)", () => {
     return data as ProfileRow | null;
   }
 
+  /** An avatar, as a Discord or Google sign-in gives one (#106): these test players sign up by email, which gets none. */
+  async function withAvatar(id: string): Promise<void> {
+    expect((await admin.from("profiles").update({ avatar_url: "https://cdn.example/anne.png" }).eq("id", id)).error).toBeNull();
+  }
+
   async function openRoom(host: TestPlayer, seats = 2): Promise<{ id: string; inviteCode: string }> {
     const res = await api("POST", "/api/rooms", host, { seats, mapSize: "small", mapSeed: 21 });
     return ((await res.json()) as { room: { id: string; inviteCode: string } }).room;
@@ -76,7 +81,8 @@ describe.skipIf(!dbTestsEnabled)("deleting an account (local Supabase)", () => {
   }
 
   it("leaves a 'deleted player' placeholder with no avatar, and removes the sign-in identity", async () => {
-    const anne = await players.create({ full_name: "Anne Bonny", avatar_url: "https://cdn.example/anne.png" });
+    const anne = await players.create({ full_name: "Anne Bonny" });
+    await withAvatar(anne.id);
     expect(await profile(anne.id)).toMatchObject({ display_name: "Anne Bonny", avatar_url: "https://cdn.example/anne.png", deleted_at: null });
 
     const res = await deleteAccount(anne);
@@ -173,7 +179,8 @@ describe.skipIf(!dbTestsEnabled)("deleting an account (local Supabase)", () => {
   });
 
   it("anonymises the profile however the auth user is deleted (the dashboard, the admin API)", async () => {
-    const anne = await players.create({ full_name: "Anne Bonny", avatar_url: "https://cdn.example/anne.png" });
+    const anne = await players.create({ full_name: "Anne Bonny" });
+    await withAvatar(anne.id);
     const jack = await players.create();
     const room = await openRoom(jack);
     await api("POST", "/api/rooms/join", anne, { inviteCode: room.inviteCode });

@@ -137,3 +137,15 @@ export function anonymiserColumns(migrations: string[]): {
     clearedTables: quotedList(body, "v_cleared_tables", false),
   };
 }
+
+/** The value the latest `public.handle_new_user` inserts into `profiles.avatar_url`. */
+export function newUserAvatar(migrations: string[]): string {
+  const body = latestFunctionBody(stripComments(migrations.join("\n")), "handle_new_user");
+  const insert = /insert\s+into\s+public\.profiles\s*\(([^)]*)\)\s*values\s*\(/i.exec(body);
+  if (!insert) throw new Error("handle_new_user does not insert into public.profiles");
+  const columns = insert[1].split(",").map((c) => c.trim().toLowerCase());
+  const values = splitTopLevel(parenthesised(body, insert.index + insert[0].length - 1));
+  const at = columns.indexOf("avatar_url");
+  if (at < 0) throw new Error("handle_new_user does not insert an avatar_url");
+  return values[at].replace(/\s+/g, " ").trim();
+}
