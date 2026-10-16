@@ -3,7 +3,7 @@ import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { hex, hexEquals, hexGrid, type Hex } from "./hex";
 import type { MapCell } from "./mapGenerator";
-import type { Captain, CaribbeanState, EventCardKind, NPCShip, ShipState } from "./types";
+import type { Captain, CaribbeanState, EventCardKind, LostShip, NPCShip, ShipState } from "./types";
 import { STARTER_SHIP_CLASSES } from "./types";
 import { Caribbean, withGeneratedMap, withHotseatView } from "./Game";
 import { createNPCShip } from "./npcManager";
@@ -44,8 +44,15 @@ function merchant(at: Hex): NPCShip {
   return { ...npc, stats: { ...npc.stats, maneuverability: 1 } };
 }
 
-/** A match in the main phase on `cells`, `seats` seats, with the draw pile `drawPile` (top card last). */
-function startGame(seats: number, drawPile: EventCardKind[], npcs: Record<string, NPCShip> = {}) {
+/** A seat whose ship and captain are lost (#265): out for good once its turn deals it no captain, or already out. */
+const lost = (eliminated = false): LostShip => ({ cause: "sunk", score: 0, stashedGold: 0, ...(eliminated ? { eliminated: true } : {}) });
+
+/**
+ * A match in the main phase on `cells`, `seats` seats, with the draw pile
+ * `drawPile` (top card last). The seats in `lostShips` have no ship, and the
+ * captain deck is empty, so a seat that lost its ship goes out as its turn begins.
+ */
+function startGame(seats: number, drawPile: EventCardKind[], npcs: Record<string, NPCShip> = {}, lostShips: Record<string, LostShip> = {}) {
   const game: Game<CaribbeanState> = {
     ...Caribbean,
     seed: "event-deck-246",
@@ -55,7 +62,10 @@ function startGame(seats: number, drawPile: EventCardKind[], npcs: Record<string
     },
     setup: () => ({
       cells,
-      ships: Object.fromEntries(Array.from({ length: seats }, (_, i) => [String(i), ship(i)])),
+      ships: Object.fromEntries(
+        Array.from({ length: seats }, (_, i) => String(i)).filter((seat) => !(seat in lostShips)).map((seat) => [seat, ship(Number(seat))])
+      ),
+      lostShips,
       mapSize: "small",
       captainDeck: [],
       draftHands: {},
@@ -126,6 +136,38 @@ describe("the event deck in play (#246)", () => {
     expect(afterOneRound).not.toEqual(start);
     for (let turn = 1; turn < seats; turn++) client.events.endTurn!();
     expect(sailed()).toEqual(afterOneRound);
+  });
+
+  it("draws no card for a seat that goes out as its turn begins, though its passing still ends the round", () => {
+    const start = hex(-2, 1);
+    const client = startGame(2, calm(4), { witness: merchant(start) }, { "1": lost() });
+    client.events.endTurn!();
+    const { G, ctx } = client.getState()!;
+    // Seat 1 had no captain left to deal: out, and the turn came straight back to seat 0
+    expect(G.lostShips!["1"].eliminated).toBe(true);
+    expect(ctx.currentPlayer).toBe("0");
+    expect(G.eventDeck!.log.map((e) => e.seat)).toEqual(["0"]);
+    expect(G.npcs.witness.position).not.toEqual(start);
+  });
+
+  it.each([
+    ["the first", "0", ["1", "2"]],
+    ["a middle", "1", ["0", "2"]],
+    ["the last", "2", ["0", "1"]],
+  ])("with %s of 3 seats out, merchants sail once a round, as the last seat still in ends its turn", (_, out, inPlay) => {
+    const start = hex(-2, 1);
+    const client = startGame(3, calm(6), { witness: merchant(start) }, { [out]: lost(true) });
+    const sailed = () => client.getState()!.G.npcs.witness.position;
+    // The first turn is the first seat still in; the round ends with the last
+    expect(client.getState()!.ctx.currentPlayer).toBe(out === "0" ? "1" : "0");
+    client.events.endTurn!();
+    expect(sailed()).toEqual(start);
+    client.events.endTurn!();
+    const afterOneRound = sailed();
+    expect(afterOneRound).not.toEqual(start);
+    client.events.endTurn!();
+    expect(sailed()).toEqual(afterOneRound);
+    expect(client.getState()!.G.eventDeck!.log.map((e) => e.seat)).toEqual([...inPlay, inPlay[0]]);
   });
 });
 

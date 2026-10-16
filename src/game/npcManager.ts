@@ -244,7 +244,8 @@ export function merchantPorts(G: CaribbeanState): MapCell[] {
 
 /** The trading ports a merchant can put to sea from: those with a docking hex, since ships launch from it. */
 export function merchantSpawnPorts(G: CaribbeanState): MapCell[] {
-  return merchantPorts(G).length < 2 ? [] : merchantPorts(G).filter((p) => p.dockingHex);
+  const ports = merchantPorts(G);
+  return ports.length < 2 ? [] : ports.filter((p) => p.dockingHex);
 }
 
 /**
@@ -283,16 +284,6 @@ export function spawnMerchantFrom(G: CaribbeanState, spawnPort: MapCell, rng: ()
   );
 
   return id;
-}
-
-/** A merchant put to sea from a random trading port (`spawnMerchantFrom`), or null when none could sail. */
-export function spawnMerchant(
-  G: CaribbeanState,
-  rng: () => number
-): string | null {
-  const spawnPorts = merchantSpawnPorts(G);
-  if (spawnPorts.length === 0) return null;
-  return spawnMerchantFrom(G, spawnPorts[Math.floor(rng() * spawnPorts.length)], rng);
 }
 
 /**
@@ -419,10 +410,4 @@ export function moveMerchants(G: CaribbeanState): void {
       despawnNPC(G, npcId);
     }
   }
-}
-
-/** Every NPC sails: the flotillas, then the merchants. */
-export function moveAllNPCs(G: CaribbeanState): void {
-  moveFlotillas(G);
-  moveMerchants(G);
 }

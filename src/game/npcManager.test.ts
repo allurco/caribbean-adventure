@@ -6,16 +6,23 @@ import type { MapCell, CaribbeanState, NPCShip, Nation } from "./types";
 import type { MapSizeId } from "./mapConfig";
 import { getMapPreset } from "./mapConfig";
 import {
-  spawnMerchant,
+  merchantSpawnPorts,
+  spawnMerchantFrom,
   findPath,
   moveNPC,
-  moveAllNPCs,
+  moveMerchants,
   getPortCells,
   createNPCShip,
   shouldDespawn,
   despawnNPC,
   spawnFlotillaForPlayer,
 } from "./npcManager";
+
+/** A merchant put to sea from the trading port of `nation` (`spawnMerchantFrom`), or from the first one a merchant can sail from. */
+function spawnFrom(G: CaribbeanState, rng: () => number, nation?: Nation): string | null {
+  const port = merchantSpawnPorts(G).find((p) => nation === undefined || p.nation === nation);
+  return port ? spawnMerchantFrom(G, port, rng) : null;
+}
 
 function createTestState(cells: MapCell[]): CaribbeanState {
   return {
@@ -170,12 +177,12 @@ describe("createNPCShip", () => {
   });
 });
 
-describe("spawnMerchant", () => {
+describe("spawnMerchantFrom", () => {
   it("spawns a merchant when at least 2 ports exist", () => {
     const cells = createSimpleMapWithPorts();
     const G = createTestState(cells);
 
-    const result = spawnMerchant(G, Math.random);
+    const result = spawnFrom(G, Math.random);
 
     expect(result).not.toBeNull();
     expect(Object.keys(G.npcs)).toHaveLength(1);
@@ -188,10 +195,10 @@ describe("spawnMerchant", () => {
     const cells = createSimpleMapWithPorts();
     const G = createTestState(cells);
 
-    spawnMerchant(G, Math.random);
+    spawnFrom(G, Math.random);
     expect(G.npcIdCounter).toBe(1);
 
-    spawnMerchant(G, Math.random);
+    spawnFrom(G, Math.random);
     expect(G.npcIdCounter).toBe(2);
   });
 
@@ -202,19 +209,17 @@ describe("spawnMerchant", () => {
     ];
     const G = createTestState(cells);
 
-    const result = spawnMerchant(G, Math.random);
-
-    expect(result).toBeNull();
-    expect(Object.keys(G.npcs)).toHaveLength(0);
+    // No port a merchant can sail from: a merchant needs another to make for
+    expect(merchantSpawnPorts(G)).toEqual([]);
   });
 
   it("assigns nation from spawn port", () => {
     const cells = createSimpleMapWithPorts();
     const G = createTestState(cells);
 
-    // Spawn multiple times and check nations match spawn ports
-    for (let i = 0; i < 5; i++) {
-      const npcId = spawnMerchant(G, Math.random);
+    // Spawn from every port and check nations match spawn ports
+    for (const port of merchantSpawnPorts(G)) {
+      const npcId = spawnMerchantFrom(G, port, Math.random);
       if (npcId) {
         const npc = G.npcs[npcId];
         const spawnPort = cells.find((c) => hexEquals(c.hex, npc.spawnPortHex));
@@ -284,7 +289,7 @@ describe("NPCs on a map that wraps east–west", () => {
     const G = createTestState(wrappedCells());
     G.wrap = wrap;
     G.npcs["npc-1"] = createNPCShip("npc-1", offsetToHex(9, 2), offsetToHex(1, 2), "Spain", "Galleon", () => 0.5);
-    for (let turn = 0; turn < 3 && G.npcs["npc-1"]; turn++) moveAllNPCs(G);
+    for (let turn = 0; turn < 3 && G.npcs["npc-1"]; turn++) moveMerchants(G);
     expect(G.npcs["npc-1"]).toBeUndefined();
   });
 });
@@ -406,8 +411,8 @@ describe("despawnNPC", () => {
   });
 });
 
-describe("moveAllNPCs", () => {
-  it("moves all NPCs and despawns those at destination", () => {
+describe("moveMerchants", () => {
+  it("moves every merchant and despawns those at destination", () => {
     const cells = createSimpleMapWithPorts();
     const G = createTestState(cells);
 
@@ -434,7 +439,7 @@ describe("moveAllNPCs", () => {
     npc2.position = hex(-1, 2);
     G.npcs["npc-2"] = npc2;
 
-    moveAllNPCs(G);
+    moveMerchants(G);
 
     // NPC 1 should still exist and have moved
     expect(G.npcs["npc-1"]).toBeDefined();
@@ -448,7 +453,7 @@ describe("moveAllNPCs", () => {
     const G = createTestState(cells);
 
     // Should not throw
-    expect(() => moveAllNPCs(G)).not.toThrow();
+    expect(() => moveMerchants(G)).not.toThrow();
   });
 });
 
@@ -468,7 +473,7 @@ describe("integration: full merchant lifecycle", () => {
     }
 
     // Spawn a merchant
-    const npcId = spawnMerchant(G, () => 0.5); // deterministic "random"
+    const npcId = spawnFrom(G, () => 0.5); // deterministic "random"
     expect(npcId).not.toBeNull();
 
     const npc = G.npcs[npcId!];
@@ -478,7 +483,7 @@ describe("integration: full merchant lifecycle", () => {
     let iterations = 0;
     const maxIterations = 20;
     while (!shouldDespawn(npc) && iterations < maxIterations) {
-      moveAllNPCs(G);
+      moveMerchants(G);
       iterations++;
     }
 
@@ -508,7 +513,7 @@ describe("NPCs spawn on the water beside their port (#189)", () => {
   for (const roll of [0, 0.99]) {
     it(`a merchant starts on its spawn port's docking hex (roll ${roll})`, () => {
       const G = createTestState(dockedPortsMap());
-      const id = spawnMerchant(G, () => roll);
+      const id = spawnFrom(G, () => roll);
       expect(id).not.toBeNull();
       const npc = G.npcs[id!];
       const spawnPort = cellUnder(G, npc.spawnPortHex);
@@ -524,28 +529,23 @@ describe("NPCs spawn on the water beside their port (#189)", () => {
 
   it("a merchant sails from the docking hex to its destination port and despawns", () => {
     const G = createTestState(dockedPortsMap());
-    const id = spawnMerchant(G, () => 0)!;
+    const id = spawnFrom(G, () => 0)!;
     expect(cellUnder(G, G.npcs[id].position).terrain).toBe("water");
-    for (let turn = 0; turn < 5 && G.npcs[id]; turn++) moveAllNPCs(G);
+    for (let turn = 0; turn < 5 && G.npcs[id]; turn++) moveMerchants(G);
     expect(G.npcs[id]).toBeUndefined();
   });
 
   it("a port without a docking hex is never a spawn point", () => {
-    for (const roll of [0, 0.5, 0.99]) {
-      const cells = dockedPortsMap();
-      delete cells[4].dockingHex; // England
-      const G = createTestState(cells);
-      const id = spawnMerchant(G, () => roll)!;
-      expect(G.npcs[id].nation).toBe("Spain");
-      expect(G.npcs[id].position).toEqual(hex(1, 0));
-    }
+    const cells = dockedPortsMap();
+    delete cells[4].dockingHex; // England
+    expect(merchantSpawnPorts(createTestState(cells)).map((p) => p.nation)).toEqual(["Spain"]);
   });
 
   it("a merchant takes another free water hex beside the port when the dock is occupied", () => {
     const cells = [...dockedPortsMap(), { hex: hex(2, -1), terrain: "water", elevation: 0, hasPort: false } as MapCell];
     const G = createTestState(cells);
     G.npcs["blocker"] = createNPCShip("blocker", hex(1, 0), hex(-1, 2), "Spain", "Flute", () => 0.5);
-    const id = spawnMerchant(G, () => 0)!; // Spain
+    const id = spawnFrom(G, () => 0, "Spain")!;
     const npc = G.npcs[id];
     expect(cellUnder(G, npc.position).terrain).toBe("water");
     expect(hexEquals(npc.position, hex(1, 0))).toBe(false);
@@ -560,7 +560,7 @@ describe("NPCs spawn on the water beside their port (#189)", () => {
     ];
     const G = createTestState(cells);
     G.npcs["blocker"] = createNPCShip("blocker", hex(1, 0), hex(-1, 2), "Spain", "Flute", () => 0.5);
-    expect(spawnMerchant(G, () => 0)).toBeNull();
+    expect(spawnFrom(G, () => 0, "Spain")).toBeNull();
     expect(Object.keys(G.npcs)).toEqual(["blocker"]);
   });
 

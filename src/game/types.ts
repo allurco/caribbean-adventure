@@ -277,7 +277,11 @@ export type EventEffect =
 export type EventLogEntry = {
   /** Its number in the match's draws, from 1: the HUD tells a new card from one it has shown by it. */
   id: number;
-  /** The seat whose turn ended when it was drawn. */
+  /**
+   * The seat whose turn ended when it was drawn. Not read by this slice's
+   * HUD; kept so the log can say on whose turn an event came, and for the
+   * presentation queue of #248, which stages each event after its turn.
+   */
   seat: string;
   /** The boardgame.io turn (`ctx.turn`) that ended. */
   turn: number;

@@ -19,14 +19,14 @@ export function EventCard({ card, onDone }: { card: EventCardFace; onDone: () =>
     return () => clearTimeout(timer);
   }, [card.id, onDone]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4">
+    <div role="status" className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none px-4">
       <button
         type="button"
         onClick={onDone}
         aria-label={`${card.title}${card.region ? `, ${card.region}` : ""}: ${card.effect} Click to dismiss.`}
         className="pointer-events-auto w-64 max-w-full text-left rounded-md border border-ink/40 bg-parchment bg-[radial-gradient(ellipse_at_40%_35%,var(--color-parchment)_45%,var(--color-parchment-dark))] text-ink p-3 shadow-[0_10px_30px_rgba(0,0,0,0.55)] cursor-pointer focus-visible:outline-2 focus-visible:outline-amber-300"
       >
-        <span role="status" className="block">
+        <span className="block">
           <span className="block font-fell-sc text-2xl leading-tight text-center">{card.title}</span>
           {card.region && <span className="block font-fell italic text-base text-ink-faded text-center">{card.region}</span>}
           {/* The card's art (#247) goes here; it carries no text of its own */}

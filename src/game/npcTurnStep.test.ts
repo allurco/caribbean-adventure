@@ -59,6 +59,16 @@ describe("the world's step as a turn ends (#288, #246)", () => {
     expect(G.npcs.m.position).not.toEqual(hex(2, -2));
   });
 
+  it("draws no card for a seat out of the game, and still sails the merchants as the round ends", () => {
+    const G = state();
+    G.eventDeck = { drawPile: ["calmSeas"], log: [], drawn: 0 };
+    G.lostShips = { "1": { cause: "sunk", score: 0, stashedGold: 0, eliminated: true } };
+    G.npcs = { m: merchant(hex(2, -2)) };
+    npcTurnEndStep(G, always(0), roundEnd);
+    expect(G.eventDeck.log).toEqual([]);
+    expect(G.npcs.m.position).not.toEqual(hex(2, -2));
+  });
+
   it("does nothing while a fight is under way: nothing sails and no card is drawn", () => {
     const G = state({ attackerId: "0", defenderId: "1" } as CombatState);
     G.eventDeck = { drawPile: ["merchantConvoy"], log: [], drawn: 0 };

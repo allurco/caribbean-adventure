@@ -995,6 +995,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // The board takes this client's moves now: its seat's turn (#110), and no hand-off under way (#216)
   const boardActive = seatMayAct(turn) && !locked;
   const shownNpcs = holdsNpcs(handoff) && heldNpcs ? heldNpcs : G.npcs;
+  // The event log as the NPCs on show have it: while the hand-off holds the
+  // old NPCs, the events of the turn that just ended wait with them (#246)
+  const holdingNpcs = holdsNpcs(handoff) && heldNpcs !== null;
+  const [releasedEventLog, setReleasedEventLog] = useState(G.eventDeck?.log);
+  if (!holdingNpcs && releasedEventLog !== G.eventDeck?.log) setReleasedEventLog(G.eventDeck?.log);
+  const shownEventLog = holdingNpcs ? releasedEventLog : G.eventDeck?.log;
 
   // The open sea (#340): the map's deep sea, found once per map, for the
   // warnings; and a line for the table when it wears a
@@ -1333,7 +1339,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {!inCombat && currentShipState && (
         <HudLeftColumn>
           <HudGloryBoard rows={gloryScoreboard(G, hudPlayer, props.onlineSeats)} colours={PLAYER_COLOURS} />
-          <HudEventLog rows={eventLogRows(G.eventDeck?.log, G.regions, hudLayoutKind === "compact" ? 2 : 4)} />
+          <HudEventLog rows={eventLogRows(shownEventLog, G.regions, hudLayoutKind === "compact" ? 2 : 4)} />
         </HudLeftColumn>
       )}
 
