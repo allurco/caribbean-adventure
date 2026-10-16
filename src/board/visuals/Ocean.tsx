@@ -23,6 +23,7 @@ import type { Vec3 } from "./sunDirection";
 import type { OceanLighting } from "./lighting";
 import { TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
 import { advanceSurfTime, SURF_TIMING_GLSL, surfTimeUniform } from "./surfMotion";
+import { useMotionHeld } from "./motionHold";
 import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
 import { useSeabedPrepass } from "./seabedPrepass";
 import { cameraDistanceUniform, WATER_OPTICS_GLSL } from "./waterOptics";
@@ -607,6 +608,8 @@ export function Ocean({
   const seabed = useSeabedPrepass();
 
   const reducedMotion = usePrefersReducedMotion();
+  // Held surf (motionHold.ts): the harbour backdrop before its fade (#122); never on the board.
+  const motionHeld = useMotionHeld();
 
   const material = useMemo(() => {
     const { minX, maxX, minZ, maxZ } = terrainField.bounds;
@@ -702,7 +705,7 @@ export function Ocean({
     mat.uniforms.regionNameInk.value = regionChart ? REGION_NAME_INK * regionNameStrength(cameraDistanceUniform.value) : 0;
     mat.uniforms.regionSeamInk.value = regionChart && regionSeams ? REGION_SEAM_INK : 0;
     // The one surf clock, shared with the land's shoreline foam.
-    surfTimeUniform.value = advanceSurfTime(surfTimeUniform.value, delta, reducedMotion);
+    surfTimeUniform.value = advanceSurfTime(surfTimeUniform.value, delta, reducedMotion, motionHeld);
     // This frame's animated ship positions (written by Ship.tsx) for the hull foam.
     mat.uniforms.shipFoamCount.value = shipFoamSources.fill(mat.uniforms.shipFoamA.value, mat.uniforms.shipFoamB.value);
     // Their wakes: the trails advance by this frame's wave-clock step (none

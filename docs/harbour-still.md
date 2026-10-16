@@ -18,7 +18,7 @@ npm run capture:harbour
 - `public/harbour/harbour-still.webp`: the still;
 - `src/online/harbourStillImage.ts`: its path, a tiny inlined placeholder (shown blurred at first paint) and the view it was captured from.
 
-It takes a few seconds on a machine with a GPU. It runs with reduced motion, so the palms and the surf are held too, and two runs give byte-identical files. The script prints the WebGL renderer it got. Check that it is a GPU ("ANGLE Metal Renderer: …" on a Mac), not "SwiftShader": a software-rendered still lights the water differently from the live scene the player sees (see `docs/agents/visual-checks-ledger.md`).
+It takes a few seconds on a machine with a GPU. The view holds all the scene's motion (`wavesRunning={false}`: the wave clock, and through `MotionHeldContext` in `src/board/visuals/motionHold.ts` the surf and the palms' sway), the same pose the backdrop holds until its fade starts, and it runs with reduced motion as well, so two runs give byte-identical files. The script prints the WebGL renderer it got. Check that it is a GPU ("ANGLE Metal Renderer: …" on a Mac, where it asks for ANGLE's Metal back end; elsewhere it takes Chromium's default), not "SwiftShader": a software-rendered still lights the water differently from the live scene the player sees (see `docs/agents/visual-checks-ledger.md`).
 
 Then:
 

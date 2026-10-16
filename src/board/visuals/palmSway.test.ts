@@ -27,6 +27,11 @@ describe("advanceSwayAngle", () => {
     expect(advanceSwayAngle(1, 0.05, true)).toBeCloseTo(1 + 0.05 * PALM_SWAY_REDUCED_SPEED, 10);
   });
 
+  it("stands still while the motion is held, whatever the motion setting (#122)", () => {
+    expect(advanceSwayAngle(1, 0.05, false, true)).toBe(1);
+    expect(advanceSwayAngle(1, 0.05, true, true)).toBe(1);
+  });
+
   it("clamps long frame gaps (e.g. after a background tab) to avoid jumps", () => {
     expect(advanceSwayAngle(0, 5, false)).toBeCloseTo(MAX_SWAY_STEP * PALM_SWAY_SPEED, 10);
   });

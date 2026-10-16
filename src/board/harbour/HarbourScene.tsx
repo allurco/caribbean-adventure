@@ -1,4 +1,4 @@
-import { use, useEffect, useMemo, useReducer, useRef } from "react";
+import { use, useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { EventDispatcher, PerspectiveCamera, Vector3, type Camera, type WebGLRenderer } from "three";
 import { ErrorBoundary } from "react-error-boundary";
@@ -23,10 +23,12 @@ import { DISPLACEMENT_CASCADES } from "../visuals/waveDisplacement";
 import { createFramePacer, HARBOUR_FPS } from "./framePacer";
 import { isSettled, settleStep, shouldCompile, UNSETTLED } from "./harbourSettle";
 import { harbourCamera, harbourFov, type Vec3 } from "./harbourView";
-import { harbourWorldOnce, type HarbourWorld } from "./harbourWorld";
+import { MotionHeldContext } from "../visuals/motionHold";
+import { surfTimeUniform } from "../visuals/surfMotion";
+import { harbourWorldOnce, holdHarbourWorld, type HarbourWorld } from "./harbourWorld";
 
 export interface HarbourSceneProps {
-  /** The waves run; until then they are held at the moment the still was captured at. Frozen anyway under reduced motion. */
+  /** The waves, the surf and the palms run; until then they are held at the moment the still was captured at (motionHold.ts). Frozen anyway under reduced motion. */
   wavesRunning: boolean;
   /** The scene has drawn a settled frame (harbourSettle.ts): once. */
   onSettled: () => void;
@@ -44,9 +46,26 @@ export interface HarbourSceneProps {
  * the map worker.
  */
 export function HarbourScene(props: HarbourSceneProps) {
-  const world = use(harbourWorldOnce());
+  const pending = harbourWorldOnce();
+  const world = use(pending);
+  // Let the world (and every per-map cache on its map) go once the scene is gone
+  useEffect(() => holdHarbourWorld(pending), [pending]);
   const { onFailed } = props;
   const view = useMemo(() => harbourCamera(world.target), [world.target]);
+  // R3F forces the context lost when the canvas unmounts: that is leaving, not failing
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const onContextLost = useCallback(
+    (event: Event) => {
+      if (mounted.current) onFailed(event);
+    },
+    [onFailed]
+  );
   return (
     <ErrorBoundary fallback={null} onError={onFailed}>
       <Canvas
@@ -55,10 +74,12 @@ export function HarbourScene(props: HarbourSceneProps) {
         shadows={false}
         gl={{ antialias: true, powerPreference: "low-power" }}
         camera={{ fov: CAMERA_FOV, near: view.near, far: 1000, position: view.position }}
-        onCreated={({ gl }) => gl.domElement.addEventListener("webglcontextlost", (event) => onFailed(event), { once: true })}
+        onCreated={({ gl }) => gl.domElement.addEventListener("webglcontextlost", onContextLost, { once: true })}
         style={{ position: "absolute", inset: 0 }}
       >
-        <Harbour world={world} {...props} />
+        <MotionHeldContext value={!props.wavesRunning}>
+          <Harbour world={world} {...props} />
+        </MotionHeldContext>
       </Canvas>
     </ErrorBoundary>
   );
@@ -79,6 +100,10 @@ function Harbour({ world, wavesRunning, onSettled }: HarbourSceneProps & { world
   const decorations = useDecorationLayout(cells, wrap, seed);
 
   const settled = useSettledSignal(sky !== null, onSettled);
+  // The surf clock is shared module state (surfMotion.ts): start it from the still's moment, as the scene's own wave and sway clocks do
+  useEffect(() => {
+    surfTimeUniform.value = 0;
+  }, []);
 
   return (
     <>
@@ -142,7 +167,8 @@ function useSettledSignal(skyBaked: boolean, onSettled: () => void): boolean {
     gl.compileAsync(scene, camera)
       .catch((error: unknown) => console.warn("[harbour] shader compile failed", error))
       .finally(() => {
-        if (live) step("compiled");
+        if (!live) return;
+        step("compiled");
         invalidate();
       });
     return () => {
@@ -180,7 +206,7 @@ function FixedView({ target }: { target: Vec3 }) {
     camera.position.set(...view.position);
     camera.lookAt(...view.target);
     camera.updateMatrixWorld();
-    set({ controls: Object.assign(new EventDispatcher(), { target: new Vector3(...view.target) }) });
+    set({ controls: fixedFocus(view.target) });
     invalidate();
   }, [camera, target, set, invalidate]);
 
@@ -190,6 +216,14 @@ function FixedView({ target }: { target: Vec3 }) {
     invalidate();
   }, [camera, size, invalidate]);
   return null;
+}
+
+/**
+ * A stand-in for map controls that never move: what the scene reads from
+ * R3F's `controls` is an event dispatcher with a `target`, the camera's focus.
+ */
+function fixedFocus(target: Vec3): EventDispatcher & { target: Vector3 } {
+  return Object.assign(new EventDispatcher(), { target: new Vector3(...target) });
 }
 
 /** The board's exposure under the renderer's ACES tone mapping, which stands in for the composer's pass here. */

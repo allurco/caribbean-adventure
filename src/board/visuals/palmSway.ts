@@ -25,7 +25,9 @@ export const PALM_SWAY_FLUTTER = 0.018; // Up/down flutter of the fronds
 /** World-space direction the palms bend toward (XZ): the scene's one wind (#204). */
 export const PALM_WIND_DIR: readonly [number, number] = SCENE_WIND.toward;
 
-export function advanceSwayAngle(angle: number, delta: number, reducedMotion: boolean): number {
+/** The sway angle after a frame of `delta` seconds; it stands still while `held` (motionHold.ts, #122). */
+export function advanceSwayAngle(angle: number, delta: number, reducedMotion: boolean, held = false): number {
+  if (held) return angle;
   const speed = reducedMotion ? PALM_SWAY_REDUCED_SPEED : PALM_SWAY_SPEED;
   const next = angle + Math.min(Math.max(delta, 0), MAX_SWAY_STEP) * speed;
   return ((next % TAU) + TAU) % TAU;
