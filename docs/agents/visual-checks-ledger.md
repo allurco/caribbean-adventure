@@ -113,6 +113,18 @@ One entry per report. Newest first.
 
 ## Batches
 
+### 2026-10-15: the harbour backdrop, still then live scene (#122)
+
+- **Branch and commit:** `feat/122-harbour-backdrop` off `bfdbd27` (main), before its first commit; the "before" timings on `bfdbd27` itself.
+- **Renderer:** headless Chromium on the real GPU (ANGLE Metal), Playwright 1.59, DPR 1.
+- **Still:** `npm run capture:harbour` (`?view=harbour`, 2400 × 1000, reduced motion); two runs gave byte-identical files.
+- **Alignment:** the e2e dev server (`E2E_BACKEND=1`), signed out, reduced motion, everything but the backdrop hidden. A screenshot in phase `mounting` (the still, the scene mounted but invisible) against one in phase `live` (the frozen scene, the still gone) at 1440×900, 1920×1080, 2560×1080, 3440×1440, 1024×768, 844×390 and 667×375: the mean absolute difference is 2.8 to 5.8 of 255, with 0.3 to 2.3 % of pixels off by more than 32, from resampling and WebP compression. No offset. With the shell's boards left in, the difference was larger only because the web fonts load between the two shots.
+- **Fade:** without reduced motion at 1440×900, the mean luminance stays between 72.0 and 73.1 in screenshots taken through `mounting`, `fading` and `live`, so there is no blank or dark frame.
+- **Frame rate:** frames drawn to the screen were counted by wrapping `clear` with no framebuffer bound: 30.0 a second once live, and 0 under reduced motion.
+- **No remount:** signed in as an e2e captain, Lobby, Party, Ranked, Profile and back to Play by the nav board. The same canvas element stays connected, `harbour:mounting` is marked once, and the page never navigates.
+- **Timings:** production builds (`vite build` with a dummy Supabase URL, `vite preview`, signed out), 1440×900, five cold runs each, medians. Before: first contentful paint 768 ms (the dark gradient), sign-in input at 763 ms, no live scene. After: first contentful paint 504 ms (the harbour still, first rendered frame), sign-in input at 807 ms, live scene mounting at about 760 ms and fading in (settled) at about 2.2 s. Building the world after the shell is interactive was one 880 ms task at first; split into per-map builds with the page let in between, the longest task is now about 200 to 250 ms.
+- **Not checked:** a real phone, Safari (no idle callback, so the timer fallback), and a GPU with no WebGL (the still should stay; the code path is the error boundary and `webglcontextlost`).
+
 ### 2026-10-15: combat effects on the board (#263)
 
 - **Branch and commit:** `feat/combat-effects`, shot from 6648a28 to 2ac6893 as the smoke, foam, flash and camera were tuned.
