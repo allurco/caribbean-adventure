@@ -7,6 +7,7 @@ import type { Captain, CaribbeanState, ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
 import { REPAIR_COST_PER_POINT } from "./constants";
+import { fireTheAmbush } from "../testSupport/combatSteps";
 import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
 
 // These tests send refused moves on purpose; boardgame.io logs each one.
@@ -55,9 +56,12 @@ function docked(): ShipState {
   return s;
 }
 
-function mainGame() {
+/** Seats 0 and 1 in the main phase; `unarmed`, neither has a gun, so a fight between them harms neither. */
+function mainGame({ unarmed = false } = {}) {
   const rival = createShipState(hex(1, 0), "Sloop");
   rival.captain = captain("morgan");
+  const ship0 = docked();
+  if (unarmed) for (const s of [ship0, rival]) s.stats!.cannons = 0;
   const game: Game<CaribbeanState> = {
     ...Caribbean,
     phases: {
@@ -66,7 +70,7 @@ function mainGame() {
     },
     setup: () => ({
       cells,
-      ships: { "0": docked(), "1": rival },
+      ships: { "0": ship0, "1": rival },
       mapSize: "small",
       captainDeck: [],
       draftHands: {},
@@ -186,8 +190,9 @@ describe("the main phase's moves refuse malformed arguments", () => {
   });
 
   it("chooseCombatAction: an action outside fire, board and flee", () => {
-    const client = mainGame();
+    const client = mainGame({ unarmed: true });
     client.moves.attackShip("1");
+    fireTheAmbush(client);
     client.moves.rollSeamanship();
     expect(client.getState()!.G.combat?.stage).toBe("chooseAction");
     refused(client, () => client.moves.chooseCombatAction("broadside"));

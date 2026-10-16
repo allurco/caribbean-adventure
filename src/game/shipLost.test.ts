@@ -8,6 +8,7 @@ import { Caribbean, withGeneratedMap, withHotseatView } from "./Game";
 import { findHomeStart } from "./captains";
 import { generateMapFor } from "./mapRequest";
 import { createShipState } from "./economy";
+import { fightToTheEnd } from "../testSupport/combatSteps";
 import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
 
 // These tests send refused moves on purpose; boardgame.io logs each one.
@@ -102,12 +103,9 @@ function startGame(ships: Record<string, ShipState>, extra: Partial<CaribbeanSta
 type TestClient = ReturnType<typeof startGame>;
 const stateOf = (client: TestClient) => client.getState()!;
 
-/** Play one exchange of cannon fire through to the end of the combat. */
+/** Play cannon fire through to the end of the combat. */
 function fireOnce(client: TestClient): void {
-  client.moves.rollSeamanship();
-  client.moves.chooseCombatAction("fire");
-  client.moves.rollCannons();
-  client.moves.applyResolution();
+  fightToTheEnd(client);
   expect(stateOf(client).G.combat).toBeUndefined();
 }
 
@@ -169,7 +167,7 @@ describe("a ship sunk in combat (#265)", () => {
     expect(stateOf(client).G.draftHands["0"]).toHaveLength(2);
   });
 
-  it("when both ships sink, the turn passes to the defender, who picks first", () => {
+  it("a defender the ambush sinks never fires back, though it could have sunk the attacker (#346)", () => {
     const attacker = ship(0, 0, "blackbeard", true);
     const defender = ship(1, 0, "surcouf", true);
     attacker.stats!.hull = { current: 1, max: 1 };
@@ -178,13 +176,9 @@ describe("a ship sunk in combat (#265)", () => {
     client.moves.attackShip("1");
     fireOnce(client);
 
-    expect(stateOf(client).G.ships).toEqual({});
+    expect(Object.keys(stateOf(client).G.ships)).toEqual(["0"]);
+    expect(stateOf(client).G.ships["0"].stats!.hull.current).toBe(1);
     expect(stateOf(client).ctx.currentPlayer).toBe("1");
-    client.moves.pickCaptain(0, "Sloop");
-    client.events.endTurn!();
-    expect(stateOf(client).ctx.currentPlayer).toBe("0");
-    client.moves.pickCaptain(0, "Sloop");
-    expect(Object.keys(stateOf(client).G.ships).sort()).toEqual(["0", "1"]);
   });
 
   it("keeps the player's glory and stashed gold across the new captain", () => {
@@ -279,16 +273,21 @@ describe("out of captains (#265)", () => {
   });
 
   it("when every seat is out, the game ends and the most glory wins", () => {
+    // Seat 0 sinks seat 1, then is sunk by the flotilla it attacks: no captain is left for either.
     const attacker = ship(0, 0, "blackbeard", true);
-    const defender = ship(1, 0, "surcouf", true);
     attacker.stats!.hull = { current: 1, max: 1 };
-    defender.stats!.hull = { current: 1, max: 1 };
+    const defender = ship(1, 0, "surcouf", false);
     defender.score = 2;
-    const client = startGame({ "0": attacker, "1": defender }, { captainDeck: [] });
+    const client = startGame({ "0": attacker, "1": defender }, { captainDeck: [], npcs: { flotilla: flotilla(-1, 0) } });
     client.moves.attackShip("1");
     fireOnce(client);
+    expect(stateOf(client).G.lostShips?.["1"]?.eliminated).toBe(true);
+    expect(stateOf(client).ctx.currentPlayer).toBe("0");
+    expect(stateOf(client).ctx.gameover).toBeUndefined();
 
-    expect(stateOf(client).ctx.gameover).toMatchObject({ winner: "1", score: 3 });
+    client.moves.attackNPC("flotilla");
+    fireOnce(client);
+    expect(stateOf(client).ctx.gameover).toMatchObject({ winner: "1", score: 2 });
   });
 
   it("solo: the player picks the last captain, and is out with an empty deck, which ends the game", () => {
@@ -334,12 +333,7 @@ describe("a real solo match out of captains (#265, #278)", () => {
     const fight = () => {
       client.moves.attackNPC("flotilla");
       expect(stateOf(client).G.combat).toBeDefined();
-      for (let round = 0; round < 20 && stateOf(client).G.combat; round++) {
-        client.moves.rollSeamanship();
-        client.moves.chooseCombatAction("fire");
-        client.moves.rollCannons();
-        client.moves.applyResolution();
-      }
+      fightToTheEnd(client);
       expect(stateOf(client).G.ships["0"]).toBeUndefined();
     };
 

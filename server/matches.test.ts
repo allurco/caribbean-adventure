@@ -485,7 +485,7 @@ describe("what a request may cost (#113 security review)", () => {
 });
 
 describe("a fight between two seats (#113 review)", () => {
-  /** Seat 0 attacks seat 1, rolls the draw, and the draw goes to `winner`. */
+  /** Seat 0 attacks seat 1, fires the ambush, rolls round 2's draw, and the draw goes to `winner`. */
   async function fightAtChoice(winner: "0" | "1") {
     const matchId = await startedMatch();
     const main = await draftBoth(matchId);
@@ -502,6 +502,21 @@ describe("a fight between two seats (#113 review)", () => {
     let state = ((await res.json()) as MatchBody).state;
     expect(state.ctx.phase).toBe("combat");
 
+    // Round 1 is the ambush (#346): no draw, and the broadside and the round's end are the attacker's steps.
+    clock += 1000;
+    expect((await act(matchId, tokenOf(attacker), move(state._stateID, "rollSeamanship"))).status).toBe(400);
+    clock += 1000;
+    expect((await act(matchId, tokenOf(defender), move(state._stateID, "rollCannons"))).status).toBe(403);
+    clock += 1000;
+    res = await act(matchId, tokenOf(attacker), move(state._stateID, "rollCannons"));
+    expect(res.status).toBe(200);
+    state = ((await res.json()) as MatchBody).state;
+    expect(state.G.combat?.volleys[0]?.shooterId).toBe(attacker);
+    clock += 1000;
+    expect((await act(matchId, tokenOf(defender), move(state._stateID, "applyResolution"))).status).toBe(403);
+
+    // Set-up: round 2, at the draw, whatever the ambush did, written straight into the store.
+    Object.assign(((await store.peekMatch(matchId))!.state as View).G.combat!, { round: 2, stage: "seamanship", volleys: [] });
     // The defender may not roll the draw: it is the attacker's step.
     clock += 1000;
     expect((await act(matchId, tokenOf(defender), move(state._stateID, "rollSeamanship"))).status).toBe(403);

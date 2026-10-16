@@ -5,6 +5,7 @@ import { hex, hexEquals, hexGrid } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, NPCShip, ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
+import { fightToTheEnd } from "../testSupport/combatSteps";
 import { createShipState } from "./economy";
 
 /**
@@ -102,12 +103,9 @@ function startGame(extra: Partial<CaribbeanState> = {}) {
 
 type TestClient = ReturnType<typeof startGame>;
 
-/** Play one exchange of cannon fire through to the end of the combat. */
+/** Play cannon fire through to the end of the combat. */
 function fireOnce(client: TestClient): void {
-  client.moves.rollSeamanship();
-  client.moves.chooseCombatAction("fire");
-  client.moves.rollCannons();
-  client.moves.applyResolution();
+  fightToTheEnd(client);
 }
 
 /**
