@@ -1,4 +1,5 @@
 import {
+  HUD_EDGE,
   HUD_GLORY_BOARD_LEFT,
   HUD_GLORY_BOARD_WIDTH,
   HUD_PORT_PANEL_INSET,
@@ -9,6 +10,7 @@ import {
   HUD_STACK_TOP,
   HUD_TOP_BAR_HEIGHT,
 } from "../board/hudLayout";
+import { NO_INSETS, type SafeAreaInsets } from "../board/safeArea";
 import type { ShellLayout } from "./shellLayout";
 
 /** The smallest tap target on a phone, in CSS pixels. */
@@ -27,7 +29,6 @@ export const ACCOUNT_LINK_Z = 58;
 
 /** Under the HUD's turn bar, with a gap. */
 const TOP = HUD_TOP_BAR_HEIGHT + 12;
-const EDGE = 16;
 const GAP = 8;
 
 /** The compact link's width, fixed so it can be placed beside the HUD: "The harbour" with its padding is about 102 px. */
@@ -60,6 +61,8 @@ export interface AccountLinkScene {
   hudStack: boolean;
   portPanel: boolean;
   viewportWidth: number;
+  /** The screen's safe-area insets (#123): the HUD pads by them, so the link does too. None when left out. */
+  insets?: SafeAreaInsets;
 }
 
 /**
@@ -74,15 +77,21 @@ export interface AccountLinkScene {
  * link goes under Save & leave, right of the glory panel; where that meets
  * it too (under 660 px, a narrowed desktop window), the top-right corner
  * under the turn bar. With the stack down (a captain picked, a fight, game
- * over) it takes the empty top-right corner. Pure, no React.
+ * over) it takes the empty top-right corner. Under a notch every spot moves
+ * in by the safe-area insets, as the HUD does, and the room beside the port
+ * panel shrinks by both side insets. Pure, no React.
  */
 export function accountLinkPlacement(layout: ShellLayout, scene: AccountLinkScene): AccountLinkPlacement {
-  if (layout === "desktop") return { top: TOP, right: EDGE };
+  const insets = scene.insets ?? NO_INSETS;
+  const corner = (top: number) => ({ top: top + insets.top, right: HUD_EDGE + insets.right });
+  if (layout === "desktop") return corner(TOP);
   const size = { minHeight: MIN_TAP_TARGET, width: ACCOUNT_LINK_COMPACT_WIDTH };
-  if (!scene.hudStack) return { top: EDGE, right: EDGE, ...size };
+  if (!scene.hudStack) return { ...corner(HUD_EDGE), ...size };
   const clearOfPanel = (left: number) =>
-    !scene.portPanel || left + ACCOUNT_LINK_COMPACT_WIDTH + GAP <= scene.viewportWidth - PORT_COLUMN;
-  if (clearOfPanel(ROW_LEFT)) return { top: HUD_STACK_TOP, left: ROW_LEFT, ...size };
-  if (clearOfPanel(UNDER_LEFT)) return { top: UNDER_TOP, left: UNDER_LEFT, ...size };
-  return { top: TOP, right: EDGE, ...size };
+    !scene.portPanel ||
+    insets.left + left + ACCOUNT_LINK_COMPACT_WIDTH + GAP <= scene.viewportWidth - insets.right - PORT_COLUMN;
+  const beside = (top: number, left: number) => ({ top: top + insets.top, left: left + insets.left, ...size });
+  if (clearOfPanel(ROW_LEFT)) return beside(HUD_STACK_TOP, ROW_LEFT);
+  if (clearOfPanel(UNDER_LEFT)) return beside(UNDER_TOP, UNDER_LEFT);
+  return { ...corner(TOP), ...size };
 }

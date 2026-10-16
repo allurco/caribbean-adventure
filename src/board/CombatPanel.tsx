@@ -1,5 +1,7 @@
 import type { CombatState, ShipState, CombatAction, NPCShip } from "../game/types";
 import { npcKind } from "./npcName";
+import { HUD_EDGE } from "./hudLayout";
+import { safeInset } from "./safeArea";
 
 interface CombatPanelProps {
   combat: CombatState;
@@ -115,7 +117,7 @@ export function CombatPanel({
   const seatLabel = (id: string | null) => Number(id) + 1;
 
   return (
-    <div className="absolute left-1/2 top-4 -translate-x-1/2 rounded-xl overflow-hidden border border-red-800/50 bg-gradient-to-br from-stone-900/95 via-red-950/90 to-stone-950/95 shadow-2xl shadow-black/50 backdrop-blur-md text-white p-4 text-sm w-96">
+    <div style={{ top: safeInset("top", HUD_EDGE) }} className="absolute left-1/2 -translate-x-1/2 rounded-xl overflow-hidden border border-red-800/50 bg-gradient-to-br from-stone-900/95 via-red-950/90 to-stone-950/95 shadow-2xl shadow-black/50 backdrop-blur-md text-white p-4 text-sm w-96">
       <div className="font-heading text-center text-red-400 uppercase text-sm tracking-wider mb-3 border-b border-red-800/30 pb-2">
         Combat - Round {combat.round}
       </div>

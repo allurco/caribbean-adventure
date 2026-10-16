@@ -1,0 +1,12 @@
+{
+  "name": "Caribbean Merchant",
+  "short_name": "Caribbean",
+  "description": "A turn-based naval strategy game of trade and plunder in the Caribbean.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#082633",
+  "theme_color": "#082633",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

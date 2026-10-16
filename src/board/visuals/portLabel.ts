@@ -211,6 +211,8 @@ export interface PortLabelScreen {
   topY: number;
   /** The port's ground point under the label. */
   portY: number;
+  /** The screen's top safe-area inset (#123), which pushes the turn bar down; 0 when left out. */
+  insetTop?: number;
 }
 
 /**
@@ -220,8 +222,8 @@ export interface PortLabelScreen {
  * still in view. It never comes down past the port it names, so a label whose
  * port is itself off the top goes off with it instead of sticking to the edge.
  */
-export function portLabelScreenShift({ baselineY, topY, portY }: PortLabelScreen): number {
-  const needed = PORT_LABEL_VIEWPORT_MARGIN - topY;
+export function portLabelScreenShift({ baselineY, topY, portY, insetTop = 0 }: PortLabelScreen): number {
+  const needed = PORT_LABEL_VIEWPORT_MARGIN + insetTop - topY;
   const room = portY - baselineY;
   return Math.max(0, Math.min(needed, room));
 }

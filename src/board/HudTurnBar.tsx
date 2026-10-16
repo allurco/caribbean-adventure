@@ -1,5 +1,6 @@
 import { WIN_SCORE } from "../game/types";
-import { HUD_TOP_BAR_HEIGHT } from "./hudLayout";
+import { HUD_SIDE_INSET, HUD_TOP_BAR_HEIGHT } from "./hudLayout";
+import { safeInset } from "./safeArea";
 
 interface HudTurnBarProps {
   mapLabel: string;
@@ -26,10 +27,11 @@ export function HudTurnBar({
   onEndTurn,
 }: HudTurnBarProps) {
   return (
-    <div className="absolute top-0 left-0 right-0 pointer-events-none">
+    <div className="absolute top-0 left-0 right-0 pointer-events-none" style={{ paddingTop: safeInset("top", 0) }}>
       <div
-        className="flex items-center justify-between px-5 py-2.5 bg-gradient-to-b from-black/60 via-black/30 to-transparent"
-        style={{ height: HUD_TOP_BAR_HEIGHT }}
+        className="flex items-center justify-between py-2.5 bg-gradient-to-b from-black/60 via-black/30 to-transparent"
+        // Padded clear of a notch (#123); the gradient still runs edge to edge
+        style={{ height: HUD_TOP_BAR_HEIGHT, paddingLeft: safeInset("left", HUD_SIDE_INSET), paddingRight: safeInset("right", HUD_SIDE_INSET) }}
       >
         {/* Left: Map label */}
         <div className="font-heading text-amber-600/60 text-[11px] uppercase tracking-[0.2em]">

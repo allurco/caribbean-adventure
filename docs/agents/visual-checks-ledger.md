@@ -58,6 +58,22 @@ Reports still being chased. Move an entry to "Investigated, not a bug" or close 
 
 One entry per report. Newest first.
 
+### 2026-10-16: the rotate gate's review follow-ups (#123, PR #312)
+
+- **Branch and commit:** `feat/123-landscape-phones` at `83c11b5` (on main at `05fd37e`).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), Playwright 1.59. Phone emulation: `isMobile` and `hasTouch`, DPR 2; the window and the screen set apart through the DevTools protocol's `Emulation.setDeviceMetricsOverride` (`screenWidth`, `screenHeight`), since Playwright's `setViewportSize` resets the screen to the window. `screen.orientation.lock` deleted before load, as on iOS: headless Chromium has both APIs and would go full screen on the first tap, after which the window cannot be resized (so "Turn it for me" is not in these shots). Safe areas through `Emulation.setSafeAreaInsetsOverride`, turned with the phone: left and right 47 px, bottom 21 sideways; top 47, bottom 34 upright. WebGL draw calls counted by wrapping `drawElements`/`drawArrays` and their instanced forms. No real phone or tablet.
+- **View:** `?size=small&seed=1` on a dev server with no Supabase variables; captain and Sloop picked through the draft screen.
+- **Findings, all as intended:** a phone at 390×844 gets the gate, with focus inside it, the app's wrapper `inert` and `aria-hidden="true"`, and "Turn your ship" whole at 38 px; at 320×568 whole at 32 px. A split-view tablet (window 375×1024, screen 1024×1366, touch) gets no gate. The board's draw calls: about 65 000 in 1.5 s sideways, 0 under the gate, drawing again at once on turning back, the same canvas element. Enter under the gate: a route picked in landscape (a coarse-pointer device with a 390×844 screen and a 1440×900 window, the window then set to 700×1000 for portrait), Enter pressed twice under the gate, turned back: the route hint still shows and all four moves are left; Enter in landscape then sails it (two moves used). Desktop at 1440×900: no gate, End Turn's right edge at 1420 (20 px in, as before).
+- **False alarm, noted for next time:** with the sideways insets (47 px left and right) left on after turning the phone upright, the gate's padding grows to 47 px and the nameboard's title is cut short. A real phone's insets turn with it; set them per orientation.
+
+### 2026-10-16: phones in landscape, the rotate gate and the safe areas (#123)
+
+- **Branch and commit:** `feat/123-landscape-phones` at `89f7547` (on main at `05fd37e`); main at `a93aa4e` for the desktop comparison.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), Playwright 1.59. Phone emulation: `isMobile` and `hasTouch`, DPR 2, so `(pointer: coarse)` matches; a desktop context without them for the narrow window. Safe areas through the DevTools protocol's `Emulation.setSafeAreaInsetsOverride` (left and right 47 px, bottom 21 px, as an iPhone held sideways). No real iPhone or Android phone.
+- **View:** `?size=small&seed=1` on a dev server with no Supabase variables (the game, with boardgame.io's debug panel), and the bare root URL on a dev server with dummy Supabase variables (the shell's sign-in screen). Captain and ship picked through the draft screen in landscape, then the viewport turned to 390×844 and back.
+- **Findings, all as intended:** at 390×844 the gate covers the game and the shell: `elementFromPoint` at the corners, the centre and the debug panel's tab all land on the gate; the app's wrapper is `inert`. Turned back to 844×390 the gate goes, the canvas is the same element and the page's text matches what it was before turning (draft done, the same captain on the HUD). The phone glyph animates, and has no animation with reduced motion emulated. "Turn it for me" shows in headless Chromium, which has both APIs (not tapped: the lock needs a real phone). With the insets the captain card's left edge moves from 16 to 63 px, the glory panel from 20 to 67, End Turn's right edge from 824 to 777; at 1440×900 without touch, no gate, and the glory panel, the card and End Turn sit at the same pixels as on main. A 390×844 desktop window shows no gate. The manifest is served as `application/manifest+json` by the dev server and `vite preview`.
+- **For the maintainer:** at 844×390 and 667×375 the open port panel covers End Turn and the turn bar's purse (#311, not this PR).
+
 ### 2026-10-15: the hotseat save (#300, PRs #304 and #305)
 
 - **Branch and commit:** `fix/304-review-followups` at `e115dc2` (on main at `475cb37`, after #304 merged).

@@ -74,6 +74,31 @@ describe("placeShipTooltip (#199)", () => {
   });
 });
 
+describe("placeShipTooltip under a notch (#123)", () => {
+  // A phone held sideways, notch on the left, home bar along the bottom
+  const phone = { width: 844, height: 390 };
+  const insets = { top: 0, right: 47, bottom: 21, left: 47 };
+
+  it("keeps clear of the notch and the rounded corners on either side", () => {
+    expect(placeShipTooltip({ ...shipAt(10, 300), tooltip, viewport: phone, insets }).left).toBe(47 + SHIP_TOOLTIP_SIDE_MARGIN);
+    expect(placeShipTooltip({ ...shipAt(840, 300), tooltip, viewport: phone, insets }).left).toBe(844 - 47 - SHIP_TOOLTIP_SIDE_MARGIN - 180);
+  });
+
+  it("keeps under the turn bar, which the top inset pushes down", () => {
+    const notchTop = { top: 59, right: 0, bottom: 34, left: 0 };
+    const placed = placeShipTooltip({ ...shipAt(200, -40), tooltip, viewport: { width: 390, height: 844 }, insets: notchTop });
+    expect(placed).toMatchObject({ top: SHIP_TOOLTIP_TOP_MARGIN + 59, side: "clamped" });
+  });
+
+  it("does not flip below the ship into the home bar", () => {
+    // Masthead near the bar, waterline low enough that the flipped tooltip would end in the bottom inset
+    const masthead = { x: 400, y: SHIP_TOOLTIP_TOP_MARGIN + 10 };
+    const waterline = { x: 400, y: 390 - 21 - tooltip.height - SHIP_TOOLTIP_SHIP_GAP + 5 };
+    expect(placeShipTooltip({ masthead, waterline, tooltip, viewport: phone, insets }).side).toBe("clamped");
+    expect(placeShipTooltip({ masthead, waterline, tooltip, viewport: phone }).side).toBe("below");
+  });
+});
+
 describe("ndcToScreen", () => {
   it("maps the canvas's corners and centre to CSS pixels, y down", () => {
     expect(ndcToScreen({ x: -1, y: 1 }, viewport)).toEqual({ x: 0, y: 0 });
