@@ -477,7 +477,7 @@ describe("the realtime 'changed' signal (#114)", () => {
     const sent: number[] = [];
     services = {
       ...services,
-      defer: (work) => void deferred.push(work),
+      defer: (work) => (deferred.push(work), true),
       signals: {
         changed: (_id, stateId) =>
           new Promise<void>((resolve) => {
@@ -584,8 +584,12 @@ describe("which seats were seen lately: server-side, from each seat's own reads 
     const missingColumn = async () => {
       throw Object.assign(new Error('column seats.last_seen_at does not exist'), { code: "42703" });
     };
+    let writes = 0;
     store.seatsLastSeen = missingColumn;
-    store.markSeatSeen = missingColumn;
+    store.markSeatSeen = async () => {
+      writes++;
+      return missingColumn();
+    };
     const original = console.error;
     console.error = () => {};
     try {
@@ -598,15 +602,68 @@ describe("which seats were seen lately: server-side, from each seat's own reads 
       const moved = await act(matchId, "anne", move(body.state._stateID, "pickCaptain", 0, "Sloop"));
       expect(moved.status).toBe(200);
       expect(((await moved.json()) as MatchBody).online).toEqual(["0"]);
+      // The read failed, so the write would fail too: it is not attempted, nor logged a second time.
+      expect(writes).toBe(0);
     } finally {
       console.error = original;
     }
   });
 
+  /** Logs when the seats' last-seen read starts and ends, around a timer tick, so a call made meanwhile shows in between. */
+  function logSeenRead(order: string[]) {
+    const seatsLastSeen = store.seatsLastSeen.bind(store);
+    store.seatsLastSeen = async (roomId) => {
+      order.push("seen:start");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      order.push("seen:end");
+      return seatsLastSeen(roomId);
+    };
+  }
+
+  it("reads when seats were last seen alongside loading the match's state, not before it", async () => {
+    const matchId = await startedMatch();
+    const order: string[] = [];
+    logSeenRead(order);
+    const getMatch = store.getMatch.bind(store);
+    store.getMatch = async (id) => {
+      order.push("match");
+      return getMatch(id);
+    };
+    expect((await call("GET", `/api/matches/${matchId}`, "anne")).status).toBe(200);
+    expect(order).toEqual(["seen:start", "match", "seen:end"]);
+  });
+
+  it("reads when seats were last seen alongside committing a move, not before it", async () => {
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    const order: string[] = [];
+    logSeenRead(order);
+    const commitMove = store.commitMove.bind(store);
+    store.commitMove = async (entry) => {
+      order.push("commit");
+      return commitMove(entry);
+    };
+    expect((await act(matchId, "anne", move(state._stateID, "pickCaptain", 0, "Sloop"))).status).toBe(200);
+    expect(order).toEqual(["seen:start", "commit", "seen:end"]);
+  });
+
+  it("records no seat for a malformed action, and still sends the seats online with a refused one", async () => {
+    const matchId = await startedMatch();
+    await view(matchId, "jack");
+    clock += (SEEN_REFRESH_SECONDS + 1) * 1000;
+    const writes = countSeenWrites();
+    expect((await act(matchId, "anne", { action: "nonsense" })).status).toBe(400);
+    expect(writes.count).toBe(0);
+    const stale = await act(matchId, "anne", move(999, "pickCaptain", 0, "Sloop"));
+    expect(stale.status).toBe(409);
+    expect(((await stale.json()) as MatchBody).online).toEqual(["0", "1"]);
+    expect(writes.count).toBe(1);
+  });
+
   it("records the seat after the response where the platform keeps work running, so no read or move waits on it", async () => {
     const matchId = await startedMatch();
     const deferred: Promise<unknown>[] = [];
-    services = { ...services, defer: (work) => void deferred.push(work) };
+    services = { ...services, defer: (work) => (deferred.push(work), true) };
     store.markSeatSeen = () => new Promise<void>(() => {});
     const read = await call("GET", `/api/matches/${matchId}`, "anne");
     expect(read.status).toBe(200);

@@ -42,10 +42,12 @@ export interface ApiServices {
   signals?: MatchSignals;
   /**
    * Keeps work running after the response is sent (Vercel's `waitUntil`,
-   * `vercelHandler.ts`): the realtime signal, so a move never waits on it.
-   * Left out, the route awaits that work before it answers.
+   * `vercelHandler.ts`): the realtime signal and a seat's last-seen write, so
+   * a move never waits on them. Returns whether it took the work; when it did
+   * not, or is left out, the route awaits that work before it answers
+   * (`afterResponse.ts`).
    */
-  defer?: (work: Promise<unknown>) => void;
+  defer?: (work: Promise<unknown>) => boolean;
   /** The clock, in ms since the epoch (#114: when a seat was last seen); `Date.now` when left out. */
   now?: () => number;
 }

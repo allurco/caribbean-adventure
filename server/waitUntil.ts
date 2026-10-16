@@ -4,8 +4,9 @@
  * `waitUntil` in `@vercel/functions`: the Vercel runtime puts the request's
  * context on a global symbol, and its `waitUntil` holds the function open
  * until the work settles. Inlined, as that package's CommonJS index would
- * add every one of its modules to the bundle. Off Vercel (no context) it
- * does nothing, and the work still runs, unawaited.
+ * add every one of its modules to the bundle. Says whether it handed the
+ * work off: off Vercel (no context) it does not, and the caller awaits the
+ * work itself (`afterResponse.ts`).
  */
 
 interface RequestContext {
@@ -14,7 +15,10 @@ interface RequestContext {
 
 const REQUEST_CONTEXT = Symbol.for("@vercel/request-context");
 
-export function waitUntil(work: Promise<unknown>): void {
+export function waitUntil(work: Promise<unknown>): boolean {
   const holder = (globalThis as { [REQUEST_CONTEXT]?: { get?: () => RequestContext | undefined } })[REQUEST_CONTEXT];
-  holder?.get?.()?.waitUntil?.(work);
+  const keep = holder?.get?.()?.waitUntil;
+  if (!keep) return false;
+  keep(work);
+  return true;
 }

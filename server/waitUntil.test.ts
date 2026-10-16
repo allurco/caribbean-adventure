@@ -13,15 +13,17 @@ describe("waitUntil: work kept running after the response, on Vercel", () => {
     const kept: Promise<unknown>[] = [];
     global[CONTEXT] = { get: () => ({ waitUntil: (work: Promise<unknown>) => void kept.push(work) }) };
     const work = Promise.resolve();
-    waitUntil(work);
+    expect(waitUntil(work)).toBe(true);
     expect(kept).toEqual([work]);
   });
 
-  it("does nothing, and never throws, off Vercel: no context, or one without waitUntil", () => {
-    expect(() => waitUntil(Promise.resolve())).not.toThrow();
+  it("says it kept nothing, and never throws, off Vercel: no context, or one without waitUntil", () => {
+    expect(waitUntil(Promise.resolve())).toBe(false);
     global[CONTEXT] = { get: () => undefined };
-    expect(() => waitUntil(Promise.resolve())).not.toThrow();
+    expect(waitUntil(Promise.resolve())).toBe(false);
+    global[CONTEXT] = { get: () => ({}) };
+    expect(waitUntil(Promise.resolve())).toBe(false);
     global[CONTEXT] = {};
-    expect(() => waitUntil(Promise.resolve())).not.toThrow();
+    expect(waitUntil(Promise.resolve())).toBe(false);
   });
 });

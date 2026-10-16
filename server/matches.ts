@@ -9,12 +9,13 @@
  * over realtime (#114, `matchSignals.ts`: the new version alone). Responses
  * carry `viewFor(state, seat)`, never the whole state.
  */
+import { afterResponse } from "./afterResponse";
 import { fail, isUuid, json, readBoundedJsonObject } from "./http";
 import { applyAction, parseAction, seatMayActNow, viewFor, type MatchState } from "./matchEngine";
 import type { ApiServices } from "./handleApiRequest";
 import type { MatchSignals } from "./matchSignals";
 import type { SeatRecord, SeatSeen } from "./onlineStore";
-import { seatsOnline, seenNeedsRefresh, staleBefore } from "./seatSeen";
+import { seatsOnline, seenFailureReporter, seenNeedsRefresh, staleBefore } from "./seatSeen";
 
 /** PRD #104: ten actions a second per player; and, so a steady stream cannot run all day, 120 a minute. */
 export const MOVE_LIMITS = [
@@ -33,6 +34,9 @@ export const READ_LIMIT = { action: "read_match", limit: 150, windowSeconds: 60 
 /** An action's body is a few hundred bytes; past this it is refused before parsing (413). */
 export const MAX_ACTION_BODY_BYTES = 4096;
 
+/** One per instance, so a missing last-seen column is named once, not on every read (`seatSeen.ts`). */
+const reportSeenFailure = seenFailureReporter((...args) => console.error(...args));
+
 /** The caller's seat among `seats`, as boardgame.io's playerID, or null. */
 function seatOf(seats: readonly SeatRecord[], userId: string): string | null {
   const seat = seats.find((s) => s.userId === userId);
@@ -47,27 +51,30 @@ function seatView(matchId: string, seat: string, state: MatchState, online: stri
 /**
  * Records that the caller's seat was seen now (#114, `seatSeen.ts`), unless
  * it was seen lately, and says which seats are online. Neither may fail the
- * request or hold it up: a failure is logged, and costs only the online dot
- * (a database without the column, before its migration, included); the
- * write goes after the response where the platform allows (`defer`).
+ * request or hold it up: a failure is logged (`seenFailureReporter`), and
+ * costs only the online dot (a database without the column, before its
+ * migration, included); a failed read skips the write, which would fail the
+ * same way; the write goes after the response where the platform allows
+ * (`afterResponse`). Never rejects, so a route may start it and await it later.
  */
 async function seeSeat(services: ApiServices, roomId: string, seat: string): Promise<string[]> {
   const { store } = services;
   const at = now(services);
   const index = Number(seat);
-  let seen: SeatSeen[] = [];
+  let seen: SeatSeen[];
   try {
     seen = await store.seatsLastSeen(roomId);
   } catch (error) {
-    console.error("reading when seats were last seen failed", error);
+    reportSeenFailure("reading when seats were last seen failed", error);
+    // The write would fail the same way: skip it, and the caller alone is online.
+    return seatsOnline([], index, at);
   }
   const own = seen.find((s) => s.index === index);
   if (!own || seenNeedsRefresh(own.lastSeenAt, at)) {
     const write = store.markSeatSeen(roomId, index, new Date(at).toISOString(), staleBefore(at)).catch((error: unknown) => {
-      console.error("recording a seat as seen failed", error);
+      reportSeenFailure("recording a seat as seen failed", error);
     });
-    if (services.defer) services.defer(write);
-    else await write;
+    await afterResponse(services, write);
   }
   return seatsOnline(seen, index, at);
 }
@@ -86,11 +93,12 @@ export async function getMatch(request: Request, matchId: string, userId: string
   if (!head || seat === null) return fail(404, "not_found", "no such match");
   const since = new URL(request.url).searchParams.get("since");
   if (since !== null && !/^\d+$/.test(since)) return fail(400, "bad_request", "since must be a state id");
-  const online = await seeSeat(services, head.roomId, seat);
+  // Seen alongside loading the state, not a hop before it.
+  const seeing = seeSeat(services, head.roomId, seat);
   if (since !== null && Number(since) === head.stateId) {
-    return json({ ok: true, matchId: head.id, seat, changed: false, stateID: head.stateId, online });
+    return json({ ok: true, matchId: head.id, seat, changed: false, stateID: head.stateId, online: await seeing });
   }
-  const match = await store.getMatch(matchId);
+  const [match, online] = await Promise.all([store.getMatch(matchId), seeing]);
   if (!match) return fail(404, "not_found", "no such match");
   return json({ ok: true, changed: true, ...seatView(match.id, seat, match.state as MatchState, online) });
 }
@@ -115,23 +123,24 @@ export async function postAction(
   const match = await store.getMatch(matchId);
   const seat = match && seatOf(match.seats, userId);
   if (!match || seat === null) return fail(404, "not_found", "no such match");
-  const online = await seeSeat(services, match.roomId, seat);
-  const state = match.state as MatchState;
-  const current = () => seatView(match.id, seat, state, online);
-
   const body = read.kind === "object" ? read.body : null;
   if (!body || typeof body.stateID !== "number") return fail(400, "bad_request", "expected a stateID and an action");
-  if (state.ctx.gameover !== undefined) return fail(409, "match_over", "match over", current());
-  if (!seatMayActNow(state, seat)) return fail(403, "not_your_turn", "not your turn", current());
-  if (body.stateID !== match.stateId) return fail(409, "stale_state", "stale state", current());
+  // A well-formed action marks its seat seen, alongside checking and committing it rather than a hop before.
+  const seeing = seeSeat(services, match.roomId, seat);
+  const state = match.state as MatchState;
+  const current = async () => seatView(match.id, seat, state, await seeing);
+
+  if (state.ctx.gameover !== undefined) return fail(409, "match_over", "match over", await current());
+  if (!seatMayActNow(state, seat)) return fail(403, "not_your_turn", "not your turn", await current());
+  if (body.stateID !== match.stateId) return fail(409, "stale_state", "stale state", await current());
 
   const parsed = parseAction(state, seat, body.action);
-  if (!parsed.ok) return fail(400, "move_refused", parsed.error, current());
+  if (!parsed.ok) return fail(400, "move_refused", parsed.error, await current());
   const applied = applyAction(state, seat, parsed.action);
-  if (!applied.ok) return fail(400, "move_refused", applied.error, current());
+  if (!applied.ok) return fail(400, "move_refused", applied.error, await current());
 
   const next = applied.state;
-  const committed = await store.commitMove({
+  const commit = store.commitMove({
     matchId: match.id,
     expectedStateId: match.stateId,
     state: next,
@@ -148,6 +157,7 @@ export async function postAction(
       stateIdAfter: next._stateID,
     },
   });
+  const [committed, online] = await Promise.all([commit, seeing]);
   if (!committed) {
     // Another write won: send what is there now.
     const latest = await store.getMatch(matchId);
@@ -155,8 +165,7 @@ export async function postAction(
   }
   // After the response where the platform allows (`defer`, Vercel's waitUntil): the move never waits on Realtime.
   const signalled = signalChanged(signals, match.id, next._stateID);
-  if (services.defer) services.defer(signalled);
-  else await signalled;
+  await afterResponse(services, signalled);
   return json({ ok: true, ...seatView(match.id, seat, next, online) });
 }
 
