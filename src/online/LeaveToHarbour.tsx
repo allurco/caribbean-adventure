@@ -1,4 +1,5 @@
-import { HUD_TOP_BAR_HEIGHT } from "../board/hudLayout";
+import { HUD_SIDE_INSET, HUD_TOP_BAR_HEIGHT } from "../board/hudLayout";
+import { safeInset } from "../board/safeArea";
 import { harbourPath } from "./shellRoute";
 import { BTN_INK } from "./shellStyles";
 
@@ -13,7 +14,7 @@ import { BTN_INK } from "./shellStyles";
  */
 export function LeaveToHarbour() {
   return (
-    <div className="fixed right-5 z-[60] flex flex-col items-end gap-1" style={{ top: HUD_TOP_BAR_HEIGHT + 8 }}>
+    <div className="fixed z-[60] flex flex-col items-end gap-1" style={{ top: safeInset("top", HUD_TOP_BAR_HEIGHT + 8), right: safeInset("right", HUD_SIDE_INSET) }}>
       <a
         href={harbourPath({ saved: true })}
         className={`${BTN_INK} [@media(max-height:500px)]:py-0.5 [@media(max-height:500px)]:text-[14px]`}

@@ -17,6 +17,13 @@ export default defineConfig({
   // publishable key the Vercel Marketplace's Supabase integration injects.
   // Never widen this to a prefix that could reach a secret.
   envPrefix: ["VITE_", "NEXT_PUBLIC_SUPABASE_"],
+  // Vercel's deploy environment (preview, production), baked in from the
+  // build's own environment for the preview guard (#107, previewGuard.ts), so
+  // it does not depend on the project exposing system variables to the build.
+  // Empty outside Vercel; supabaseConfig.ts then falls back to VITE_VERCEL_ENV.
+  define: {
+    "import.meta.env.VERCEL_ENV": JSON.stringify(process.env.VERCEL_ENV ?? ""),
+  },
   server: {
     watch: {
       ignored: [`${ownClaudeDir}/**`],

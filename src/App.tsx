@@ -11,6 +11,7 @@ import { parseOnlineRoute } from "./online/onlineRoute";
 import { parseShellPage } from "./online/shellRoute";
 import { supabaseConfig } from "./online/supabaseClient";
 import { HarbourBackdrop } from "./online/HarbourBackdrop";
+import { LandscapeOnPhones } from "./landscape/LandscapeOnPhones";
 
 // The online shell (#125), the match board (#113) and the corner link over
 // the local game exist only when a backend is configured
@@ -64,7 +65,19 @@ function gameClient(): Promise<GameClient> {
 const savesHotseat = usesHotseatSave(devParams);
 if (showsGame && !savesHotseat) void gameClient();
 
+/**
+ * Every view, in landscape on phones (#123): held upright, the rotate gate
+ * covers it without unmounting it.
+ */
 export default function App() {
+  return (
+    <LandscapeOnPhones>
+      <AppView />
+    </LandscapeOnPhones>
+  );
+}
+
+function AppView() {
   // Visit http://localhost:5173/#lab for the shader sandbox,
   // http://localhost:5173/?view=props for the prop viewer (#59),
   // http://localhost:5173/?view=sound for the sound lab (#73) and

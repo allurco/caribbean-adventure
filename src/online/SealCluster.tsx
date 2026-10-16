@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Profile } from "./accountService";
+import { ignoredUnderGate } from "../landscape/rotateGatePresence";
 import { CaptainSeal } from "./CaptainSeal";
 import { PartyBoard } from "./PartyBoard";
 import { BOARD_H, FOCUS_RING } from "./shellStyles";
@@ -15,9 +16,9 @@ export function SealCluster({ captain }: { captain: Profile }) {
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
+    const onKey = ignoredUnderGate((event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
-    };
+    });
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);

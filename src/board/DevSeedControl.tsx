@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MapRequest } from "../game/mapRequest";
+import { ignoredUnderGate } from "../landscape/rotateGatePresence";
 import { pinnedMapUrl, seedStepForKey, steppedSeedUrl, type SeedStep } from "./seedStepUrl";
 
 /** Seed picking (ADR 0007): the random step draws a new world's seed, like `loadGameClient`. */
@@ -19,13 +20,13 @@ export function DevSeedControl({ mapSize, mapSeed }: MapRequest) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
+    const onKey = ignoredUnderGate((event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))) return;
       const step = seedStepForKey(event.key);
       if (step) reloadOn(map, step);
-    };
+    });
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [map]);

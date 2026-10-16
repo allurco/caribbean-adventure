@@ -6,13 +6,16 @@
  */
 import { randomBytes, randomInt } from "node:crypto";
 import type { ApiServices, ServerEnv } from "./handleApiRequest";
+import { backendStatus, serviceKey } from "./backendStatus";
 import { createSupabaseOnlineStore, supabaseAuthVerifier, type ServiceClient } from "./supabaseOnlineStore";
 
 /** The services, or null when Supabase is not configured (the routes then answer 503). */
 export function servicesFromEnv(env: ServerEnv): ApiServices | null {
+  // Not configured, or a preview handed production's database (#107): 503 rather than write there.
+  const status = backendStatus(env);
   const url = env.SUPABASE_URL;
-  const key = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return null;
+  const key = serviceKey(env);
+  if (status === "none" || status === "refused" || !url || !key) return null;
 
   let client: Promise<ServiceClient> | undefined;
   const service = () =>

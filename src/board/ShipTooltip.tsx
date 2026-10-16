@@ -8,6 +8,7 @@ import { GOOD_TYPES } from "../game/types";
 import { NationFlag } from "./NationFlag";
 import { shipTooltipHeight } from "./shipHull";
 import { ndcToScreen, placementOffset, placeShipTooltip } from "./shipTooltipPlacement";
+import { useSafeAreaInsets } from "./useSafeAreaInsets";
 
 const masthead = new Vector3();
 const waterline = new Vector3();
@@ -81,6 +82,8 @@ export function ShipTooltip({
   const anchorRef = useRef<Group>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const mastheadHeight = shipTooltipHeight(ship.shipClass);
+  // Clear of a notch and the rounded corners (#123), as the HUD is
+  const insets = useSafeAreaInsets();
   useFrame(({ camera, size }) => {
     const anchor = anchorRef.current;
     const tooltip = tooltipRef.current;
@@ -93,6 +96,7 @@ export function ShipTooltip({
       waterline: atWaterline,
       tooltip: { width: tooltip.offsetWidth, height: tooltip.offsetHeight },
       viewport: size,
+      insets,
     });
     const offset = placementOffset(placement, atWaterline);
     tooltip.style.transform = `translate(${offset.x}px, ${offset.y}px)`;
