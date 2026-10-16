@@ -46,7 +46,7 @@ export function RotateGate() {
       <div aria-hidden="true" className="absolute inset-0 bg-linear-to-b from-shell-scrim/35 via-shell-scrim/72 via-60% to-shell-scrim/85" />
 
       <div id="rotate-gate-title" className="relative">
-        <Nameboard title="Turn your ship" meta="Hold your phone sideways to take the helm" />
+        <Nameboard title="Turn your ship" meta="Hold your phone sideways" />
       </div>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center pb-10">
