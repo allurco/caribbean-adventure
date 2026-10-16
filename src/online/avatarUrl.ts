@@ -3,17 +3,17 @@
  * `https:` URL of at most 2048 characters with no whitespace or control
  * characters, the same rule as the `profiles` table's check, on one of the
  * sign-in providers' image hosts (#106). The table already holds the first
- * rule, but a player can set their own avatar URL, so the client checks again
- * before rendering it: the host list keeps a profile from making every
- * viewer's browser call a server of the player's choosing. Anything else
- * falls back to the seal.
+ * rule, and only the sign-in triggers write the avatar (players have no
+ * grant on it), but the client checks again before rendering it: the host
+ * list keeps a profile from ever making every viewer's browser call a server
+ * of someone's choosing. Anything else falls back to the seal.
  */
 export const AVATAR_URL_MAX_LENGTH = 2048;
 
 /** Discord's avatar CDN. */
-const AVATAR_HOSTS: readonly string[] = ["cdn.discordapp.com"];
-/** Google's profile pictures are served from lh3, lh4… under this domain. */
-const AVATAR_HOST_SUFFIXES: readonly string[] = [".googleusercontent.com"];
+const DISCORD_AVATAR_HOST = "cdn.discordapp.com";
+/** Google's profile pictures, served from lh3 to lh6 only (not the rest of googleusercontent.com, which hosts user content). */
+const GOOGLE_AVATAR_HOST = /^lh[3-6]\.googleusercontent\.com$/;
 
 // eslint-disable-next-line no-control-regex
 const SPACE_OR_CONTROL = /[\s\u0000-\u001f\u007f-\u009f]/;
@@ -28,9 +28,9 @@ export function safeAvatarUrl(raw: string | null | undefined): string | null {
     return null;
   }
   if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
-  return isAvatarHost(url.hostname) ? raw : null;
+  return isAvatarHost(url.hostname) ? url.href : null;
 }
 
 function isAvatarHost(hostname: string): boolean {
-  return AVATAR_HOSTS.includes(hostname) || AVATAR_HOST_SUFFIXES.some((suffix) => hostname.endsWith(suffix));
+  return hostname === DISCORD_AVATAR_HOST || GOOGLE_AVATAR_HOST.test(hostname);
 }

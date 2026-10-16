@@ -16,9 +16,24 @@ describe("safeAvatarUrl", () => {
       "https://googleusercontent.com.evil.example/a.png",
       "https://user@cdn.discordapp.com/a.png",
       "https://cdn.discordapp.com:8443/a.png",
+      "https://anything.googleusercontent.com/a.png",
+      "https://storage.googleusercontent.com/a.png",
+      "https://lh7.googleusercontent.com/a.png",
+      "https://lh3.googleusercontent.com.evil.example/a.png",
     ]) {
       expect(safeAvatarUrl(url), url).toBeNull();
     }
+  });
+
+  it("keeps Google's lh3 to lh6 picture hosts", () => {
+    for (const host of ["lh3", "lh4", "lh5", "lh6"]) {
+      expect(safeAvatarUrl(`https://${host}.googleusercontent.com/a/x`)).toBe(`https://${host}.googleusercontent.com/a/x`);
+    }
+  });
+
+  it("gives back the URL as the browser parses it, not the string it was given", () => {
+    expect(safeAvatarUrl("https://CDN.DiscordApp.com/avatars/1/a.png")).toBe("https://cdn.discordapp.com/avatars/1/a.png");
+    expect(safeAvatarUrl("https://cdn.discordapp.com:443/avatars/1/a.png")).toBe("https://cdn.discordapp.com/avatars/1/a.png");
   });
 
   it("is null for nothing", () => {
