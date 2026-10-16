@@ -6,13 +6,12 @@
  * play from these beats (cuePlayer.ts), so a gun's flash, its report and the
  * target's lurch never drift apart.
  *
- * How many guns fire and how many hit are today's rules (`attackerHits`,
- * `defenderHits`, the guns the crew can work); which of the shots hit, and
+ * How many guns fire and how many hit are the round's volleys, in the
+ * order they were fired (`combat.volleys`, #346); which of the shots hit, and
  * the small spread in when each gun goes off, are seeded per fight
  * (ADR 0007), so they look the same on every seat.
  */
 import type { CaribbeanState, CombatState, NPCShip, ShipState } from "../../game/types";
-import { canReturnFire, getEffectiveCannons } from "../../game/combat";
 import { hexToWorld, nearestImage, type Hex } from "../../game/hex";
 import { SEED_FEATURES } from "../visuals/seedFeatures";
 import { stream, subSeed, worldSeedOf } from "../visuals/subSeed";
@@ -54,7 +53,7 @@ export interface DeclareBeat extends BeatBase {
 
 export interface VolleyBeat extends BeatBase {
   kind: "volley";
-  /** The attacker's, then the reply (none when the target cannot or may not fire back). */
+  /** In the order they were fired: the first, then the answer (none when the target could not or might not fire back). */
   volleys: Volley[];
 }
 
@@ -132,25 +131,17 @@ function volleyBeat(next: CaribbeanState, combat: CombatState): VolleyBeat | nul
   const random = (shooterId: string) =>
     stream(subSeed(seed, SEED_FEATURES.combatShots, combat.attackerId, combat.defenderId, combat.round, shooterId));
 
-  // Who fires: both sides, unless the target is out of range or this is the parting shot at a ship caught fleeing.
-  const fleeingId = combat.fleeOutcome === "caught" ? combat.seamanshipWinner : null;
-  const sides = [
-    { shooterId: combat.attackerId, targetId: combat.defenderId, shooter: attacker, hits: combat.attackerHits },
-    { shooterId: combat.defenderId, targetId: combat.attackerId, shooter: defender, hits: combat.defenderHits },
-  ].filter(({ shooterId, shooter }) => {
-    if (fleeingId !== null) return shooterId !== fleeingId;
-    return shooterId === combat.attackerId || canReturnFire(shooter, combat.distance);
-  });
-
+  // The round's volleys in the order they were fired, each with the guns it was rolled with (#346).
   const volleys: Volley[] = [];
   let start = 0;
   let end = 0;
-  for (const side of sides) {
-    const count = getEffectiveCannons(side.shooter);
-    if (count === 0) continue;
-    const shots = rippledShots(count, side.hits, start, flight, random(side.shooterId));
-    const upgrades = "upgrades" in side.shooter ? side.shooter.upgrades : [];
-    volleys.push({ shooterId: side.shooterId, targetId: side.targetId, shots, mastFalls: side.hits > 0 && upgrades.includes("chain_shot") });
+  for (const fired of combat.volleys) {
+    const shooter = combatant(next, fired.shooterId, combat);
+    if (!shooter || fired.guns === 0) continue;
+    const targetId = fired.shooterId === combat.attackerId ? combat.defenderId : combat.attackerId;
+    const shots = rippledShots(fired.guns, fired.hits, start, flight, random(fired.shooterId));
+    const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
+    volleys.push({ shooterId: fired.shooterId, targetId, shots, mastFalls: fired.hits > 0 && upgrades.includes("chain_shot") });
     start = shots[shots.length - 1].fireAt + REPLY_GAP;
     end = Math.max(end, ...shots.map((s) => s.landAt));
   }

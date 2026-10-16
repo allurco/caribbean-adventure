@@ -20,8 +20,11 @@ export type MatchState = State<CaribbeanState>;
  * - 3: G counts its mission and loot ids, `G.missionIdCounters` (by seat)
  *   and `G.lootIdCounter` (#320). A version 2 save lacks them, which the game
  *   reads as 0, so it migrates as it is.
+ * - 4: round 1 of a fight is the ambush, and each volley's damage lands as
+ *   it is fired, recorded in `G.combat.volleys` (#346). A version 3 save with
+ *   no fight on migrates as it is; one made mid-fight is set aside.
  */
-export const HOTSEAT_SAVE_VERSION = 3;
+export const HOTSEAT_SAVE_VERSION = 4;
 
 /** G without the map, which is generated again from its size and seed. */
 export type SavedG = Omit<CaribbeanState, "cells" | "regions">;

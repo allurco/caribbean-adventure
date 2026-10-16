@@ -8,13 +8,8 @@ import type { CaribbeanState, CombatAction } from "../game/types";
 /** A client's state and the combat moves a fight presses. */
 export interface FightClient {
   getState(): { G: CaribbeanState } | null;
-  moves: {
-    rollSeamanship(): void;
-    chooseCombatAction(action: CombatAction): void;
-    rollFleeAttempt(): void;
-    rollCannons(): void;
-    applyResolution(): void;
-  };
+  /** boardgame.io's moves by name: rollSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons, applyResolution. */
+  moves: Record<string, (...args: CombatAction[]) => void>;
 }
 
 /** Round 1, the ambush: the attacker's broadside, the answer if any, and the round's end. */

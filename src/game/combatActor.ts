@@ -28,12 +28,14 @@ export interface SeatFight {
 
 /**
  * The seat that presses the fight's current step. A fight is a declaration,
- * a draw (the seamanship roll, both dice) that decides the faster ship, then
- * its action (fire, board or flee) and the rolls after it. The attacker rolls
- * the draw; the faster ship presses the rest, but for a flight that was
- * caught: the pursuer fires the parting shot and applies its damage, not the
- * ship it fires on. Against an NPC the attacker presses every step: when the
- * NPC wins the draw the engine picks its action.
+ * then round 1, the ambush (#346): no draw, and the attacker fires and ends
+ * the round. Each later round is a draw (the seamanship roll, both dice) that
+ * decides the faster ship, then its action (fire, board or flee) and the
+ * rolls after it. The attacker rolls the draw; the faster ship presses the
+ * rest, but for a flight that was caught: the pursuer fires the parting shot
+ * and settles the round, not the ship it fires on. Against an NPC the
+ * attacker presses every step: when the NPC wins the draw the engine picks
+ * its action.
  */
 export function combatActor(combat: FightTurn): string {
   if (combat.stage === "seamanship" || combat.isNPCCombat) return combat.attackerId;

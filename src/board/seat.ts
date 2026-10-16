@@ -140,7 +140,8 @@ const STEP_WAITED_ON: Record<CombatStage, string> = {
   chooseAction: "to choose",
   fleeAttempt: "to roll the pursuit",
   cannons: "to fire",
-  resolution: "to apply the damage",
+  // Each volley's damage lands as it is fired (#346): the resolution settles the round.
+  resolution: "to end the round",
 };
 
 /** The line a seat sees while another presses the fight's step ("Waiting for <captain> to choose"); null when it presses. */

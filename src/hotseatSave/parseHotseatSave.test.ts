@@ -3,7 +3,7 @@ import { Client } from "boardgame.io/client";
 import { Caribbean, withGeneratedMap, withHotseatView } from "../game/Game";
 import type { CaribbeanState } from "../game/Game";
 import { generateMapFor } from "../game/mapRequest";
-import { saveHotseat } from "./hotseatSave";
+import { HOTSEAT_SAVE_VERSION, saveHotseat } from "./hotseatSave";
 import { parseHotseatSave } from "./parseHotseatSave";
 
 const request = { mapSize: "small", mapSeed: 7 } as const;
@@ -33,7 +33,20 @@ describe("reading a saved game back", () => {
     void _loot;
     const older = { ...save, version: 2, state: { ...save.state, G: olderG } };
     // The game reads a missing count as 0 (`nextMissionId`, `nextLootId`), so the save needs nothing more than its new version
-    expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: 3 })) });
+    expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+  });
+
+  it("reads a version 3 save with no fight on, from before round 1 was the ambush (#346), as this version's", () => {
+    const older = { ...save, version: 3 };
+    expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+  });
+
+  it("sets aside a version 2 or 3 save made mid-fight: its fight follows the rules from before the ambush (#346)", () => {
+    const combat = { attackerId: "0", defenderId: "1", round: 1, stage: "seamanship" };
+    for (const version of [2, 3]) {
+      const midFight = { ...save, version, state: { ...save.state, G: { ...save.state.G, combat } } };
+      expect(parseHotseatSave(JSON.stringify(midFight))).toEqual({ kind: "unreadable", reason: "version" });
+    }
   });
 
   it("calls anything else corrupt, without throwing", () => {

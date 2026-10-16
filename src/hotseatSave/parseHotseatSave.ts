@@ -32,16 +32,25 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
 }
 
 /**
- * An older save brought up to this version, or `value` as it is. Version 2
- * lacks `G.missionIdCounters` and `G.lootIdCounter` (#320), whose counts the
- * game reads as 0: its clock-made ids (`loot-3-1712345678901`) can never be one of
- * the counters' (`loot-1`).
- *
- * The next bump must chain the steps, 2 → 3 then 3 → 4, so a version 2 save
- * still reaches the current version rather than stopping at 3.
+ * An older save brought up to this version, or `value` as it is, step by
+ * step so an old save goes through every later one. Version 2 lacks
+ * `G.missionIdCounters` and `G.lootIdCounter` (#320), whose counts the game
+ * reads as 0: its clock-made ids (`loot-3-1712345678901`) can never be one
+ * of the counters' (`loot-1`). Version 3 fights by the rules from before the
+ * ambush (#346): a save with no fight on is the same as version 4's, but one
+ * made mid-fight stays at version 3, and is set aside.
  */
 function migrate(value: Record<string, unknown>): Record<string, unknown> {
-  return value.version === 2 ? { ...value, version: 3 } : value;
+  let current = value;
+  if (current.version === 2) current = { ...current, version: 3 };
+  if (current.version === 3 && !midFight(current)) current = { ...current, version: 4 };
+  return current;
+}
+
+/** Whether a save was made while a fight was on. */
+function midFight(value: Record<string, unknown>): boolean {
+  const { state } = value;
+  return isRecord(state) && isRecord(state.G) && state.G.combat != null;
 }
 
 function isHotseatSave(value: Record<string, unknown>): value is Record<string, unknown> & HotseatSave {
