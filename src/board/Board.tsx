@@ -1263,7 +1263,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
       {/* Sound: mute and volume, under the turn bar */}
       {currentShipState && <HudSoundControl />}
-      {props.onSaveAndLeave && <HudSaveLeave onSaveAndLeave={props.onSaveAndLeave} />}
+      {/* A finished match is not saved (its save is cleared), so there is nothing to leave and come back to */}
+      {props.onSaveAndLeave && !ctx.gameover && <HudSaveLeave onSaveAndLeave={props.onSaveAndLeave} />}
 
       {/* Every captain's glory, which is public (#110) */}
       {!inCombat && currentShipState && (

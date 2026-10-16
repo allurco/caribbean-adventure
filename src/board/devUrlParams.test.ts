@@ -195,14 +195,14 @@ describe("showsDebugPanel", () => {
 });
 
 describe("usesHotseatSave (#300)", () => {
-  it("keeps the save for a plain URL, and for switches that change only the picture", () => {
-    for (const search of ["", "?cx=1&cz=2&dist=30", "?stats=1", "?fx=0&dpr=1", "?regionBorder=line"]) {
+  it("keeps the save for a plain URL, a hotseat game's seats, and switches that change only the picture", () => {
+    for (const search of ["", "?cx=1&cz=2&dist=30", "?stats=1", "?fx=0&dpr=1", "?regionBorder=line", "?players=2", "?players=4&cx=1"]) {
       expect(usesHotseatSave(parseDevUrlParams(search)), search).toBe(true);
     }
   });
 
-  it("leaves the save alone for a URL that pins the match: its map, its seats, the seats on one page, a gallery shot", () => {
-    for (const search of ["?size=small", "?seed=12", "?size=large&seed=3", "?players=2", "?seats=1", "?snapshot=1"]) {
+  it("leaves the save alone for a URL that pins the map (the seed keys' URLs), the seats on one page, a gallery shot", () => {
+    for (const search of ["?size=small", "?seed=12", "?size=large&seed=3", "?players=2&seed=3", "?seats=1", "?players=2&seats=1", "?snapshot=1", "?seedGallery=1"]) {
       expect(usesHotseatSave(parseDevUrlParams(search)), search).toBe(false);
     }
   });

@@ -15,7 +15,11 @@ export interface HotseatSaveSummary {
   saved: string;
 }
 
-/** The summary of `save` at `now` (ms since the epoch). */
+/**
+ * The summary of `save` at `now` (ms since the epoch). Total: it never
+ * throws on a parsed save, since the start screen renders it before
+ * anything else can catch a bad one.
+ */
 export function describeHotseatSave(save: HotseatSave, now: number): HotseatSaveSummary {
   const { G, ctx } = save.state;
   const seatIds = Array.from({ length: ctx.numPlayers }, (_, i) => String(i));
@@ -23,12 +27,24 @@ export function describeHotseatSave(save: HotseatSave, now: number): HotseatSave
     turn: ctx.phase === "draft" ? "Drafting captains" : `Turn ${ctx.turn}`,
     seats: ctx.numPlayers === 1 ? "Solo" : `${ctx.numPlayers} captains`,
     captains: seatIds.flatMap((id) => {
-      const name = G.ships[id]?.captain?.name ?? G.lostShips?.[id]?.captain?.name;
+      const name = captainName(G?.ships, id) ?? captainName(G?.lostShips, id);
       return name ? [name] : [];
     }),
     map: `${getMapPreset(save.map.mapSize).label} map`,
     saved: savedAgo(save.savedAt, now),
   };
+}
+
+/** The name of the captain of `ships[id]`, read defensively: undefined unless it is a string. */
+function captainName(ships: unknown, id: string): string | undefined {
+  const ship: unknown = isRecord(ships) ? ships[id] : undefined;
+  const captain: unknown = isRecord(ship) ? ship.captain : undefined;
+  const name: unknown = isRecord(captain) ? captain.name : undefined;
+  return typeof name === "string" ? name : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 const MINUTE = 60_000;

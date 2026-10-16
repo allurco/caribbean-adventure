@@ -1,21 +1,30 @@
 import { useState } from "react";
 import type { AccountClient } from "./accountClient";
 import { profilePath } from "./accountRoute";
-import { newRoomPath } from "./onlineRoute";
-import { signOut, type AccountSession } from "./accountService";
+import { signOut, type AccountSession, type Profile } from "./accountService";
 import { DisplayNameForm } from "./DisplayNameForm";
-import { OnlineSheet } from "./OnlineSheet";
 import { ProfileCard } from "./ProfileCard";
 import { BTN_INK, LINK } from "./shellStyles";
-import { useProfile } from "./useProfile";
+import type { ProfileState } from "./useProfile";
 
-/** The signed-in player's page: their profile, the name editor, sign-out. */
-export function OwnProfile({ client, session }: { client: AccountClient; session: AccountSession }) {
-  const [profile, setProfile] = useProfile(client, session.userId);
+interface OwnProfileProps {
+  client: AccountClient;
+  session: AccountSession;
+  /** The captain's profile, held by the shell so a new name shows on the nav board at once. */
+  profile: ProfileState;
+  onSaved: (profile: Profile) => void;
+}
+
+/**
+ * The signed-in player's page, the shell's Profile sheet (#105, #125): their
+ * profile, the name editor, sign-out. Deleting the account (#108) joins the
+ * sign-out row.
+ */
+export function OwnProfile({ client, session, profile, onSaved }: OwnProfileProps) {
   const [signOutError, setSignOutError] = useState<string>();
 
   return (
-    <OnlineSheet title="Your captain">
+    <div className="space-y-5 text-[16px]">
       {profile.status === "loading" && <p role="status">Reading the ship's log…</p>}
       {profile.status === "missing" && <p>Your profile is not there yet. Reload in a moment.</p>}
       {profile.status === "error" && (
@@ -26,18 +35,15 @@ export function OwnProfile({ client, session }: { client: AccountClient; session
       {profile.status === "ready" && (
         <>
           <ProfileCard profile={profile.profile} />
-          <DisplayNameForm key={profile.profile.id} client={client} profile={profile.profile} onSaved={setProfile} />
-          <p className="flex flex-wrap gap-x-5 gap-y-1">
+          <DisplayNameForm key={profile.profile.id} client={client} profile={profile.profile} onSaved={onSaved} />
+          <p>
             <a href={profilePath(session.userId)} className={LINK}>
               Your public profile
-            </a>
-            <a href={newRoomPath()} className={LINK}>
-              Open a private room
             </a>
           </p>
         </>
       )}
-      <div className="flex items-center justify-between gap-3 border-t border-[#7a5c3a]/35 pt-4">
+      <div className="flex items-center justify-between gap-3 border-t border-shell-rule/35 pt-4">
         <span className="min-w-0 truncate text-[15px] text-shell-ink-soft">{session.email ?? ""}</span>
         <button
           type="button"
@@ -55,6 +61,6 @@ export function OwnProfile({ client, session }: { client: AccountClient; session
           {signOutError}
         </p>
       )}
-    </OnlineSheet>
+    </div>
   );
 }

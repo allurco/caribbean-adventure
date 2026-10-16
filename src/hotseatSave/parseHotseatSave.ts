@@ -31,15 +31,23 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
 }
 
 function isHotseatSave(value: Record<string, unknown>): value is Record<string, unknown> & HotseatSave {
-  const { version, savedAt, map, state, cellPatches, regions } = value;
+  const { version, savedAt, map, mapFingerprint, state, cellPatches, regions } = value;
   if (version !== HOTSEAT_SAVE_VERSION || typeof savedAt !== "number" || !Number.isFinite(savedAt)) return false;
   if (!isRecord(map) || !MAP_SIZES.includes(map.mapSize) || !isValidMapSeed(map.mapSeed)) return false;
+  if (typeof mapFingerprint !== "string") return false;
   if (!isRecord(state) || !isRecord(state.G) || !isRecord(state.ctx) || !isRecord(state.plugins)) return false;
   if (typeof state._stateID !== "number") return false;
-  const { numPlayers, turn } = state.ctx;
-  if (typeof numPlayers !== "number" || !isValidSeatCount(numPlayers) || typeof turn !== "number") return false;
+  const { numPlayers, turn, phase } = state.ctx;
+  if (typeof numPlayers !== "number" || !isValidSeatCount(numPlayers) || !Number.isInteger(turn) || typeof phase !== "string") return false;
+  const { ships, lostShips } = state.G;
+  if (!isShipTable(ships) || (lostShips !== undefined && !isShipTable(lostShips))) return false;
   if (!Array.isArray(cellPatches) || !cellPatches.every(isCellPatch)) return false;
   return regions === null || Array.isArray(regions);
+}
+
+/** A table of ships by seat, as the start screen reads their captains: each a ship whose captain, when it has one, is named. */
+function isShipTable(ships: unknown): boolean {
+  return isRecord(ships) && Object.values(ships).every((ship) => isRecord(ship) && (ship.captain == null || (isRecord(ship.captain) && typeof ship.captain.name === "string")));
 }
 
 function isCellPatch(patch: unknown): boolean {

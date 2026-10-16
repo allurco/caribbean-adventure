@@ -174,15 +174,16 @@ export function showsDebugPanel(params: DevUrlParams): boolean {
 }
 
 /**
- * Whether the local game reads and writes its save (#300): only when the URL
- * pins nothing about the match. A URL that pins a map size or seed or a seat
- * count (`?size=`, `?seed=`, `?players=`), or is the seats on one page or a
- * gallery shot, starts that exact match every time: it neither offers to
- * continue an unrelated saved voyage nor overwrites it. Camera, render and
- * GPU switches change only the picture, so they keep the save.
+ * Whether the local game reads and writes its save (#300). A hotseat game's
+ * seats (`?players=`) keep it: that game is saved too, and continues a save
+ * only with the same seats (`openingScreen`). A URL that pins the map
+ * (`?size=`, `?seed=`, as the seed keys `[`, `]` and `\` reload on), or is the
+ * seats on one page or a gallery shot, starts that exact match every time:
+ * it neither offers to continue an unrelated saved voyage nor overwrites it.
+ * Camera, render and GPU switches change only the picture, so they keep it.
  */
 export function usesHotseatSave(params: DevUrlParams): boolean {
-  return params.setupData === undefined && params.players === undefined && params.localSeats !== true && params.gallerySnapshot !== true && params.seedGallery !== true;
+  return params.setupData === undefined && params.localSeats !== true && params.gallerySnapshot !== true && params.seedGallery !== true;
 }
 
 function parseSetupData(size: string | null, seed: string | null): CaribbeanSetupData | undefined {

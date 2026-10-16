@@ -1,10 +1,10 @@
 import { HUD_TOP_BAR_HEIGHT } from "../board/hudLayout";
-import { harbourPath } from "./onlineRoute";
+import { harbourPath } from "./shellRoute";
 import { BTN_INK } from "./shellStyles";
 
 /**
- * The online match's way out (#113 follow-up): back to the harbour, where
- * the match waits under "Your voyages". Nothing to save first: the server
+ * The online match's way out (#113 follow-up): back to the harbour, the
+ * online shell's Play (#125), where the match waits under "Your voyages". Nothing to save first: the server
  * stores the match after every move. Under the turn bar on the right, over
  * the game-over screen too; the hotseat board never shows it. On a short
  * screen (a phone held sideways) the port panel, centred on the right, rises

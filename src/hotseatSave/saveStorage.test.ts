@@ -4,7 +4,15 @@ import { Caribbean, withGeneratedMap, withHotseatView } from "../game/Game";
 import type { CaribbeanState } from "../game/Game";
 import { generateMapFor } from "../game/mapRequest";
 import { saveHotseat } from "./hotseatSave";
-import { HOTSEAT_SAVE_KEY, clearHotseatSave, persistHotseatState, readHotseatSave, type SaveStorage } from "./saveStorage";
+import {
+  HOTSEAT_SAVE_KEY,
+  SET_ASIDE_SAVE_KEY,
+  clearHotseatSave,
+  persistHotseatState,
+  readHotseatSave,
+  setAsideHotseatSave,
+  type SaveStorage,
+} from "./saveStorage";
 
 const request = { mapSize: "small", mapSeed: 7 } as const;
 const map = { ...request, ...generateMapFor(request) };
@@ -89,5 +97,16 @@ describe("keeping the hotseat game in browser storage", () => {
     const storage = memoryStorage();
     storage.setItem(HOTSEAT_SAVE_KEY, "{not json");
     expect(readHotseatSave(storage)).toEqual({ kind: "unreadable", reason: "corrupt" });
+  });
+
+  it("sets aside a save that could not be restored: no longer offered, but kept apart, not lost", () => {
+    const storage = memoryStorage();
+    persistHotseatState(storage, state, map, 5_000);
+    const raw = storage.items.get(HOTSEAT_SAVE_KEY);
+    setAsideHotseatSave(storage);
+    expect(readHotseatSave(storage)).toEqual({ kind: "none" });
+    expect(storage.items.get(SET_ASIDE_SAVE_KEY)).toBe(raw);
+    expect(() => setAsideHotseatSave(blockedStorage)).not.toThrow();
+    expect(() => setAsideHotseatSave(null)).not.toThrow();
   });
 });

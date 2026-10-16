@@ -23,7 +23,7 @@ describe("reading a saved game back", () => {
 
   it("calls a save of another schema version unreadable, as from another version of the game", () => {
     expect(parseHotseatSave(JSON.stringify({ ...save, version: 0 }))).toEqual({ kind: "unreadable", reason: "version" });
-    expect(parseHotseatSave(JSON.stringify({ ...save, version: 2 }))).toEqual({ kind: "unreadable", reason: "version" });
+    expect(parseHotseatSave(JSON.stringify({ ...save, version: 1 }))).toEqual({ kind: "unreadable", reason: "version" });
   });
 
   it("calls anything else corrupt, without throwing", () => {
@@ -44,6 +44,17 @@ describe("reading a saved game back", () => {
       JSON.stringify({ ...save, cellPatches: {} }),
       JSON.stringify({ ...save, cellPatches: [[1]] }),
       JSON.stringify({ ...save, regions: 3 }),
+      JSON.stringify({ ...save, mapFingerprint: 7 }),
+      // What the start screen and the restore read of G and ctx
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: undefined } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: null } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: [] } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: { 0: 5 } } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, ships: { 0: { captain: { name: 7 } } } } } }),
+      JSON.stringify({ ...save, state: { ...save.state, G: { ...save.state.G, lostShips: 3 } } }),
+      JSON.stringify({ ...save, state: { ...save.state, ctx: { ...save.state.ctx, phase: 5 } } }),
+      JSON.stringify({ ...save, state: { ...save.state, ctx: { ...save.state.ctx, numPlayers: undefined } } }),
+      JSON.stringify({ ...save, state: { ...save.state, ctx: { ...save.state.ctx, turn: Number.NaN } } }),
     ];
     for (const raw of corrupt) expect(parseHotseatSave(raw), raw.slice(0, 40)).toEqual({ kind: "unreadable", reason: "corrupt" });
   });

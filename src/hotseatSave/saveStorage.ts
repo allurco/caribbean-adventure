@@ -11,6 +11,9 @@ import { parseHotseatSave, type HotseatSaveRead } from "./parseHotseatSave";
  */
 export const HOTSEAT_SAVE_KEY = "caribbean.hotseatSave";
 
+/** Where a save that could not be restored is kept, apart, so it is not offered again (and not lost). */
+export const SET_ASIDE_SAVE_KEY = "caribbean.hotseatSave.setAside";
+
 /** The part of `Storage` the save uses, so tests can pass a stand-in. */
 export interface SaveStorage {
   getItem(key: string): string | null;
@@ -64,6 +67,21 @@ export function clearHotseatSave(storage: SaveStorage | null): void {
   } catch {
     // Nothing to do: a save that cannot be removed cannot be read either.
   }
+}
+
+/**
+ * Moves the save out of the slot to `SET_ASIDE_SAVE_KEY` (over any set aside
+ * before), if storage allows; when the move fails, the save is removed, so a
+ * save that crashes the game is never offered again.
+ */
+export function setAsideHotseatSave(storage: SaveStorage | null): void {
+  try {
+    const raw = storage?.getItem(HOTSEAT_SAVE_KEY) ?? null;
+    if (raw !== null) storage?.setItem(SET_ASIDE_SAVE_KEY, raw);
+  } catch {
+    // Keeping it apart is a courtesy; not offering it again is what matters.
+  }
+  clearHotseatSave(storage);
 }
 
 function isQuotaError(error: unknown): boolean {

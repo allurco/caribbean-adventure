@@ -30,13 +30,18 @@ describe("a hotseat session", () => {
     });
     client.start();
     vi.advanceTimersByTime(1_000);
-    const first = readHotseatSave(storage);
-    expect(first.kind === "saved" && first.save.state.ctx.phase).toBe("draft");
+    // Not played yet: nothing to save
+    expect(readHotseatSave(storage)).toEqual({ kind: "none" });
 
     client.moves.pickCaptain(0, "Sloop");
+    vi.advanceTimersByTime(1_000);
+    const first = readHotseatSave(storage);
+    expect(first.kind === "saved" && first.save.state.ctx.phase).toBe("main");
+
+    client.events.endTurn!();
     expect(session.flush()).toEqual({ ok: true });
     const second = readHotseatSave(storage);
-    expect(second.kind === "saved" && second.save.state.ctx.phase).toBe("main");
+    expect(second.kind === "saved" && second.save.state.ctx.turn).toBe(first.kind === "saved" && first.save.state.ctx.turn + 1);
     expect(second.kind === "saved" && second.save.savedAt).toBe(42);
   });
 
