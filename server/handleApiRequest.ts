@@ -8,6 +8,7 @@
  * built from the server's environment (`services.ts`). Without them (no
  * Supabase configured) those routes answer 503 and only health works.
  */
+import { PRODUCTION_URL_NAME, previewUsesProduction } from "../src/online/previewGuard";
 import { bearerToken, fail, json } from "./http";
 import type { OnlineStore } from "./onlineStore";
 import { getMatch, postAction } from "./matches";
@@ -110,12 +111,15 @@ function findRoute(method: string, path: string): Route | "not found" | "method 
 
 /** Liveness, the commit deployed, and whether the backend is wired, without a single setting's value. */
 function health(env: ServerEnv) {
+  const credentials = Boolean(env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY));
+  // A preview handed production's database runs without it (#107, previewGuard.ts).
+  const previewOnProduction =
+    credentials &&
+    previewUsesProduction({ deployEnv: env.VERCEL_ENV, supabaseUrl: env.SUPABASE_URL, productionUrl: env[PRODUCTION_URL_NAME] });
   return {
     ok: true,
     version: env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || "local",
     environment: env.VERCEL_ENV || "local",
-    supabase: {
-      configured: Boolean(env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)),
-    },
+    supabase: previewOnProduction ? { configured: false, previewOnProduction: true } : { configured: credentials },
   };
 }

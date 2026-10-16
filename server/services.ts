@@ -6,6 +6,7 @@
  */
 import { randomBytes, randomInt } from "node:crypto";
 import type { ApiServices, ServerEnv } from "./handleApiRequest";
+import { PRODUCTION_URL_NAME, previewUsesProduction } from "../src/online/previewGuard";
 import { createSupabaseOnlineStore, supabaseAuthVerifier, type ServiceClient } from "./supabaseOnlineStore";
 
 /** The services, or null when Supabase is not configured (the routes then answer 503). */
@@ -13,6 +14,10 @@ export function servicesFromEnv(env: ServerEnv): ApiServices | null {
   const url = env.SUPABASE_URL;
   const key = env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
+  // A preview handed production's database answers 503 rather than write there (#107).
+  if (previewUsesProduction({ deployEnv: env.VERCEL_ENV, supabaseUrl: url, productionUrl: env[PRODUCTION_URL_NAME] })) {
+    return null;
+  }
 
   let client: Promise<ServiceClient> | undefined;
   const service = () =>
