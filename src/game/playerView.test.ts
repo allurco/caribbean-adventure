@@ -102,6 +102,19 @@ describe("playerViewFor: missions", () => {
   });
 });
 
+describe("playerViewFor: the mission counts (#320)", () => {
+  it("a seat sees only its own count of missions drawn, a spectator none", () => {
+    const G = { ...table(), missionIdCounters: { "0": 4, "1": 1 }, lootIdCounter: 2 };
+    expect(playerViewFor(G, "0").missionIdCounters).toEqual({ "0": 4 });
+    expect(playerViewFor(G, "1").missionIdCounters).toEqual({ "1": 1 });
+    expect(playerViewFor(G, null).missionIdCounters).toEqual({});
+    expect(playerViewFor(G, undefined).missionIdCounters).toEqual({});
+    // Floating loot lies on the board for all to see, so its count stays
+    expect(playerViewFor(G, "1").lootIdCounter).toBe(2);
+    expect(G.missionIdCounters).toEqual({ "0": 4, "1": 1 });
+  });
+});
+
 describe("playerViewFor: the captain deck", () => {
   it("no seat sees the undealt captains or their order", () => {
     expect(playerViewFor(table(), "0").captainDeck).toEqual([]);

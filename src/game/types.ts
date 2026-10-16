@@ -266,6 +266,16 @@ export interface CaribbeanState {
   floatingLoot: FloatingLoot[];
   npcIdCounter: number;
   /**
+   * The last number each seat gave one of its missions' ids, by seat
+   * (`nextMissionId`, #320). Private: a seat sees only its own
+   * (`playerViewFor`), since another's count tells when it visits a tavern.
+   * Always set by `setup()`; optional because matches stored before it lack
+   * it, and a missing count reads as 0.
+   */
+  missionIdCounters?: Record<string, number>;
+  /** The last number given to a floating loot's id (`nextLootId`, #320); as optional, for the same reason. */
+  lootIdCounter?: number;
+  /**
    * The players who have turned pirate, by player id (#201). Kept on the
    * player rather than the ship, so it outlives a sunk ship; an entry is
    * removed only when the player's captain is replaced (#265: the new

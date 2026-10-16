@@ -10,7 +10,8 @@ interface HudGloryBoardProps {
 
 /**
  * Every captain's glory (#110), under the sound control: glory is public, so
- * every seat sees the whole table's. Purses and holds are not on it.
+ * every seat sees the whole table's. Purses and holds are not on it. In an
+ * online match a small dot says which seats are online (#114).
  */
 export function HudGloryBoard({ rows, colours }: HudGloryBoardProps) {
   return (
@@ -35,6 +36,14 @@ export function HudGloryBoard({ rows, colours }: HudGloryBoardProps) {
               style={{ backgroundColor: colours[row.seat] ?? "#888888" }}
             />
             <span className={`flex-1 truncate ${row.out ? "line-through opacity-60" : ""}`}>{row.name}</span>
+            {row.online !== undefined && (
+              <span
+                role="img"
+                aria-label={row.online ? "online" : "offline"}
+                title={row.online ? "Online" : "Offline"}
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${row.online ? "bg-emerald-400" : "bg-amber-200/20"}`}
+              />
+            )}
             {row.out && <span className="text-[10px] uppercase tracking-wider text-amber-500/60">out</span>}
             <span className="tabular-nums">{row.glory}</span>
           </li>

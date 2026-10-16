@@ -14,6 +14,7 @@ import {
   type OnlineStore,
   type RoomRecord,
   type RoomStatus,
+  type SeatRecord,
   type StartOutcome,
   type VoyageFight,
 } from "./onlineStore";
@@ -72,6 +73,14 @@ export function storeError(error: DatabaseError): Error {
 function check<T>({ data, error }: { data: T; error: DatabaseError | null }): T {
   if (error) throw storeError(error);
   return data;
+}
+
+/** A match's seats. Never `last_seen_at`: a database without it still plays (`seatsLastSeen`). */
+async function matchSeats(db: ServiceClient, roomId: string): Promise<SeatRecord[]> {
+  const rows = check(
+    await db.from("seats").select("seat_index, user_id").eq("room_id", roomId).order("seat_index"),
+  ) as { seat_index: number; user_id: string }[];
+  return rows.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: null }));
 }
 
 export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>): OnlineStore {
@@ -194,15 +203,13 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         await db.from("matches").select("id, room_id, state, state_id").eq("id", matchId).maybeSingle(),
       ) as { id: string; room_id: string; state: unknown; state_id: number } | null;
       if (!row) return null;
-      const seats = check(
-        await db.from("seats").select("seat_index, user_id").eq("room_id", row.room_id).order("seat_index"),
-      ) as { seat_index: number; user_id: string }[];
+      const seats = await matchSeats(db, row.room_id);
       return {
         id: row.id,
         roomId: row.room_id,
         state: row.state,
         stateId: row.state_id,
-        seats: seats.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: null })),
+        seats,
       };
     },
 
@@ -214,14 +221,12 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         state_id: number;
       } | null;
       if (!row) return null;
-      const seats = check(
-        await db.from("seats").select("seat_index, user_id").eq("room_id", row.room_id).order("seat_index"),
-      ) as { seat_index: number; user_id: string }[];
+      const seats = await matchSeats(db, row.room_id);
       return {
         id: row.id,
         roomId: row.room_id,
         stateId: row.state_id,
-        seats: seats.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: null })),
+        seats,
       };
     },
 
@@ -242,6 +247,30 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
           p_args: update.move.args,
         }),
       ) as boolean;
+    },
+
+    async seatsLastSeen(roomId) {
+      const db = await client();
+      const rows = check(
+        await db.from("seats").select("seat_index, last_seen_at").eq("room_id", roomId).order("seat_index"),
+      ) as { seat_index: number; last_seen_at: string | null }[];
+      return rows.map((s) => ({
+        index: s.seat_index,
+        lastSeenAt: s.last_seen_at === null ? null : new Date(s.last_seen_at).toISOString(),
+      }));
+    },
+
+    async markSeatSeen(roomId, seatIndex, at, staleBefore) {
+      const db = await client();
+      // The throttle is in the write's own filter, so parallel requests do not each write.
+      check(
+        await db
+          .from("seats")
+          .update({ last_seen_at: at })
+          .eq("room_id", roomId)
+          .eq("seat_index", seatIndex)
+          .or(`last_seen_at.is.null,last_seen_at.lt."${staleBefore}"`),
+      );
     },
 
     async anonymiseAccount(userId) {

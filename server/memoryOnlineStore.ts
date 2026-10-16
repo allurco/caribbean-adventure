@@ -9,6 +9,7 @@ import {
   type ClaimOutcome,
   type InitialMatch,
   type JoinOutcome,
+  type SeatSeen,
   type MoveEntry,
   type NewRoom,
   type OnlineStore,
@@ -78,6 +79,8 @@ export function createMemoryOnlineStore({
   const matches = new Map<string, StoredMatch>();
   const counters = new Map<string, number>();
   const moves = new Map<string, (MoveEntry & { at: string })[]>();
+  /** `roomId|seatIndex` to when the seat was last seen. */
+  const seen = new Map<string, string>();
   const deletedProfiles = new Set<string>();
   const deletedSignIns = new Set<string>();
   const displayName = (userId: string) => (deletedProfiles.has(userId) ? DELETED_PLAYER_NAME : profileName(userId));
@@ -207,6 +210,18 @@ export function createMemoryOnlineStore({
       const match = matches.get(matchId);
       if (!match) return null;
       return { id: match.id, roomId: match.roomId, stateId: match.stateId, seats: record(match.roomId)!.seats };
+    },
+
+    async seatsLastSeen(roomId): Promise<SeatSeen[]> {
+      return (record(roomId)?.seats ?? []).map((s) => ({ index: s.index, lastSeenAt: seen.get(`${roomId}|${s.index}`) ?? null }));
+    },
+
+    async markSeatSeen(roomId, seatIndex, at, staleBefore) {
+      if (!seats.get(roomId)?.has(seatIndex)) return;
+      const key = `${roomId}|${seatIndex}`;
+      const last = seen.get(key);
+      // As the SQL: only when never seen, or seen before `staleBefore`.
+      if (last === undefined || Date.parse(last) < Date.parse(staleBefore)) seen.set(key, at);
     },
 
     async commitMove(update) {

@@ -286,31 +286,27 @@ describe("createLootFromShip", () => {
   it("copies cargo", () => {
     const ship = createShipWithStats({ q: 2, r: 3 });
     ship.cargo = { Wood: 1, Sugar: 2, Rum: 0, Spice: 3 };
-    const loot = createLootFromShip(ship);
+    const loot = createLootFromShip(ship, "loot-1");
     expect(loot.cargo).toEqual({ Wood: 1, Sugar: 2, Rum: 0, Spice: 3 });
   });
 
   it("halves gold (rounded down)", () => {
     const ship = createShipWithStats({ q: 0, r: 0 });
     ship.gold = 51;
-    const loot = createLootFromShip(ship);
+    const loot = createLootFromShip(ship, "loot-1");
     expect(loot.gold).toBe(25);
   });
 
   it("has ship's hex position", () => {
     const ship = createShipWithStats({ q: 4, r: -2 });
-    const loot = createLootFromShip(ship);
+    const loot = createLootFromShip(ship, "loot-1");
     expect(loot.hex.q).toBe(4);
     expect(loot.hex.r).toBe(-2);
   });
 
-  it("generates a unique id", () => {
+  it("is named by the id it is given (the game's counter, #320)", () => {
     const ship = createShipWithStats({ q: 0, r: 0 });
-    const loot1 = createLootFromShip(ship);
-    const loot2 = createLootFromShip(ship);
-    expect(loot1.id).toBeTruthy();
-    expect(loot2.id).toBeTruthy();
-    expect(loot1.id).not.toBe(loot2.id);
+    expect(createLootFromShip(ship, "loot-7").id).toBe("loot-7");
   });
 });
 

@@ -115,8 +115,6 @@ export function getEffectiveCannons(ship: ShipState | NPCShip): number {
   return Math.min(baseCannons, currentCrew);
 }
 
-let lootIdCounter = 0;
-
 export function getShipAttackRange(ship: ShipState | NPCShip): number {
   // NPCs don't have upgrades array
   const upgrades = 'upgrades' in ship ? ship.upgrades : [];
@@ -214,10 +212,10 @@ export function isDerelict(ship: ShipState): boolean {
   return ship.stats.crew.current <= 0 && ship.stats.hull.current > 0;
 }
 
-export function createLootFromShip(ship: ShipState): FloatingLoot {
-  lootIdCounter++;
+/** The loot a sunk player ship leaves, named `id` (`nextLootId(G)`). */
+export function createLootFromShip(ship: ShipState, id: string): FloatingLoot {
   return {
-    id: `loot-${lootIdCounter}-${Date.now()}`,
+    id,
     hex: { ...ship.position },
     cargo: { ...ship.cargo },
     gold: Math.floor(ship.gold / 2),
@@ -303,10 +301,10 @@ export function getValidNPCAttackTargets(
   return targets;
 }
 
-export function createLootFromNPC(npc: NPCShip): FloatingLoot {
-  lootIdCounter++;
+/** The loot a sunk NPC leaves, named `id` (`nextLootId(G)`). */
+export function createLootFromNPC(npc: NPCShip, id: string): FloatingLoot {
   return {
-    id: `loot-${lootIdCounter}-${Date.now()}`,
+    id,
     hex: { ...npc.position },
     cargo: { ...npc.cargo },
     gold: Math.floor(npc.gold / 2),
