@@ -70,13 +70,13 @@ export function seaWearsOnDeep(state: Pick<SeaState, "combat">, ship: Pick<ShipS
 /**
  * The sea's toll as `player`'s turn `turn` ends: one hull point off their
  * ship when `seaWillWear` says so, through the usual damage (repaired at
- * port at the usual cost), recorded in `G.seaWear`. NPCs are never worn.
+ * port at the usual cost), recorded by seat in `G.seaWear`. NPCs are never worn.
  * Answers whether it wore the ship.
  */
 export function applySeaWear(G: CaribbeanState, player: string, turn: number): boolean {
   const ship = G.ships[player];
   if (!ship || !seaWillWear(G, ship)) return false;
   applyDamage(ship, { hull: 1, crew: 0, masts: 0 });
-  G.seaWear = { player, turn };
+  G.seaWear = { ...G.seaWear, [player]: turn };
   return true;
 }

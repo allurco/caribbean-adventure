@@ -10,7 +10,7 @@ import type { Hex } from "../game/hex";
 import type { NPCShip, MapCell } from "../game/types";
 import { hexToWorld, hexEquals, hexKey, wrapWorldWidth } from "../game/hex";
 import { deepSeaHexes } from "../game/deepSea";
-import { deepReach, endTurnSeaWarning, freshSeaWear, seaWearNotice, targetSeaWarning } from "./seaWearView";
+import { deepReach, endTurnSeaWarning, freshSeaWears, seaWearNotices, seaWearToastTop, targetSeaWarning } from "./seaWearView";
 import { SeaWearToast } from "./SeaWearToast";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
 import { turnReach, routeTo, reachCost } from "../game/reach";
@@ -203,6 +203,7 @@ function Scene({
   locked,
   shipUnderway,
   selection,
+  deepSea,
   onSelect,
   onShipUnderway,
   onMoveShip,
@@ -250,6 +251,8 @@ function Scene({
   plannedRoute: Hex[] | null;
   /** The turn is being handed over (#216): the next player's controls wait. */
   locked: boolean;
+  /** The map's deep sea by `hexKey` (#340), for the reach's deep tint. */
+  deepSea: ReadonlySet<string>;
   /** The current player's ship is still on its way: the reach waits until it settles. */
   shipUnderway: boolean;
   /** The hex whose route shows after a first click, with the `selectionKey` it was made for. */
@@ -550,8 +553,6 @@ function Scene({
     return hex && region ? { region, position: hexToWorld(hex) } : null;
   }, [grid.hoveredSeaHex, G.cells, G.regions]);
   // The reach as an outline, cost rings and a light tint one move out, all on the water (reachOutline.ts)
-  // The map's deep sea (#340), found once per map
-  const deepSea = useMemo(() => new Set(deepSeaHexes(G.cells, G.wrap).map(hexKey)), [G.cells, G.wrap]);
   const reachShapes = useMemo(() => {
     if (!reach) return null;
     const { boundary, rings } = reachEdges(reach, G.cells);
@@ -997,21 +998,18 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const boardActive = seatMayAct(turn) && !locked;
   const shownNpcs = holdsNpcs(handoff) && heldNpcs ? heldNpcs : G.npcs;
 
-  // The open sea wore a ship as its turn ended (#340): a line for the table,
-  // spoken to that ship's own captain. Not for a wear already in G on load.
+  // The open sea (#340): the map's deep sea, found once per map, for the
+  // warnings and the reach's tint; and a line for the table when it wears a
+  // ship as its turn ends. Not for a wear already in G on load.
+  const deepSea = useMemo(() => new Set(deepSeaHexes(G.cells, G.wrap).map(hexKey)), [G.cells, G.wrap]);
   const [seenSeaWear, setSeenSeaWear] = useState(G.seaWear);
-  const [seaWearLine, setSeaWearLine] = useState<string | null>(null);
-  const newSeaWear = freshSeaWear(seenSeaWear, G.seaWear);
-  if (newSeaWear) {
-    setSeenSeaWear(newSeaWear);
-    setSeaWearLine(
-      seaWearNotice({
-        you: props.playerID != null ? props.playerID === newSeaWear.player : ctx.numPlayers === 1,
-        captainName: seatName(G, newSeaWear.player),
-      })
-    );
+  const [seaWearLines, setSeaWearLines] = useState<string[] | null>(null);
+  const newSeaWears = freshSeaWears(seenSeaWear, G.seaWear);
+  if (newSeaWears.length > 0) {
+    setSeenSeaWear(G.seaWear);
+    setSeaWearLines(seaWearNotices(newSeaWears, { playerID: props.playerID, numPlayers: ctx.numPlayers, ships: G.ships }));
   }
-  const clearSeaWearLine = useCallback(() => setSeaWearLine(null), []);
+  const clearSeaWearLines = useCallback(() => setSeaWearLines(null), []);
 
   // Detect mission completion
   useEffect(() => {
@@ -1205,6 +1203,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           plannedRoute={plannedRoute}
           shipUnderway={Boolean(underway[currentPlayer])}
           selection={routeSelection}
+          deepSea={deepSea}
           onSelect={setRouteSelection}
           onShipUnderway={onShipUnderway}
           onMoveShip={(q, r) => props.moves.moveShip(q, r)}
@@ -1308,7 +1307,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           gold={shownShip?.gold ?? null}
           glory={shownShip?.score ?? null}
           waitingLine={waitingFor(G, turn)}
-          seaWarning={endTurnSeaWarning(G, currentShipState)}
+          seaWarning={endTurnSeaWarning(G, currentShipState, deepSea)}
           onEndTurn={() => {
             if (boardActive) props.events.endTurn!();
           }}
@@ -1382,7 +1381,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         !sailing &&
         !underway[currentPlayer] &&
         routeSelection?.from === selectionKey(currentPlayer, currentShipState.position) && (
-          <RouteHint top={hudHintTop(hudLayoutKind)} warning={targetSeaWarning(G, currentShipState, routeSelection.hex)} />
+          <RouteHint top={hudHintTop(hudLayoutKind)} warning={targetSeaWarning(G, currentShipState, routeSelection.hex, deepSea)} />
         )}
 
       {/* Attack mode indicator */}
@@ -1452,7 +1451,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* The open sea wore a ship as its turn ended (#340) */}
-      {seaWearLine && <SeaWearToast text={seaWearLine} top={hudToastTop(hudLayoutKind)} onDone={clearSeaWearLine} />}
+      {seaWearLines && (
+        <SeaWearToast lines={seaWearLines} top={seaWearToastTop(hudLayoutKind, completedMission !== null)} onDone={clearSeaWearLines} />
+      )}
 
       {/* Mission Complete Toast */}
       {completedMission && (

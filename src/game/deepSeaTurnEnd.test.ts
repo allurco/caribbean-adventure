@@ -52,7 +52,7 @@ describe("the open sea wears coasters as their turn ends (#340)", () => {
     const ship = G(client).ships["0"];
     expect(ship.stats!.hull.current).toBe(1);
     expect(ship.damage.hull).toBe(1);
-    expect(G(client).seaWear).toEqual({ player: "0", turn: 1 });
+    expect(G(client).seaWear).toEqual({ "0": 1 });
   });
 
   it("costs a Flute ending its turn on deep sea one hull point", () => {
@@ -92,6 +92,15 @@ describe("the open sea wears coasters as their turn ends (#340)", () => {
     const client = match(shipAt(4, "Sloop"), shipAt(5, "Sloop", 0));
     client.events.endTurn!();
     expect(G(client).ships["1"].stats!.hull.current).toBe(2);
+  });
+
+  it("keeps each seat's last wear apart, so no seat's line is lost", () => {
+    const client = match(shipAt(4, "Flute"), shipAt(5, "Flute", 0));
+    client.events.endTurn!();
+    client.events.endTurn!();
+    expect(G(client).seaWear).toEqual({ "0": 1, "1": 2 });
+    client.events.endTurn!();
+    expect(G(client).seaWear).toEqual({ "0": 3, "1": 2 });
   });
 
   it("leaves a ship whose turn ends in a fight alone", () => {
