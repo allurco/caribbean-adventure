@@ -287,7 +287,7 @@ describe("out of captains (#265)", () => {
 
     client.moves.attackNPC("flotilla");
     fireOnce(client);
-    expect(stateOf(client).ctx.gameover).toEqual({ reason: "allOut", winner: "1", score: 2 });
+    expect(stateOf(client).ctx.gameover).toEqual({ reason: "allOut", winner: "1", leaders: ["1"], score: 2 });
   });
 
   it("solo: the player picks the last captain, and is out with an empty deck, which ends the game", () => {
