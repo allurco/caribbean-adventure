@@ -113,6 +113,18 @@ One entry per report. Newest first.
 
 ## Batches
 
+### 2026-10-15: the harbour backdrop, review fixes (#122, PR #310)
+
+- **Branch and commit:** `feat/122-harbour-backdrop` at `a4f6eca`, against `093663c` (the PR's head before the fixes) for the comparisons.
+- **Renderer:** headless Chromium on the real GPU (ANGLE Metal), Playwright 1.59, DPR 1, no reduced motion.
+- **View:** the e2e dev server (`E2E_BACKEND=1`), signed out at the root, everything but the backdrop hidden. The still shot in phase `mounting` (the scene invisible); the scene's settled frame shot with its layer forced to full opacity and every `requestAnimationFrame` dropped from the moment `harbour:fading` is marked, so the canvas holds the frame the fade starts from; and the same two seconds into the fade.
+- **Motion held until the fade:** at 1440×900, still against settled frame, mean absolute difference 3.09 at `093663c` and 2.78 now. The difference map at `093663c` lights up the reef surf patches and the shoreline foam (the surf clock had run through the mounting frames); now they are gone: share of pixels off by more than 16 in the two surf areas 1.6 % and 4.7 % before, 0 % and 0.8 % now. The palms are a few pixels at this zoom and their sway does not show in either map; the pure tests cover them. Two seconds into the fade the surf areas differ by 5.6 and 14.2 from the settled frame, so the motion starts with the fade.
+- **Alignment:** still against settled frame, 2.78 / 0.27 % of pixels off by more than 32 at 1440×900, 3.14 / 0.67 % at 2560×1080, 5.43 / 2.06 % at 844×390: in the range of the first check.
+- **Brightness:** mean luminance (another hiding of the boards than the first check, so other absolute values) 60.1 through `still` and `mounting`, 60.1 to 59.8 through `fading`, 59.6 to 59.3 once `live`: no blank or dark frame.
+- **Leaving the harbour:** `?view=match&id=…` signed out (the `SignInGate`), harbour `live`, then signed in from a second tab (supabase-js shares the session): the board replaces the harbour and three logs "Context Lost" from R3F's forced loss. At `093663c` it also logged "[harbour] the live scene cannot run"; now nothing.
+- **Still:** `npm run capture:harbour` re-run after the fixes wrote byte-identical files (the held surf and sway stand where reduced motion already held them), so it was not re-captured.
+- **Not checked:** that the harbour's world is collected after unmount (the unit test covers the release, not the heap).
+
 ### 2026-10-15: the harbour backdrop, still then live scene (#122)
 
 - **Branch and commit:** `feat/122-harbour-backdrop` off `bfdbd27` (main), before its first commit; the "before" timings on `bfdbd27` itself.
