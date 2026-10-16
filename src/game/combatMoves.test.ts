@@ -6,7 +6,7 @@ import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, CombatStage, Mission, NPCRole, NPCShip, ShipState } from "./types";
 import { COMBAT_STAGES } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
-import { canChooseCombatAction } from "./combatMoves";
+import { applyCannons, applyCombatResolution, canChooseCombatAction, openFight } from "./combatMoves";
 import { createShipState } from "./economy";
 import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
 
@@ -152,7 +152,7 @@ describe("an NPC that wins the draw picks its own action (#345)", () => {
     expect(G(client).combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "fire", stage: "cannons" });
 
     client.moves.rollCannons();
-    expect(G(client).combat!.volleys.map((v) => v.shooterId)).toEqual(["foe"]);
+    expect(G(client).combat!.volleys!.map((v) => v.shooterId)).toEqual(["foe"]);
   });
 });
 
@@ -293,7 +293,7 @@ describe("round 1 is the ambush (#346)", () => {
     client.moves.rollCannons();
 
     const after = G(client);
-    const [first, answer] = after.combat!.volleys;
+    const [first, answer] = after.combat!.volleys!;
     expect(first).toMatchObject({ shooterId: "0", guns: 20 });
     expect(first.hits).toBeGreaterThan(0);
     // Grape shot took one of the three gunners before the answer was rolled.
@@ -388,7 +388,7 @@ describe("from round 2, damage lands per volley (#346)", () => {
     client.moves.chooseCombatAction("fire");
     client.moves.rollCannons();
 
-    const [first, answer] = G(client).combat!.volleys;
+    const [first, answer] = G(client).combat!.volleys!;
     expect(first).toMatchObject({ shooterId: "1", guns: 20 });
     expect(first.hits).toBeGreaterThan(0);
     // Grape shot took a gunner before the attacker's answer was rolled.
@@ -396,4 +396,35 @@ describe("from round 2, damage lands per volley (#346)", () => {
     expect(G(client).combat!).toMatchObject({ defenderHits: first.hits, attackerHits: answer.hits });
   });
 
+});
+
+describe("a fight from before #346, mid-round when the change deploys", () => {
+  /** A fight stored by the old rules: no volleys recorded, its hits rolled but not yet landed. */
+  function legacyFight(stage: CombatStage): CaribbeanState {
+    const { volleys: _volleys, ...combat } = openFight("0", "1", 1, false);
+    void _volleys;
+    return {
+      ships: { "0": ship(0, 0, { cannons: 2 }), "1": ship(1, 0, { cannons: 2 }) },
+      npcs: {},
+      floatingLoot: [],
+      combat: { ...combat, round: 2, stage, seamanshipWinner: "0", attackerHits: 3, defenderHits: 2 },
+    } as unknown as CaribbeanState;
+  }
+
+  it("at the resolution: the round ends without the old hits, and the fight goes on to the draw", () => {
+    const G0 = legacyFight("resolution");
+    expect(applyCombatResolution(G0, 1)).toBe("continues");
+    expect(G0.combat).toMatchObject({ round: 3, stage: "seamanship", volleys: [] });
+    expect(G0.ships["0"].stats!.hull.current).toBe(40);
+    expect(G0.ships["1"].stats!.hull.current).toBe(40);
+  });
+
+  it("at the cannons: the volleys are fired by the new rules", () => {
+    const G0 = legacyFight("cannons");
+    applyCannons(G0, () => 6);
+    expect(G0.combat!.volleys).toEqual([
+      { shooterId: "0", guns: 2, hits: 2 },
+      { shooterId: "1", guns: 2, hits: 2 },
+    ]);
+  });
 });

@@ -10,7 +10,7 @@
  * `G.combat` and answers "ended": the caller then sets the phase back to
  * main.
  */
-import type { CaribbeanState, CombatAction, CombatStage, CombatState, NPCShip, ShipState } from "./types";
+import type { CaribbeanState, CombatAction, CombatStage, CombatState, NPCShip, ShipState, Volley } from "./types";
 import { COMBAT_ACTIONS } from "./types";
 import {
   canReturnFire,
@@ -276,13 +276,13 @@ function opponentOf(combat: CombatState, id: string): string {
  * other side, and the damage lands at once, before anything else is rolled.
  * Recorded in the round's volleys and in the side's hits.
  */
-function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, d6: RollD6): void {
+function fireVolley(G: CaribbeanState, combat: CombatState, volleys: Volley[], shooterId: string, d6: RollD6): void {
   const shooter = combatantOf(G, combat, shooterId);
   const targetId = opponentOf(combat, shooterId);
   const target = combatantOf(G, combat, targetId);
   const guns = getEffectiveCannons(shooter);
   const hits = fireBroadside(guns, d6);
-  combat.volleys.push({ shooterId, guns, hits });
+  volleys.push({ shooterId, guns, hits });
   if (shooterId === combat.attackerId) combat.attackerHits = hits;
   else combat.defenderHits = hits;
   if (hits === 0) return;
@@ -318,16 +318,17 @@ export function firstToFire(combat: Pick<CombatState, "round" | "attackerId" | "
  */
 export function applyCannons(G: CaribbeanState, d6: RollD6): void {
   const combat = fightOf(G);
-  combat.volleys = [];
+  const volleys: Volley[] = [];
+  combat.volleys = volleys;
   combat.attackerHits = 0;
   combat.defenderHits = 0;
 
   const first = firstToFire(combat);
-  fireVolley(G, combat, first, d6);
+  fireVolley(G, combat, volleys, first, d6);
 
   const answering = opponentOf(combat, first);
   if (combat.fleeOutcome !== "caught" && canReturnFire(combatantOf(G, combat, answering), combat.distance)) {
-    fireVolley(G, combat, answering, d6);
+    fireVolley(G, combat, volleys, answering, d6);
   }
 
   combat.stage = "resolution";

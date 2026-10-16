@@ -115,6 +115,8 @@ export function CombatPanel({
   const npcLabel = isNPC && defender ? npcKind(defender as NPCShip) : "Merchant";
   // Seats count from 1 on the board, as everywhere else (#110)
   const seatLabel = (id: string | null) => Number(id) + 1;
+  // A fight stored before #346 records no volleys.
+  const volleys = combat.volleys ?? [];
   const shooterLabel = (id: string) => (isNPC && id === combat.defenderId ? npcLabel : `Player ${seatLabel(id)}`);
 
   return (
@@ -268,7 +270,7 @@ export function CombatPanel({
         <div className="space-y-3">
           {/* The round's volleys in the order they were fired; each one's damage has landed (#346) */}
           <div className="space-y-1 text-center">
-            {combat.volleys.map((volley, i) => (
+            {volleys.map((volley, i) => (
               <div key={i} className="text-xs text-amber-100/80">
                 <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> fired {volley.guns} gun
                 {volley.guns === 1 ? "" : "s"}:{" "}
@@ -277,7 +279,7 @@ export function CombatPanel({
                 </span>
               </div>
             ))}
-            {combat.volleys.length === 1 && combat.fleeOutcome !== "caught" && (
+            {volleys.length === 1 && combat.fleeOutcome !== "caught" && (
               <div className="text-[10px] text-amber-400/60">No answer: the other ship could not fire back</div>
             )}
           </div>

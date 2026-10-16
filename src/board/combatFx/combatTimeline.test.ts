@@ -164,6 +164,13 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(combatBeatsFrom(before, after)).toEqual([]);
   });
 
+  it("a fight stored before #346, with no volleys recorded, plays none", () => {
+    const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
+    const { volleys: _volleys, ...legacy } = makeCombat({ stage: "resolution", attackerHits: 2 });
+    void _volleys;
+    expect(combatBeatsFrom(before, makeState({ combat: legacy }))).toEqual([]);
+  });
+
   it("which shots hit is seeded: the same on every seat, different from fight to fight", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
     const after = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 2)] }) });

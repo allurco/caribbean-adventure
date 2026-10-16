@@ -511,7 +511,7 @@ describe("a fight between two seats (#113 review)", () => {
     res = await act(matchId, tokenOf(attacker), move(state._stateID, "rollCannons"));
     expect(res.status).toBe(200);
     state = ((await res.json()) as MatchBody).state;
-    expect(state.G.combat?.volleys[0]?.shooterId).toBe(attacker);
+    expect(state.G.combat?.volleys?.[0]?.shooterId).toBe(attacker);
     clock += 1000;
     expect((await act(matchId, tokenOf(defender), move(state._stateID, "applyResolution"))).status).toBe(403);
 

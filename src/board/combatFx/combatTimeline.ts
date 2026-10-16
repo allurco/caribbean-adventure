@@ -135,7 +135,7 @@ function volleyBeat(next: CaribbeanState, combat: CombatState): VolleyBeat | nul
   const volleys: Volley[] = [];
   let start = 0;
   let end = 0;
-  for (const fired of combat.volleys) {
+  for (const fired of combat.volleys ?? []) {
     const shooter = combatant(next, fired.shooterId, combat);
     if (!shooter || fired.guns === 0) continue;
     const targetId = fired.shooterId === combat.attackerId ? combat.defenderId : combat.attackerId;

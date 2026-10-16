@@ -133,8 +133,10 @@ export interface CombatState {
   /**
    * This round's volleys, in the order they were fired (#346): each one's
    * damage landed before the next was rolled. Empty until the cannons.
+   * Optional only because a fight stored before #346 lacks it (a match
+   * mid-fight as the change deployed): read it as none.
    */
-  volleys: Volley[];
+  volleys?: Volley[];
   distance: number;
   isNPCCombat: boolean;
   fleeOutcome: FleeOutcome;
