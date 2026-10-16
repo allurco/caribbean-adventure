@@ -156,6 +156,15 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-16: every seat drafts at once (#111)
+
+- **Branch and commit:** `feat/111-seat-draft` at `ed73934`.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 1280×800.
+- **View:** dev server, `?seats=1&players=3&size=small&seed=1`, then solo `?size=small&seed=1`, then hotseat `?players=3&size=small&seed=1`. The draft's text was read from the DOM; the screenshots were taken while the loading veil still covered the draft, so they show only the loading screen, and the DOM text is the evidence.
+- **Findings, `?seats=1`:** P1 opens on its own hand with "Player 2 / Still choosing, Player 3 / Still choosing". P3 picks first, without waiting, and sees "Waiting for Player 1 and Player 2 to choose their captains". P1 then sees P3's captain as "Picked" and picks, then sees "Waiting for Player 2 to choose a captain". P2's pick ends the draft, and P1 has End Turn, so seat 0 plays first. No page errors.
+- **Findings, solo and hotseat:** solo has one pick, no other-seats strip, then End Turn. Hotseat goes Player 1, then "Pass the Helm" to Player 2, then to Player 3, with no other-seats strip, then End Turn, as before.
+- **Not checked:** `npm run test:e2e` timed out at Jack's "Board your ship" click, before the draft, three times. It fails the same way with origin/main's code (`05fd37e`). The machine's load average was 40 to 100 at the time, so the online draft in a browser is unverified here; `server/matches.test.ts` covers it through the API.
+
 ### 2026-10-15: the harbour link against the hint band and the port panel (#125, PR #308 second review)
 
 - **Branch and commit:** `fix/125-harbour-link-phone` at `4038e26`.
