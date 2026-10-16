@@ -1,13 +1,14 @@
 import { useState, type FormEvent } from "react";
 import type { AccountClient } from "./accountClient";
 import { sendMagicLink } from "./accountService";
+import { signInRedirectUrl } from "./signInReturn";
 import { BTN_BRASS, INPUT, LABEL } from "./shellStyles";
 
 type FormState = { phase: "editing"; error?: string } | { phase: "sending" } | { phase: "sent"; email: string };
 
 /**
  * Email magic-link sign-in (#105): one field, then a note to check the inbox.
- * Discord and Google (#106) join it above an "or by email" rule.
+ * Discord and Google (#106, `ProviderButtons`) sit above it.
  */
 export function SignInForm({ client }: { client: AccountClient }) {
   const [email, setEmail] = useState("");
@@ -16,7 +17,7 @@ export function SignInForm({ client }: { client: AccountClient }) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     setState({ phase: "sending" });
-    const result = await sendMagicLink(client, email, window.location.origin + window.location.pathname + window.location.search);
+    const result = await sendMagicLink(client, email, signInRedirectUrl(window.location.href));
     setState(result.ok ? { phase: "sent", email: email.trim() } : { phase: "editing", error: result.error });
   }
 

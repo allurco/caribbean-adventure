@@ -4,6 +4,7 @@ import { profilePath } from "./accountRoute";
 import { signOut, type AccountSession, type Profile } from "./accountService";
 import { DeleteAccount } from "./DeleteAccount";
 import { DisplayNameForm } from "./DisplayNameForm";
+import { LinkedProviders } from "./LinkedProviders";
 import { ProfileCard } from "./ProfileCard";
 import { BTN_INK, LINK } from "./shellStyles";
 import type { ProfileState } from "./useProfile";
@@ -43,6 +44,7 @@ export function OwnProfile({ client, session, profile, onSaved }: OwnProfileProp
       {profile.status === "ready" && !profile.profile.deleted && (
         <>
           <ProfileCard profile={profile.profile} />
+          <LinkedProviders client={client} id={session.userId} />
           <DisplayNameForm key={profile.profile.id} client={client} profile={profile.profile} onSaved={onSaved} />
           <p>
             <a href={profilePath(session.userId)} className={LINK}>

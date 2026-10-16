@@ -341,6 +341,33 @@ skip_nonce_check = false
 # If enabled, it will allow the user to successfully authenticate when the provider does not return an email address.
 email_optional = false
 
+# Discord and Google sign-in (#106). The client ID and secret come from the
+# environment only (exported in the shell, or a git-ignored supabase/.env),
+# never this file; see docs/deploy.md. Unset, `supabase start` still runs:
+# these two buttons then fail at the provider, and email sign-in works.
+[auth.external.discord]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_DISCORD_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_DISCORD_SECRET)"
+redirect_uri = ""
+url = ""
+skip_nonce_check = false
+# A Discord account with no email is refused: every profile has an email to link by.
+email_optional = false
+
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+url = ""
+# The nonce check matters only for ID-token sign-in (signInWithIdToken, e.g.
+# One Tap). The game signs in through the redirect flow (signInWithOAuth),
+# where Supabase Auth runs the exchange itself, so the local stack keeps the
+# check on, like the hosted project.
+skip_nonce_check = false
+email_optional = false
+
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.
 # You can configure "web3" rate limit in the [auth.rate_limit] section and set up [auth.captcha] if self-hosting.
 [auth.web3.solana]

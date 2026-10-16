@@ -7,6 +7,7 @@
 import type { AccountClient, ProfileRow } from "./accountClient";
 import { safeAvatarUrl } from "./avatarUrl";
 import { validateDisplayName } from "./displayName";
+import { OAUTH_PROVIDERS, type OAuthProvider } from "./oauthProviders";
 import { callApi, type ApiDeps, type Messages } from "./roomApi";
 
 export type Result = { ok: true } | { ok: false; error: string };
@@ -38,6 +39,30 @@ export async function sendMagicLink(client: AccountClient, rawEmail: string, red
   if (!EMAIL.test(email)) return { ok: false, error: "That does not look like an email address." };
   const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
   return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+/**
+ * Starts a Discord or Google sign-in that brings the player back to
+ * `redirectTo`. On success supabase-js sends the browser to the provider, so
+ * the page is about to unload; a result comes back only on failure.
+ */
+export async function signInWithProvider(client: AccountClient, provider: OAuthProvider, redirectTo: string): Promise<Result> {
+  try {
+    const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo } });
+    return error ? { ok: false, error: error.message } : { ok: true };
+  } catch (thrown) {
+    return { ok: false, error: thrown instanceof Error ? thrown.message : "Sign-in could not start." };
+  }
+}
+
+export type LinkedProvidersResult = { ok: true; providers: OAuthProvider[] } | { ok: false; error: string };
+
+/** The Discord and Google accounts the signed-in player signs in with; only their own are readable. */
+export async function fetchLinkedProviders(client: AccountClient, id: string): Promise<LinkedProvidersResult> {
+  const { data, error } = await client.identities().select("provider").eq("profile_id", id);
+  if (error) return { ok: false, error: error.message };
+  const linked = new Set((Array.isArray(data) ? data : []).map((row) => row.provider));
+  return { ok: true, providers: OAUTH_PROVIDERS.filter((provider) => linked.has(provider)) };
 }
 
 export async function signOut(client: AccountClient): Promise<Result> {

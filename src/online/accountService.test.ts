@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AccountClient, ProfileRow, RowResult, SessionLike } from "./accountClient";
-import { accessToken, deleteAccount, fetchProfile, saveDisplayName, sendMagicLink, signOut, watchSession } from "./accountService";
+import type { AccountClient, IdentitiesResult, ProfileRow, RowResult, SessionLike } from "./accountClient";
+import {
+  accessToken,
+  deleteAccount,
+  fetchLinkedProviders,
+  fetchProfile,
+  saveDisplayName,
+  sendMagicLink,
+  signInWithProvider,
+  signOut,
+  watchSession,
+} from "./accountService";
 import type { FetchLike, RequestInitLike } from "./roomApi";
 
 const ID = "3f1c2b4a-9d8e-4f7a-b6c5-1a2b3c4d5e6f";
@@ -19,6 +29,8 @@ function row(overrides: Partial<ProfileRow> = {}): ProfileRow {
 
 interface Calls {
   otp: unknown[];
+  oauth: unknown[];
+  identities: { columns: string; column: string; value: string }[];
   selects: { columns: string; column: string; value: string }[];
   updates: { values: unknown; column: string; value: string }[];
   signOuts: number;
@@ -27,12 +39,15 @@ interface Calls {
 
 function fakeClient(opts: {
   otpError?: string;
+  oauthError?: string;
+  oauthThrows?: string;
+  identities?: IdentitiesResult;
   signOutError?: string;
   session?: SessionLike | null;
   select?: RowResult;
   update?: RowResult;
 } = {}): { client: AccountClient; calls: Calls; emit: (session: SessionLike | null) => void; unsubscribe: () => void } {
-  const calls: Calls = { otp: [], selects: [], updates: [], signOuts: 0, signOutScopes: [] };
+  const calls: Calls = { otp: [], oauth: [], identities: [], selects: [], updates: [], signOuts: 0, signOutScopes: [] };
   const listeners: ((event: string, session: SessionLike | null) => void)[] = [];
   const unsubscribe = vi.fn();
   const client: AccountClient = {
@@ -40,6 +55,13 @@ function fakeClient(opts: {
       signInWithOtp: async (credentials) => {
         calls.otp.push(credentials);
         return { error: opts.otpError ? { message: opts.otpError } : null };
+      },
+      signInWithOAuth: async (credentials) => {
+        calls.oauth.push(credentials);
+        if (opts.oauthThrows) throw new Error(opts.oauthThrows);
+        return opts.oauthError
+          ? { data: { url: null }, error: { message: opts.oauthError } }
+          : { data: { url: "https://project.supabase.co/auth/v1/authorize" }, error: null };
       },
       signOut: async (options) => {
         calls.signOuts++;
@@ -72,6 +94,14 @@ function fakeClient(opts: {
         }),
       }),
     }),
+    identities: () => ({
+      select: (columns) => ({
+        eq: async (column, value) => {
+          calls.identities.push({ columns, column, value });
+          return opts.identities ?? { data: [], error: null };
+        },
+      }),
+    }),
   };
   return { client, calls, emit: (s) => listeners.forEach((l) => l("SIGNED_IN", s)), unsubscribe };
 }
@@ -99,6 +129,57 @@ describe("sendMagicLink", () => {
       ok: false,
       error: "Email rate limit exceeded",
     });
+  });
+});
+
+describe("signInWithProvider", () => {
+  it("starts the provider's sign-in, to come back to the given page", async () => {
+    const { client, calls } = fakeClient();
+    expect(await signInWithProvider(client, "discord", "https://game.example/?view=account")).toEqual({ ok: true });
+    expect(await signInWithProvider(client, "google", "http://localhost:5173/")).toEqual({ ok: true });
+    expect(calls.oauth).toEqual([
+      { provider: "discord", options: { redirectTo: "https://game.example/?view=account" } },
+      { provider: "google", options: { redirectTo: "http://localhost:5173/" } },
+    ]);
+  });
+
+  it("passes the backend's error on", async () => {
+    const { client } = fakeClient({ oauthError: "Unsupported provider: provider is not enabled" });
+    expect(await signInWithProvider(client, "discord", "https://game.example/")).toEqual({
+      ok: false,
+      error: "Unsupported provider: provider is not enabled",
+    });
+  });
+
+  it("reports a failure to start instead of throwing", async () => {
+    const { client } = fakeClient({ oauthThrows: "storage unavailable" });
+    expect(await signInWithProvider(client, "google", "https://game.example/")).toEqual({
+      ok: false,
+      error: "storage unavailable",
+    });
+  });
+});
+
+describe("fetchLinkedProviders", () => {
+  it("lists the providers the player signs in with, in a fixed order", async () => {
+    const { client, calls } = fakeClient({ identities: { data: [{ provider: "google" }, { provider: "discord" }], error: null } });
+    expect(await fetchLinkedProviders(client, ID)).toEqual({ ok: true, providers: ["discord", "google"] });
+    expect(calls.identities).toEqual([{ columns: "provider", column: "profile_id", value: ID }]);
+  });
+
+  it("ignores a provider it does not know", async () => {
+    const { client } = fakeClient({ identities: { data: [{ provider: "github" }, { provider: "discord" }], error: null } });
+    expect(await fetchLinkedProviders(client, ID)).toEqual({ ok: true, providers: ["discord"] });
+  });
+
+  it("is empty for a player who signs in by email alone", async () => {
+    const { client } = fakeClient({ identities: { data: null, error: null } });
+    expect(await fetchLinkedProviders(client, ID)).toEqual({ ok: true, providers: [] });
+  });
+
+  it("reports a failure", async () => {
+    const { client } = fakeClient({ identities: { data: null, error: { message: "boom" } } });
+    expect(await fetchLinkedProviders(client, ID)).toEqual({ ok: false, error: "boom" });
   });
 });
 
@@ -163,8 +244,9 @@ describe("fetchProfile", () => {
       const { client } = fakeClient({ select: { data: row({ avatar_url }), error: null } });
       expect(await fetchProfile(client, ID)).toMatchObject({ ok: true, profile: { avatarUrl: null } });
     }
-    const { client } = fakeClient({ select: { data: row({ avatar_url: "https://cdn.example/a.png" }), error: null } });
-    expect(await fetchProfile(client, ID)).toMatchObject({ ok: true, profile: { avatarUrl: "https://cdn.example/a.png" } });
+    const avatar = "https://cdn.discordapp.com/avatars/1/a.png";
+    const { client } = fakeClient({ select: { data: row({ avatar_url: avatar }), error: null } });
+    expect(await fetchProfile(client, ID)).toMatchObject({ ok: true, profile: { avatarUrl: avatar } });
   });
 
   it("is null for nobody", async () => {

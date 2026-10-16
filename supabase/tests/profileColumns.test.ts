@@ -13,7 +13,7 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { anonymiserColumns, deletedProfileGuard, newUserAvatar, profileColumns, profileReferences } from "./profileColumns";
+import { anonymiserColumns, deletedProfileGuard, newUserAvatar, newUserDisplayName, profileColumns, profileReferences } from "./profileColumns";
 
 const MIGRATIONS = new URL("../migrations/", import.meta.url);
 const migrations = readdirSync(MIGRATIONS)
@@ -132,8 +132,8 @@ describe("the tables that reference a profile, and the anonymiser", () => {
 
 describe("the sign-up trigger's avatar (#106)", () => {
   // #106 takes a new profile's avatar only from Discord or Google, so an
-  // email sign-up cannot choose its own picture; #108 redefines
-  // handle_new_user after it, and must keep that.
+  // email sign-up cannot choose its own picture; #108's handle_new_user is
+  // the latest definition, and any later one must keep that.
   it("reads the expression the latest handle_new_user inserts as the avatar", () => {
     const fn = (avatar: string) => `
       create or replace function public.handle_new_user() returns trigger language plpgsql as $$
@@ -149,5 +149,28 @@ describe("the sign-up trigger's avatar (#106)", () => {
 
   it("takes the avatar only from a Discord or Google sign-up", () => {
     expect(newUserAvatar(migrations)).toMatch(/new\.raw_app_meta_data\s*->>\s*'provider'\s+in\s*\(\s*'discord'\s*,\s*'google'\s*\)/i);
+  });
+});
+
+describe("the sign-up trigger's name (#108)", () => {
+  // "Deleted player" is reserved for #108's placeholder, so the latest
+  // handle_new_user must treat a provider's name equal to it as no name: a
+  // later migration that redefines it without that rule would make such a
+  // sign-up fail the profiles check, and with it the whole Auth insert.
+  it("reads the expression the latest handle_new_user inserts as the name", () => {
+    const fn = (name: string) => `
+      create or replace function public.handle_new_user() returns trigger language plpgsql as $$
+      begin
+        insert into public.profiles (id, display_name, avatar_url)
+        values (new.id, ${name}, null)
+        on conflict (id) do nothing;
+        return new;
+      end;
+      $$;`;
+    expect(newUserDisplayName([fn("'a'"), fn("case when ok(a, b) then a end")])).toBe("case when ok(a, b) then a end");
+  });
+
+  it("never gives a new profile the reserved placeholder name", () => {
+    expect(newUserDisplayName(migrations)).toMatch(/lower\(\s*provided_name\s*\)\s*=\s*lower\(\s*'Deleted player'\s*\)/i);
   });
 });

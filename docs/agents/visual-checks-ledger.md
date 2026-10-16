@@ -172,6 +172,21 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-16: crafted sign-in errors show our own sentence (#106, PR #315 review)
+
+- **Branch and commit:** `feat/106-oauth-sign-in` at `5ca4547` (main merged in).
+- **Renderer:** Playwright's default headless Chromium (the headless shell), renderer not checked, so read for text and layout only; 1440×900 and an 844×390 viewport (not mobile emulation).
+- **View:** the e2e dev server (`E2E_BACKEND=1`), signed out, each case loaded fresh from `about:blank`: `/?error=server_error&error_description=<attack>`, `/#error=server_error&error_code=unexpected_failure&error_description=<attack>` and `/?error=access_denied&error_code=provider_email_needs_verification&error_description=<attack>`, where the attack reads "Your account is locked. Call +1 555 0100 or visit https://evil.example/recover".
+- **Findings:** the first two show "Sign-in did not finish. Please try again.", the third "Your email is not verified with that provider yet. Verify it there (look for a confirmation email), then sign in again."; no word of the attack anywhere on the page; the error leaves the address bar (query and hash); one console warning per case carries the raw error; no sideways scroll at either size. At 844×390 the longer unverified-email sentence pushes the card's foot (the age line) below the fold; the earlier #106 entry found the card scrolls with an error shown, not re-checked here.
+- **Not checked:** the back-forward cache reset of the provider buttons (needs a real provider round trip; `pageRestore.test.ts` only). `npm run test:e2e` was skipped: it currently fails on main at "Board your ship", before any sign-in code runs.
+
+### 2026-10-16: Discord and Google sign-in (#106)
+
+- **Branch and commit:** `feat/106-oauth-sign-in`, uncommitted work on `05fd37e` (main).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal); 1440×900, and 844×390 as a phone held sideways (`isMobile`, touch, DPR 2).
+- **View:** the e2e dev server (`e2e/vite.e2e.config.ts` with `E2E_BACKEND=1`; the client's Supabase URL is the server's `/e2e-supabase`, so no real provider is reached). The sign-in screen signed out; a provider button clicked from `?view=account&error=old&error_description=stale`, with the navigation request caught; the sign-in screen opened with a cancelled consent in the hash (`#error=access_denied&error_description=…`) and with Supabase's unverified-Discord-email error in the query; signed in as the e2e captain Anne, the own and public profiles with request intercepts answering the `profiles` row with and without a Discord CDN avatar (the image itself served by the intercept), `profile_identities` with a Discord row, an avatar on a host not allowed, and an avatar answering 404.
+- **Findings:** the card fits both sizes with no sideways scroll; at 844×390 the two buttons sit side by side reading "Discord" and "Google" (their accessible names keep "Continue with …"), and with an error shown the card scrolls, as the layout means it to. Discord and Google go to `/e2e-supabase/auth/v1/authorize?provider=discord|google&redirect_to=<origin>/?view=account`, without the earlier error. Both errors show at the top of the card and leave the address bar; nothing is blank. The avatar shows on the profile, the nav board's footer seal and the public profile, loaded with `referrerpolicy="no-referrer"` (no Referer sent); the own page reads "Signs in with Discord." With no avatar, an avatar on another host (never requested) or one that fails to load, the wax seal shows.
+
 ### 2026-10-16: delete your account (#108, PR #314 review fixes)
 
 - **Branch and commit:** `feat/108-delete-account` at `f11cac3` (the review fixes, before the merge of main, which touched no UI).
