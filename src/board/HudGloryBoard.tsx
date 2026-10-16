@@ -1,4 +1,5 @@
 import { WIN_SCORE } from "../game/types";
+import { HUD_GLORY_BOARD_LEFT, HUD_GLORY_BOARD_TOP, HUD_GLORY_BOARD_WIDTH } from "./hudLayout";
 import type { GloryRow } from "./seat";
 
 interface HudGloryBoardProps {
@@ -14,7 +15,8 @@ export function HudGloryBoard({ rows, colours }: HudGloryBoardProps) {
   return (
     <section
       aria-label="Glory"
-      className="absolute top-24 left-5 w-52 px-3 py-2 bg-black/40 rounded-lg border border-amber-700/30 backdrop-blur-sm pointer-events-none"
+      className="absolute px-3 py-2 bg-black/40 rounded-lg border border-amber-700/30 backdrop-blur-sm pointer-events-none"
+      style={{ top: HUD_GLORY_BOARD_TOP, left: HUD_GLORY_BOARD_LEFT, width: HUD_GLORY_BOARD_WIDTH }}
     >
       <h2 className="font-heading text-amber-400 text-[10px] uppercase tracking-widest mb-1">
         Glory <span className="text-amber-500/60 normal-case tracking-normal">to {WIN_SCORE}</span>

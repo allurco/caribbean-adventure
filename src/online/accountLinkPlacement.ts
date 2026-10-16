@@ -1,4 +1,14 @@
-import { HUD_PORT_PANEL_INSET, HUD_PORT_PANEL_WIDTH } from "../board/hudLayout";
+import {
+  HUD_GLORY_BOARD_LEFT,
+  HUD_GLORY_BOARD_WIDTH,
+  HUD_PORT_PANEL_INSET,
+  HUD_PORT_PANEL_WIDTH,
+  HUD_SAVE_LEAVE_HEIGHT,
+  HUD_SAVE_LEAVE_LEFT,
+  HUD_SAVE_LEAVE_WIDTH,
+  HUD_STACK_TOP,
+  HUD_TOP_BAR_HEIGHT,
+} from "../board/hudLayout";
 import type { ShellLayout } from "./shellLayout";
 
 /** The smallest tap target on a phone, in CSS pixels. */
@@ -15,26 +25,64 @@ export const MIN_TAP_TARGET = 48;
  */
 export const ACCOUNT_LINK_Z = 58;
 
-/** Under the HUD's 58 px turn bar, with a gap. */
-const TOP = 70;
+/** Under the HUD's turn bar, with a gap. */
+const TOP = HUD_TOP_BAR_HEIGHT + 12;
 const EDGE = 16;
 const GAP = 8;
 
+/** The compact link's width, fixed so it can be placed beside the HUD: "The harbour" with its padding is about 102 px. */
+export const ACCOUNT_LINK_COMPACT_WIDTH = 112;
+
+/** On Save & leave's row, right of it. */
+const ROW_LEFT = HUD_SAVE_LEAVE_LEFT + HUD_SAVE_LEAVE_WIDTH + GAP;
+/** Under Save & leave, right of the glory panel. */
+const UNDER_TOP = HUD_STACK_TOP + HUD_SAVE_LEAVE_HEIGHT + GAP;
+const UNDER_LEFT = HUD_GLORY_BOARD_LEFT + HUD_GLORY_BOARD_WIDTH + GAP;
+/** The port panel's column on the right, which on a phone runs from the top of the screen to the bottom. */
+const PORT_COLUMN = HUD_PORT_PANEL_INSET + HUD_PORT_PANEL_WIDTH;
+
 export interface AccountLinkPlacement {
   top: number;
-  right: number;
-  /** Set on compact screens, where the link must be a full tap target. */
+  /** One of `right` and `left` is set. */
+  right?: number;
+  left?: number;
+  /** Set on compact screens, where the link must be a full tap target of a known width. */
   minHeight?: number;
+  width?: number;
+}
+
+/**
+ * What is under the link: whether the link may sit beside the board's HUD
+ * stack (`hudStackShows`), whether the port panel is open, and the window's
+ * width.
+ */
+export interface AccountLinkScene {
+  hudStack: boolean;
+  portPanel: boolean;
+  viewportWidth: number;
 }
 
 /**
  * Where the corner link over the local game sits (#125). On desktop, the top
- * right corner. On a compact screen (a phone held sideways) the port panel,
- * centred on the right, reaches up to the turn bar: there the link moves left
- * of the panel's column, so it never covers the panel's header, and is a
- * full 48 px tap target. Pure, no React.
+ * right corner under the turn bar. On a compact screen (a phone held
+ * sideways) it is a full 48 px tap target. While the HUD stack shows it sits
+ * on Save & leave's row, right of it: the highest spot on that side, so the
+ * captain and ship card, which grows upward as the ship takes on cargo,
+ * upgrades, damage and bounties, would cover the glory panel before it
+ * reached the link. Only the port panel, open while docked, can block that
+ * row: where the row meets the panel's column (a phone under 752 px wide) the
+ * link goes under Save & leave, right of the glory panel; where that meets
+ * it too (under 660 px, a narrowed desktop window), the top-right corner
+ * under the turn bar. With the stack down (a captain picked, a fight, game
+ * over) it takes the empty top-right corner. Pure, no React.
  */
-export function accountLinkPlacement(layout: ShellLayout): AccountLinkPlacement {
+export function accountLinkPlacement(layout: ShellLayout, scene: AccountLinkScene): AccountLinkPlacement {
   if (layout === "desktop") return { top: TOP, right: EDGE };
-  return { top: TOP, right: HUD_PORT_PANEL_INSET + HUD_PORT_PANEL_WIDTH + GAP, minHeight: MIN_TAP_TARGET };
+  const size = { minHeight: MIN_TAP_TARGET, width: ACCOUNT_LINK_COMPACT_WIDTH };
+  if (!scene.hudStack) return { top: EDGE, right: EDGE, ...size };
+  const clearOfPanel = (left: number) =>
+    !scene.portPanel || left + ACCOUNT_LINK_COMPACT_WIDTH + GAP <= scene.viewportWidth - PORT_COLUMN;
+  if (clearOfPanel(ROW_LEFT)) return { top: HUD_STACK_TOP, left: ROW_LEFT, ...size };
+  if (clearOfPanel(UNDER_LEFT)) return { top: UNDER_TOP, left: UNDER_LEFT, ...size };
+  return { top: TOP, right: EDGE, ...size };
 }

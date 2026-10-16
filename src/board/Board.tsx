@@ -125,6 +125,10 @@ import { CameraAudioListener } from "./CameraAudioListener";
 import { AmbienceBedDriver } from "./AmbienceBedDriver";
 import { HudSoundControl } from "./HudSoundControl";
 import { HudSaveLeave } from "./HudSaveLeave";
+import { hudStackShows } from "./hudStack";
+import { hudStackPresence, portPanelPresence } from "./hudPresence";
+import { hudHintTop, hudToastTop } from "./hudLayout";
+import { useShellLayout } from "../online/useShellLayout";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { RenderStatsOverlay } from "./RenderStatsOverlay";
 import { DevSeedControl } from "./DevSeedControl";
@@ -1058,6 +1062,19 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const movesRemaining = movesLeft(G, currentPlayer);
 
   const inCombat = ctx.phase === "combat" && G.combat;
+  // Whether the HUD's top-left stack shows, for the harbour link over the board (#125): it sits beside the stack on a phone
+  const hudStackUp = hudStackShows(G, ctx);
+  useEffect(() => (hudStackUp ? hudStackPresence.show() : undefined), [hudStackUp]);
+  // The port panel: only in the main phase, when the current ship is docked; the harbour link keeps clear of it (#125)
+  const dockedPort =
+    !inCombat && boardActive && currentShipState
+      ? findAccessiblePort(currentShipState.position, G.cells, G.wrap)
+      : undefined;
+  const portMarket = dockedPort?.market;
+  const portPanelOpen = portMarket !== undefined;
+  useEffect(() => (portPanelOpen ? portPanelPresence.show() : undefined), [portPanelOpen]);
+  // The centred hint band, below the harbour link on a phone (#125)
+  const { layout: hudLayoutKind } = useShellLayout();
   // Until the next turn is announced, the HUD stays with the captain whose turn just ended (#216)
   // A seat's HUD shows its own ship always: a rival's purse reaches it emptied (#110)
   const hudPlayer = hudSeat({ ...turn, handoff, ships: G.ships });
@@ -1327,18 +1344,26 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         currentShipState &&
         !sailing &&
         !underway[currentPlayer] &&
-        routeSelection?.from === selectionKey(currentPlayer, currentShipState.position) && <RouteHint />}
+        routeSelection?.from === selectionKey(currentPlayer, currentShipState.position) && (
+          <RouteHint top={hudHintTop(hudLayoutKind)} />
+        )}
 
       {/* Attack mode indicator */}
       {attackMode && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-red-900/90 text-red-100 px-4 py-2 rounded-lg text-sm border border-red-700">
+        <div
+          className="absolute left-1/2 -translate-x-1/2 bg-red-900/90 text-red-100 px-4 py-2 rounded-lg text-sm border border-red-700"
+          style={{ top: hudHintTop(hudLayoutKind) }}
+        >
           Select an enemy ship to attack (red hexes)
         </div>
       )}
 
       {/* Spyglass mode indicator */}
       {spyglassMode && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 bg-cyan-900/90 text-cyan-100 px-4 py-2 rounded-lg text-sm border border-cyan-700">
+        <div
+          className="absolute left-1/2 -translate-x-1/2 bg-cyan-900/90 text-cyan-100 px-4 py-2 rounded-lg text-sm border border-cyan-700"
+          style={{ top: hudHintTop(hudLayoutKind) }}
+        >
           Select a ship to scout with your spyglass (red hexes)
         </div>
       )}
@@ -1352,16 +1377,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* Right: Port panel - only in main phase when docked at a port */}
-      {!inCombat && boardActive && currentShipState && (() => {
-        const accessiblePort = findAccessiblePort(currentShipState.position, G.cells, G.wrap);
-        if (!accessiblePort?.market) return null;
-        return (
+      {dockedPort && portMarket && currentShipState && (
           <PortPanel
             ship={currentShipState}
-            market={accessiblePort.market}
-            portNation={accessiblePort.nation}
-            portName={accessiblePort.portName}
-            hasShipyard={accessiblePort.hasShipyard}
+            market={portMarket}
+            portNation={dockedPort.nation}
+            portName={dockedPort.portName}
+            hasShipyard={dockedPort.hasShipyard}
             onTrade={(good, amount, action) =>
               props.moves.trade(good, amount, action)
             }
@@ -1381,8 +1403,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
               props.moves.abandonMission()
             }
           />
-        );
-      })()}
+      )}
 
       {/* Ship Details Panel */}
       {showDetailsPanel && viewerShip && (
@@ -1398,6 +1419,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         <MissionCompleteToast
           title={completedMission.title}
           reward={completedMission.reward}
+          top={hudToastTop(hudLayoutKind)}
           onComplete={() => setCompletedMission(null)}
         />
       )}
