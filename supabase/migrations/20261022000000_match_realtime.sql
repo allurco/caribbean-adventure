@@ -28,17 +28,28 @@
 -- Which seats are online is kept on the server instead of in presence:
 -- `seats.last_seen_at`, written by /api (service role) when a seat reads or
 -- moves in its match, at most every 20 s (server/seatSeen.ts). /api sends a
--- seat only which seats were seen within the last minute.
+-- seat only which seats were seen within the last minute. No client reads
+-- the time itself: members could read every column of their rooms' seats
+-- (a table-wide select grant), which would have shown each player's
+-- activity to the minute, so that grant becomes a column grant without
+-- `last_seen_at`, as `matches` already hides its `state`.
 
 alter table public.seats add column last_seen_at timestamptz;
 
 comment on column public.seats.last_seen_at is
-  'When the seat last read or moved in its match (#114), written by /api at most every 20 s; null before. Says which seats are online.';
+  'When the seat last read or moved in its match (#114), written by /api at most every 20 s; null before. Says which seats are online. Server only: no client grant.';
+
+revoke select on table public.seats from anon, authenticated;
+grant select (room_id, seat_index, user_id, missed_turns, status, joined_at) on table public.seats to authenticated;
 
 -- Whether the caller holds a seat in the match whose channel is `p_topic`.
 -- security definer, so the policy can read seats and matches whatever the
 -- caller's own grants; it answers only for auth.uid(), and only for a topic
--- of the form `match:<uuid>` (checked before the cast).
+-- of the form `match:<uuid>` (checked before the cast). Callable over RPC by
+-- any signed-in user (the policy runs as them, so it needs the grant), but
+-- it only tells a caller whether they themselves hold a seat in a match
+-- whose unguessable id they already have: what joining the channel would
+-- tell them anyway, and no more than `is_room_member` does.
 create function public.is_match_channel_member(p_topic text)
 returns boolean
 language sql

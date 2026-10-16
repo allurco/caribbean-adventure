@@ -190,4 +190,20 @@ describe.skipIf(!dbTestsEnabled)("a match's realtime channel (local Supabase)", 
     expect(seen.map((s) => s.last_seen_at !== null)).toEqual([true, true]);
     expect(JSON.stringify(second)).not.toContain(new Date(seen[0].last_seen_at!).toISOString().slice(0, 16));
   });
+
+  it("keeps the last-seen times from every client: members read their seats' other columns, never last_seen_at", async () => {
+    const { anne, jack, matchId } = await startedMatch();
+    await api("GET", `/api/matches/${matchId}`, jack);
+    const room = (await admin.from("matches").select("room_id").eq("id", matchId).single()).data as { room_id: string };
+    const seats = await anne.client.from("seats").select("seat_index, user_id, status, joined_at").eq("room_id", room.room_id);
+    expect(seats.error).toBeNull();
+    expect(seats.data).toHaveLength(2);
+    for (const columns of ["last_seen_at", "seat_index, last_seen_at", "*"]) {
+      const read = await anne.client.from("seats").select(columns).eq("room_id", room.room_id);
+      expect(read.error, columns).not.toBeNull();
+      expect(read.data ?? [], columns).toEqual([]);
+    }
+    const anon = createClient(stack.url, stack.anonKey, NO_SESSION);
+    expect((await anon.from("seats").select("last_seen_at")).data ?? []).toEqual([]);
+  });
 });
