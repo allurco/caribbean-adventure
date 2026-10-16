@@ -7,6 +7,7 @@
 import type { AccountClient, ProfileRow } from "./accountClient";
 import { safeAvatarUrl } from "./avatarUrl";
 import { validateDisplayName } from "./displayName";
+import { OAUTH_PROVIDERS, type OAuthProvider } from "./oauthProviders";
 
 export type Result = { ok: true } | { ok: false; error: string };
 
@@ -36,10 +37,6 @@ export async function sendMagicLink(client: AccountClient, rawEmail: string, red
   const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo } });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
-
-/** The providers a player may sign in with besides an email link (#106), in the order they are shown. */
-export const OAUTH_PROVIDERS = ["discord", "google"] as const;
-export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
 
 /**
  * Starts a Discord or Google sign-in that brings the player back to

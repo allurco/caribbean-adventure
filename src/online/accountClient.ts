@@ -5,6 +5,8 @@
  * supabase-js, so the hotseat bundle never loads it.
  */
 
+import type { OAuthProvider } from "./oauthProviders";
+
 /** A row of `public.profiles` (supabase/migrations): public fields only. */
 export interface ProfileRow {
   id: string;
@@ -35,7 +37,7 @@ export interface AuthPort {
   }): PromiseLike<{ error: ClientError | null }>;
   /** Starts a Discord or Google sign-in (#106): supabase-js sends the browser to the provider. */
   signInWithOAuth(credentials: {
-    provider: "discord" | "google";
+    provider: OAuthProvider;
     options?: { redirectTo?: string };
   }): PromiseLike<{ data: { url: string | null }; error: ClientError | null }>;
   signOut(): PromiseLike<{ error: ClientError | null }>;

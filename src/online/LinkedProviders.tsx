@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AccountClient } from "./accountClient";
-import { fetchLinkedProviders, type OAuthProvider } from "./accountService";
-
-const NAMES: Record<OAuthProvider, string> = { discord: "Discord", google: "Google" };
+import { fetchLinkedProviders } from "./accountService";
+import { OAUTH_PROVIDER_LABELS, type OAuthProvider } from "./oauthProviders";
 
 /**
  * On the player's own page (#106): the Discord and Google accounts they sign
@@ -24,7 +23,7 @@ export function LinkedProviders({ client, id }: { client: AccountClient; id: str
   if (providers.length === 0) return null;
   return (
     <p className="text-[15px] text-shell-ink-soft">
-      Signs in with {providers.map((provider) => NAMES[provider]).join(" and ")}.
+      Signs in with {providers.map((provider) => OAUTH_PROVIDER_LABELS[provider]).join(" and ")}.
     </p>
   );
 }
