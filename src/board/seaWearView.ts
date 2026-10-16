@@ -1,9 +1,9 @@
 /**
  * What the HUD says about the open sea (#340), from the rule in
  * `src/game/deepSea.ts`: the warning before a coaster ends its turn on deep
- * sea, on End Turn or on a chosen route's end, the deep hexes marked in its
- * reach, and the line when the sea has worn a ship. Each reads the map's deep
- * sea as a set of `hexKey`s (`deepSeaHexes`, found once per map). Pure.
+ * sea, on End Turn or on a chosen route's end, and the line when the sea
+ * has worn a ship. The warnings read the map's deep sea as a set of
+ * `hexKey`s (`deepSeaHexes`, found once per map). Pure.
  */
 import { seaWearsOnDeep, type SeaState } from "../game/deepSea";
 import { hexKey, type Hex } from "../game/hex";
@@ -28,15 +28,6 @@ export function endTurnSeaWarning(state: Fight, ship: Ship, deep: DeepSea): stri
 /** On a chosen route's end: the ship would lose a hull point if its turn ended there. */
 export function targetSeaWarning(state: Fight, ship: Ship, target: Hex, deep: DeepSea): string | null {
   return wornAt(state, ship, target, deep) ? `Open ocean: end your turn there and your ${shipName(ship)} loses 1 hull` : null;
-}
-
-/**
- * The hexes of a reach (`hexes`) where the ship would be worn if its turn
- * ended there: every deep one for a coaster with a hull point to spare, none
- * for anyone else.
- */
-export function deepReach(state: Fight, ship: Pick<ShipState, "stats">, hexes: readonly Hex[], deep: DeepSea): Hex[] {
-  return seaWearsOnDeep(state, ship) ? hexes.filter((h) => deep.has(hexKey(h))) : [];
 }
 
 /** The seats the sea has worn since the board last looked (`seen`, `G.seaWear` then), in seat order. */

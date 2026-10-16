@@ -11,8 +11,6 @@ const DOT_Y = 0.03;
 const DOT_RADIUS = 0.055;
 const OUTLINE_COLOUR = "#fef3c7";
 const TINT_COLOUR = "#fcd34d";
-/** The open sea a coaster would lose hull on (#340): a cold, dark wash over the water, about a fifth darker. */
-const DEEP_COLOUR = "#061636";
 const ROUTE_COLOUR = "#fffbeb";
 
 const dotGeometry = new CircleGeometry(DOT_RADIUS, 12).rotateX(-Math.PI / 2);
@@ -86,8 +84,6 @@ function Dots({ points }: { points: readonly Point[] }) {
 export interface ReachShapes {
   /** The light tint on the hexes one move away, clipped to water. */
   tint: Float32Array;
-  /** The reach's deep sea hexes where the ship would lose hull ending its turn (#340), clipped to water; empty for ocean-going ships. */
-  deep: Float32Array;
   /** The outline round the reach, as ribbons. */
   outline: Float32Array;
   /** The rings where the cost steps up, as ribbons. */
@@ -107,7 +103,6 @@ export function ReachOverlay({ reach, target, dots }: ReachOverlayProps) {
     <>
       {reach && (
         <>
-          <Triangles positions={reach.deep} color={DEEP_COLOUR} opacity={0.5} renderOrder={2} />
           <Triangles positions={reach.tint} color={TINT_COLOUR} opacity={0.05} renderOrder={2} additive />
           <Triangles positions={reach.rings} color={OUTLINE_COLOUR} opacity={0.3} renderOrder={3} />
           <Triangles positions={reach.outline} color={OUTLINE_COLOUR} opacity={0.75} renderOrder={3} />

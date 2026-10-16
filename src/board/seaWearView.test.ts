@@ -3,7 +3,7 @@ import { hexKey, hexRect, offsetToHex } from "../game/hex";
 import { deepSeaHexes } from "../game/deepSea";
 import type { CombatState, MapCell, ShipState } from "../game/types";
 import { createShipState } from "../game/economy";
-import { deepReach, endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
+import { endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
 
 // Open water seven hexes across: columns 3 to 5 are deep sea
 const cells: MapCell[] = hexRect(9, 9).map((h) => {
@@ -52,20 +52,5 @@ describe("telling the table the sea wore a ship (#340)", () => {
   it("speaks to the solo captain, and names the captain in hotseat", () => {
     expect(seaWearNotices(["0"], { playerID: null, numPlayers: 1, ships })).toEqual(["The open sea strains your hull: −1 hull"]);
     expect(seaWearNotices(["0"], { playerID: undefined, numPlayers: 2, ships })).toEqual(["The open sea strains Anne Bonny’s hull: −1 hull"]);
-  });
-});
-
-describe("the deep sea marked in a coaster's reach (#340)", () => {
-  const reach = [at(2), at(3), at(4), at(5)];
-
-  it("marks the deep hexes a coaster could end its turn on", () => {
-    expect(deepReach({}, createShipState(at(1), "Sloop"), reach, deep)).toEqual([at(3), at(4), at(5)]);
-  });
-
-  it("marks none for an ocean-going ship, or a coaster on its last hull point", () => {
-    expect(deepReach({}, createShipState(at(1), "Frigate"), reach, deep)).toEqual([]);
-    const worn = createShipState(at(1), "Sloop");
-    worn.stats!.hull.current = 1;
-    expect(deepReach({}, worn, reach, deep)).toEqual([]);
   });
 });

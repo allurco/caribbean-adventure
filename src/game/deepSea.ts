@@ -23,7 +23,7 @@ export function isDeepSea(cells: readonly MapCell[], coord: Hex, wrap: MapWrap):
 }
 
 /**
- * Every deep sea hex of the map, for the board's cue: the same hexes as
+ * Every deep sea hex of the map, for the board's warnings: the same hexes as
  * `isDeepSea`, found in one pass outwards from every island and reef.
  */
 export function deepSeaHexes(cells: readonly MapCell[], wrap: MapWrap): Hex[] {

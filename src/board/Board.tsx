@@ -10,7 +10,7 @@ import type { Hex } from "../game/hex";
 import type { NPCShip, MapCell } from "../game/types";
 import { hexToWorld, hexEquals, hexKey, wrapWorldWidth } from "../game/hex";
 import { deepSeaHexes } from "../game/deepSea";
-import { deepReach, endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
+import { endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
 import { SeaWearToast } from "./SeaWearToast";
 import { HudToastStack } from "./HudToastStack";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
@@ -204,7 +204,6 @@ function Scene({
   locked,
   shipUnderway,
   selection,
-  deepSea,
   onSelect,
   onShipUnderway,
   onMoveShip,
@@ -252,8 +251,6 @@ function Scene({
   plannedRoute: Hex[] | null;
   /** The turn is being handed over (#216): the next player's controls wait. */
   locked: boolean;
-  /** The map's deep sea by `hexKey` (#340), for the reach's deep tint. */
-  deepSea: ReadonlySet<string>;
   /** The current player's ship is still on its way: the reach waits until it settles. */
   shipUnderway: boolean;
   /** The hex whose route shows after a first click, with the `selectionKey` it was made for. */
@@ -557,20 +554,16 @@ function Scene({
   const reachShapes = useMemo(() => {
     if (!reach) return null;
     const { boundary, rings } = reachEdges(reach, G.cells);
-    const centre = (h: Hex): Point => {
-      const [x, , z] = hexToWorld(h);
+    const oneMove = reach.hexes.filter((s) => s.cost === 1).map((s): Point => {
+      const [x, , z] = hexToWorld(s.hex);
       return [x, z];
-    };
-    const oneMove = reach.hexes.filter((s) => s.cost === 1).map((s) => centre(s.hex));
-    // Where a coaster would end its turn on the open sea and lose a hull point (#340)
-    const deep = currentShipState ? deepReach({ combat: G.combat }, currentShipState, reach.hexes.map((s) => s.hex), deepSea).map(centre) : [];
+    });
     return {
       tint: waterHexTriangles(oneMove, ground, REACH_TINT_Y),
-      deep: waterHexTriangles(deep, ground, REACH_TINT_Y + 0.001, 0.94),
       outline: ribbonPositions(clipToWater(boundary, ground), REACH_OUTLINE_WIDTH, REACH_LINE_Y),
       rings: ribbonPositions(clipToWater(rings, ground), REACH_RING_WIDTH, REACH_LINE_Y),
     };
-  }, [reach, G.cells, G.combat, currentShipState, deepSea, ground]);
+  }, [reach, G.cells, ground]);
   const targetShape = useMemo(() => {
     if (!previewTarget) return null;
     const [x, , z] = hexToWorld(previewTarget);
@@ -1000,7 +993,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const shownNpcs = holdsNpcs(handoff) && heldNpcs ? heldNpcs : G.npcs;
 
   // The open sea (#340): the map's deep sea, found once per map, for the
-  // warnings and the reach's tint; and a line for the table when it wears a
+  // warnings; and a line for the table when it wears a
   // ship as its turn ends. Not for a wear already in G on load.
   const deepSea = useMemo(() => new Set(deepSeaHexes(G.cells, G.wrap).map(hexKey)), [G.cells, G.wrap]);
   const [seenSeaWear, setSeenSeaWear] = useState(G.seaWear);
@@ -1204,7 +1197,6 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           plannedRoute={plannedRoute}
           shipUnderway={Boolean(underway[currentPlayer])}
           selection={routeSelection}
-          deepSea={deepSea}
           onSelect={setRouteSelection}
           onShipUnderway={onShipUnderway}
           onMoveShip={(q, r) => props.moves.moveShip(q, r)}
