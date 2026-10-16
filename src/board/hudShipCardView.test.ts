@@ -101,3 +101,21 @@ describe("shipCardView over a stripped view (#109)", () => {
     expect(shipCardView(seen).stats).toEqual(shipCardView(ship()).stats);
   });
 });
+
+describe("the ship card's contract line", () => {
+  it("names the contract the captain took at a tavern, wherever the ship is", () => {
+    const mission = {
+      id: "m1",
+      title: "The Pirate Menace",
+      description: "Sink a merchant.",
+      type: "ASSASSINATION" as const,
+      reward: { gold: 30, glory: 1 },
+      status: "ACTIVE" as const,
+    };
+    expect(shipCardView(ship({ activeMission: mission })).contract).toBe("The Pirate Menace");
+  });
+
+  it("is absent with no contract", () => {
+    expect(shipCardView(ship()).contract).toBeNull();
+  });
+});

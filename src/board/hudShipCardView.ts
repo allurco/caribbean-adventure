@@ -1,7 +1,7 @@
 /**
  * What the HUD's ship card shows, shaped from a `ShipState`: the meters, the
- * damage and bounty lines, the stat grid and the hold. Pure, no React, so
- * `HudShipCard` only lays it out.
+ * damage and bounty lines, the stat grid, the hold and the contract taken at a
+ * tavern. Pure, no React, so `HudShipCard` only lays it out.
  */
 import type { GoodType, Nation, ShipState } from "../game/types";
 import { GOOD_TYPES } from "../game/types";
@@ -25,6 +25,8 @@ export interface ShipCardView {
   stats: { label: string; value: string }[];
   cargo: { good: GoodType; amount: number }[];
   upgrades: string[];
+  /** The title of the contract the captain took at a tavern, or null. */
+  contract: string | null;
 }
 
 /** Filled share of a `current / max` bar, 0–100; an empty bar when `max` is not positive. */
@@ -62,5 +64,6 @@ export function shipCardView(ship: ShipState): ShipCardView {
       : [],
     cargo: GOOD_TYPES.filter((good) => ship.cargo[good] > 0).map((good) => ({ good, amount: ship.cargo[good] })),
     upgrades: ship.upgrades.map((id) => UPGRADES[id]?.name ?? id),
+    contract: ship.activeMission?.title ?? null,
   };
 }
