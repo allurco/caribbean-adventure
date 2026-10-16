@@ -13,7 +13,8 @@ export function Nameboard({ title, meta }: NameboardText) {
         <span className={`${ROPE_LONG} right-6`} />
         <span className={`${NAIL_BIG} left-[18px]`} />
         <span className={`${NAIL_BIG} right-[18px]`} />
-        <h1 className={`${NAMEBOARD_TITLE} truncate text-[38px]`}>
+        {/* 38 px, smaller only on a screen under 380 px wide (the rotate gate on the narrowest phones, #123), so the title fits whole */}
+        <h1 className={`${NAMEBOARD_TITLE} truncate text-[clamp(30px,10vw,38px)]`}>
           {title}
         </h1>
         {meta && <p className={`${NAMEBOARD_META} mt-0.5 text-[16px]`}>{meta}</p>}

@@ -8,6 +8,7 @@
  * built from the server's environment (`services.ts`). Without them (no
  * Supabase configured) those routes answer 503 and only health works.
  */
+import { backendStatus, type BackendStatus } from "./backendStatus";
 import { bearerToken, fail, json } from "./http";
 import type { MatchSignals } from "./matchSignals";
 import type { OnlineStore } from "./onlineStore";
@@ -121,8 +122,20 @@ function health(env: ServerEnv) {
     ok: true,
     version: env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) || "local",
     environment: env.VERCEL_ENV || "local",
-    supabase: {
-      configured: Boolean(env.SUPABASE_URL && (env.SUPABASE_SECRET_KEY || env.SUPABASE_SERVICE_ROLE_KEY)),
-    },
+    supabase: supabaseHealth(backendStatus(env)),
   };
+}
+
+/** A preview refused production's database, or whose guard is not configured, says so (#107). */
+function supabaseHealth(status: BackendStatus) {
+  switch (status) {
+    case "none":
+      return { configured: false };
+    case "refused":
+      return { configured: false, previewOnProduction: true };
+    case "unset-guard":
+      return { configured: true, guard: "unset" };
+    case "ok":
+      return { configured: true };
+  }
 }

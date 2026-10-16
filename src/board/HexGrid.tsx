@@ -27,6 +27,7 @@ import { WaterHexOutlines } from "./WaterHexOutlines";
 import { waterPointerMove, waterPointerOut } from "./waterHover";
 import type { HexGridState, PortSite } from "./useHexGrid";
 import { PORT_HOVER_RADIUS } from "./visuals/portHover";
+import { useSafeAreaInsets } from "./useSafeAreaInsets";
 
 const TILE_SIZE = 1;
 const HEX_BASE_DEPTH = 0.1;
@@ -123,6 +124,8 @@ function PortLabel({ site: { cell, groundY, labelAnchor, ownBuildings }, hovered
   const { x, z } = labelAnchor;
   const groupRef = useRef<Group>(null);
   const textRef = useRef<LabelText>(null);
+  // Under a notch the turn bar sits lower (#123); useFrame reads the latest render's value
+  const insets = useSafeAreaInsets();
 
   useFrame(({ camera, size }) => {
     const group = groupRef.current;
@@ -158,6 +161,7 @@ function PortLabel({ site: { cell, groundY, labelAnchor, ownBuildings }, hovered
         size.height
       ),
       portY: screenY(copy.localToWorld(labelPoint.set(x, groundY, z)), camera, size.height),
+      insetTop: insets.top,
     });
     if (shift > 0) {
       // Same depth, `shift` pixels lower on screen

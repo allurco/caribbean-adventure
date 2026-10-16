@@ -21,6 +21,7 @@ import { useDecorationLayout } from "../visuals/useDecorationLayout";
 import { WAVE_CASCADES, WHITECAP_CASCADES } from "../visuals/oceanWaves";
 import { DISPLACEMENT_CASCADES } from "../visuals/waveDisplacement";
 import { createFramePacer, HARBOUR_FPS } from "./framePacer";
+import { useRotateGateShowing } from "../../landscape/useRotateGateShowing";
 import { isSettled, settleStep, shouldCompile, UNSETTLED } from "./harbourSettle";
 import { harbourCamera, harbourFov, type Vec3 } from "./harbourView";
 import { MotionHeldContext } from "../visuals/motionHold";
@@ -91,6 +92,8 @@ function Harbour({ world, wavesRunning, onSettled }: HarbourSceneProps & { world
   const sunShadow = useMemo(() => sunShadowFor(lighting.sun), [lighting.sun]);
   const reducedMotion = usePrefersReducedMotion();
   const frozen = reducedMotion || !wavesRunning;
+  // No frames at all under the rotate gate (#123), which covers the backdrop with its own still
+  const gated = useRotateGateShowing();
 
   const sky = useSkyEnvironment(lighting);
   const waveClock = useWaveClock(frozen);
@@ -109,7 +112,7 @@ function Harbour({ world, wavesRunning, onSettled }: HarbourSceneProps & { world
     <>
       <FixedView target={target} />
       <ToneExposure exposure={lighting.grade.exposure} />
-      <Pacer running={!settled || !frozen} />
+      <Pacer running={(!settled || !frozen) && !gated} />
 
       <color attach="background" args={[lighting.haze.color]} />
       <fog attach="fog" args={[lighting.haze.color, lighting.haze.near, lighting.haze.far]} />
