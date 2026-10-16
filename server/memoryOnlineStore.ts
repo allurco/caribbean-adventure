@@ -49,12 +49,13 @@ function seatsChoosing(state: VoyageState): number[] {
  * a fight it would project: a combat stage, a seat attacking, `isNPCCombat` a
  * boolean. Seat ids only, never an NPC's.
  */
-function publicFight({ stage, attackerId, seamanshipWinner, isNPCCombat }: VoyageFight): VoyageFight | null {
+function publicFight({ stage, attackerId, defenderId, seamanshipWinner, isNPCCombat, fleeOutcome }: VoyageFight): VoyageFight | null {
   if (!(COMBAT_STAGES as readonly unknown[]).includes(stage)) return null;
   if (typeof attackerId !== "string" || !isSeatId(attackerId)) return null;
   if (typeof isNPCCombat !== "boolean") return null;
-  const winner = typeof seamanshipWinner === "string" && isSeatId(seamanshipWinner) ? seamanshipWinner : null;
-  return { stage, attackerId, seamanshipWinner: winner, isNPCCombat };
+  const seat = (id: unknown) => (typeof id === "string" && isSeatId(id) ? id : null);
+  const flight = fleeOutcome === "escaped" || fleeOutcome === "caught" ? fleeOutcome : null;
+  return { stage, attackerId, defenderId: seat(defenderId), seamanshipWinner: seat(seamanshipWinner), isNPCCombat, fleeOutcome: flight };
 }
 
 type StoredRoom = Omit<RoomRecord, "seats" | "matchId"> & { startClaimedAt: number | null; createdAt: number };

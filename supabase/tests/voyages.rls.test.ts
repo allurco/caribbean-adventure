@@ -128,9 +128,25 @@ describe.skipIf(!dbTestsEnabled)("a player's voyages (local Supabase)", () => {
     expect((raw.data as { fight: unknown }[])[0].fight).toEqual({
       stage: "chooseAction",
       attacker_id: "0",
+      defender_id: "1",
       seamanship_winner: "1",
       is_npc_combat: false,
+      flee_outcome: null,
     });
+  });
+
+  it("in a fight, names the pursuer for the parting shot once the faster ship's flight is caught", async () => {
+    const { anne, jack, matchId } = await startedMatch();
+    await setFight(matchId, "0", {
+      stage: "cannons",
+      attackerId: "0",
+      defenderId: "1",
+      seamanshipWinner: "1",
+      isNPCCombat: false,
+      fleeOutcome: "caught",
+    });
+    expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 0, yourTurn: true });
+    expect((await voyages(jack))[0]).toMatchObject({ currentSeat: 0, yourTurn: false });
   });
 
   it("in a fight against an NPC, names the attacker whoever won the draw, and never the NPC's id", async () => {

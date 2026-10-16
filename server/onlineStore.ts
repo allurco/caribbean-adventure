@@ -6,7 +6,7 @@
  * race (taking a seat, starting a match) is one call, atomic in the database.
  */
 import type { MapSizeId } from "../src/game/mapConfig";
-import type { CombatState } from "../src/game/types";
+import type { FightTurn } from "../src/game/combatActor";
 
 /** `starting`: the host's start is claimed and the match is being built (#112). */
 export type RoomStatus = "open" | "starting" | "started" | "finished";
@@ -121,9 +121,10 @@ export interface MatchUpdate {
 
 /**
  * The fight on in a match, as public as `G.combat` already is to every seat
- * (`playerView.ts`): only what says whose step it is (`combatActor`).
+ * (`playerView.ts`): only what says whose step it is (`combatActor`). The
+ * defender and the draw's winner only when they are seats, never an NPC's id.
  */
-export type VoyageFight = Pick<CombatState, "stage" | "attackerId" | "seamanshipWinner" | "isNPCCombat">;
+export type VoyageFight = FightTurn;
 
 /**
  * One of a player's rooms, for their list of voyages: what the list shows,

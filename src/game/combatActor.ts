@@ -7,8 +7,15 @@ import type { CombatState } from "./types";
 /** Who fights whom: the sides of a fight, as the seat rules read them. */
 export type FightSides = Pick<CombatState, "attackerId" | "defenderId" | "isNPCCombat">;
 
-/** What says whose step it is: the step, the attacker, the draw's winner (the faster ship), and whether the foe is an NPC. */
-export type FightTurn = Pick<CombatState, "stage" | "attackerId" | "seamanshipWinner" | "isNPCCombat">;
+/**
+ * What says whose step it is: the step, the attacker, the draw's winner (the
+ * faster ship), whether the foe is an NPC, and whether a flight was caught.
+ * And the defender, read only when it is a seat: null may stand for an NPC,
+ * whose id the voyage list never sends.
+ */
+export type FightTurn = Pick<CombatState, "stage" | "attackerId" | "seamanshipWinner" | "isNPCCombat" | "fleeOutcome"> & {
+  defenderId: string | null;
+};
 
 /** A fight's sides and the step it is on. */
 export type FightStep = FightSides & FightTurn;
@@ -23,12 +30,18 @@ export interface SeatFight {
  * The seat that presses the fight's current step. A fight is a declaration,
  * a draw (the seamanship roll, both dice) that decides the faster ship, then
  * its action (fire, board or flee) and the rolls after it. The attacker rolls
- * the draw; the faster ship presses the rest. Against an NPC the attacker
- * presses every step: when the NPC wins the draw the engine picks its action.
+ * the draw; the faster ship presses the rest, but for a flight that was
+ * caught: the pursuer fires the parting shot and applies its damage, not the
+ * ship it fires on. Against an NPC the attacker presses every step: when the
+ * NPC wins the draw the engine picks its action.
  */
 export function combatActor(combat: FightTurn): string {
   if (combat.stage === "seamanship" || combat.isNPCCombat) return combat.attackerId;
-  return combat.seamanshipWinner ?? combat.attackerId;
+  const faster = combat.seamanshipWinner ?? combat.attackerId;
+  const partingShot = combat.fleeOutcome === "caught" && (combat.stage === "cannons" || combat.stage === "resolution");
+  if (!partingShot) return faster;
+  if (faster !== combat.attackerId) return combat.attackerId;
+  return combat.defenderId ?? combat.attackerId;
 }
 
 /**
