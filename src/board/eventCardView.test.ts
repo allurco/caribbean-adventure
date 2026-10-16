@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { EventLogEntry, Region } from "../game/types";
-import { eventCardView, eventLogRows, freshEventCard, lastEventId } from "./eventCardView";
+import { eventCardShows, eventCardView, eventLogLength, eventLogRows, freshEventCard, lastEventId } from "./eventCardView";
 
 const regions: Region[] = [
   { id: 0, nation: "England", name: "the Windward Isles", neighbours: [1] },
@@ -62,5 +62,33 @@ describe("the event log's rows (#246)", () => {
     const log = [calm(1), convoy(2), calm(3), calm(4), convoy(5)];
     expect(eventLogRows(log, regions, 3).map((row) => row.id)).toEqual([5, 4, 3]);
     expect(eventLogRows(undefined, regions, 3)).toEqual([]);
+  });
+});
+
+describe("when the card may show (#246)", () => {
+  const idle = { phase: "idle" as const, from: "0", to: "1", startedAt: 0, phaseStartedAt: 0, reducedMotion: false };
+  it("once the turn's hand-off has come to rest, or before any", () => {
+    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: false })).toBe(true);
+    expect(eventCardShows({ handoff: null, turnChangeShowing: false, gameOver: false })).toBe(true);
+  });
+  it("not while the hand-off plays, the turn change shows, or the game is over", () => {
+    expect(eventCardShows({ handoff: { ...idle, phase: "turnEnded" }, turnChangeShowing: false, gameOver: false })).toBe(false);
+    expect(eventCardShows({ handoff: idle, turnChangeShowing: true, gameOver: false })).toBe(false);
+    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: true })).toBe(false);
+  });
+});
+
+describe("how many events the log lists (#246)", () => {
+  it("four on a desktop; none on a phone held sideways, where the captain card leaves no room under the glory board", () => {
+    expect(eventLogLength("desktop")).toBe(4);
+    expect(eventLogLength("compact")).toBe(0);
+  });
+});
+
+describe("whose turn a log row came on (#246)", () => {
+  it("names the captain whose turn ended, so two convoys in a row read apart", () => {
+    const rows = eventLogRows([convoy(1), convoy(2)], regions, 4, (seat) => `Captain ${seat}`);
+    expect(rows.map((row) => row.after)).toEqual(["Captain 1", "Captain 1"]);
+    expect(eventLogRows([{ ...convoy(1), seat: "0" }], regions, 4).map((row) => row.after)).toEqual([null]);
   });
 });

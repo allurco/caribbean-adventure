@@ -4,6 +4,8 @@
  * log in G, which carries public facts alone. Pure.
  */
 import type { EventCardKind, EventLogEntry, Region } from "../game/types";
+import type { ShellLayout } from "../online/shellLayout";
+import { controlsLocked, type Handoff } from "./turnHandoff";
 
 /** A card's face: its name, the region it happens in (none for Calm seas) and its effect in one line. */
 export interface EventCardFace {
@@ -11,6 +13,8 @@ export interface EventCardFace {
   title: string;
   region: string | null;
   effect: string;
+  /** In the log: the captain whose turn it came on, when the board names them. */
+  after?: string | null;
 }
 
 const TITLES: Readonly<Record<EventCardKind, string>> = {
@@ -54,11 +58,46 @@ export function freshEventCard(seenId: number, log: readonly EventLogEntry[] | u
   return [...(log ?? [])].reverse().find((entry) => entry.id > seenId && entry.kind !== "calmSeas") ?? null;
 }
 
-/** The log's last `count` events, newest first, as card faces. */
+/**
+ * The log's last `count` events, newest first, as card faces, each naming
+ * the captain whose turn it came on (`nameOf` the seat; none without it).
+ */
 export function eventLogRows(
   log: readonly EventLogEntry[] | undefined,
   regions: readonly Region[] | undefined,
-  count: number
+  count: number,
+  nameOf?: (seat: string) => string
 ): EventCardFace[] {
-  return (log ?? []).slice(-count).reverse().map((entry) => eventCardView(entry, regions));
+  if (count <= 0) return [];
+  return (log ?? [])
+    .slice(-count)
+    .reverse()
+    .map((entry) => ({ ...eventCardView(entry, regions), after: nameOf ? nameOf(entry.seat) : null }));
+}
+
+/**
+ * How many events the HUD's log lists: four on a desktop; none on a phone
+ * held sideways, where the captain and ship card fills the screen's foot
+ * just under the glory board (with four seats, the log sat behind it). The
+ * card still shows there.
+ */
+export function eventLogLength(layout: ShellLayout): number {
+  return layout === "compact" ? 0 : 4;
+}
+
+/**
+ * Whether the drawn card may show: once the turn's hand-off has come to
+ * rest (`controlsLocked`: it rests at "idle", never back to null) and the
+ * turn change is over, so it never covers either; not once the game is over.
+ */
+export function eventCardShows({
+  handoff,
+  turnChangeShowing,
+  gameOver,
+}: {
+  handoff: Handoff | null;
+  turnChangeShowing: boolean;
+  gameOver: boolean;
+}): boolean {
+  return !controlsLocked(handoff) && !turnChangeShowing && !gameOver;
 }

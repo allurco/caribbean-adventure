@@ -13,7 +13,7 @@ import { deepSeaHexes } from "../game/deepSea";
 import { endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
 import { SeaWearToast } from "./SeaWearToast";
 import { HudToastStack } from "./HudToastStack";
-import { eventCardView, eventLogRows, freshEventCard, lastEventId, type EventCardFace } from "./eventCardView";
+import { eventCardShows, eventCardView, eventLogLength, eventLogRows, freshEventCard, lastEventId, type EventCardFace } from "./eventCardView";
 import { EventCard } from "./EventCard";
 import { HudEventLog } from "./HudEventLog";
 import { HudLeftColumn } from "./HudLeftColumn";
@@ -977,7 +977,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     },
     [props.playerID, combatDirector]
   );
-  const { handoff, heldNpcs, markTurnShown } = useTurnHandoff({
+  const { handoff, heldNpcs, npcsHeld, markTurnShown } = useTurnHandoff({
     currentPlayer,
     turn: ctx.turn,
     fight: ctx.phase === "combat",
@@ -997,10 +997,10 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const shownNpcs = holdsNpcs(handoff) && heldNpcs ? heldNpcs : G.npcs;
   // The event log as the NPCs on show have it: while the hand-off holds the
   // old NPCs, the events of the turn that just ended wait with them (#246)
-  const holdingNpcs = holdsNpcs(handoff) && heldNpcs !== null;
+  // (`npcsHeld` is true from the very render the turn passes in, before the hand-off starts)
   const [releasedEventLog, setReleasedEventLog] = useState(G.eventDeck?.log);
-  if (!holdingNpcs && releasedEventLog !== G.eventDeck?.log) setReleasedEventLog(G.eventDeck?.log);
-  const shownEventLog = holdingNpcs ? releasedEventLog : G.eventDeck?.log;
+  if (!npcsHeld && releasedEventLog !== G.eventDeck?.log) setReleasedEventLog(G.eventDeck?.log);
+  const shownEventLog = npcsHeld ? releasedEventLog : G.eventDeck?.log;
 
   // The open sea (#340): the map's deep sea, found once per map, for the
   // warnings; and a line for the table when it wears a
@@ -1339,7 +1339,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {!inCombat && currentShipState && (
         <HudLeftColumn>
           <HudGloryBoard rows={gloryScoreboard(G, hudPlayer, props.onlineSeats)} colours={PLAYER_COLOURS} />
-          <HudEventLog rows={eventLogRows(shownEventLog, G.regions, hudLayoutKind === "compact" ? 2 : 4)} />
+          <HudEventLog rows={eventLogRows(shownEventLog, G.regions, eventLogLength(hudLayoutKind), (seat) => seatName(G, seat))} />
         </HudLeftColumn>
       )}
 
@@ -1484,7 +1484,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* The event card drawn as the last turn ended (#246), for every player, once the turn's hand-off is over */}
-      {eventCard && !handoff && !showTurnChange && !ctx.gameover && <EventCard card={eventCard} onDone={clearEventCard} />}
+      {eventCard && eventCardShows({ handoff, turnChangeShowing: showTurnChange, gameOver: ctx.gameover !== undefined }) && (
+        <EventCard card={eventCard} onDone={clearEventCard} />
+      )}
 
       {/* Turn Change Animation */}
       {showTurnChange && currentShipState && (

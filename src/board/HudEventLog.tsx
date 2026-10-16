@@ -18,6 +18,7 @@ export function HudEventLog({ rows }: { rows: readonly EventCardFace[] }) {
           <li key={row.id} className="text-xs text-amber-200/80 leading-snug">
             <span className="text-amber-100 font-semibold">{row.title}</span>
             {row.region && <span className="text-amber-200/60"> · {row.region}</span>}
+            {row.after && <span className="block text-[10px] text-amber-200/50">after {row.after}’s turn</span>}
             <span className="block text-amber-200/70">{row.effect}</span>
           </li>
         ))}
