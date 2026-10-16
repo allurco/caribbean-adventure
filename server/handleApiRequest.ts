@@ -9,6 +9,7 @@
  * Supabase configured) those routes answer 503 and only health works.
  */
 import { bearerToken, fail, json } from "./http";
+import type { MatchSignals } from "./matchSignals";
 import type { OnlineStore } from "./onlineStore";
 import { getMatch, postAction } from "./matches";
 import { createRoom, getRoom, joinRoom, startRoom } from "./rooms";
@@ -31,6 +32,12 @@ export interface ApiServices {
   newMapSeed(): number;
   /** A new match's random seed: unguessable (128 random bits). */
   newMatchSeed(): string;
+  /**
+   * Tells a match's seats that it changed (#114): Supabase Realtime in
+   * production; left out by the in-memory and e2e backends, whose clients
+   * poll.
+   */
+  signals?: MatchSignals;
 }
 
 type Route = (request: Request, userId: string, services: ApiServices) => Promise<Response>;
@@ -68,7 +75,7 @@ const ROUTES: RouteEntry[] = [
   {
     method: "POST",
     match: pattern(/^\/api\/matches\/([^/]+)\/actions$/),
-    run: (req, user, s, [id]) => postAction(req, id, user, s.store),
+    run: (req, user, s, [id]) => postAction(req, id, user, s.store, s.signals),
   },
 ];
 

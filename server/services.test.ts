@@ -15,6 +15,10 @@ describe("servicesFromEnv", () => {
     expect(servicesFromEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SECRET_KEY: "sk" })).not.toBeNull();
     expect(servicesFromEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SERVICE_ROLE_KEY: "sr" })).not.toBeNull();
   });
+
+  it("signals each match's changes over Supabase Realtime (#114)", () => {
+    expect(servicesFromEnv({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_SECRET_KEY: "sk" })?.signals).toBeDefined();
+  });
 });
 
 describe("newInviteCode", () => {

@@ -820,6 +820,8 @@ export interface CaribbeanBoardProps extends BoardProps<CaribbeanState> {
   gallerySnapshot?: boolean;
   /** Saves the hotseat game and goes back to its start screen (#300); the HUD offers it only when given. */
   onSaveAndLeave?: () => void;
+  /** An online match's seats on its channel now (#114); null while unknown, left out in hotseat and solo. */
+  onlineSeats?: readonly string[] | null;
 }
 
 export function CaribbeanBoard(props: CaribbeanBoardProps) {
@@ -1285,7 +1287,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
       {/* Every captain's glory, which is public (#110) */}
       {!inCombat && currentShipState && (
-        <HudGloryBoard rows={gloryScoreboard(G, hudPlayer)} colours={PLAYER_COLOURS} />
+        <HudGloryBoard rows={gloryScoreboard(G, hudPlayer, props.onlineSeats)} colours={PLAYER_COLOURS} />
       )}
 
       {/* Bottom-left: captain and ship cards on parchment */}

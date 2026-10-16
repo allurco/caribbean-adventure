@@ -5,11 +5,13 @@
  * sends one action at a time. The server loads the match, checks the seat
  * and the action, runs boardgame.io's reducer over the shared game code, and
  * writes the new snapshot and the move log only if the match is still at the
- * `stateID` the action was made against. Responses carry
- * `viewFor(state, seat)`, never the whole state.
+ * `stateID` the action was made against, then signals the match's seats
+ * over realtime (#114, `matchSignals.ts`: the new version alone). Responses
+ * carry `viewFor(state, seat)`, never the whole state.
  */
 import { fail, isUuid, json, readBoundedJsonObject } from "./http";
 import { applyAction, parseAction, seatMayActNow, viewFor, type MatchState } from "./matchEngine";
+import type { MatchSignals } from "./matchSignals";
 import type { OnlineStore, SeatRecord } from "./onlineStore";
 
 /** PRD #104: ten actions a second per player; and, so a steady stream cannot run all day, 120 a minute. */
@@ -18,8 +20,13 @@ export const MOVE_LIMITS = [
   { action: "move_minute", limit: 120, windowSeconds: 60 },
 ] as const;
 
-/** Reads: 60 a minute per player, four times the 4-second poll (`MATCH_POLL_MS`). */
-export const READ_LIMIT = { action: "read_match", limit: 60, windowSeconds: 60 } as const;
+/**
+ * Reads: 150 a minute per player. With realtime (#114) a seat reads once per
+ * `changed` signal, so the limit covers a read for each of a rival's moves at
+ * their own limit (120 a minute) plus the 4-second fallback poll
+ * (`MATCH_POLL_MS`, 15 a minute).
+ */
+export const READ_LIMIT = { action: "read_match", limit: 150, windowSeconds: 60 } as const;
 
 /** An action's body is a few hundred bytes; past this it is refused before parsing (413). */
 export const MAX_ACTION_BODY_BYTES = 4096;
@@ -57,7 +64,13 @@ export async function getMatch(request: Request, matchId: string, userId: string
 }
 
 /** `POST /api/matches/:id/actions` with `{ stateID, action }`. */
-export async function postAction(request: Request, matchId: string, userId: string, store: OnlineStore): Promise<Response> {
+export async function postAction(
+  request: Request,
+  matchId: string,
+  userId: string,
+  store: OnlineStore,
+  signals?: MatchSignals,
+): Promise<Response> {
   // Bounded before anything else: an oversized body is never parsed or replayed.
   const read = await readBoundedJsonObject(request, MAX_ACTION_BODY_BYTES);
   if (read.kind === "too_large") return fail(413, "payload_too_large", "an action is a few hundred bytes");
@@ -107,5 +120,20 @@ export async function postAction(request: Request, matchId: string, userId: stri
     const latest = await store.getMatch(matchId);
     return fail(409, "stale_state", "stale state", latest ? seatView(match.id, seat, latest.state as MatchState) : {});
   }
+  await signalChanged(signals, match.id, next._stateID);
   return json({ ok: true, ...seatView(match.id, seat, next) });
+}
+
+/**
+ * Tells the match's seats it moved on (#114): only after the write won, and
+ * with the version alone. A signal that fails is logged, never the move's
+ * failure: the move is written, and the seats' polling picks it up.
+ */
+async function signalChanged(signals: MatchSignals | undefined, matchId: string, stateId: number): Promise<void> {
+  if (!signals) return;
+  try {
+    await signals.changed(matchId, stateId);
+  } catch (error) {
+    console.error("realtime signal failed", error);
+  }
 }

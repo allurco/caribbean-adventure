@@ -5,8 +5,13 @@
  * view) replaces what the board shows. On a refusal (stale, not your turn, a
  * move the game refuses) the whole view is fetched again. Every few seconds
  * it asks whether the match changed, and fetches the view only when it did.
- * Realtime replaces the polling later (#114). Pure apart from the injected
- * API and timers; `apiTransport.ts` plugs it into boardgame.io.
+ *
+ * Realtime (#114): the match's channel (`matchLive.ts`) passes on each
+ * `changed` signal (`signal`), and the view is read when the signal is newer
+ * than the board; while the channel is live (`setLive`) polling slows to a
+ * rare fallback, and it is back every few seconds whenever the channel is
+ * not. Pure apart from the injected API and timers; `apiTransport.ts` plugs
+ * it into boardgame.io.
  */
 import type { State } from "boardgame.io";
 import type { CaribbeanState } from "../game/types";
@@ -32,8 +37,14 @@ export interface MatchSyncApi {
   sendAction(matchId: string, stateID: number, action: MatchAction): Promise<MatchSendResult>;
 }
 
-/** How often a seat asks whether its match changed. */
+/** How often a seat asks whether its match changed, without a live channel. */
 export const MATCH_POLL_MS = 4000;
+
+/** How often it still asks while the channel is live: a fallback for a signal lost on the way. */
+export const LIVE_POLL_MS = 30_000;
+
+/** Signals this close together are read once. */
+export const SIGNAL_DEBOUNCE_MS = 100;
 
 interface MatchSyncOptions {
   api: MatchSyncApi;
@@ -64,6 +75,11 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
    */
   let needsFullView = false;
   let timer: ReturnType<typeof setInterval> | undefined;
+  let started = false;
+  let live = false;
+  /** The newest version a `changed` signal announced. */
+  let signalled = -1;
+  let signalTimer: ReturnType<typeof setTimeout> | undefined;
 
   /** The server's view replaces the board's, unless it is older than one already shown (a late poll). */
   const show = (view: SeatView) => {
@@ -113,6 +129,16 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
 
   const offline = () => onError("Could not reach the harbour. Check your connection.");
 
+  /** Reads the view if a signal said the match is past the board, unless an action is on its way (it reads again once that settles). */
+  const readSignalled = () => {
+    if (signalled > stateID && inFlight === 0) void poll().catch(() => {});
+  };
+
+  const startTimer = () => {
+    if (timer !== undefined) clearInterval(timer);
+    timer = setInterval(() => void poll().catch(() => {}), live ? LIVE_POLL_MS : MATCH_POLL_MS);
+  };
+
   return {
     /** Queues an action made against `baseStateID` (the state the board held when it was made). */
     send(baseStateID: number, action: ClientAction): void {
@@ -127,6 +153,7 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
         })
         .finally(() => {
           inFlight--;
+          readSignalled();
         });
     },
     /** Fetches the whole view now. */
@@ -134,11 +161,33 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
       void refresh().catch(offline);
     },
     start(): void {
-      timer ??= setInterval(() => void poll().catch(() => {}), MATCH_POLL_MS);
+      if (started) return;
+      started = true;
+      startTimer();
     },
     stop(): void {
+      started = false;
       if (timer !== undefined) clearInterval(timer);
-      timer = undefined;
+      if (signalTimer !== undefined) clearTimeout(signalTimer);
+      timer = signalTimer = undefined;
+    },
+    /** The channel said the match is now at version `v`: read the view, soon and once, if the board is behind it. */
+    signal(v: number): void {
+      if (v <= stateID) return;
+      signalled = Math.max(signalled, v);
+      if (signalTimer !== undefined) return;
+      signalTimer = setTimeout(() => {
+        signalTimer = undefined;
+        readSignalled();
+      }, SIGNAL_DEBOUNCE_MS);
+    },
+    /** Whether the channel is live: polling slows to a fallback while it is, and on going live reads once for anything missed. */
+    setLive(next: boolean): void {
+      if (next === live) return;
+      live = next;
+      if (!started) return;
+      startTimer();
+      if (live) void poll().catch(() => {});
     },
   };
 }

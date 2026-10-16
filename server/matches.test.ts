@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { State } from "boardgame.io";
 import { handleApiRequest, type ApiServices } from "./handleApiRequest";
 import { createMemoryOnlineStore, type MemoryOnlineStore } from "./memoryOnlineStore";
+import { MOVE_LIMITS, READ_LIMIT } from "./matches";
+import { MATCH_POLL_MS } from "../src/online/matchSync";
 import type { CaribbeanState } from "../src/game/types";
 import { wrappedNeighbors } from "../src/game/hex";
 import { silenceInvalidMoveLogs } from "../src/testSupport/silenceInvalidMoveLogs";
@@ -399,12 +401,14 @@ describe("reading a match (#113 review)", () => {
     expect(loads).toBe(0);
   });
 
-  it("limits reads per player, far above one poll every four seconds", async () => {
+  it("limits reads per player, above a signalled read for each of a rival's moves at their limit plus the 4-second poll (#114)", async () => {
+    expect(READ_LIMIT.windowSeconds).toBe(60);
+    expect(READ_LIMIT.limit).toBeGreaterThanOrEqual(MOVE_LIMITS[1].limit + 60_000 / MATCH_POLL_MS);
     const matchId = await startedMatch();
     const statuses: number[] = [];
-    for (let i = 0; i < 61; i++) statuses.push((await call("GET", `/api/matches/${matchId}?since=0`, "anne")).status);
-    expect(statuses.slice(0, 60).every((s) => s === 200)).toBe(true);
-    expect(statuses[60]).toBe(429);
+    for (let i = 0; i <= READ_LIMIT.limit; i++) statuses.push((await call("GET", `/api/matches/${matchId}?since=0`, "anne")).status);
+    expect(statuses.slice(0, READ_LIMIT.limit).every((s) => s === 200)).toBe(true);
+    expect(statuses[READ_LIMIT.limit]).toBe(429);
   });
 
   it("answers 400 to an empty ?since=, not as state id 0", async () => {
@@ -412,5 +416,70 @@ describe("reading a match (#113 review)", () => {
     const res = await call("GET", `/api/matches/${matchId}?since=`, "anne");
     expect(res.status).toBe(400);
     expect((await call("GET", `/api/matches/${matchId}?since=abc`, "anne")).status).toBe(400);
+  });
+});
+
+describe("the realtime 'changed' signal (#114)", () => {
+  function recordSignals(fail = false) {
+    const sent: { matchId: string; stateId: number }[] = [];
+    services = {
+      ...services,
+      signals: {
+        async changed(matchId, stateId) {
+          if (fail) throw new Error("realtime is down");
+          sent.push({ matchId, stateId });
+        },
+      },
+    };
+    return sent;
+  }
+
+  it("signals the match's new state version after every accepted move", async () => {
+    const sent = recordSignals();
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    const res = await act(matchId, "anne", move(state._stateID, "pickCaptain", 0, "Sloop"));
+    expect(res.status).toBe(200);
+    const after = ((await res.json()) as MatchBody).state;
+    expect(sent).toEqual([{ matchId, stateId: after._stateID }]);
+  });
+
+  it("sends nothing for a refused, stale or out-of-turn move, or a read", async () => {
+    const sent = recordSignals();
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    await act(matchId, "anne", move(state._stateID, "pickCaptain", 9, "Sloop"));
+    await act(matchId, "anne", move(state._stateID - 1, "pickCaptain", 0, "Sloop"));
+    await act(matchId, "jack", move(state._stateID, "pickCaptain", 0, "Sloop"));
+    await call("GET", `/api/matches/${matchId}?since=${state._stateID}`, "jack");
+    expect(sent).toEqual([]);
+  });
+
+  it("signals once for two racing moves: only the write that won", async () => {
+    const sent = recordSignals();
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    await Promise.all([
+      act(matchId, "anne", move(state._stateID, "pickCaptain", 0, "Sloop")),
+      act(matchId, "anne", move(state._stateID, "pickCaptain", 1, "Flute")),
+    ]);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("still accepts the move when the signal cannot be sent: clients fall back to polling", async () => {
+    recordSignals(true);
+    const errors: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => errors.push(args);
+    try {
+      const matchId = await startedMatch();
+      const { state } = await view(matchId, "anne");
+      const res = await act(matchId, "anne", move(state._stateID, "pickCaptain", 0, "Sloop"));
+      expect(res.status).toBe(200);
+      expect(await store.peekMoves(matchId)).toHaveLength(1);
+      expect(errors).toHaveLength(1);
+    } finally {
+      console.error = original;
+    }
   });
 });
