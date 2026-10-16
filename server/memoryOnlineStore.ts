@@ -4,6 +4,7 @@
  * tests in `supabase/tests/` hold to the real thing. Not used in production.
  */
 import {
+  accountGone,
   STALE_START_SECONDS,
   type ClaimOutcome,
   type InitialMatch,
@@ -89,10 +90,17 @@ export function createMemoryOnlineStore({
   }
 
   function consume(userId: string, action: string, limit: number, windowSeconds: number, commit: boolean): boolean {
+    // As `rate_counters`' foreign key to auth.users, once the sign-in is gone.
+    if (deletedSignIns.has(userId)) throw accountGone();
     const key = `${userId}|${action}|${Math.floor(now() / 1000 / windowSeconds)}`;
     const count = (counters.get(key) ?? 0) + 1;
     if (commit) counters.set(key, count);
     return count <= limit;
+  }
+
+  /** As `require_live_profile` in SQL: refuses a deleted player's profile. */
+  function requireLiveProfile(userId: string): void {
+    if (deletedProfiles.has(userId)) throw accountGone();
   }
 
   return {
@@ -102,6 +110,7 @@ export function createMemoryOnlineStore({
 
     async createRoom(room: NewRoom, { limit, windowSeconds }) {
       // As in the SQL function: the count and the room commit together.
+      requireLiveProfile(room.hostId);
       if (!consume(room.hostId, "create_room", limit, windowSeconds, true)) return null;
       const id = newId();
       const { hostId, ...settings } = room;
@@ -111,6 +120,7 @@ export function createMemoryOnlineStore({
     },
 
     async joinRoom(inviteCode, userId): Promise<{ outcome: JoinOutcome; roomId: string | null }> {
+      requireLiveProfile(userId);
       const room = [...rooms.values()].find((r) => r.inviteCode === inviteCode);
       if (!room) return { outcome: "not_found", roomId: null };
       const taken = seats.get(room.id)!;
@@ -189,6 +199,7 @@ export function createMemoryOnlineStore({
     },
 
     async commitMove(update) {
+      requireLiveProfile(update.move.userId);
       const match = matches.get(update.matchId);
       if (!match || match.stateId !== update.expectedStateId) return false;
       match.state = structuredClone(update.state);
@@ -215,10 +226,12 @@ export function createMemoryOnlineStore({
         const taken = seats.get(roomId)!;
         if (room.status !== "open" || ![...taken.values()].includes(userId)) continue;
         for (const [index, seated] of taken) if (seated === userId) taken.delete(index);
-        if (room.hostId === userId) room.hostId = null;
         if (taken.size === 0) {
           rooms.delete(roomId);
           seats.delete(roomId);
+        } else if (room.hostId === userId) {
+          // The host passes to the lowest seat left.
+          room.hostId = taken.get(Math.min(...taken.keys()))!;
         }
       }
     },

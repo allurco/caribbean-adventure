@@ -1,15 +1,19 @@
 /**
- * Deleting an account (#108) must clear everything personal on the profile,
- * so `public.anonymise_profile` names every column of `public.profiles`:
- * those it keeps (ids and timestamps) and those it clears. This reads the
- * migrations, with no database, so `npm test` fails as soon as a migration
- * gives `profiles` a column (a provider's id, #106) the anonymiser does not
- * name. The function also refuses to run on such a column (the database
- * tests hold that), so a deletion never leaves one behind.
+ * Deleting an account (#108) must clear everything personal about the
+ * player, so `public.anonymise_profile` names every column of
+ * `public.profiles` (those it keeps, ids and timestamps, and those it clears)
+ * and every table that references a profile (those whose rows it keeps, the
+ * match records, and those whose rows it deletes, such as the sign-in
+ * providers of #106). This reads the migrations, with no database, so
+ * `npm test` fails as soon as a migration adds a column or a referencing
+ * table the anonymiser does not name: the always-run backstop. The function
+ * also refuses to run on either, and `deleteAccount.rls.test.ts` checks the
+ * live catalog (`pg_constraint`, `information_schema`), so a deletion never
+ * leaves one behind.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { anonymiserColumns, profileColumns } from "./profileColumns";
+import { anonymiserColumns, deletedProfileGuard, profileColumns, profileReferences } from "./profileColumns";
 
 const MIGRATIONS = new URL("../migrations/", import.meta.url);
 const migrations = readdirSync(MIGRATIONS)
@@ -47,7 +51,7 @@ describe("the profile's columns and the anonymiser", () => {
         update public.profiles set display_name = 'Deleted player', avatar_url = null where id = p_user;
       end;
       $$;`;
-    expect(anonymiserColumns([fn("'id'", "'display_name'"), fn("'id', 'created_at'", "'display_name', 'avatar_url'")])).toEqual({
+    expect(anonymiserColumns([fn("'id'", "'display_name'"), fn("'id', 'created_at'", "'display_name', 'avatar_url'")])).toMatchObject({
       kept: ["id", "created_at"],
       cleared: ["display_name", "avatar_url"],
       set: ["display_name", "avatar_url"],
@@ -67,5 +71,61 @@ describe("the profile's columns and the anonymiser", () => {
 
   it("keeps no more than the id, the timestamps and the deletion mark", () => {
     expect(anonymiserColumns(migrations).kept.sort()).toEqual(["created_at", "deleted_at", "id", "updated_at"]);
+  });
+
+  it("holds every cleared column on a deleted profile, whatever writes it later", () => {
+    const { cleared } = anonymiserColumns(migrations);
+    expect(deletedProfileGuard(migrations).sort()).toEqual([...cleared, "deleted_at"].sort());
+  });
+});
+
+describe("the tables that reference a profile, and the anonymiser", () => {
+  it("reads the tables that reference public.profiles, from creates and later alters", () => {
+    const sql = [
+      `create table public.seats (
+        room_id uuid not null references public.rooms (id) on delete cascade,
+        user_id uuid not null references auth.users (id) on delete cascade
+      );`,
+      `create table public.badges (owner uuid references public.profiles (id), name text);`,
+      `create table if not exists public.notes (
+        id bigint primary key,
+        author uuid,
+        constraint notes_author_fkey foreign key (author) references public.profiles(id)
+      );`,
+      `alter table public.seats
+        drop constraint seats_user_id_fkey,
+        add constraint seats_user_id_fkey foreign key (user_id) references public.profiles (id) on delete restrict;`,
+      `alter table public.rooms add constraint rooms_x check (true);`,
+    ];
+    expect(profileReferences(sql).sort()).toEqual(["public.badges", "public.notes", "public.seats"]);
+  });
+
+  it("reads the anonymiser's kept and cleared tables", () => {
+    const fn = `
+      create function public.anonymise_profile(p_user uuid) returns void language plpgsql as $$
+      declare
+        v_kept constant text[] := array['id'];
+        v_cleared constant text[] := array['display_name'];
+        v_kept_tables constant text[] := array['public.seats', 'public.rooms'];
+        v_cleared_tables constant text[] := array['public.profile_identities'];
+      begin
+        update public.profiles set display_name = 'Deleted player' where id = p_user;
+      end;
+      $$;`;
+    expect(anonymiserColumns([fn])).toMatchObject({ keptTables: ["public.seats", "public.rooms"], clearedTables: ["public.profile_identities"] });
+  });
+
+  it("names every table that references a profile, as kept or cleared", () => {
+    const { keptTables, clearedTables } = anonymiserColumns(migrations);
+    const named = [...keptTables, ...clearedTables];
+    expect(profileReferences(migrations).filter((table) => !named.includes(table))).toEqual([]);
+  });
+
+  it("keeps only the match records: the seats, the rooms' hosts and the move log", () => {
+    expect(anonymiserColumns(migrations).keptTables.sort()).toEqual(["public.moves", "public.rooms", "public.seats"]);
+  });
+
+  it("clears the sign-in providers (#106) whether or not their table exists yet", () => {
+    expect(anonymiserColumns(migrations).clearedTables).toContain("public.profile_identities");
   });
 });

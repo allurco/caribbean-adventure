@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DISPLAY_NAME_MAX_LENGTH, validateDisplayName } from "./displayName";
+import { DELETED_PLAYER_NAME, DISPLAY_NAME_MAX_LENGTH, validateDisplayName } from "./displayName";
 
 describe("validateDisplayName", () => {
   it("accepts a plain name", () => {
@@ -26,5 +26,11 @@ describe("validateDisplayName", () => {
   it("rejects control characters", () => {
     expect(validateDisplayName("Black\u0000beard")).toMatchObject({ ok: false });
     expect(validateDisplayName("Black\u007fbeard")).toMatchObject({ ok: false });
+  });
+
+  it("keeps the deleted player's placeholder name for deleted accounts alone (#108)", () => {
+    expect(validateDisplayName(DELETED_PLAYER_NAME)).toMatchObject({ ok: false });
+    expect(validateDisplayName("  deleted   PLAYER ")).toMatchObject({ ok: false });
+    expect(validateDisplayName("Deleted players")).toMatchObject({ ok: true });
   });
 });

@@ -102,10 +102,15 @@ const DELETE_MESSAGES: Messages = {
  * which acts for the access token's user alone, then drops this device's
  * session: the server has removed the sign-in already, so there is nothing to
  * sign out of but the local copy. On a refusal the player stays signed in.
+ *
+ * The server answering 401 to a token this device still holds means the
+ * sign-in is gone: another tab deleted the account, or this request's own
+ * answer was lost and the retry finds nothing. That counts as done.
  */
 export async function deleteAccount(client: AccountClient, api: ApiDeps): Promise<Result> {
+  if (!(await api.accessToken())) return { ok: false, error: "Sign in first." };
   const result = await callApi<object>(api, DELETE_MESSAGES, "POST", "/api/me/delete");
-  if (!result.ok) return { ok: false, error: result.error };
+  if (!result.ok && result.status !== 401) return { ok: false, error: result.error };
   const { error } = await client.auth.signOut({ scope: "local" });
   return error ? { ok: false, error: `Your account is deleted, but this device could not sign out: ${error.message}` } : { ok: true };
 }

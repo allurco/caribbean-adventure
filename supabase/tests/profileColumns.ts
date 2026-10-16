@@ -1,8 +1,9 @@
 /**
  * Reads the migrations for `profileColumns.test.ts` (#108): the columns of
- * `public.profiles` and the columns `public.anonymise_profile` keeps, clears
- * and writes. A small reader for the statements this repo's migrations use,
- * not a SQL parser.
+ * `public.profiles`, the tables that reference it, the columns and tables
+ * `public.anonymise_profile` keeps, clears and writes, and the columns the
+ * deleted-profile trigger holds. A small reader for the statements this
+ * repo's migrations use, not a SQL parser.
  */
 
 const NOT_A_COLUMN = new Set(["constraint", "primary", "unique", "check", "foreign", "exclude", "like"]);
@@ -72,25 +73,67 @@ export function profileColumns(migrations: string[]): string[] {
   return columns;
 }
 
-function quotedList(body: string, variable: string): string[] {
+function quotedList(body: string, variable: string, required = true): string[] {
   const m = new RegExp(`${variable}\\s+constant\\s+text\\[\\]\\s*:=\\s*array\\[([^\\]]*)\\]`, "i").exec(body);
-  if (!m) throw new Error(`anonymise_profile has no ${variable} list`);
-  return [...m[1].matchAll(/'(\w+)'/g)].map((q) => q[1]);
+  if (!m) {
+    if (required) throw new Error(`anonymise_profile has no ${variable} list`);
+    return [];
+  }
+  return [...m[1].matchAll(/'([\w.]+)'/g)].map((q) => q[1]);
 }
 
-/** The latest `public.anonymise_profile`: the columns it keeps, those it clears, and those its update writes. */
-export function anonymiserColumns(migrations: string[]): { kept: string[]; cleared: string[]; set: string[] } {
+/** The body (between the `$$`) of the latest definition of `public.<name>`. */
+function latestFunctionBody(sql: string, name: string): string {
+  const definitions = [...sql.matchAll(new RegExp(`create\\s+(?:or\\s+replace\\s+)?function\\s+public\\.${name}\\s*\\(`, "gi"))];
+  if (definitions.length === 0) throw new Error(`no public.${name} in the migrations`);
+  const open = sql.indexOf("$$", definitions[definitions.length - 1].index);
+  return sql.slice(open + 2, sql.indexOf("$$", open + 2));
+}
+
+/**
+ * The tables with a foreign key to `public.profiles`, as `public.<table>`:
+ * from a `create table` whose body references it, or an `alter table` that
+ * adds such a constraint.
+ */
+export function profileReferences(migrations: string[]): string[] {
+  const tables = new Set<string>();
   const sql = stripComments(migrations.join("\n"));
-  const definitions = [...sql.matchAll(/create\s+(?:or\s+replace\s+)?function\s+public\.anonymise_profile\s*\(/gi)];
-  if (definitions.length === 0) throw new Error("no public.anonymise_profile in the migrations");
-  const at = definitions[definitions.length - 1].index;
-  const open = sql.indexOf("$$", at);
-  const body = sql.slice(open + 2, sql.indexOf("$$", open + 2));
+  const references = /references\s+public\.profiles\b/i;
+  const statement = /create\s+table\s+(?:if\s+not\s+exists\s+)?public\.(\w+)\s*\(|alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?public\.(\w+)\s+([^;]*);/gi;
+  for (let m = statement.exec(sql); m; m = statement.exec(sql)) {
+    const body = m[1] !== undefined ? parenthesised(sql, m.index + m[0].length - 1) : m[3];
+    const table = (m[1] ?? m[2]).toLowerCase();
+    if (table !== "profiles" && references.test(body)) tables.add(`public.${table}`);
+  }
+  return [...tables];
+}
+
+/** The columns `public.keep_deleted_profile_anonymous` sets on a deleted profile (`new.<column> :=`). */
+export function deletedProfileGuard(migrations: string[]): string[] {
+  const body = latestFunctionBody(stripComments(migrations.join("\n")), "keep_deleted_profile_anonymous");
+  return [...new Set([...body.matchAll(/\bnew\.(\w+)\s*:=/gi)].map((m) => m[1].toLowerCase()))];
+}
+
+/**
+ * The latest `public.anonymise_profile`: the columns it keeps, those it
+ * clears, those its update writes, and the referencing tables whose rows it
+ * keeps and those whose rows it deletes.
+ */
+export function anonymiserColumns(migrations: string[]): {
+  kept: string[];
+  cleared: string[];
+  set: string[];
+  keptTables: string[];
+  clearedTables: string[];
+} {
+  const body = latestFunctionBody(stripComments(migrations.join("\n")), "anonymise_profile");
   const update = /update\s+public\.profiles\s+set\s+([\s\S]*?)\s+where\b/i.exec(body);
   if (!update) throw new Error("anonymise_profile does not update public.profiles");
   return {
     kept: quotedList(body, "v_kept"),
     cleared: quotedList(body, "v_cleared"),
     set: splitTopLevel(update[1]).map((assignment) => assignment.split("=")[0].trim().toLowerCase()),
+    keptTables: quotedList(body, "v_kept_tables", false),
+    clearedTables: quotedList(body, "v_cleared_tables", false),
   };
 }

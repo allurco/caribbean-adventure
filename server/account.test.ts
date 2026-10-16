@@ -9,7 +9,8 @@ import { DELETED_PLAYER_NAME } from "../src/online/displayName";
 const ANNE = "00000000-0000-4000-8000-00000000000a";
 const JACK = "00000000-0000-4000-8000-00000000000b";
 const MARY = "00000000-0000-4000-8000-00000000000c";
-const TOKENS: Record<string, string> = { anne: ANNE, jack: JACK, mary: MARY };
+const ANNE_AGAIN = "00000000-0000-4000-8000-00000000000d";
+const TOKENS: Record<string, string> = { anne: ANNE, jack: JACK, mary: MARY, "anne-again": ANNE_AGAIN };
 const NAMES: Record<string, string> = { [ANNE]: "Anne Bonny", [JACK]: "Calico Jack", [MARY]: "Mary Read" };
 
 let store: MemoryOnlineStore;
@@ -108,7 +109,7 @@ describe("POST /api/me/delete", () => {
     expect((await call("GET", `/api/matches/${room.matchId}`, "jack")).status).toBe(200);
   });
 
-  it("leaves the rooms still open: the seat is freed, and a room they hosted has no host", async () => {
+  it("leaves the rooms still open: the seat is freed, and a room they hosted passes to the lowest seat left", async () => {
     const annes = await openRoom("anne", 3);
     await call("POST", "/api/rooms/join", "jack", { inviteCode: annes.inviteCode });
     const jacks = await openRoom("jack", 3);
@@ -118,7 +119,8 @@ describe("POST /api/me/delete", () => {
 
     const hosted = await roomOf(await call("GET", `/api/rooms/${annes.id}`, "jack"));
     expect(hosted.seats).toEqual([{ index: 1, userId: JACK, displayName: "Calico Jack" }]);
-    expect(hosted.hostSeat).toBeNull();
+    expect(hosted.hostSeat).toBe(1);
+    expect((await roomOf(await call("GET", `/api/rooms/${annes.id}`, "jack"))).hostSeat).toBe(1);
     const joined = await roomOf(await call("GET", `/api/rooms/${jacks.id}`, "jack"));
     expect(joined.seats).toEqual([{ index: 0, userId: JACK, displayName: "Calico Jack" }]);
     expect(joined.hostSeat).toBe(0);
@@ -161,5 +163,76 @@ describe("POST /api/me/delete", () => {
     expect(res.status).toBe(429);
     expect(await res.json()).toMatchObject({ code: "rate_limited" });
     expect((await deleteAccount("jack")).status).toBe(500);
+  });
+
+  it("hands a hosted room to the lowest seat left, who can then start it", async () => {
+    const room = await openRoom("anne", 3);
+    await call("POST", "/api/rooms/join", "mary", { inviteCode: room.inviteCode });
+    await call("POST", "/api/rooms/join", "jack", { inviteCode: room.inviteCode });
+    expect((await deleteAccount("anne")).status).toBe(200);
+
+    const left = await roomOf(await call("GET", `/api/rooms/${room.id}`, "jack"));
+    expect(left.seats.map((s) => s.userId)).toEqual([MARY, JACK]);
+    expect(left.hostSeat).toBe(1);
+    expect(await store.getRoom(room.id)).toMatchObject({ hostId: MARY });
+    await call("POST", "/api/rooms/join", "anne-again", { inviteCode: room.inviteCode });
+    expect((await call("POST", `/api/rooms/${room.id}/start`, "jack")).status).toBe(403);
+    expect((await call("POST", `/api/rooms/${room.id}/start`, "mary")).status).toBe(201);
+  });
+});
+
+describe("a deleted profile whose sign-in still works (#108)", () => {
+  // The profile is anonymised first and the sign-in deleted second, so a
+  // token can outlive the profile for a moment, or for good if the second
+  // step fails. It may not act through /api in the meantime.
+  let deleteSignIn: MemoryOnlineStore["deleteSignIn"];
+
+  beforeEach(() => {
+    deleteSignIn = store.deleteSignIn;
+    store.deleteSignIn = async () => {
+      throw new Error("auth is down");
+    };
+  });
+
+  it("cannot open a room", async () => {
+    expect((await deleteAccount("anne")).status).toBe(500);
+    const res = await call("POST", "/api/rooms", "anne", { seats: 2, mapSize: "small", mapSeed: 5 });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "unauthorized" });
+  });
+
+  it("cannot take a seat", async () => {
+    const room = await openRoom("jack");
+    expect((await deleteAccount("anne")).status).toBe(500);
+    expect((await call("POST", "/api/rooms/join", "anne", { inviteCode: room.inviteCode })).status).toBe(401);
+    expect((await store.getRoom(room.id))?.seats.map((s) => s.userId)).toEqual([JACK]);
+  });
+
+  it("cannot move in a started match", async () => {
+    const room = await startedMatch();
+    expect((await deleteAccount("anne")).status).toBe(500);
+    const view = (await (await call("GET", `/api/matches/${room.matchId}`, "anne")).json()) as { state: { _stateID: number } };
+    const move = { stateID: view.state._stateID, action: { type: "MAKE_MOVE", payload: { type: "pickCaptain", args: [0, "Sloop"] } } };
+    expect((await call("POST", `/api/matches/${room.matchId}/actions`, "anne", move)).status).toBe(401);
+    expect(await store.peekMoves(room.matchId!)).toEqual([]);
+  });
+
+  it("can still finish deleting the account", async () => {
+    expect((await deleteAccount("anne")).status).toBe(500);
+    store.deleteSignIn = deleteSignIn;
+    expect((await deleteAccount("anne")).status).toBe(200);
+    expect(await store.peekSignInDeleted(ANNE)).toBe(true);
+  });
+});
+
+describe("a request that passed the sign-in check just before the account went (#108)", () => {
+  it("answers 401, not 500, once the sign-in is gone", async () => {
+    // Another tab deleted the account between this request's token check and its work.
+    services.auth = async (token) => TOKENS[token] ?? null;
+    await store.anonymiseAccount(ANNE);
+    await store.deleteSignIn(ANNE);
+    const res = await deleteAccount("anne");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "unauthorized" });
   });
 });

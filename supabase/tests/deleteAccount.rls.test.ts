@@ -6,12 +6,20 @@
  * `npm run test:db` after `npx supabase start` (see `localStack.ts`).
  */
 import { randomUUID } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { handleApiRequest, type ApiServices } from "../../server/handleApiRequest";
 import { servicesFromEnv } from "../../server/services";
 import { DELETED_PLAYER_NAME } from "../../src/online/displayName";
-import { dbTestsEnabled, localStack, NO_SESSION, testPlayers, type LocalStack, type TestPlayer } from "./localStack";
+import { dbTestsEnabled, localStack, NO_SESSION, ownerSql, testPlayers, type LocalStack, type TestPlayer } from "./localStack";
+import { anonymiserColumns } from "./profileColumns";
+
+const MIGRATIONS = new URL("../migrations/", import.meta.url);
+const migrations = readdirSync(MIGRATIONS)
+  .filter((name) => name.endsWith(".sql"))
+  .sort()
+  .map((name) => readFileSync(new URL(name, MIGRATIONS), "utf8"));
 
 interface ProfileRow {
   id: string;
@@ -134,7 +142,7 @@ describe.skipIf(!dbTestsEnabled)("deleting an account (local Supabase)", () => {
     expect((await api("GET", `/api/matches/${matchId}`, jack)).status).toBe(200);
   });
 
-  it("leaves the rooms still open: the seat freed, a hosted room without a host, an empty room closed", async () => {
+  it("leaves the rooms still open: the seat freed, a hosted room handed on, an empty room closed", async () => {
     const anne = await players.create();
     const jack = await players.create();
     const hosted = await openRoom(anne, 3);
@@ -146,7 +154,8 @@ describe.skipIf(!dbTestsEnabled)("deleting an account (local Supabase)", () => {
     expect((await deleteAccount(anne)).status).toBe(200);
 
     expect(await seatsOf(hosted.id)).toEqual([{ seat_index: 1, user_id: jack.id }]);
-    expect((await admin.from("rooms").select("host_id").eq("id", hosted.id).single()).data).toEqual({ host_id: null });
+    // The lowest seat left hosts it now.
+    expect((await admin.from("rooms").select("host_id").eq("id", hosted.id).single()).data).toEqual({ host_id: jack.id });
     expect(await seatsOf(joined.id)).toEqual([{ seat_index: 0, user_id: jack.id }]);
     expect((await admin.from("rooms").select("host_id").eq("id", joined.id).single()).data).toEqual({ host_id: jack.id });
     expect((await admin.from("rooms").select("id").eq("id", alone.id)).data).toEqual([]);
@@ -217,5 +226,130 @@ describe.skipIf(!dbTestsEnabled)("deleting an account (local Supabase)", () => {
     expect((await api("POST", "/api/me/delete", anne, { userId: jack.id, id: jack.id })).status).toBe(200);
     expect(await profile(jack.id)).toMatchObject({ display_name: "Calico Jack", deleted_at: null });
     expect((await admin.auth.admin.getUserById(jack.id)).data.user).not.toBeNull();
+  });
+
+  it("hands a hosted room to the lowest seat left, who can then start it", async () => {
+    const anne = await players.create();
+    const jack = await players.create();
+    const mary = await players.create();
+    const room = await openRoom(anne, 3);
+    await api("POST", "/api/rooms/join", mary, { inviteCode: room.inviteCode });
+    await api("POST", "/api/rooms/join", jack, { inviteCode: room.inviteCode });
+    expect((await deleteAccount(anne)).status).toBe(200);
+
+    expect((await admin.from("rooms").select("host_id, status").eq("id", room.id).single()).data).toEqual({ host_id: mary.id, status: "open" });
+    const rejoin = await players.create();
+    await api("POST", "/api/rooms/join", rejoin, { inviteCode: room.inviteCode });
+    expect((await api("POST", `/api/rooms/${room.id}/start`, jack)).status).toBe(403);
+    expect((await api("POST", `/api/rooms/${room.id}/start`, mary)).status).toBe(201);
+  });
+
+  describe("a deleted profile whose sign-in still works", () => {
+    // /api anonymises the profile before it removes the sign-in; here the
+    // second step never happens, so the token still passes Supabase Auth.
+    it("cannot open a room, take a seat or move", async () => {
+      const anne = await players.create();
+      const jack = await players.create();
+      const jacks = await openRoom(jack);
+      const started = await openRoom(anne);
+      await api("POST", "/api/rooms/join", jack, { inviteCode: started.inviteCode });
+      const begun = (await (await api("POST", `/api/rooms/${started.id}/start`, anne)).json()) as { room: { matchId: string } };
+      const view = (await (await api("GET", `/api/matches/${begun.room.matchId}`, anne)).json()) as { state: { _stateID: number } };
+
+      expect((await admin.rpc("delete_account", { p_user: anne.id })).error).toBeNull();
+
+      expect((await api("POST", "/api/rooms", anne, { seats: 2, mapSize: "small" })).status).toBe(401);
+      expect((await api("POST", "/api/rooms/join", anne, { inviteCode: jacks.inviteCode })).status).toBe(401);
+      expect(await seatsOf(jacks.id)).toEqual([{ seat_index: 0, user_id: jack.id }]);
+      const move = { stateID: view.state._stateID, action: { type: "MAKE_MOVE", payload: { type: "pickCaptain", args: [0, "Sloop"] } } };
+      expect((await api("POST", `/api/matches/${begun.room.matchId}/actions`, anne, move)).status).toBe(401);
+      expect((await admin.from("moves").select("id").eq("match_id", begun.room.matchId)).data).toEqual([]);
+    });
+
+    it("never keeps a seat it raced the deletion for", async () => {
+      const jack = await players.create();
+      for (let i = 0; i < 5; i++) {
+        const anne = await players.create();
+        const room = await openRoom(jack, 3);
+        const [, joined] = await Promise.all([deleteAccount(anne), api("POST", "/api/rooms/join", anne, { inviteCode: room.inviteCode })]);
+        expect([200, 401]).toContain(joined.status);
+        // Joined first, the deletion freed the seat; deleted first, the join was refused.
+        expect((await seatsOf(room.id)).map((seat) => seat.user_id)).toEqual([jack.id]);
+      }
+    });
+  });
+
+  it("answers 401 to a request whose token was checked just before its account went", async () => {
+    const anne = await players.create();
+    expect((await admin.auth.admin.deleteUser(anne.id)).error).toBeNull();
+    // As if Supabase Auth had passed the token a moment before the deletion.
+    const stale: ApiServices = { ...services, auth: async () => anne.id };
+    const res = await handleApiRequest(
+      new Request("http://localhost/api/me/delete", { method: "POST", headers: { authorization: "Bearer stale" } }),
+      {},
+      stale,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("holds the placeholder whatever writes the row later", async () => {
+    const anne = await players.create({ full_name: "Anne Bonny" });
+    expect((await deleteAccount(anne)).status).toBe(200);
+    const deleted = await profile(anne.id);
+    // The service role bypasses every policy and grant: only the trigger stands in the way.
+    const write = await admin
+      .from("profiles")
+      .update({ display_name: "Anne Bonny", avatar_url: "https://cdn.example/anne.png", deleted_at: null })
+      .eq("id", anne.id);
+    expect(write.error).toBeNull();
+    expect(await profile(anne.id)).toEqual(deleted);
+  });
+
+  it("reserves the placeholder's name for deleted profiles", async () => {
+    const anne = await players.create();
+    for (const name of [DELETED_PLAYER_NAME, "deleted PLAYER"]) {
+      expect((await anne.client.from("profiles").update({ display_name: name }).eq("id", anne.id)).error).not.toBeNull();
+      expect((await admin.from("profiles").update({ display_name: name }).eq("id", anne.id)).error).not.toBeNull();
+    }
+    // A provider that names the player so gives them the usual placeholder instead.
+    const named = await players.create({ full_name: DELETED_PLAYER_NAME });
+    expect(await profile(named.id)).toMatchObject({ display_name: `Captain ${named.id.replace(/-/g, "").slice(0, 6)}`, deleted_at: null });
+  });
+
+  it("deletes the player's sign-in providers (#106) when that table exists", async () => {
+    if (ownerSql("select to_regclass('public.profile_identities') is not null") !== "t") return;
+    const anne = await players.create();
+    const providerId = randomUUID();
+    ownerSql(`insert into public.profile_identities (provider, provider_id, profile_id) values ('discord', '${providerId}', '${anne.id}')`);
+    expect((await admin.rpc("delete_account", { p_user: anne.id })).error).toBeNull();
+    expect(ownerSql(`select count(*) from public.profile_identities where profile_id = '${anne.id}'`)).toBe("0");
+  });
+});
+
+describe.skipIf(!dbTestsEnabled)("what the deletion relies on (local Supabase catalog)", () => {
+  const rows = (query: string) => ownerSql(query).split("\n").filter(Boolean).sort();
+
+  it("knows every table that references a profile: the catalog's foreign keys, as the anonymiser lists them", () => {
+    const { keptTables, clearedTables } = anonymiserColumns(migrations);
+    const referencing = rows(
+      "select distinct conrelid::regclass::text from pg_constraint where contype = 'f' and confrelid = 'public.profiles'::regclass",
+    ).map((table) => (table.includes(".") ? table : `public.${table}`));
+    expect(referencing.filter((table) => ![...keptTables, ...clearedTables].includes(table))).toEqual([]);
+    expect(referencing).toEqual(expect.arrayContaining(keptTables));
+  });
+
+  it("knows every column of profiles: the catalog's columns, as the anonymiser lists them", () => {
+    const { kept, cleared } = anonymiserColumns(migrations);
+    expect(rows("select column_name from information_schema.columns where table_schema = 'public' and table_name = 'profiles'")).toEqual(
+      [...kept, ...cleared].sort(),
+    );
+  });
+
+  it("runs the deletion trigger as a role that bypasses row-level security", () => {
+    // handle_deleted_user is a security definer owned by postgres; rooms force row-level security.
+    expect(ownerSql("select r.rolname || ' ' || r.rolbypassrls from pg_proc p join pg_roles r on r.oid = p.proowner where p.oid = 'public.handle_deleted_user()'::regprocedure")).toBe(
+      "postgres true",
+    );
+    expect(ownerSql("select rolbypassrls from pg_roles where rolname = 'service_role'")).toBe("t");
   });
 });

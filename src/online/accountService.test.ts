@@ -247,6 +247,14 @@ describe("deleteAccount (#108)", () => {
     expect(calls.signOuts).toBe(0);
   });
 
+  it("counts a 401 as done: another tab, or a lost answer, deleted the account already", async () => {
+    const { client, calls } = fakeClient();
+    const api = fakeApi(401, { ok: false, code: "unauthorized" });
+    expect(await deleteAccount(client, { fetch: api.fetch, accessToken: async () => "tok" })).toEqual({ ok: true });
+    expect(api.calls).toHaveLength(1);
+    expect(calls.signOutScopes).toEqual(["local"]);
+  });
+
   it("asks nothing of the server when signed out", async () => {
     const { client } = fakeClient();
     const api = fakeApi(200, { ok: true });
