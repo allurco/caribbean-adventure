@@ -29,7 +29,8 @@ export function safeAvatarUrl(raw: string | null | undefined): string | null {
   } catch {
     return null;
   }
-  if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+  // No port and no credentials: the href of a URL without user info starts with its origin.
+  if (url.protocol !== "https:" || url.port || !url.href.startsWith(`${url.origin}/`)) return null;
   return isAvatar(url) ? url.href : null;
 }
 

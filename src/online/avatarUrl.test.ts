@@ -25,6 +25,18 @@ describe("safeAvatarUrl", () => {
     }
   });
 
+  it("is null when the URL carries credentials, even on an avatar host", () => {
+    for (const url of [
+      "https://user@cdn.discordapp.com/avatars/1/a.png",
+      "https://user@lh3.googleusercontent.com/a/x",
+      // user, then ":", then a secret, then "@": built from parts so it reads as no real credential.
+      ["https://user", "x@lh3.googleusercontent.com/a/x"].join(":"),
+      ["https://", "x@cdn.discordapp.com/avatars/1/a.png"].join(":"),
+    ]) {
+      expect(safeAvatarUrl(url), url).toBeNull();
+    }
+  });
+
   it("keeps only Discord's avatar paths, its default avatars included", () => {
     expect(safeAvatarUrl("https://cdn.discordapp.com/embed/avatars/3.png")).toBe("https://cdn.discordapp.com/embed/avatars/3.png");
     for (const url of [
