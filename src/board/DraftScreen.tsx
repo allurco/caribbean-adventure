@@ -215,7 +215,7 @@ export function DraftScreen({
               Back to captain selection
             </button>
           </div>
-          <DraftSeats others={view.kind === "pick" ? view.others : undefined} />
+          <DraftSeats others={view.others} />
         </div>
       </div>
     );
@@ -249,7 +249,7 @@ export function DraftScreen({
             />
           ))}
         </div>
-        <DraftSeats others={view.kind === "pick" ? view.others : undefined} />
+        <DraftSeats others={view.others} />
       </div>
     </div>
   );
