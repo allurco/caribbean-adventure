@@ -15,6 +15,9 @@ export function PublicProfile({ client, id }: { client: AccountClient; id: strin
         </p>
       )}
       {profile.status === "ready" && <ProfileCard profile={profile.profile} />}
+      {profile.status === "ready" && profile.profile.deleted && (
+        <p className="mt-3 text-[15px] text-shell-ink-soft italic">This captain's account was deleted.</p>
+      )}
     </div>
   );
 }

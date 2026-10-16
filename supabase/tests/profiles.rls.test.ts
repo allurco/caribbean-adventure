@@ -58,7 +58,7 @@ describe.skipIf(!dbTestsEnabled)("profiles row-level security (local Supabase)",
     const mary = await newPlayer({ full_name: "Mary Read", provider_id: "1234" });
     const { data, error } = await anon.from("profiles").select("*").eq("id", mary.id).single();
     expect(error).toBeNull();
-    expect(Object.keys(data ?? {}).sort()).toEqual(["avatar_url", "created_at", "display_name", "id", "updated_at"]);
+    expect(Object.keys(data ?? {}).sort()).toEqual(["avatar_url", "created_at", "deleted_at", "display_name", "id", "updated_at"]);
     expect(JSON.stringify(data)).not.toContain("1234");
     expect(JSON.stringify(data)).not.toContain("@example.test");
   });

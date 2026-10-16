@@ -22,8 +22,8 @@ export interface RoomServices {
 
 /**
  * A room as its members see it. `hostSeat` is the seat of the room's host
- * (`host_id`); null once the host's account is gone, when nobody can start
- * the room any more.
+ * (`host_id`); null only when the host holds no seat (a room whose host left
+ * before #108 handed it on), when nobody can start the room.
  */
 export function roomView(room: RoomRecord, userId: string) {
   const host = room.seats.find((s) => s.userId === room.hostId);

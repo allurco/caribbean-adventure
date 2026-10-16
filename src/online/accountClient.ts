@@ -10,6 +10,8 @@ export interface ProfileRow {
   id: string;
   display_name: string;
   avatar_url: string | null;
+  /** Set once the account was deleted (#108): the row is the "deleted player" placeholder. */
+  deleted_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,7 +35,8 @@ export interface AuthPort {
     email: string;
     options?: { emailRedirectTo?: string; shouldCreateUser?: boolean };
   }): PromiseLike<{ error: ClientError | null }>;
-  signOut(): PromiseLike<{ error: ClientError | null }>;
+  /** `local`: drop this device's session without asking Supabase Auth (the user may be gone already). */
+  signOut(options?: { scope?: "global" | "local" | "others" }): PromiseLike<{ error: ClientError | null }>;
   getSession(): PromiseLike<{ data: { session: SessionLike | null }; error: ClientError | null }>;
   onAuthStateChange(callback: (event: string, session: SessionLike | null) => void): {
     data: { subscription: Unsubscribable };

@@ -68,3 +68,17 @@ export function testPlayers(stack: () => LocalStack, admin: () => SupabaseClient
     },
   };
 }
+
+/**
+ * Runs SQL as the database owner against the local stack, for what no API
+ * can do: the Discord and Google identities of #106 come only from a real
+ * OAuth round trip, so the tests insert them into auth.identities directly.
+ * Needs `psql`; the URL comes from SUPABASE_TEST_DB_URL, else `supabase status`.
+ */
+export function ownerSql(query: string): string {
+  const url =
+    process.env.SUPABASE_TEST_DB_URL ??
+    (JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], { encoding: "utf8" })) as { DB_URL?: string }).DB_URL;
+  if (!url) throw new Error("`supabase status` gave no DB URL: is `npx supabase start` running?");
+  return execFileSync("psql", [url, "-v", "ON_ERROR_STOP=1", "-At", "-c", query], { encoding: "utf8" }).trim();
+}
