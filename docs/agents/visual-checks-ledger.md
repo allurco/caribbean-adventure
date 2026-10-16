@@ -172,6 +172,14 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-16: crafted sign-in errors show our own sentence (#106, PR #315 review)
+
+- **Branch and commit:** `feat/106-oauth-sign-in` at `5ca4547` (main merged in).
+- **Renderer:** Playwright's default headless Chromium (the headless shell), renderer not checked, so read for text and layout only; 1440×900 and an 844×390 viewport (not mobile emulation).
+- **View:** the e2e dev server (`E2E_BACKEND=1`), signed out, each case loaded fresh from `about:blank`: `/?error=server_error&error_description=<attack>`, `/#error=server_error&error_code=unexpected_failure&error_description=<attack>` and `/?error=access_denied&error_code=provider_email_needs_verification&error_description=<attack>`, where the attack reads "Your account is locked. Call +1 555 0100 or visit https://evil.example/recover".
+- **Findings:** the first two show "Sign-in did not finish. Please try again.", the third "Your email is not verified with that provider yet. Verify it there (look for a confirmation email), then sign in again."; no word of the attack anywhere on the page; the error leaves the address bar (query and hash); one console warning per case carries the raw error; no sideways scroll at either size. At 844×390 the longer unverified-email sentence pushes the card's foot (the age line) below the fold; the earlier #106 entry found the card scrolls with an error shown, not re-checked here.
+- **Not checked:** the back-forward cache reset of the provider buttons (needs a real provider round trip; `pageRestore.test.ts` only). `npm run test:e2e` was skipped: it currently fails on main at "Board your ship", before any sign-in code runs.
+
 ### 2026-10-16: Discord and Google sign-in (#106)
 
 - **Branch and commit:** `feat/106-oauth-sign-in`, uncommitted work on `05fd37e` (main).
