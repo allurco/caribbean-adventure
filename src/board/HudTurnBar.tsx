@@ -13,6 +13,8 @@ interface HudTurnBarProps {
   glory: number | null;
   /** Another seat's turn (#110): "Waiting for <captain>" in place of End Turn. */
   waitingLine?: string | null;
+  /** Ending the turn here would cost hull on the open sea (#340): shown beside End Turn. */
+  seaWarning?: string | null;
   onEndTurn: () => void;
 }
 
@@ -24,6 +26,7 @@ export function HudTurnBar({
   gold,
   glory,
   waitingLine,
+  seaWarning,
   onEndTurn,
 }: HudTurnBarProps) {
   return (
@@ -90,10 +93,19 @@ export function HudTurnBar({
         )}
 
         {/* Right: End Turn */}
-        <div className="pointer-events-auto">
+        <div className="pointer-events-auto flex items-center gap-3">
+          {turnOpen && seaWarning && (
+            <span
+              className="px-2.5 py-1 rounded bg-black/75 border border-red-500/50 text-red-200 text-xs font-semibold tracking-wide shadow-[0_2px_6px_rgba(0,0,0,0.5)]"
+              role="note"
+            >
+              {seaWarning}
+            </span>
+          )}
           {turnOpen ? (
             <button
               onClick={onEndTurn}
+              title={seaWarning ?? undefined}
               className="font-heading px-5 py-1.5 bg-amber-900/60 hover:bg-amber-800/80 border border-amber-700/40 hover:border-amber-600/60 text-amber-200/90 text-[11px] font-bold rounded uppercase tracking-widest cursor-pointer transition-all"
             >
               End Turn

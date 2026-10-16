@@ -41,6 +41,11 @@ describe("reading a saved game back", () => {
     expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
   });
 
+  it("reads a version 4 save, from before the open sea wore ships (#340), as this version's", () => {
+    const older = { ...save, version: 4 };
+    expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+  });
+
   it("sets aside a version 2 or 3 save made mid-fight: its fight follows the rules from before the ambush (#346)", () => {
     const combat = { attackerId: "0", defenderId: "1", round: 1, stage: "seamanship" };
     for (const version of [2, 3]) {
@@ -49,13 +54,20 @@ describe("reading a saved game back", () => {
     }
   });
 
-  it("reads a version 4 save, from before each captain rolled its own die of the draw (#347), as this version's, mid-fight too", () => {
-    // Version 4's draw waits on the attacker at `seamanship`, as version 5's does: its next roll is the attacker's die, then the defender's
+  it("reads a version 5 save, from before each captain rolled its own die of the draw (#347), as this version's, mid-fight too", () => {
+    // Version 5's draw waits on the attacker at `seamanship`, as version 6's does: its next roll is the attacker's die, then the defender's
     const combat = { attackerId: "0", defenderId: "1", round: 2, stage: "seamanship" };
-    for (const G of [save.state.G, { ...save.state.G, combat }]) {
-      const older = { ...save, version: 4, state: { ...save.state, G } };
+    const seaWear = { "0": 3 };
+    for (const G of [{ ...save.state.G, seaWear }, { ...save.state.G, seaWear, combat }]) {
+      const older = { ...save, version: 5, state: { ...save.state, G } };
       expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
     }
+  });
+
+  it("reads a version 4 save made mid-fight at the draw through version 5 to this version's", () => {
+    const combat = { attackerId: "0", defenderId: "1", round: 2, stage: "seamanship" };
+    const older = { ...save, version: 4, state: { ...save.state, G: { ...save.state.G, combat } } };
+    expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
   });
 
   it("still sets aside a version 3 save made mid-fight, on its way through version 4", () => {

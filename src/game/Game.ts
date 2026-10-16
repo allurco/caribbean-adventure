@@ -48,6 +48,7 @@ import { draftOver, nextToPick } from "./draftOrder";
 import { dealReplacementHand, isEliminated, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
 import { spawnFlotillaForPlayer } from "./npcManager";
 import { npcTurnEndStep } from "./npcTurnStep";
+import { applySeaWear } from "./deepSea";
 import { applyMerchantAction, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
@@ -359,9 +360,14 @@ export const Caribbean: Game<CaribbeanState> = {
             seatStillIn(G, ctx.playOrder, ctx.turn === 0 ? ctx.playOrderPos : (ctx.playOrderPos + 1) % ctx.playOrder.length),
           next: ({ G, ctx }) => seatStillIn(G, ctx.playOrder, (ctx.playOrderPos + 1) % ctx.playOrder.length),
         },
-        // The NPCs sail as the turn ends; a turn that ends in a fight
-        // starts it here, and its NPCs sail when the fight resolves (#288)
-        onEnd: ({ G, random }) => npcTurnEndStep(G, random.Number),
+        // The open sea wears the ship of a turn that ends on it (#340), not
+        // one that ends in a fight. The NPCs sail as the turn ends; a turn
+        // that ends in a fight starts it here, and its NPCs sail when the
+        // fight resolves (#288)
+        onEnd: ({ G, ctx, random }) => {
+          applySeaWear(G, ctx.currentPlayer, ctx.turn);
+          npcTurnEndStep(G, random.Number);
+        },
       },
       moves: {
         // A player whose ship was lost picks a new captain from the hand their turn dealt (#265), on the draft's screen
