@@ -28,6 +28,11 @@ import type { CaribbeanState, NPCShip, ShipState } from "./types";
  *   another seat picked: every seat picks at once, so nobody waits, and none
  *   picks knowing another's choice. A seat that has picked reads as a ship
  *   not yet commanded, marked `draftPicked`; all is shown once the draft ends.
+ *   Accepted leak: a seat's own start can hint at another's pick. Taking
+ *   command (`findHomeStart`) skips a hex another ship already holds, so a
+ *   seat whose ship starts beside its nation's port, or at another of its
+ *   ports, rather than at the docking hex may guess that another seat picked
+ *   a captain of the same nation first.
  *
  * Everything drawn on the board or used to decide visibility stays: the map,
  * positions, classes, captains, damage, glory, bounties, pirates, combat,

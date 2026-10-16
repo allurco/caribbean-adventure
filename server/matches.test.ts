@@ -17,7 +17,8 @@ silenceInvalidMoveLogs();
 const ANNE = "00000000-0000-4000-8000-00000000000a";
 const JACK = "00000000-0000-4000-8000-00000000000b";
 const MARY = "00000000-0000-4000-8000-00000000000c";
-const TOKENS: Record<string, string> = { anne: ANNE, jack: JACK, mary: MARY };
+const NED = "00000000-0000-4000-8000-00000000000d";
+const TOKENS: Record<string, string> = { anne: ANNE, jack: JACK, mary: MARY, ned: NED };
 
 let store: MemoryOnlineStore;
 let services: ApiServices;
@@ -53,6 +54,36 @@ async function startedMatch(): Promise<string> {
   await call("POST", "/api/rooms/join", "jack", { inviteCode: created.room.inviteCode });
   const started = (await (await call("POST", `/api/rooms/${created.room.id}/start`, "anne")).json()) as { room: { matchId: string } };
   return started.room.matchId;
+}
+
+/** A started match seating `tokens` in order: the first is the host, seat 0. */
+async function startedMatchOf(tokens: readonly string[]): Promise<string> {
+  const [host, ...guests] = tokens;
+  const created = (await (await call("POST", "/api/rooms", host, { seats: tokens.length, mapSize: "small", mapSeed: 5 })).json()) as {
+    room: { id: string; inviteCode: string };
+  };
+  for (const guest of guests) await call("POST", "/api/rooms/join", guest, { inviteCode: created.room.inviteCode });
+  const started = (await (await call("POST", `/api/rooms/${created.room.id}/start`, host)).json()) as { room: { matchId: string } };
+  return started.room.matchId;
+}
+
+/**
+ * Makes `userId`'s next writes lose the compare-and-swap, one per entry of
+ * `losses`, in order: each entry runs first (another seat's pick landing, or
+ * nothing for a write that leaves the state as it was) and the write is then
+ * refused, as the database refuses a write whose expected state id has moved on.
+ */
+function loseWritesOf(userId: string, losses: Array<() => Promise<unknown>>): void {
+  const inner = services.store;
+  services.store = {
+    ...inner,
+    async commitMove(update) {
+      const loss = update.move.userId === userId ? losses.shift() : undefined;
+      if (!loss) return inner.commitMove(update);
+      await loss();
+      return false;
+    },
+  };
 }
 
 async function view(matchId: string, token: string): Promise<MatchBody> {
@@ -243,6 +274,45 @@ describe("POST /api/matches/:id/actions", () => {
     expect([a.status, b.status]).toEqual([200, 200]);
     expect(await store.peekMoves(matchId)).toHaveLength(2);
     expect(((await store.peekMatch(matchId))!.state as View).ctx.phase).toBe("main");
+  });
+
+  it("retries a draft pick that lost its write to each other seat's pick, and lands it: four seats at once (#111)", async () => {
+    const matchId = await startedMatchOf(["anne", "jack", "mary", "ned"]);
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    // While Anne's pick is in flight, Jack's, Mary's and Ned's land first, each winning the write
+    loseWritesOf(ANNE, [
+      () => act(matchId, "jack", move(s0, "pickCaptain", 0, "Sloop")),
+      () => act(matchId, "mary", move(s0, "pickCaptain", 0, "Sloop")),
+      () => act(matchId, "ned", move(s0, "pickCaptain", 0, "Sloop")),
+    ]);
+    const anne = await act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop"));
+    expect(anne.status).toBe(200);
+    expect(((await anne.json()) as MatchBody).state.ctx).toMatchObject({ phase: "main", currentPlayer: "0" });
+    expect((await store.peekMoves(matchId)).map((m) => m.seat)).toEqual([1, 2, 3, 0]);
+  });
+
+  it("retries a draft pick once after one lost write, and lands it (#111)", async () => {
+    const matchId = await startedMatchOf(["anne", "jack", "mary"]);
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    loseWritesOf(ANNE, [() => act(matchId, "jack", move(s0, "pickCaptain", 0, "Sloop"))]);
+    const anne = await act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop"));
+    expect(anne.status).toBe(200);
+    expect(((await anne.json()) as MatchBody).state.ctx.phase).toBe("draft");
+    expect((await store.peekMoves(matchId)).map((m) => [m.seat, m.stateIdBefore])).toEqual([
+      [1, s0],
+      [0, s0 + 1],
+    ]);
+  });
+
+  it("gives up on a draft pick with 409 once it has lost more writes than the match has other seats (#111)", async () => {
+    const matchId = await startedMatchOf(["anne", "jack", "mary", "ned"]);
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    const nothing = async () => undefined;
+    loseWritesOf(ANNE, [nothing, nothing, nothing, nothing, nothing]);
+    const anne = await act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop"));
+    expect(anne.status).toBe(409);
+    expect(await anne.json()).toMatchObject({ code: "stale_state" });
+    expect(await store.peekMoves(matchId)).toHaveLength(0);
   });
 
   it("still refuses a stale pick from a seat that has already picked (#111)", async () => {

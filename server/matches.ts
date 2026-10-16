@@ -14,6 +14,7 @@
 import { fail, isUuid, json, readBoundedJsonObject } from "./http";
 import { applyAction, parseAction, seatMayActNow, viewFor, type MatchAction, type MatchState } from "./matchEngine";
 import { hasPicked } from "../src/game/draftOrder";
+import { MAX_SEATS } from "../src/game/seats";
 import type { ApiServices } from "./handleApiRequest";
 import type { MatchSignals } from "./matchSignals";
 import type { SeatRecord, SeatSeen } from "./onlineStore";
@@ -98,8 +99,14 @@ export async function getMatch(request: Request, matchId: string, userId: string
   return json({ ok: true, changed: true, ...seatView(match.id, seat, match.state as MatchState, online) });
 }
 
-/** A draft pick that lost the write to another seat's is tried once more against the state that won. */
-const COMMIT_ATTEMPTS = 2;
+/**
+ * How many times a draft pick is tried against the latest state. In the
+ * draft the only writes are picks, one per seat (End Turn is refused, there
+ * are no fights), so a pick can lose its write at most once to each other
+ * seat: a match of `seats` needs `seats` tries. Past that something else is
+ * writing, and the pick is sent back to refetch.
+ */
+const commitAttempts = (seats: readonly SeatRecord[]) => Math.min(seats.length, MAX_SEATS);
 
 /** `POST /api/matches/:id/actions` with `{ stateID, action }`. */
 export async function postAction(
@@ -171,7 +178,7 @@ export async function postAction(
     // Another write won. A draft pick is tried once more on what is there now; anything else is sent back to refetch.
     const latest = await store.getMatch(matchId);
     if (!latest) return fail(409, "stale_state", "stale state", {});
-    const retry = attempt < COMMIT_ATTEMPTS && commutesInDraft(latest.state as MatchState, seat, parsed.action);
+    const retry = attempt < commitAttempts(loaded.seats) && commutesInDraft(latest.state as MatchState, seat, parsed.action);
     if (!retry) return fail(409, "stale_state", "stale state", seatView(match.id, seat, latest.state as MatchState, online));
     match = latest;
   }
@@ -185,7 +192,7 @@ export async function postAction(
  * not undone. Every other move stays strict: made against the state it saw,
  * or refused.
  */
-export function commutesInDraft(state: MatchState, seat: string, action: MatchAction): boolean {
+function commutesInDraft(state: MatchState, seat: string, action: MatchAction): boolean {
   return state.ctx.phase === "draft" && action.type === "MAKE_MOVE" && action.payload.type === "pickCaptain" && !hasPicked(state.G, seat);
 }
 
