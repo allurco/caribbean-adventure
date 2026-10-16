@@ -7,7 +7,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MapSizeId } from "../src/game/mapConfig";
 import type { AuthVerifier } from "./handleApiRequest";
-import type { ClaimOutcome, JoinOutcome, OnlineStore, RoomRecord, RoomStatus, StartOutcome, VoyageFight } from "./onlineStore";
+import {
+  accountGone,
+  type ClaimOutcome,
+  type JoinOutcome,
+  type OnlineStore,
+  type RoomRecord,
+  type RoomStatus,
+  type StartOutcome,
+  type VoyageFight,
+} from "./onlineStore";
 
 interface VoyageRow {
   room_id: string;
@@ -37,8 +46,30 @@ interface RoomRow {
   matches: { id: string }[] | { id: string } | null;
 }
 
-function check<T>({ data, error }: { data: T; error: { message: string } | null }): T {
-  if (error) throw new Error(error.message);
+interface DatabaseError {
+  message: string;
+  /** Postgres' SQLSTATE, when the error came from the database. */
+  code?: string;
+}
+
+/** `require_live_profile`'s refusal (supabase/migrations/*_delete_account.sql): invalid_authorization_specification. */
+const PROFILE_DELETED = "28000";
+const FOREIGN_KEY_VIOLATION = "23503";
+
+/**
+ * The error a store operation throws for a database error: `accountGone()`
+ * when it says the account is deleted (#108), the profile refused by
+ * `require_live_profile` or a rate counter for an auth user deleted since the
+ * token was checked; otherwise the database's message.
+ */
+export function storeError(error: DatabaseError): Error {
+  if (error.code === PROFILE_DELETED) return accountGone();
+  if (error.code === FOREIGN_KEY_VIOLATION && error.message.includes("rate_counters_user_id_fkey")) return accountGone();
+  return new Error(error.message);
+}
+
+function check<T>({ data, error }: { data: T; error: DatabaseError | null }): T {
+  if (error) throw storeError(error);
   return data;
 }
 
@@ -209,6 +240,18 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
           p_args: update.move.args,
         }),
       ) as boolean;
+    },
+
+    async anonymiseAccount(userId) {
+      const db = await client();
+      check(await db.rpc("delete_account", { p_user: userId }));
+    },
+
+    async deleteSignIn(userId) {
+      const db = await client();
+      const { error } = await db.auth.admin.deleteUser(userId);
+      // Gone already (a retry after a lost answer): done.
+      if (error && error.status !== 404) throw new Error(error.message);
     },
   };
 }

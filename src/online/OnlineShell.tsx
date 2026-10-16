@@ -51,7 +51,7 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
 
 /** The signed-in captain for the nav board: their profile once read, else a nameless seal on their id. */
 function captainOf(session: AccountSession, profile: ProfileState): Profile {
-  return profile.status === "ready" ? profile.profile : { id: session.userId, displayName: "", avatarUrl: null };
+  return profile.status === "ready" ? profile.profile : { id: session.userId, displayName: "", avatarUrl: null, deleted: false };
 }
 
 function pageKey(page: ShellPage): string {

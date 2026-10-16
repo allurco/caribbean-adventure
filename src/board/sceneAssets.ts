@@ -21,9 +21,11 @@ export const SCENE_FONTS: readonly string[] = [
 
 /** Files under public/ the board never loads, and why. */
 export const NOT_BOARD_ASSETS: Readonly<Record<string, string>> = {
-  "vite.svg": "the page's favicon, loaded by the browser",
   "manifest.webmanifest": "the web manifest (#123), read by the browser when the page is installed",
-  "icon.svg": "the web manifest's icon (#123), read by the browser, never the board",
+  "favicon-48.png": "the page's favicon (#123), the same art as the app icons, loaded by the browser",
+  "icon-192.png": "the web manifest's 192 px icon (#123), read by the browser when the page is installed",
+  "icon-512.png": "the web manifest's 512 px icon, any and maskable (#123), read by the browser when the page is installed",
+  "apple-touch-icon.png": "the home-screen icon iOS reads from index.html (#123), never the board",
   "harbour/harbour-still.webp": "the online shell's harbour still (#122), a CSS background behind the shell, never the board",
   "waternormals.jpg": "not loaded anywhere: the sea's normals come from the wave cascades",
 };

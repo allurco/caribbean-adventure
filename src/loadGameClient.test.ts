@@ -75,6 +75,14 @@ describe("loading the game client", () => {
     expect(debug).toBe(false);
   });
 
+  it("opens the dev debug panel collapsed, so it does not cover the port panel or the tavern; '.' or its toggle opens it", async () => {
+    const { loadGameClient, loadSeatClient } = await import("./loadGameClient");
+    const hotseat = (await loadGameClient(undefined, true)) as unknown as { debug: unknown };
+    const seats = (await loadSeatClient(undefined, true)) as unknown as { debug: unknown };
+    expect(hotseat.debug).toEqual({ collapseOnLoad: true });
+    expect(seats.debug).toEqual({ collapseOnLoad: true });
+  });
+
   it("holds each seat on one page to its own combat steps (#113 review); the hotseat table keeps pressing both sides", async () => {
     const { loadSeatClient, loadGameClient } = await import("./loadGameClient");
     const seated = (await loadSeatClient(undefined, false, 2)) as unknown as { game: Game<CaribbeanState> };

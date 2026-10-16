@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AccountClient, IdentitiesResult, ProfileRow, RowResult, SessionLike } from "./accountClient";
 import {
   accessToken,
+  deleteAccount,
   fetchLinkedProviders,
   fetchProfile,
   saveDisplayName,
@@ -10,6 +11,7 @@ import {
   signOut,
   watchSession,
 } from "./accountService";
+import type { FetchLike, RequestInitLike } from "./roomApi";
 
 const ID = "3f1c2b4a-9d8e-4f7a-b6c5-1a2b3c4d5e6f";
 
@@ -18,6 +20,7 @@ function row(overrides: Partial<ProfileRow> = {}): ProfileRow {
     id: ID,
     display_name: "Captain 3f1c2b",
     avatar_url: null,
+    deleted_at: null,
     created_at: "2026-10-14T00:00:00Z",
     updated_at: "2026-10-14T00:00:00Z",
     ...overrides,
@@ -31,6 +34,7 @@ interface Calls {
   selects: { columns: string; column: string; value: string }[];
   updates: { values: unknown; column: string; value: string }[];
   signOuts: number;
+  signOutScopes: (string | undefined)[];
 }
 
 function fakeClient(opts: {
@@ -43,7 +47,7 @@ function fakeClient(opts: {
   select?: RowResult;
   update?: RowResult;
 } = {}): { client: AccountClient; calls: Calls; emit: (session: SessionLike | null) => void; unsubscribe: () => void } {
-  const calls: Calls = { otp: [], oauth: [], identities: [], selects: [], updates: [], signOuts: 0 };
+  const calls: Calls = { otp: [], oauth: [], identities: [], selects: [], updates: [], signOuts: 0, signOutScopes: [] };
   const listeners: ((event: string, session: SessionLike | null) => void)[] = [];
   const unsubscribe = vi.fn();
   const client: AccountClient = {
@@ -59,8 +63,9 @@ function fakeClient(opts: {
           ? { data: { url: null }, error: { message: opts.oauthError } }
           : { data: { url: "https://project.supabase.co/auth/v1/authorize" }, error: null };
       },
-      signOut: async () => {
+      signOut: async (options) => {
         calls.signOuts++;
+        calls.signOutScopes.push(options?.scope);
         return { error: opts.signOutError ? { message: opts.signOutError } : null };
       },
       getSession: async () => ({ data: { session: opts.session ?? null }, error: null }),
@@ -219,9 +224,19 @@ describe("fetchProfile", () => {
     const { client, calls } = fakeClient({ select: { data: row(), error: null } });
     expect(await fetchProfile(client, ID)).toEqual({
       ok: true,
-      profile: { id: ID, displayName: "Captain 3f1c2b", avatarUrl: null },
+      profile: { id: ID, displayName: "Captain 3f1c2b", avatarUrl: null, deleted: false },
     });
-    expect(calls.selects).toEqual([{ columns: "id, display_name, avatar_url", column: "id", value: ID }]);
+    expect(calls.selects).toEqual([{ columns: "id, display_name, avatar_url, deleted_at", column: "id", value: ID }]);
+  });
+
+  it("says when the profile is a deleted player's placeholder (#108)", async () => {
+    const { client } = fakeClient({
+      select: { data: row({ display_name: "Deleted player", deleted_at: "2026-10-16T00:00:00Z" }), error: null },
+    });
+    expect(await fetchProfile(client, ID)).toEqual({
+      ok: true,
+      profile: { id: ID, displayName: "Deleted player", avatarUrl: null, deleted: true },
+    });
   });
 
   it("drops an avatar URL that is not a safe https URL", async () => {
@@ -250,7 +265,7 @@ describe("saveDisplayName", () => {
     const { client, calls } = fakeClient({ update: { data: row({ display_name: "Anne Bonny" }), error: null } });
     expect(await saveDisplayName(client, ID, "  Anne   Bonny ")).toEqual({
       ok: true,
-      profile: { id: ID, displayName: "Anne Bonny", avatarUrl: null },
+      profile: { id: ID, displayName: "Anne Bonny", avatarUrl: null, deleted: false },
     });
     expect(calls.updates).toEqual([{ values: { display_name: "Anne Bonny" }, column: "id", value: ID }]);
   });
@@ -281,5 +296,51 @@ describe("accessToken", () => {
   it("is null when signed out", async () => {
     const { client } = fakeClient({ session: null });
     expect(await accessToken(client)).toBeNull();
+  });
+});
+
+describe("deleteAccount (#108)", () => {
+  function fakeApi(status: number, body: unknown): { fetch: FetchLike; calls: { url: string; init: RequestInitLike }[] } {
+    const calls: { url: string; init: RequestInitLike }[] = [];
+    return {
+      calls,
+      fetch: async (url, init) => {
+        calls.push({ url, init });
+        return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+      },
+    };
+  }
+
+  it("asks /api to delete the signed-in player's account, with no id of its own, then signs out on this device", async () => {
+    const { client, calls } = fakeClient();
+    const api = fakeApi(200, { ok: true });
+    expect(await deleteAccount(client, { fetch: api.fetch, accessToken: async () => "tok" })).toEqual({ ok: true });
+    expect(api.calls).toEqual([{ url: "/api/me/delete", init: { method: "POST", headers: { authorization: "Bearer tok" } } }]);
+    // The server has removed the sign-in already: only the local session is left to drop.
+    expect(calls.signOutScopes).toEqual(["local"]);
+  });
+
+  it("keeps the player signed in and says why when the server refuses", async () => {
+    const { client, calls } = fakeClient();
+    const limited = await deleteAccount(client, { fetch: fakeApi(429, { ok: false, code: "rate_limited" }).fetch, accessToken: async () => "tok" });
+    expect(limited).toEqual({ ok: false, error: "Too many tries. Wait an hour and try again." });
+    const broken = await deleteAccount(client, { fetch: fakeApi(500, { ok: false, code: "internal" }).fetch, accessToken: async () => "tok" });
+    expect(broken).toMatchObject({ ok: false });
+    expect(calls.signOuts).toBe(0);
+  });
+
+  it("counts a 401 as done: another tab, or a lost answer, deleted the account already", async () => {
+    const { client, calls } = fakeClient();
+    const api = fakeApi(401, { ok: false, code: "unauthorized" });
+    expect(await deleteAccount(client, { fetch: api.fetch, accessToken: async () => "tok" })).toEqual({ ok: true });
+    expect(api.calls).toHaveLength(1);
+    expect(calls.signOutScopes).toEqual(["local"]);
+  });
+
+  it("asks nothing of the server when signed out", async () => {
+    const { client } = fakeClient();
+    const api = fakeApi(200, { ok: true });
+    expect(await deleteAccount(client, { fetch: api.fetch, accessToken: async () => null })).toEqual({ ok: false, error: "Sign in first." });
+    expect(api.calls).toEqual([]);
   });
 });
