@@ -8,6 +8,7 @@
  * channel three hexes wide the middle is only two from land, so deep sea
  * appears only where open water runs five or more hexes across.
  */
+import { applyDamage } from "./combat";
 import { wrappedDistance, wrappedEquals, type Hex, type MapWrap } from "./hex";
 import type { CaribbeanState, MapCell, ShipState } from "./types";
 
@@ -33,4 +34,18 @@ export function seaWillWear(state: SeaState, ship: Pick<ShipState, "position" | 
   if (state.combat) return false;
   if (!ship.stats?.shallowDraft || ship.stats.hull.current < 2) return false;
   return isDeepSea(state.cells, ship.position, state.wrap);
+}
+
+/**
+ * The sea's toll as `player`'s turn `turn` ends: one hull point off their
+ * ship when `seaWillWear` says so, through the usual damage (repaired at
+ * port at the usual cost), recorded in `G.seaWear`. NPCs are never worn.
+ * Answers whether it wore the ship.
+ */
+export function applySeaWear(G: CaribbeanState, player: string, turn: number): boolean {
+  const ship = G.ships[player];
+  if (!ship || !seaWillWear(G, ship)) return false;
+  applyDamage(ship, { hull: 1, crew: 0, masts: 0 });
+  G.seaWear = { player, turn };
+  return true;
 }

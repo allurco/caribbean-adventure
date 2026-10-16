@@ -320,6 +320,19 @@ export interface CaribbeanState {
    * reason as `pirates` (missing means no seat is waiting).
    */
   lostShips?: Record<string, LostShip>;
+  /**
+   * The last time the open sea wore a ship down (#340): whose, and on which
+   * turn, for the board's "the open sea strains your hull" line. Optional:
+   * missing until the sea first wears a ship, and in matches from before it.
+   */
+  seaWear?: SeaWear;
+}
+
+/** A ship worn one hull point by the open sea as its turn ended (#340). */
+export interface SeaWear {
+  player: string;
+  /** boardgame.io's `ctx.turn` of the turn that ended. */
+  turn: number;
 }
 
 /** How a player's ship was lost: sunk, or (#258) taken by boarding. */

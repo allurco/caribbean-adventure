@@ -41,6 +41,11 @@ describe("reading a saved game back", () => {
     expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
   });
 
+  it("reads a version 4 save, from before the open sea wore ships (#340), as this version's", () => {
+    const older = { ...save, version: 4 };
+    expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+  });
+
   it("sets aside a version 2 or 3 save made mid-fight: its fight follows the rules from before the ambush (#346)", () => {
     const combat = { attackerId: "0", defenderId: "1", round: 1, stage: "seamanship" };
     for (const version of [2, 3]) {
