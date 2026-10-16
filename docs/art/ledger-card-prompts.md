@@ -103,9 +103,12 @@ One image each, centred and small:
 
 ## Made so far
 
-| Card | Status |
-|---|---|
-| Delivery, Assassination, Escort | Made (1200×896). In the Escort image the sloop sails alongside the merchant ship rather than behind it; kept, as it still reads as an escort. |
-| Region mission, mission card back | To make |
-| Rumours (back, found, empty) | To make |
-| Deed frame and emblems | To make |
+All thirteen images are made: the missions and the rumours at 1200×896, the deed frame and emblems at 1024×1024. They are AI-generated. Record that in `NOTICE` when each slice adds them.
+
+Small departures from the prompts, all kept because the card still reads:
+
+- **Escort:** the sloop sails alongside the merchant ship, not behind it.
+- **Rumour found:** the chest is full of coins, not "a few spilling out", and there's no ship offshore.
+- **Rumour empty:** the seagull perches on a rock beside the chest, not on its lid.
+- **Deed emblems:** each one fills its square instead of sitting small in the centre, on the same parchment as the frame's blank centre. Draw an emblem inside the medallion frame's inner circle, about 45% of the frame's width, and clip it to a circle (`clip-path: circle()`). The parchment then joins up and the square's corners never cover the ring.
+- **Wax seal:** most images carry a small red wax seal as their one accent, including the frame's ring and several emblems. That suits the set, but the card UI shouldn't add another red accent next to it.
