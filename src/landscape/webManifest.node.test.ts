@@ -26,19 +26,35 @@ interface Manifest {
 const publicFile = (src: string) => root(`public/${src.replace(/^\//, "")}`);
 const readManifest = () => JSON.parse(readFileSync(root(`public/${manifestHref}`), "utf8")) as Manifest;
 
-/** The SVG icon is a few shapes; the PNGs are painted art, downscaled and palette-compressed. */
-const SVG_ICON_BUDGET = 8 * 1024;
-const PNG_ICON_BUDGET = 128 * 1024;
+/** The icons are painted art, downscaled and compressed; small enough for an install, never a payload. */
+const ICON_BUDGET = 128 * 1024;
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 /** PNG colour types with an alpha channel: grey + alpha, RGBA. */
 const ALPHA_COLOUR_TYPES = [4, 6];
 
-/** Width, height and colour type from a PNG's IHDR chunk, which always follows the signature. */
-function pngHeader(bytes: Buffer): { width: number; height: number; colourType: number } {
+interface PngChunk {
+  type: string;
+  data: Buffer;
+}
+
+/** A PNG's chunks in order, walked from just after the signature. */
+function pngChunks(bytes: Buffer): PngChunk[] {
   expect([...bytes.subarray(0, 8)]).toEqual(PNG_SIGNATURE);
-  expect(bytes.toString("ascii", 12, 16)).toBe("IHDR");
-  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20), colourType: bytes[25] };
+  const chunks: PngChunk[] = [];
+  for (let offset = 8; offset + 12 <= bytes.length; ) {
+    const length = bytes.readUInt32BE(offset);
+    chunks.push({ type: bytes.toString("ascii", offset + 4, offset + 8), data: bytes.subarray(offset + 8, offset + 8 + length) });
+    offset += 12 + length; // length, type, data, CRC
+  }
+  return chunks;
+}
+
+/** Width, height and colour type from a PNG's IHDR chunk, which always comes first. */
+function pngHeader(bytes: Buffer): { width: number; height: number; colourType: number } {
+  const [ihdr] = pngChunks(bytes);
+  expect(ihdr.type).toBe("IHDR");
+  return { width: ihdr.data.readUInt32BE(0), height: ihdr.data.readUInt32BE(4), colourType: ihdr.data[9] };
 }
 
 describe("the web manifest", () => {
@@ -55,14 +71,13 @@ describe("the web manifest", () => {
     for (const icon of readManifest().icons ?? []) {
       const file = publicFile(icon.src);
       expect(existsSync(file), icon.src).toBe(true);
-      const budget = icon.type === "image/png" ? PNG_ICON_BUDGET : SVG_ICON_BUDGET;
-      expect(statSync(file).size, icon.src).toBeLessThan(budget);
+      expect(statSync(file).size, icon.src).toBeLessThan(ICON_BUDGET);
     }
   });
 
-  it("keeps the SVG icon and offers 192 and 512 PNGs for any purpose, and a 512 maskable one", () => {
+  it("offers only PNGs of the one artwork: 192 and 512 for any purpose, and a 512 maskable one", () => {
     const icons = readManifest().icons ?? [];
-    expect(icons).toContainEqual(expect.objectContaining({ src: "/icon.svg", type: "image/svg+xml" }));
+    expect(icons.map((icon) => icon.type)).toEqual(icons.map(() => "image/png"));
     const pngs = icons.filter((icon) => icon.type === "image/png").map((icon) => `${icon.sizes} ${icon.purpose}`);
     expect(pngs).toEqual(expect.arrayContaining(["192x192 any", "512x512 any", "512x512 maskable"]));
   });
@@ -83,13 +98,25 @@ describe("the apple-touch-icon", () => {
   });
 
   it("is an opaque 180x180 PNG, since iOS fills any transparency with black", () => {
-    const bytes = readFileSync(publicFile(href ?? "/apple-touch-icon.png"));
+    expect(href).toBeDefined();
+    const file = publicFile(href as string);
+    const bytes = readFileSync(file);
     const { width, height, colourType } = pngHeader(bytes);
     expect([width, height]).toEqual([180, 180]);
     expect(ALPHA_COLOUR_TYPES).not.toContain(colourType);
     // A palette or truecolour PNG can still carry transparency in a tRNS chunk.
-    expect(bytes.includes("tRNS")).toBe(false);
-    expect(statSync(publicFile(href ?? "/apple-touch-icon.png")).size).toBeLessThan(PNG_ICON_BUDGET);
+    expect(pngChunks(bytes).map((chunk) => chunk.type)).not.toContain("tRNS");
+    expect(statSync(file).size).toBeLessThan(ICON_BUDGET);
+  });
+});
+
+describe("the favicon", () => {
+  const link = /<link\s+rel="icon"\s+type="([^"]+)"\s+href="([^"]+)"/.exec(html);
+
+  it("is the same painted art as the manifest's icons, as a small PNG", () => {
+    expect(link?.slice(1)).toEqual(["image/png", "/favicon-48.png"]);
+    const { width, height } = pngHeader(readFileSync(publicFile("/favicon-48.png")));
+    expect([width, height]).toEqual([48, 48]);
   });
 });
 
