@@ -141,7 +141,7 @@ describe("the turn after a fight, with three seats (#284)", () => {
     client.moves.attackShip("1");
     expect(stateOf(client).ctx.phase).toBe("combat");
     expect(current(client)).toBe("0");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
     expect(current(client)).toBe("0");
   });
 

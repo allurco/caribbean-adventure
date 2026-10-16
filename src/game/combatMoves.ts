@@ -10,15 +10,16 @@
  * `G.combat` and answers "ended": the caller then sets the phase back to
  * main.
  */
-import type { CaribbeanState, CombatAction, CombatStage, CombatState, NPCShip, ShipState, Volley } from "./types";
-import { COMBAT_ACTIONS } from "./types";
+import type { CaribbeanState, CombatAction, CombatStage, CombatState, NPCShip, ShipState, VolleyAim } from "./types";
+import { COMBAT_ACTIONS, VOLLEY_AIMS } from "./types";
 import {
   canReturnFire,
   resolveSeamanship,
   resolveFleeAttempt,
   shouldNPCFlee,
   countCannonHits,
-  calculateDamage,
+  aimedDamage,
+  npcAim,
   applyDamage,
   isSunk,
   isDerelict,
@@ -233,11 +234,13 @@ export function applyFleeAttempt(G: CaribbeanState, d6: RollD6): CombatStepOutco
   const pursuerManeuv = pursuerShip.stats?.maneuverability ?? 0;
   const fleeerManeuv = fleeerShip.stats?.maneuverability ?? 0;
 
+  // Shot-away masts slow the flight (#348)
   const outcome = resolveFleeAttempt(
     pursuerManeuv,
     pursuerRoll,
     fleeerManeuv,
-    fleeerRoll
+    fleeerRoll,
+    fleeerShip.damage.masts
   );
 
   combat.fleeOutcome = outcome;
@@ -270,28 +273,28 @@ function combatantOf(G: CaribbeanState, combat: CombatState, id: string): ShipSt
 }
 
 /** The other side of the fight from `id`. */
-function opponentOf(combat: CombatState, id: string): string {
+function opponentOf(combat: Pick<CombatState, "attackerId" | "defenderId">, id: string): string {
   return id === combat.attackerId ? combat.defenderId : combat.attackerId;
 }
 
 /**
  * One volley (#346): `shooterId` fires every gun its crew can man at the
- * other side, and the damage lands at once, before anything else is rolled.
- * Recorded in the round's volleys and in the side's hits.
+ * other side, aimed at `aim` (#348), and the damage lands at once, before
+ * anything else is rolled. Recorded in the round's volleys and in the side's hits.
  */
-function fireVolley(G: CaribbeanState, combat: CombatState, volleys: Volley[], shooterId: string, d6: RollD6): void {
+function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, aim: VolleyAim, d6: RollD6): void {
   const shooter = combatantOf(G, combat, shooterId);
   const targetId = opponentOf(combat, shooterId);
   const target = combatantOf(G, combat, targetId);
   const guns = getEffectiveCannons(shooter);
   const hits = fireBroadside(guns, d6);
-  volleys.push({ shooterId, guns, hits });
+  combat.volleys = [...(combat.volleys ?? []), { shooterId, guns, aim, hits }];
   if (shooterId === combat.attackerId) combat.attackerHits = hits;
   else combat.defenderHits = hits;
   if (hits === 0) return;
 
   const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
-  applyDamage(target, calculateDamage(hits, upgrades));
+  applyDamage(target, aimedDamage(hits, aim, upgrades));
   // An escort's attacker that takes a hit fails its no-damage condition.
   if (targetId === combat.attackerId) {
     const mission = G.ships[combat.attackerId].activeMission;
@@ -313,27 +316,70 @@ function firstToFire(combat: Pick<CombatState, "round" | "attackerId" | "defende
 }
 
 /**
- * The cannons, volley by volley (#346): the first to fire (`firstToFire`)
- * fires and its damage lands; then the other side answers if it still can
- * (`canReturnFire`, after that damage), and its damage lands. After a caught
- * flight only the pursuer fires. The sunk and the derelict are settled in
- * the resolution.
+ * The ship that fires the volley the fight waits on (#348): at the cannons
+ * the first to fire (`firstToFire`), at the answer the other side.
  */
-export function applyCannons(G: CaribbeanState, d6: RollD6): void {
+export function volleyShooter(combat: Pick<CombatState, "stage" | "round" | "attackerId" | "defenderId" | "seamanshipWinner" | "fleeOutcome">): string {
+  const first = firstToFire(combat);
+  return combat.stage === "returnFire" ? opponentOf(combat, first) : first;
+}
+
+/** Whether the engine aims this ship's volleys (an NPC's, `npcAim`), not a seat. */
+export function engineAims(combat: Pick<CombatState, "isNPCCombat" | "defenderId">, shooterId: string): boolean {
+  return combat.isNPCCombat && shooterId === combat.defenderId;
+}
+
+/**
+ * May the volley the fight waits on be fired with `aim`? Only at the
+ * cannons or the answer (`stage`), and only with hull, masts or crew, unless
+ * the engine aims it (an NPC's volley, whose aim is its own: `aim` is not read).
+ */
+export function canFireVolley(G: CaribbeanState, stage: "cannons" | "returnFire", aim: unknown): boolean {
+  if (!atCombatStage(G, stage)) return false;
   const combat = fightOf(G);
-  const volleys: Volley[] = [];
-  combat.volleys = volleys;
+  return engineAims(combat, volleyShooter(combat)) || isOneOf(VOLLEY_AIMS, aim);
+}
+
+/** The aim the shooter fires with: its seat's, or the engine's for an NPC. */
+function aimOf(combat: CombatState, shooterId: string, aim: VolleyAim | undefined): VolleyAim {
+  return engineAims(combat, shooterId) || aim === undefined ? npcAim() : aim;
+}
+
+/**
+ * The cannons, volley by volley (#346): the first to fire (`firstToFire`)
+ * fires, aimed (#348), and its damage lands. Then the other side answers if
+ * it still can (`canReturnFire`, after that damage): an NPC at once, aimed
+ * by the engine; a seat at its own step, `returnFire`, to aim it. After a
+ * caught flight only the pursuer fires. The sunk and the derelict are
+ * settled in the resolution. Check `canFireVolley` first.
+ */
+export function applyCannons(G: CaribbeanState, aim: VolleyAim | undefined, d6: RollD6): void {
+  const combat = fightOf(G);
+  combat.volleys = [];
   combat.attackerHits = 0;
   combat.defenderHits = 0;
 
   const first = firstToFire(combat);
-  fireVolley(G, combat, volleys, first, d6);
+  fireVolley(G, combat, first, aimOf(combat, first, aim), d6);
 
   const answering = opponentOf(combat, first);
-  if (combat.fleeOutcome !== "caught" && canReturnFire(combatantOf(G, combat, answering), combat.distance)) {
-    fireVolley(G, combat, volleys, answering, d6);
+  if (combat.fleeOutcome === "caught" || !canReturnFire(combatantOf(G, combat, answering), combat.distance)) {
+    combat.stage = "resolution";
+    return;
   }
+  if (engineAims(combat, answering)) {
+    fireVolley(G, combat, answering, npcAim(), d6);
+    combat.stage = "resolution";
+    return;
+  }
+  combat.stage = "returnFire";
+}
 
+/** The answer (#348): the ship fired on aims and fires back, and its damage lands. Check `canFireVolley` first. */
+export function applyReturnFire(G: CaribbeanState, aim: VolleyAim, d6: RollD6): void {
+  const combat = fightOf(G);
+  const answering = volleyShooter(combat);
+  fireVolley(G, combat, answering, aimOf(combat, answering, aim), d6);
   combat.stage = "resolution";
 }
 

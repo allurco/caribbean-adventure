@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { hex, createWrap, offsetToHex, NO_WRAP } from "./hex";
 import type { ShipState } from "./types";
+import { VOLLEY_AIMS } from "./types";
 import { createShipState } from "./economy";
 import {
   BASE_ATTACK_RANGE,
@@ -11,7 +12,8 @@ import {
   canReturnFire,
   resolveSeamanship,
   countCannonHits,
-  calculateDamage,
+  aimedDamage,
+  MAST_FLEE_PENALTY,
   applyDamage,
   isSunk,
   isDerelict,
@@ -193,40 +195,49 @@ describe("countCannonHits", () => {
   });
 });
 
-describe("calculateDamage", () => {
-  it("base: all hits to hull", () => {
-    const damage = calculateDamage(3, []);
-    expect(damage.hull).toBe(3);
-    expect(damage.crew).toBe(0);
-    expect(damage.masts).toBe(0);
+describe("aimedDamage", () => {
+  it("puts every hit on the hull when aimed at the hull, as before aiming", () => {
+    expect(aimedDamage(3, "hull", [])).toEqual({ hull: 3, crew: 0, masts: 0 });
   });
 
-  it("chain_shot: adds mast damage", () => {
-    const damage = calculateDamage(3, ["chain_shot"]);
-    expect(damage.hull).toBe(3);
-    expect(damage.masts).toBe(1);
-    expect(damage.crew).toBe(0);
+  it("puts every hit on the masts when aimed at the masts", () => {
+    expect(aimedDamage(2, "masts", [])).toEqual({ hull: 0, crew: 0, masts: 2 });
   });
 
-  it("grape_shot: adds crew damage", () => {
-    const damage = calculateDamage(3, ["grape_shot"]);
-    expect(damage.hull).toBe(3);
-    expect(damage.crew).toBe(1);
-    expect(damage.masts).toBe(0);
+  it("puts every hit on the crew when aimed at the crew", () => {
+    expect(aimedDamage(4, "crew", [])).toEqual({ hull: 0, crew: 4, masts: 0 });
   });
 
-  it("both upgrades add both extras", () => {
-    const damage = calculateDamage(2, ["chain_shot", "grape_shot"]);
-    expect(damage.hull).toBe(2);
-    expect(damage.masts).toBe(1);
-    expect(damage.crew).toBe(1);
+  it("chain shot adds one hit only when aimed at the masts", () => {
+    expect(aimedDamage(2, "masts", ["chain_shot"])).toEqual({ hull: 0, crew: 0, masts: 3 });
+    expect(aimedDamage(2, "hull", ["chain_shot"])).toEqual({ hull: 2, crew: 0, masts: 0 });
+    expect(aimedDamage(2, "crew", ["chain_shot"])).toEqual({ hull: 0, crew: 2, masts: 0 });
   });
 
-  it("0 hits means no damage", () => {
-    const damage = calculateDamage(0, ["chain_shot", "grape_shot"]);
-    expect(damage.hull).toBe(0);
-    expect(damage.masts).toBe(0);
-    expect(damage.crew).toBe(0);
+  it("grape shot adds one hit only when aimed at the crew", () => {
+    expect(aimedDamage(2, "crew", ["grape_shot"])).toEqual({ hull: 0, crew: 3, masts: 0 });
+    expect(aimedDamage(2, "hull", ["grape_shot"])).toEqual({ hull: 2, crew: 0, masts: 0 });
+    expect(aimedDamage(2, "masts", ["grape_shot"])).toEqual({ hull: 0, crew: 0, masts: 2 });
+  });
+
+  it("a volley with no hits does no damage, shot upgrades or not", () => {
+    for (const aim of VOLLEY_AIMS) {
+      expect(aimedDamage(0, aim, ["chain_shot", "grape_shot"])).toEqual({ hull: 0, crew: 0, masts: 0 });
+    }
+  });
+
+  it("over every volley a broadside can roll, damages only what it was aimed at", () => {
+    const loadouts = [[], ["chain_shot"], ["grape_shot"], ["chain_shot", "grape_shot"], ["long_guns"]];
+    for (let hits = 0; hits <= 20; hits++) {
+      for (const aim of VOLLEY_AIMS) {
+        for (const upgrades of loadouts) {
+          const damage = aimedDamage(hits, aim, upgrades);
+          for (const other of VOLLEY_AIMS.filter((a) => a !== aim)) expect(damage[other]).toBe(0);
+          expect(damage[aim]).toBeGreaterThanOrEqual(hits);
+          expect(damage[aim]).toBeLessThanOrEqual(hits === 0 ? 0 : hits + 1);
+        }
+      }
+    }
   });
 });
 
@@ -423,6 +434,14 @@ describe("attack targets across the east–west seam", () => {
 });
 
 describe("resolveFleeAttempt", () => {
+  it("each point of the fleeing ship's mast damage counts against its flight", () => {
+    expect(MAST_FLEE_PENALTY).toBe(1);
+    // Pursuer 2 + 3 = 5; fleeer 4 + 4 = 8 would escape by 3, but 2 mast damage brings it to 6: caught
+    expect(resolveFleeAttempt(2, 3, 4, 4)).toBe("escaped");
+    expect(resolveFleeAttempt(2, 3, 4, 4, 1)).toBe("escaped");
+    expect(resolveFleeAttempt(2, 3, 4, 4, 2)).toBe("caught");
+  });
+
   it("returns 'escaped' when fleeer wins by 2+ (clean escape)", () => {
     // Fleeer has high maneuverability + good roll
     // Pursuer: maneuv 2, roll 3 = 5

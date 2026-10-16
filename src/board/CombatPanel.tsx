@@ -1,4 +1,6 @@
-import type { CombatState, ShipState, CombatAction, NPCShip } from "../game/types";
+import type { CombatState, ShipState, CombatAction, NPCShip, VolleyAim } from "../game/types";
+import { VOLLEY_AIMS } from "../game/types";
+import { AIM_LABELS, aimedAt, pendingVolley } from "./volleyAim";
 import { npcKind } from "./npcName";
 import { defenderRollLine, drawIntro } from "./seamanshipText";
 import { HUD_EDGE } from "./hudLayout";
@@ -13,7 +15,10 @@ interface CombatPanelProps {
   onRollDefenderSeamanship: () => void;
   onChooseAction: (action: CombatAction) => void;
   onRollFleeAttempt: () => void;
-  onRollCannons: () => void;
+  /** Fires the volley the fight waits on, aimed (#348); an NPC's volley takes no aim, the engine picks it. */
+  onRollCannons: (aim?: VolleyAim) => void;
+  /** The answer to the first volley, aimed by the ship answering (#348). */
+  onReturnFire: (aim: VolleyAim) => void;
   onApplyResolution: () => void;
   /** This client presses the fight's current step (`seatMayActInCombat`, #110); else its controls are off. */
   mayAct: boolean;
@@ -40,6 +45,7 @@ function ShipCombatStats({ ship, label }: { ship: ShipState; label: string }) {
         </div>
         <div>Cannons: {ship.stats?.cannons ?? 0}</div>
         <div>Maneuverability: {ship.stats?.maneuverability ?? 0}</div>
+        <div>Mast damage: {ship.damage.masts}</div>
       </div>
     </div>
   );
@@ -63,6 +69,7 @@ function NPCCombatStats({ npc, label }: { npc: NPCShip; label: string }) {
         </div>
         <div>Cannons: {npc.stats.cannons}</div>
         <div>Maneuverability: {npc.stats.maneuverability}</div>
+        <div>Mast damage: {npc.damage.masts}</div>
       </div>
     </div>
   );
@@ -96,6 +103,38 @@ function ActionButton({
   );
 }
 
+/**
+ * The aim of the volley the fight waits on (#348): one button per aim for a
+ * seat's volley, each firing it there; one for an NPC's, which the engine aims.
+ */
+function AimButtons({
+  pending,
+  shooter,
+  fireLabel,
+  onFire,
+  mayAct,
+}: {
+  pending: ReturnType<typeof pendingVolley>;
+  shooter: string;
+  fireLabel: string;
+  onFire: (aim?: VolleyAim) => void;
+  mayAct: boolean;
+}) {
+  if (pending?.aimedBy === "engine") {
+    return <ActionButton label={`${shooter} fires`} onClick={() => onFire()} disabled={!mayAct} primary />;
+  }
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] text-amber-400/70 uppercase tracking-wider">{fireLabel}: aim at</div>
+      <div className="flex gap-2 justify-center">
+        {VOLLEY_AIMS.map((aim) => (
+          <ActionButton key={aim} label={AIM_LABELS[aim]} onClick={() => onFire(aim)} disabled={!mayAct} primary={aim === "hull"} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function CombatPanel({
   combat,
   ships,
@@ -105,6 +144,7 @@ export function CombatPanel({
   onChooseAction,
   onRollFleeAttempt,
   onRollCannons,
+  onReturnFire,
   onApplyResolution,
   mayAct,
   waitingLine,
@@ -122,6 +162,7 @@ export function CombatPanel({
   // A fight stored before #346 records no volleys.
   const volleys = combat.volleys ?? [];
   const shooterLabel = (id: string) => (isNPC && id === combat.defenderId ? npcLabel : `Player ${seatLabel(id)}`);
+  const pending = pendingVolley(combat);
 
   return (
     <div style={{ top: safeInset("top", HUD_EDGE) }} className="absolute left-1/2 -translate-x-1/2 rounded-xl overflow-hidden border border-red-800/50 bg-gradient-to-br from-stone-900/95 via-red-950/90 to-stone-950/95 shadow-2xl shadow-black/50 backdrop-blur-md text-white p-4 text-sm w-96">
@@ -272,15 +313,33 @@ export function CombatPanel({
             </div>
           ) : (
             <div className="text-amber-100/80 text-xs mb-2">
-              Roll cannons to determine hits
+              {pending ? `${shooterLabel(pending.shooterId)} fires first; the other ship answers if it still can` : ""}
             </div>
           )}
-          <ActionButton
-            label={combat.fleeOutcome === "caught" ? "Fire Parting Shot!" : "Fire Cannons!"}
-            onClick={onRollCannons}
-            disabled={!mayAct}
-            primary
+          <AimButtons
+            pending={pending}
+            shooter={pending ? shooterLabel(pending.shooterId) : ""}
+            fireLabel={combat.fleeOutcome === "caught" ? "Fire Parting Shot" : "Fire"}
+            onFire={onRollCannons}
+            mayAct={mayAct}
           />
+        </div>
+      )}
+
+      {combat.stage === "returnFire" && (
+        <div className="text-center space-y-2">
+          {volleys.map((volley, i) => (
+            <div key={i} className="text-xs text-amber-100/80">
+              <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> fired {aimedAt(volley.aim)}:{" "}
+              <span className="font-heading text-red-400">
+                {volley.hits} hit{volley.hits === 1 ? "" : "s"}
+              </span>
+            </div>
+          ))}
+          <div className="text-amber-100/80 text-xs mb-2">
+            {pending ? `${shooterLabel(pending.shooterId)} answers with the ship it has left` : ""}
+          </div>
+          <AimButtons pending={pending} shooter={pending ? shooterLabel(pending.shooterId) : ""} fireLabel="Answer" onFire={(aim) => aim && onReturnFire(aim)} mayAct={mayAct} />
         </div>
       )}
 
@@ -291,7 +350,7 @@ export function CombatPanel({
             {volleys.map((volley, i) => (
               <div key={i} className="text-xs text-amber-100/80">
                 <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> fired {volley.guns} gun
-                {volley.guns === 1 ? "" : "s"}:{" "}
+                {volley.guns === 1 ? "" : "s"} {aimedAt(volley.aim)}:{" "}
                 <span className="font-heading text-red-400">
                   {volley.hits} hit{volley.hits === 1 ? "" : "s"}
                 </span>

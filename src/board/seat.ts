@@ -141,7 +141,9 @@ const STEP_WAITED_ON: Record<CombatStage, string> = {
   defenderSeamanship: "to roll for seamanship",
   chooseAction: "to choose",
   fleeAttempt: "to roll the pursuit",
-  cannons: "to fire",
+  // Every volley is aimed by the ship firing it (#348), the answer included
+  cannons: "to aim",
+  returnFire: "to aim",
   // Each volley's damage lands as it is fired (#346): the resolution settles the round.
   resolution: "to end the round",
 };

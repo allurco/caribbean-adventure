@@ -150,7 +150,9 @@ function combatEvents(before: CombatState | undefined, after: CombatState | unde
   if (rolling && after && nextStage !== before.stage) {
     events.push({ type: "seamanshipRolled" });
   }
-  if (before.stage === "cannons" && nextStage === "resolution" && after) {
+  // Each volley is fired on its own step (#348): the first, then the answer
+  const firing = before.stage === "cannons" || before.stage === "returnFire";
+  if (firing && after && nextStage !== before.stage) {
     events.push({ type: "cannonsFired", attackerHits: after.attackerHits, defenderHits: after.defenderHits });
   }
   // Choosing an action ends the combat only by boarding (flee and fire move on).

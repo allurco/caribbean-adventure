@@ -1,11 +1,13 @@
 import { hexDistance, canonicalHex, nearestImage, wrappedDistance } from "./hex";
 import type { Hex, MapWrap } from "./hex";
-import type { ShipState, FloatingLoot, DamageState, NPCShip, MapCell } from "./types";
+import type { ShipState, FloatingLoot, DamageState, NPCShip, MapCell, VolleyAim } from "./types";
 
 export const BASE_ATTACK_RANGE = 1;
 export const LONG_GUNS_BONUS_RANGE = 1;
 export const CANNON_HIT_MIN = 5;
 export const MOUNTAIN_ELEVATION = 3; // Elevation that blocks LOS
+/** What each point of mast damage takes off a fleeing ship's roll (#348). */
+export const MAST_FLEE_PENALTY = 1;
 
 /**
  * Linear interpolation between two numbers.
@@ -172,30 +174,29 @@ export function countCannonHits(rolls: number[]): number {
   return rolls.filter((r) => r >= CANNON_HIT_MIN).length;
 }
 
-export function calculateDamage(
-  hits: number,
-  attackerUpgrades: string[]
-): DamageState {
-  if (hits === 0) {
-    return { hull: 0, crew: 0, masts: 0 };
-  }
-
-  const damage: DamageState = {
-    hull: hits,
-    crew: 0,
-    masts: 0,
-  };
-
-  if (attackerUpgrades.includes("chain_shot")) {
-    damage.masts = 1;
-  }
-
-  if (attackerUpgrades.includes("grape_shot")) {
-    damage.crew = 1;
-  }
-
+/**
+ * A volley's damage (#348): every hit goes where it was aimed. Chain shot
+ * adds a hit aimed at the masts, grape shot one aimed at the crew, each only
+ * to a volley that hits at all.
+ */
+export function aimedDamage(hits: number, aim: VolleyAim, shooterUpgrades: readonly string[]): DamageState {
+  const damage: DamageState = { hull: 0, crew: 0, masts: 0 };
+  if (hits === 0) return damage;
+  const shot = SHOT_FOR_AIM[aim];
+  damage[aim] = hits + (shot && shooterUpgrades.includes(shot) ? 1 : 0);
   return damage;
 }
+
+/**
+ * Where an NPC aims its volley (#348): the hull, for now. The full NPC aim
+ * rule (the guns when the player is better armed) is #351's.
+ */
+export function npcAim(): VolleyAim {
+  return "hull";
+}
+
+/** The shot that adds a hit to a volley with this aim. */
+const SHOT_FOR_AIM: Record<VolleyAim, string | null> = { hull: null, masts: "chain_shot", crew: "grape_shot" };
 
 export function applyDamage(ship: ShipState | NPCShip, damage: DamageState): void {
   ship.damage.hull += damage.hull;
@@ -322,16 +323,18 @@ export function createLootFromNPC(npc: NPCShip, id: string): FloatingLoot {
  * @param pursuerRoll - Pursuer's D6 roll
  * @param fleeerManeuv - Fleeing ship's maneuverability
  * @param fleeerRoll - Fleeing ship's D6 roll
+ * @param fleeerMastDamage - Fleeing ship's mast damage, `MAST_FLEE_PENALTY` off its total per point (#348)
  * @returns "escaped" if fleeer wins by 2+, "caught" otherwise
  */
 export function resolveFleeAttempt(
   pursuerManeuv: number,
   pursuerRoll: number,
   fleeerManeuv: number,
-  fleeerRoll: number
+  fleeerRoll: number,
+  fleeerMastDamage = 0
 ): "escaped" | "caught" {
   const pursuerTotal = pursuerManeuv + pursuerRoll;
-  const fleeerTotal = fleeerManeuv + fleeerRoll;
+  const fleeerTotal = fleeerManeuv + fleeerRoll - fleeerMastDamage * MAST_FLEE_PENALTY;
   const difference = fleeerTotal - pursuerTotal;
 
   // Clean escape requires winning by 2 or more

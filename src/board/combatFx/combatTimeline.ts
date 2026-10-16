@@ -11,7 +11,7 @@
  * the small spread in when each gun goes off, are seeded per fight
  * (ADR 0007), so they look the same on every seat.
  */
-import type { CaribbeanState, CombatState, NPCShip, ShipState } from "../../game/types";
+import type { CaribbeanState, CombatState, NPCShip, ShipState, Volley as FiredVolley } from "../../game/types";
 import { hexToWorld, nearestImage, type Hex } from "../../game/hex";
 import { SEED_FEATURES } from "../visuals/seedFeatures";
 import { stream, subSeed, worldSeedOf } from "../visuals/subSeed";
@@ -122,7 +122,11 @@ function rippledShots(count: number, hits: number, start: number, flight: number
   });
 }
 
-function volleyBeat(next: CaribbeanState, combat: CombatState): VolleyBeat | null {
+/**
+ * The beat of the volleys `firedNow`, the round's volleys after the first
+ * `firedBefore` (#348: the answer is fired on its own step, after the first).
+ */
+function volleyBeat(next: CaribbeanState, combat: CombatState, firedNow: readonly FiredVolley[], firedBefore: number): VolleyBeat | null {
   const attacker = combatant(next, combat.attackerId, combat);
   const defender = combatant(next, combat.defenderId, combat);
   if (!attacker || !defender) return null;
@@ -131,22 +135,22 @@ function volleyBeat(next: CaribbeanState, combat: CombatState): VolleyBeat | nul
   const random = (shooterId: string) =>
     stream(subSeed(seed, SEED_FEATURES.combatShots, combat.attackerId, combat.defenderId, combat.round, shooterId));
 
-  // The round's volleys in the order they were fired, each with the guns it was rolled with (#346).
+  // The volleys just fired, in order, each with the guns it was rolled with (#346).
   const volleys: Volley[] = [];
   let start = 0;
   let end = 0;
-  for (const fired of combat.volleys ?? []) {
+  for (const fired of firedNow) {
     const shooter = combatant(next, fired.shooterId, combat);
     if (!shooter || fired.guns === 0) continue;
     const targetId = fired.shooterId === combat.attackerId ? combat.defenderId : combat.attackerId;
     const shots = rippledShots(fired.guns, fired.hits, start, flight, random(fired.shooterId));
-    const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
-    volleys.push({ shooterId: fired.shooterId, targetId, shots, mastFalls: fired.hits > 0 && upgrades.includes("chain_shot") });
+    // A volley aimed at the masts that hits brings one down (#348)
+    volleys.push({ shooterId: fired.shooterId, targetId, shots, mastFalls: fired.hits > 0 && fired.aim === "masts" });
     start = shots[shots.length - 1].fireAt + REPLY_GAP;
     end = Math.max(end, ...shots.map((s) => s.landAt));
   }
   return volleys.length > 0
-    ? { kind: "volley", volleys, seconds: end + VOLLEY_TAIL, seedKey: `${combat.attackerId}:${combat.defenderId}:${combat.round}:volley` }
+    ? { kind: "volley", volleys, seconds: end + VOLLEY_TAIL, seedKey: `${combat.attackerId}:${combat.defenderId}:${combat.round}:volley${firedBefore > 0 ? `:${firedBefore}` : ""}` }
     : null;
 }
 
@@ -185,8 +189,10 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
     beats.push({ kind: "closeAlongside", attackerId: before.attackerId, defenderId: before.defenderId, seconds: paced(BEATS.closeAlongside.seconds), seedKey: keyOf("board") });
   }
 
-  if (before?.stage === "cannons" && after?.stage === "resolution") {
-    const volley = volleyBeat(next, after);
+  // Each volley plays as it is fired (#348): the first as the answer waits on its aim, then the answer
+  if ((before?.stage === "cannons" || before?.stage === "returnFire") && after && after.stage !== before.stage) {
+    const firedBefore = before.stage === "returnFire" ? (before.volleys ?? []).length : 0;
+    const volley = volleyBeat(next, after, (after.volleys ?? []).slice(firedBefore), firedBefore);
     if (volley) beats.push(volley);
   }
 

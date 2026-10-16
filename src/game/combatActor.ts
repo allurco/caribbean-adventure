@@ -34,7 +34,8 @@ export interface SeatFight {
  * it. Each captain rolls its own die of the draw (#347), the attacker first,
  * then the defender; the faster ship presses the rest, but for a flight that
  * was caught: the pursuer fires the parting shot and settles the round, not
- * the ship it fires on. Against an NPC the attacker presses every step: its
+ * the ship it fires on. Each volley is aimed by the ship firing it (#348):
+ * the answer to the first is the other side's step. Against an NPC the attacker presses every step: its
  * one roll throws the NPC's die too, and when the NPC wins the draw the
  * engine picks its action.
  */
@@ -42,10 +43,11 @@ export function combatActor(combat: FightTurn): string {
   if (combat.stage === "seamanship" || combat.isNPCCombat) return combat.attackerId;
   if (combat.stage === "defenderSeamanship") return combat.defenderId ?? combat.attackerId;
   const faster = combat.seamanshipWinner ?? combat.attackerId;
+  const other = faster === combat.attackerId ? (combat.defenderId ?? combat.attackerId) : combat.attackerId;
+  if (combat.stage === "returnFire") return other;
   const partingShot = combat.fleeOutcome === "caught" && (combat.stage === "cannons" || combat.stage === "resolution");
   if (!partingShot) return faster;
-  if (faster !== combat.attackerId) return combat.attackerId;
-  return combat.defenderId ?? combat.attackerId;
+  return other;
 }
 
 /**
