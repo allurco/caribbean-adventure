@@ -75,6 +75,9 @@ export default function App() {
   }
   if (supabaseConfig && shellPage) {
     // The harbour still is the very first paint (#122), before the shell's chunk is in.
+    // A separate instance from the shell's own: `interactive={false}` keeps it the
+    // still alone (it never mounts the live scene), and it goes when the shell's
+    // backdrop takes its place, which paints the same still on its first frame.
     return (
       <Suspense fallback={<HarbourBackdrop interactive={false} />}>
         <OnlineShell config={supabaseConfig} initialPage={shellPage} />

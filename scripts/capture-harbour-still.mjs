@@ -27,16 +27,13 @@ const SETTLE_TIMEOUT_MS = 180_000;
 
 const server = await createServer({ root: ROOT, server: { port: 5190, strictPort: false }, logLevel: "warn" });
 await server.listen();
-const base = server.resolvedUrls?.local[0];
-if (!base) throw new Error("the dev server has no local URL");
-
-// Headless Chromium on the machine's GPU (docs/agents/visual-checks-ledger.md); SwiftShader where there is none.
-const browser = await chromium.launch({
-  headless: true,
-  channel: "chromium",
-  args: ["--use-angle=metal", "--enable-gpu", "--ignore-gpu-blocklist"],
-});
+let browser;
 try {
+  const base = server.resolvedUrls?.local[0];
+  if (!base) throw new Error("the dev server has no local URL");
+
+  // Headless Chromium on the machine's GPU (docs/agents/visual-checks-ledger.md); SwiftShader where there is none.
+  browser = await chromium.launch({ headless: true, channel: "chromium", args: [...gpuArgs(process.platform), "--enable-gpu", "--ignore-gpu-blocklist"] });
   const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1, reducedMotion: "reduce" });
   page.on("console", (message) => {
     if (message.type() === "error" || message.type() === "warning") console.log(`[page] ${message.text()}`);
@@ -95,6 +92,11 @@ export const HARBOUR_STILL = {
   );
   console.log(`wrote public/${STILL_PATH} (${(still.length / 1024).toFixed(0)} KB) and src/online/harbourStillImage.ts (placeholder ${encoded.placeholder.length} B)`);
 } finally {
-  await browser.close();
+  await browser?.close();
   await server.close();
+}
+
+/** ANGLE's GPU back end for the platform: Metal on macOS, the browser's own default elsewhere. */
+function gpuArgs(platform) {
+  return platform === "darwin" ? ["--use-angle=metal"] : [];
 }
