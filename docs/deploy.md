@@ -17,7 +17,7 @@ The repo is public. Keys and URLs of the real project live only in Vercel's and 
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The Supabase Marketplace integration | The browser (the app) |
 | `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | The Supabase Marketplace integration | `/api` only: the online routes (rooms, #112) act with this service-role key after checking the caller's access token. `SUPABASE_SERVICE_ROLE_KEY` is read when there is no `SUPABASE_SECRET_KEY`. Without them the online routes answer 503. |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (or `VITE_SUPABASE_PUBLISHABLE_KEY`) | You, in `.env.local` for local development | The browser (the app) |
-| `SUPABASE_AUTH_EXTERNAL_DISCORD_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_DISCORD_SECRET`, `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | You, for the local Supabase only (exported in the shell, or in a git-ignored `supabase/.env`) | `supabase/config.toml` (#106). The hosted project keeps its own copies in the Supabase dashboard (step 5 below), not in Vercel. |
+| `SUPABASE_AUTH_EXTERNAL_DISCORD_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_DISCORD_SECRET`, `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | You, for the local Supabase only (exported in the shell, or in a git-ignored `supabase/.env`) | `supabase/config.toml` (#106). The hosted project keeps its own copies in the Supabase dashboard (*Discord and Google sign-in* below), not in Vercel. |
 
 The integration also injects `POSTGRES_*` and other variables; nothing reads them yet.
 
@@ -40,25 +40,25 @@ The app reads either naming: `vite.config.ts` exposes the `VITE_` and `NEXT_PUBL
      - `https://<project>.vercel.app/**` (and the custom domain's, if any)
      - `https://*-<team-or-account-slug>.vercel.app/**`, for preview deployments
      - `http://localhost:5173/**`, for local development against the hosted project (optional)
-5. **Discord and Google sign-in (#106).** The sign-in screen offers both next to the email link. Each needs an OAuth app at the provider, whose only redirect URI is the Supabase project's callback, `https://<project-ref>.supabase.co/auth/v1/callback` (shown on the provider's page in the Supabase dashboard). The app's own URLs (step 4) are where Supabase sends the player afterwards; they never go into the provider's settings.
-   - **Discord:** at <https://discord.com/developers/applications>, **New Application** (named after the game), then **OAuth2**: copy the **Client ID**, reset and copy the **Client Secret**, and under **Redirects** add the callback URL above. Supabase asks for the `identify` and `email` scopes itself.
-   - **Google:** in the Google Cloud console, create (or pick) a project; under **Google Auth Platform → Branding** (the OAuth consent screen) give the app's name, support email and the production domain, with **Audience** set to **External** and published to production; then **Clients → Create client**, type **Web application**, with **Authorised JavaScript origins** the production URL and **Authorised redirect URIs** the callback URL above. Copy the client ID and secret. The scopes Supabase asks for (`openid`, `email`, `profile`) need no Google review.
-   - **Supabase:** in **Authentication → Sign In / Providers**, open **Discord**, switch it on and paste its client ID and secret; the same for **Google**. Keep **Allow users without an email** off for both: a profile is linked by its email (see *Same captain* below).
-   - The secrets live only there (and in your shell for the local stack); never in Vercel, a `VITE_`/`NEXT_PUBLIC_` variable or a tracked file.
-6. **Email.** The default **Magic Link** template (Authentication → Emails) works as it is: its `{{ .ConfirmationURL }}` returns the player to the page that asked for the link (`/?view=account`). Supabase's built-in sender is rate-limited to a few emails an hour and meant for testing; before real players arrive, set up custom SMTP under **Authentication → Emails → SMTP Settings**.
-7. **Redeploy** the production deployment so the build picks up the new variables (Vercel bakes the browser variables in at build time).
+5. **Email.** The default **Magic Link** template (Authentication → Emails) works as it is: its `{{ .ConfirmationURL }}` returns the player to the page that asked for the link (`/?view=account`). Supabase's built-in sender is rate-limited to a few emails an hour and meant for testing; before real players arrive, set up custom SMTP under **Authentication → Emails → SMTP Settings**.
+6. **Redeploy** the production deployment so the build picks up the new variables (Vercel bakes the browser variables in at build time).
 
-### Check it
+### Discord and Google sign-in (#106)
 
-After a pull request that adds a migration is merged, run `npx supabase db push` (step 3) before playing online: the rooms (#112) need `supabase/migrations/20261015000000_rooms.sql`, online turns (#113) `20261016000000_moves.sql`, and the list of a player's voyages (`GET /api/me/rooms`) `20261017000000_voyages.sql` and `20261018000000_voyages_fight.sql` (who may act in a fight), and the Discord and Google IDs on the profile (#106) `20261019000000_profile_identities.sql`.
+The sign-in screen offers **Continue with Discord** and **Continue with Google** next to the email link. Each needs an OAuth app at the provider, whose only redirect URI is the Supabase project's callback, `https://<project-ref>.supabase.co/auth/v1/callback` (shown on the provider's page in the Supabase dashboard). After the provider, Supabase sends the player back to the page they left, which must match one of the **Redirect URLs** in step 4; OAuth adds nothing to that list. Those URLs never go into the provider's settings.
 
-- `https://<project>.vercel.app/api/health` answers `{"ok":true,"version":"<commit>","environment":"production","supabase":{"configured":true}}`.
-- The root URL opens the online shell (#125): its sign-in screen asks for an email and sends a link; opening it signs you in and lands you on Play. **Profile** (`/?view=account`) shows your captain, whose display name you can change. **Your public profile** opens `/?view=profile&id=<your id>`, which anyone can read, signed in or not.
-- **Continue with Discord** or **Continue with Google** goes to the provider and back, signed in, to the page it left. A new player's profile takes the provider's name and avatar; **Profile** says which providers sign in to it. Turning the provider's consent down comes back to the sign-in screen saying the sign-in was cancelled.
-- **Play on this device** (`/?skipLogin=1`, or the root URL with a dev URL parameter such as `?seed=`) opens the local game. Its corner link reads **The harbour** when signed in, or **Sign in** when not, and goes back to the shell. Other query parameters on the root URL (a link tracker's `?fbclid=`, `?utm_source=`) are ignored: it still opens the shell.
-- **Open a private room** (`/?view=rooms`) creates a room and opens its lobby (`/?view=room&id=…`) with the invite link (`/?view=join&invite=…`). A second account that opens the link, signed in, takes a seat; the host's **Start match** then creates the match, and **Board your ship** (`/?view=match&id=…`) opens each seat's own board, which checks for the other captains' moves every few seconds. `POST https://<project>.vercel.app/api/rooms` without a token answers 401 (503 means the server's Supabase variables are missing).
+1. **Discord:** at <https://discord.com/developers/applications>, **New Application** (named after the game), then **OAuth2**: copy the **Client ID**, reset and copy the **Client Secret**, and under **Redirects** add the callback URL above. Supabase asks for the `identify` and `email` scopes itself.
+2. **Google:** in the Google Cloud console, create (or pick) a project; under **Google Auth Platform → Branding** (the OAuth consent screen) give the app's name, support email and the production domain, with **Audience** set to **External** and published to production; then **Clients → Create client**, type **Web application**, with **Authorised JavaScript origins** the production URL and **Authorised redirect URIs** the callback URL above. Copy the client ID and secret. The scopes Supabase asks for (`openid`, `email`, `profile`) need no Google review.
+3. **Supabase:** in **Authentication → Sign In / Providers**, open **Discord**, switch it on and paste its client ID and secret; the same for **Google**. Keep **Allow users without an email** off for both: a profile is linked by its email (see *Same captain* below).
+4. **Apply the migration** `20261019000000_profile_identities.sql` (`npx supabase db push`, step 3). Without it sign-in still works (`handle_new_user` fills the name and avatar), but the provider IDs are not recorded and **Profile** does not say which providers sign in to it; identities made before it runs are backfilled.
 
-### Same captain, whichever way they sign in
+The secrets live only there (and in your shell for the local stack); never in Vercel, a `VITE_`/`NEXT_PUBLIC_` variable or a tracked file.
+
+**Production only.** OAuth sign-in is not supported on Vercel preview deployments: production's redirect list holds exact hosts only, never a wildcard host, because a wildcard such as `https://*-<slug>.vercel.app/**` lets anyone's matching page receive sign-in tokens, and OAuth makes that one click.
+
+**What is public.** A profile stays a name and an avatar, readable by anyone. The provider IDs (which Discord and Google accounts sign in to a profile) live in `profile_identities`, which only the player reads. But a Discord avatar is a URL of the form `https://cdn.discordapp.com/avatars/<Discord user ID>/<hash>.png`, so anyone who sees a Discord avatar on a profile can read that player's Discord user ID from it. Players cannot set the avatar themselves: only the sign-in triggers write it.
+
+#### Same captain, whichever way they sign in
 
 Supabase Auth keeps one user per player and one *identity* per way they sign in. When a player signs in with Discord or Google and the provider vouches for their email (Google always does; Discord only for an email the player verified with Discord), Supabase links that identity to the existing user with the same email, so they reach the same profile (`profiles` is keyed by the user). A magic link also signs in to the user with that email, whichever way it was created. The trigger on `auth.identities` (`20261019000000_profile_identities.sql`) then records the provider's ID in `profile_identities` and, while the profile still has the placeholder name or no avatar, fills them from the provider.
 
@@ -70,6 +70,16 @@ The edge cases, none of which merge two captains by themselves:
 - **Changing the email at the provider** later: the identity stays linked by the provider's ID, not the email.
 
 Joining two such captains by hand needs Supabase's manual linking (`enable_manual_linking`, `linkIdentity`) and a "Link Discord / Google" button on the profile, which is not built (a follow-up issue).
+
+### Check it
+
+After a pull request that adds a migration is merged, run `npx supabase db push` (step 3) before playing online: the rooms (#112) need `supabase/migrations/20261015000000_rooms.sql`, online turns (#113) `20261016000000_moves.sql`, and the list of a player's voyages (`GET /api/me/rooms`) `20261017000000_voyages.sql` and `20261018000000_voyages_fight.sql` (who may act in a fight).
+
+- `https://<project>.vercel.app/api/health` answers `{"ok":true,"version":"<commit>","environment":"production","supabase":{"configured":true}}`.
+- The root URL opens the online shell (#125): its sign-in screen asks for an email and sends a link; opening it signs you in and lands you on Play. **Profile** (`/?view=account`) shows your captain, whose display name you can change. **Your public profile** opens `/?view=profile&id=<your id>`, which anyone can read, signed in or not.
+- **Play on this device** (`/?skipLogin=1`, or the root URL with a dev URL parameter such as `?seed=`) opens the local game. Its corner link reads **The harbour** when signed in, or **Sign in** when not, and goes back to the shell. Other query parameters on the root URL (a link tracker's `?fbclid=`, `?utm_source=`) are ignored: it still opens the shell.
+- **Continue with Discord** or **Continue with Google** goes to the provider and back, signed in, to the page it left. A new player's profile takes the provider's name and avatar; **Profile** says which providers sign in to it. Turning the provider's consent down comes back to the sign-in screen saying the sign-in was cancelled.
+- **Open a private room** (`/?view=rooms`) creates a room and opens its lobby (`/?view=room&id=…`) with the invite link (`/?view=join&invite=…`). A second account that opens the link, signed in, takes a seat; the host's **Start match** then creates the match, and **Board your ship** (`/?view=match&id=…`) opens each seat's own board, which checks for the other captains' moves every few seconds. `POST https://<project>.vercel.app/api/rooms` without a token answers 401 (503 means the server's Supabase variables are missing).
 
 ## Local development
 
