@@ -132,6 +132,15 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-15: the harbour link on Save & leave's row (#125, PR #308 review)
+
+- **Branch and commit:** `fix/125-harbour-link-phone` at `5acf503`.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 844×390 and 667×375 (phones held sideways: `isMobile`, touch, DPR 2) and 1440×900.
+- **View:** the e2e dev server (`E2E_BACKEND=1`), signed in as a test captain, `?skipLogin=1` (the local game, saved), a fresh voyage each size, the debug panel hidden (`.`). Steps: "Choose Your Captain"; the first captain and the Sloop, docked at the home port with the port panel open; then the card loaded: goods bought until the hold was full and the affordable upgrades bought at the Shipwright. At each step `elementFromPoint` at three points of the link, and its box checked for overlap against the draft title's text, the turn bar's map label, centre group and End Turn, the sound control, Save & leave, the glory panel, the captain/ship card and the port panel.
+- **Findings:** no overlaps and the link on top at every step and size; no page errors. Compact, draft: 112×48 at 716,16 (844) and 539,16 (667). Board at 844: 328–440 × 48–96, on Save & leave's row (208–320 × 48–80), the turn bar's centre group ending at y 48, the port panel from x 540, the glory panel 20–228 × 96–149, the loaded card from y 192. Board at 667: the row would meet the port panel (from x 363), so 236–348 × 88–136, under Save & leave and right of the glory panel; the loaded card (cargo and two upgrades) from y 151. Desktop: 102×28 at 1322,70, unchanged.
+- **Not checked:** combat and the game-over screen (no cheap way to reach either in the local game); both take the HUD stack down (`hudStack.test.ts`), so the link goes to the top-right corner, checked earlier against the combat panel's classes. A card with damage and bounties as well was not reached.
+- **For the maintainer:** at 667×375 the HUD is crowded whatever the link does: the loaded card's top (y 151) already meets the glory panel's foot (y 149), so a card with damage or bounty rows would cover the glory panel and then reach the link (15 px clear); the port panel covers the card's right part and End Turn there.
+
 ### 2026-10-15: the harbour link's phone placement (#125, PR #306)
 
 - **Branch and commit:** `feat/125-online-shell` at `093e771`, the same change as `1742e63` on `fix/125-harbour-link-phone` (cherry-picked once PR #306 had merged).
