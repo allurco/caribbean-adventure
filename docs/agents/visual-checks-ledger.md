@@ -58,6 +58,14 @@ Reports still being chased. Move an entry to "Investigated, not a bug" or close 
 
 One entry per report. Newest first.
 
+### 2026-10-16: the rotate gate's review follow-ups (#123, PR #312)
+
+- **Branch and commit:** `feat/123-landscape-phones` at `83c11b5` (on main at `05fd37e`).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), Playwright 1.59. Phone emulation: `isMobile` and `hasTouch`, DPR 2; the window and the screen set apart through the DevTools protocol's `Emulation.setDeviceMetricsOverride` (`screenWidth`, `screenHeight`), since Playwright's `setViewportSize` resets the screen to the window. `screen.orientation.lock` deleted before load, as on iOS: headless Chromium has both APIs and would go full screen on the first tap, after which the window cannot be resized (so "Turn it for me" is not in these shots). Safe areas through `Emulation.setSafeAreaInsetsOverride`, turned with the phone: left and right 47 px, bottom 21 sideways; top 47, bottom 34 upright. WebGL draw calls counted by wrapping `drawElements`/`drawArrays` and their instanced forms. No real phone or tablet.
+- **View:** `?size=small&seed=1` on a dev server with no Supabase variables; captain and Sloop picked through the draft screen.
+- **Findings, all as intended:** a phone at 390×844 gets the gate, with focus inside it, the app's wrapper `inert` and `aria-hidden="true"`, and "Turn your ship" whole at 38 px; at 320×568 whole at 32 px. A split-view tablet (window 375×1024, screen 1024×1366, touch) gets no gate. The board's draw calls: about 65 000 in 1.5 s sideways, 0 under the gate, drawing again at once on turning back, the same canvas element. Enter under the gate: a route picked in landscape (a coarse-pointer device with a 390×844 screen and a 1440×900 window, the window then set to 700×1000 for portrait), Enter pressed twice under the gate, turned back: the route hint still shows and all four moves are left; Enter in landscape then sails it (two moves used). Desktop at 1440×900: no gate, End Turn's right edge at 1420 (20 px in, as before).
+- **False alarm, noted for next time:** with the sideways insets (47 px left and right) left on after turning the phone upright, the gate's padding grows to 47 px and the nameboard's title is cut short. A real phone's insets turn with it; set them per orientation.
+
 ### 2026-10-16: phones in landscape, the rotate gate and the safe areas (#123)
 
 - **Branch and commit:** `feat/123-landscape-phones` at `89f7547` (on main at `05fd37e`); main at `a93aa4e` for the desktop comparison.
