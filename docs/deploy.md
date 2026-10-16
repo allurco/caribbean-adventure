@@ -37,7 +37,7 @@ The app reads either naming: `vite.config.ts` exposes the `VITE_` and `NEXT_PUBL
    - **Site URL:** the production URL, for example `https://<project>.vercel.app` (or the custom domain).
    - **Redirect URLs**, add:
      - `https://<project>.vercel.app/**` (and the custom domain's, if any)
-     - `https://*-<team-or-account-slug>.vercel.app/**`, for preview deployments
+     - nothing for preview deployments: they sign in against their own Supabase branch ([Preview branches](#preview-branches-107)). If an earlier set-up added `https://*-<team-or-account-slug>.vercel.app/**` here, remove it: anyone can create a Vercel project whose URL matches it and receive production sign-in tokens.
      - `http://localhost:5173/**`, for local development against the hosted project (optional)
 5. **Email.** The default **Magic Link** template (Authentication → Emails) works as it is: its `{{ .ConfirmationURL }}` returns the player to the page that asked for the link (`/?view=account`). Supabase's built-in sender is rate-limited to a few emails an hour and meant for testing; before real players arrive, set up custom SMTP under **Authentication → Emails → SMTP Settings**.
 6. **Redeploy** the production deployment so the build picks up the new variables (Vercel bakes the browser variables in at build time).
@@ -58,7 +58,7 @@ Every pull request's Vercel preview gets its own Supabase **preview branch**: a 
 ### How it works
 
 - **Migrations.** Supabase's GitHub integration watches the repository. When a git branch appears, it creates a Supabase branch and runs its workflow: apply `supabase/config.toml`, then every migration the branch has not run, then the seed, then Edge Functions. It runs again on every push to that git branch, applying only new migrations. The branch starts empty; this repo has no seed file, and none is needed: signing in creates the profile (`handle_new_user`).
-- **Settings.** The `[auth]`, `[api]`, `[db]` and `[storage]` sections of `supabase/config.toml` are applied to every preview branch. That is why `additional_redirect_urls` there also allows `https://caribbean-adventure-*.vercel.app/**`, the previews' hosts. Production never takes its settings from this file: no `[remotes]` block names it, and the production deployment applies migrations only, never Auth settings.
+- **Settings.** The `[auth]`, `[api]`, `[db]` and `[storage]` sections of `supabase/config.toml` are applied to every preview branch. They allow no preview host as a sign-in redirect, on purpose (see [Sign-in on previews](#sign-in-on-previews)). Production never takes its settings from this file: no `[remotes]` block names it, and the production deployment applies migrations only, never Auth settings.
 - **Grants.** A preview branch has none of Supabase's default privileges on `public`, so every table must be granted to the roles that use it in a migration. `/api` works as the service role: `20261019120000_service_role_grants.sql` grants it every table, and `supabase/tests/branchGrants.test.ts` fails when a new table is not granted to it.
 - **Variables.** When the PR is opened, Supabase writes the branch's URL and keys into the Vercel project as **Preview variables scoped to that PR's git branch**, under the same names production uses (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, …). The app reads them unchanged: the browser at build time, `/api` at run time, from the same deployment.
 - **Build time.** Vite bakes the browser's values into the JavaScript when the deployment builds. A preview built before Supabase wrote the branch's variables has no backend, or production's if production's values reach the Preview scope. Supabase deals with the race by redeploying the PR's latest deployment once the variables are written, and Vercel rebuilds it with them. A deployment's variables never change after it is built, so the deployment to check is the latest one.
@@ -84,7 +84,7 @@ Branching is not on Supabase's Free plan: it needs **Pro** ($25 a month, billed 
 7. **Auth on previews.** Nothing to set in production's dashboard: a branch takes its Auth settings from `supabase/config.toml`. Note:
    - **Magic links** come from the branch's own Auth. Supabase's built-in sender is rate-limited, and as far as Supabase's docs say, delivers only to members of the Supabase organisation, so sign in on previews with a team member's address. A custom SMTP password becomes a placeholder on a branch; set it as a branch secret if previews need custom SMTP.
    - **OAuth (#106)** does not work on previews as they stand: OAuth provider secrets become placeholders on a branch, and each branch has its own callback URL (`https://<branch-ref>.supabase.co/auth/v1/callback`), which the provider's app would have to list. Use a magic link on previews.
-   - The redirect pattern `https://caribbean-adventure-*.vercel.app/**` also matches any Vercel project whose name starts with `caribbean-adventure-`. It applies only to preview branches and the local stack, whose accounts are throwaway. To tighten it, replace it with `https://caribbean-adventure-*-<team-or-account-slug>.vercel.app/**`.
+   - **Redirects:** a branch allows no preview host, so a magic link is finished by hand (see [Sign-in on previews](#sign-in-on-previews)).
 8. **Apply the grants to production.** `20261019120000_service_role_grants.sql` changes nothing on production (the service role already holds those privileges there), but apply it like any other migration (`npx supabase db push`, or **Deploy to production**) so production's migration history matches the repository.
 
 ### Check a preview reads its branch
@@ -97,7 +97,24 @@ Open a pull request (any change), then:
    - `Preview · online play off: this build was given production's database`: production's values reach the Preview scope. Redo step 4, then redeploy.
    - `Preview · online play off: no database`: the build ran before the branch's variables existed. Redeploy it, or wait for Supabase's redeploy.
 4. **The API.** `<preview URL>/api/health` answers `"environment":"preview"` and `"supabase":{"configured":true}`. `"previewOnProduction":true` means the server was handed production's URL and refused it.
-5. **Sign-in and profiles.** On the preview, sign in with a magic link; the link brings you back to the preview, not to `localhost`. Change your display name under **Profile**. In the Supabase dashboard, on the **branch**, **Table Editor → profiles** has your row with the new name; on **production**, your profile still has its old name (or no row, for an address never used there).
+5. **Sign-in and profiles.** On the preview, sign in with a magic link, finished by hand as [Sign-in on previews](#sign-in-on-previews) says. Change your display name under **Profile**. In the Supabase dashboard, on the **branch**, **Table Editor → profiles** has your row with the new name; on **production**, your profile still has its old name (or no row, for an address never used there).
+
+### Sign-in on previews
+
+A sign-in redirect allowed with a wildcard in its host, such as `https://caribbean-adventure-*.vercel.app/**` or `https://*-<team-or-account-slug>.vercel.app/**`, is an open redirect. Anyone can create a Vercel project whose URL matches, start a magic link or OAuth sign-in with `redirect_to` pointing at it, and the tokens land on their page in the URL fragment. A Vercel preview's host is not known before its pull request exists, so there is no exact URL to allow instead. So `supabase/config.toml` allows no preview host, and `supabase/tests/authRedirects.test.ts` fails if a wildcard host (other than `localhost` or `127.0.0.1`) is added.
+
+Two alternatives were set aside:
+
+- **`env(...)` in `config.toml`.** The CLI resolves it in `additional_redirect_urls`, and the branching executor reads values from a committed `supabase/.env.preview` (with dotenvx for encrypted ones). But the value would still be a `*.vercel.app` wildcard, and hiding a pattern does not make it safe. Left unset, it stays a literal entry, and whether a branch's configuration step accepts that is undocumented. A failed configuration step skips the migrations.
+- **A preview domain you own.** Vercel's **Preview Deployment Suffix** (a paid add-on on Pro) serves previews under a domain you own instead of `vercel.app`. Only your team can serve pages there, so `https://*.<your-preview-suffix>/**` is safe to allow. To adopt it, add that entry to `additional_redirect_urls` and teach `authRedirects.test.ts` to accept exactly that suffix.
+
+Until then, a magic link on a preview is finished by hand:
+
+1. On the preview, ask for a sign-in link. The branch refuses the preview as a redirect, so the emailed link sends the browser to the Site URL, `http://localhost:5173/`, with the session in the fragment (`#access_token=…`).
+2. Open the link. The page at `localhost` fails to load or ignores it (nothing is served there, or it is a local stack's game that does not know the token).
+3. In the address bar, replace `http://localhost:5173` with the preview's origin, keep everything from `/#` on, and press Enter. The preview reads the session from the fragment and is signed in to the branch.
+
+The token is only good on that preview branch. OAuth (#106) is off on previews either way (step 7).
 
 ### Tear-down
 

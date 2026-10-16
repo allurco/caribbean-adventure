@@ -162,15 +162,12 @@ site_url = "http://localhost:5173"
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 # The Vite dev server, on either host name (docs/deploy.md).
-# Preview branches (#107): Supabase applies this [auth] section to every pull
-# request's preview branch, so it also allows that PR's Vercel preview, whose
-# host starts with the Vercel project's name. Production never reads this
-# file's [auth] (no [remotes] block names it); its URLs stay in the dashboard.
-additional_redirect_urls = [
-  "http://localhost:5173/**",
-  "http://127.0.0.1:5173/**",
-  "https://caribbean-adventure-*.vercel.app/**",
-]
+# Preview branches (#107) take this [auth] section too, and allow no preview
+# host on purpose: a wildcard such as `https://<project>-*.vercel.app/**`
+# would let anyone's matching Vercel page receive sign-in tokens. See
+# "Preview branches" in docs/deploy.md; supabase/tests/authRedirects.test.ts
+# refuses a wildcard host here. Production never reads this file's [auth].
+additional_redirect_urls = ["http://localhost:5173/**", "http://127.0.0.1:5173/**"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to auth.external_url.
