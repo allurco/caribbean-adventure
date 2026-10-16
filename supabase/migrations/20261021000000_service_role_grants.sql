@@ -13,8 +13,8 @@
 -- `authenticated` keep exactly the grants the earlier migrations gave them.
 -- `moves.id` is an identity column, whose sequence needs no grant of its own.
 --
--- A new table needs the same: `supabase/tests/branchGrants.test.ts` fails
--- until it is granted to the service role.
+-- `supabase/tests/branchGrants.test.ts` reads every migration and fails when
+-- a table in `public` is not fully granted to the service role.
 
 grant select, insert, update, delete on table
   public.profiles,
@@ -24,3 +24,18 @@ grant select, insert, update, delete on table
   public.rate_counters,
   public.moves
 to service_role;
+
+-- `public.profile_identities` (OAuth, #106) comes from a migration that may
+-- be merged before or after this one; grant it here when it already exists.
+do $$
+begin
+  if to_regclass('public.profile_identities') is not null then
+    execute 'grant select, insert, update, delete on public.profile_identities to service_role';
+  end if;
+end $$;
+
+-- Every table a later migration creates. Default privileges apply to objects
+-- created by the role named; Supabase runs migrations, on branches as on the
+-- local stack and production, as `postgres`.
+alter default privileges for role postgres in schema public
+  grant select, insert, update, delete on tables to service_role;
