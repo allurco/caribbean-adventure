@@ -132,6 +132,15 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-15: the harbour link's phone placement (#125, PR #306)
+
+- **Branch and commit:** `feat/125-online-shell` at `093e771`, the same change as `1742e63` on `fix/125-harbour-link-phone` (cherry-picked once PR #306 had merged).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 844×390 and 667×375 (phones held sideways: `isMobile`, touch, DPR 2) and 1440×900.
+- **View:** the e2e dev server (`E2E_BACKEND=1`), signed in as a test captain, a fresh voyage each size. Steps: Play, Sail alone, wait out the loading screen, the debug panel hidden (`.`); "Choose Your Captain"; the first captain; "Choose Your Ship"; the Sloop, docked at its home port with the port panel open; "The harbour" back to Play. At each step `elementFromPoint` at three points of the link, and its box checked for overlap against the draft's title text, Player line, captain line and cards, or the top bar's items, End Turn, the sound control, Save & leave, the glory panel, the captain/ship card, the port panel and its tabs.
+- **Findings:** no overlaps and the link on top at every step and size. Compact: 102×48 at 726,16 (844) and 549,16 (667) in the draft (top right, right 16); at 236,87 on the board, between Save & leave (208–315 × 48–79), the glory panel (20–228 × 96–149), the captain card (from y 214 at 390 tall, 199 at 375) and the port panel (from x 540 at 844, 363 at 667). Desktop: 102×28 at top 70, right 16, unchanged. The link returns to Play from the board at every size. No page errors. In dev, boardgame.io's debug toggle overlaps the link's lower-right corner in the compact draft (dev builds only; ignored).
+- **Not checked:** combat (no cheap way to reach a fight in the local game). With the turn bar down the link takes the top-right corner, which by its classes is clear of the combat panel (`w-96` centred, `top-4`: x 141–525 at 667, 230–614 at 844).
+- **For the maintainer:** the port panel still covers End Turn (and at 667 the move pips) on phones, separate from this PR. "Choose Your Ship" is taller than a phone: its title starts above the top edge (y −25 at 844×390, −31 at 667×375).
+
 ### 2026-10-15: the harbour link over the local game, re-check (#125, PR #306)
 
 - **Branch and commit:** `feat/125-online-shell` at `88b046b`.
