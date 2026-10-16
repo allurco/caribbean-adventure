@@ -125,6 +125,7 @@ import { CameraAudioListener } from "./CameraAudioListener";
 import { AmbienceBedDriver } from "./AmbienceBedDriver";
 import { HudSoundControl } from "./HudSoundControl";
 import { HudSaveLeave } from "./HudSaveLeave";
+import { setTurnBarShowing } from "./turnBarPresence";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { RenderStatsOverlay } from "./RenderStatsOverlay";
 import { DevSeedControl } from "./DevSeedControl";
@@ -1058,6 +1059,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const movesRemaining = movesLeft(G, currentPlayer);
 
   const inCombat = ctx.phase === "combat" && G.combat;
+  // The turn bar's state, for the harbour link over the board (#125): it joins the HUD's stack on a phone
+  const turnBarUp = !drafting && !inCombat && Boolean(currentShipState);
+  useEffect(() => {
+    setTurnBarShowing(turnBarUp);
+    return () => setTurnBarShowing(false);
+  }, [turnBarUp]);
   // Until the next turn is announced, the HUD stays with the captain whose turn just ended (#216)
   // A seat's HUD shows its own ship always: a rival's purse reaches it emptied (#110)
   const hudPlayer = hudSeat({ ...turn, handoff, ships: G.ships });
