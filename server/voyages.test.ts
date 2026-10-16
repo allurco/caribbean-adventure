@@ -184,6 +184,14 @@ describe("GET /api/me/rooms", () => {
     expect((await voyages("jack"))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
   });
 
+  it("in a fight, names the defender once the attacker has rolled its die of the draw, for the defender rolls its own (#347)", async () => {
+    const { matchId } = await startedMatch();
+    const fight = { stage: "defenderSeamanship", attackerId: "0", defenderId: "1", seamanshipWinner: null, isNPCCombat: false };
+    await commitState(matchId, (state) => withFight(state, "0", fight), "combat");
+    expect((await voyages("anne"))[0]).toMatchObject({ currentSeat: 1, yourTurn: false });
+    expect((await voyages("jack"))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
+  });
+
   it("in a fight, names the pursuer for the parting shot once the faster ship's flight is caught, not the ship that fled", async () => {
     const { matchId } = await startedMatch();
     const fight = { stage: "cannons", attackerId: "0", defenderId: "1", seamanshipWinner: "1", isNPCCombat: false, fleeOutcome: "caught" };

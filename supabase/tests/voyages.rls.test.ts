@@ -135,6 +135,13 @@ describe.skipIf(!dbTestsEnabled)("a player's voyages (local Supabase)", () => {
     });
   });
 
+  it("in a fight, names the defender once the attacker has rolled its die of the draw, for the defender rolls its own (#347)", async () => {
+    const { anne, jack, matchId } = await startedMatch();
+    await setFight(matchId, "0", { stage: "defenderSeamanship", attackerId: "0", defenderId: "1", seamanshipWinner: null, isNPCCombat: false });
+    expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 1, yourTurn: false });
+    expect((await voyages(jack))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
+  });
+
   it("in a fight, names the pursuer for the parting shot once the faster ship's flight is caught", async () => {
     const { anne, jack, matchId } = await startedMatch();
     await setFight(matchId, "0", {
