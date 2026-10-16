@@ -25,6 +25,8 @@ function createShipWithFullStats(
 ): ShipState {
   const ship = createShipState(hex(q, r), shipClass);
   ship.upgrades = upgrades;
+  // Hull enough to come through round 1's ambush (#346) and fight on.
+  ship.stats!.hull = { current: 20, max: 20 };
   return ship;
 }
 
@@ -41,6 +43,7 @@ function setupCombatGame(options: {
 
   const TestGame: Game<CaribbeanState> = {
     ...Caribbean,
+    seed: "attack-ship",
     phases: {
       main: {
         ...(Caribbean.phases?.main ?? {}),
@@ -127,6 +130,12 @@ describe("combat across the east–west seam", () => {
   });
 });
 
+/** Round 1, the ambush (#346): the attacker's broadside and the answer, then the round's end; the fight goes on to the draw. */
+function pastTheAmbush(client: ReturnType<typeof setupCombatGame>) {
+  client.moves.rollCannons();
+  client.moves.applyResolution();
+}
+
 describe("attackShip move", () => {
   it("transitions to combat phase", () => {
     const client = setupCombatGame({
@@ -149,7 +158,8 @@ describe("attackShip move", () => {
     expect(G.combat!.attackerId).toBe("0");
     expect(G.combat!.defenderId).toBe("1");
     expect(G.combat!.round).toBe(1);
-    expect(G.combat!.stage).toBe("seamanship");
+    // Round 1 is the ambush (#346): it opens on the attacker's broadside.
+    expect(G.combat!.stage).toBe("cannons");
     expect(G.combat!.distance).toBe(1);
   });
 
@@ -228,6 +238,7 @@ describe("combat phase - seamanship", () => {
       ship1: createShipWithFullStats(1, 0),
     });
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     return client;
   }
 
@@ -263,6 +274,7 @@ describe("combat phase - chooseAction", () => {
       ship1: createShipWithFullStats(1, 0),
     });
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
     return client;
   }
@@ -339,6 +351,7 @@ describe("combat phase - chooseAction", () => {
       ship1: createShipWithFullStats(2, 0),
     });
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     const { G: beforeG } = client.getState()!;
@@ -377,6 +390,7 @@ describe("combat phase - cannons", () => {
       ship1: createShipWithFullStats(1, 0),
     });
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     const { G: beforeG } = client.getState()!;
@@ -410,6 +424,7 @@ describe("combat phase - cannons", () => {
       ship1: createShipWithFullStats(2, 0), // no long_guns
     });
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     const { G: beforeG } = client.getState()!;
@@ -439,6 +454,7 @@ describe("combat phase - resolution", () => {
       ship1: createShipWithFullStats(1, 0),
     });
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     const { G: beforeG } = client.getState()!;
@@ -452,23 +468,16 @@ describe("combat phase - resolution", () => {
     return client;
   }
 
-  it("applyResolution applies damage to ships", () => {
+  it("the cannons land each side's damage, and the resolution adds none (#346)", () => {
     const client = setupAtResolution();
     const { G: before } = client.getState()!;
-    const attackerHits = before.combat!.attackerHits;
-    const defenderHits = before.combat!.defenderHits;
-    const defenderHullBefore = before.ships["1"].stats!.hull.current;
-    const attackerHullBefore = before.ships["0"].stats!.hull.current;
+    const hullsBefore = [before.ships["0"].stats!.hull.current, before.ships["1"].stats!.hull.current];
 
     client.moves.applyResolution();
     const { G } = client.getState()!;
 
-    // Damage should have been applied (if ship still exists and wasn't sunk)
-    if (attackerHits > 0 && G.ships["1"]) {
-      expect(G.ships["1"].stats!.hull.current).toBeLessThan(defenderHullBefore);
-    }
-    if (defenderHits > 0 && G.ships["0"]) {
-      expect(G.ships["0"].stats!.hull.current).toBeLessThan(attackerHullBefore);
+    if (G.ships["0"] && G.ships["1"]) {
+      expect([G.ships["0"].stats!.hull.current, G.ships["1"].stats!.hull.current]).toEqual(hullsBefore);
     }
   });
 
@@ -489,8 +498,6 @@ describe("combat phase - resolution", () => {
     const client = setupCombatGame({ ship0, ship1 });
 
     client.moves.attackShip("1");
-    client.moves.rollSeamanship();
-    client.moves.chooseCombatAction("fire");
     client.moves.rollCannons();
 
     const { G: afterCannons } = client.getState()!;
@@ -526,8 +533,6 @@ describe("combat phase - resolution", () => {
     const client = setupCombatGame({ ship0, ship1 });
 
     client.moves.attackShip("1");
-    client.moves.rollSeamanship();
-    client.moves.chooseCombatAction("fire");
     client.moves.rollCannons();
 
     // Get state after cannons
@@ -557,6 +562,7 @@ describe("combat phase - resolution", () => {
     const client = setupCombatGame({ ship0, ship1 });
 
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     const { G: beforeG } = client.getState()!;
@@ -609,6 +615,7 @@ describe("combat outcomes", () => {
       ship1: createShipWithFullStats(1, 0, "Flute"),
     });
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     const { G: beforeG } = client.getState()!;
@@ -635,6 +642,7 @@ describe("combat outcomes", () => {
     const { G } = client.getState()!;
     expect(G.combat!.distance).toBe(2);
 
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     const { G: beforeG } = client.getState()!;
@@ -656,6 +664,7 @@ describe("combat outcomes", () => {
       ship1: createShipWithFullStats(2, 0, "Sloop", ["long_guns"]),
     });
     client.moves.attackShip("1");
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     const { G: beforeG } = client.getState()!;
@@ -827,6 +836,7 @@ describe("bounty and flotilla system", () => {
     client.moves.attackNPC("npc-1");
 
     // Roll seamanship - we'll just check bounty after the whole sequence
+    pastTheAmbush(client);
     client.moves.rollSeamanship();
 
     // The player always gets to choose action in NPC combat (unless NPC won seamanship)

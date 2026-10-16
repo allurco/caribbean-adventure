@@ -342,6 +342,13 @@ describe("combatWaitingFor: the line a seat sees while another seat presses", ()
     expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1" } })).toBe(
       "Waiting for Calico Jack to fire"
     );
+    // Round 1, the ambush (#346): no draw, and the attacker fires and ends the round
+    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "cannons", seamanshipWinner: null } })).toBe(
+      "Waiting for Anne Bonny to fire"
+    );
+    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "resolution", seamanshipWinner: null } })).toBe(
+      "Waiting for Anne Bonny to end the round"
+    );
     // Calico Jack fled and was caught: Anne Bonny fires the parting shot
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1", fleeOutcome: "caught" } })).toBe(
       "Waiting for Anne Bonny to fire"

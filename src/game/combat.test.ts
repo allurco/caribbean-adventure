@@ -128,6 +128,18 @@ describe("canReturnFire", () => {
     defender.stats!.crew.current = 0;
     expect(canReturnFire(defender, 1)).toBe(false);
   });
+
+  it("returns false when the defender is sunk (#346: a ship the first volley sank never answers)", () => {
+    const defender = createShipWithStats({ q: 0, r: 0 });
+    defender.stats!.hull.current = 0;
+    expect(canReturnFire(defender, 1)).toBe(false);
+  });
+
+  it("returns false when the defender has no guns (#346)", () => {
+    const defender = createShipWithStats({ q: 0, r: 0 });
+    defender.stats!.cannons = 0;
+    expect(canReturnFire(defender, 1)).toBe(false);
+  });
 });
 
 describe("resolveSeamanship", () => {

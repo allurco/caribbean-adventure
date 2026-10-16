@@ -225,7 +225,7 @@ describe("playerViewFor: what stays public", () => {
     G.pirates = { "1": { turn: 3, cause: "sink" } };
     G.combat = {
       attackerId: "1", defenderId: "m1", round: 1, stage: "cannons", seamanshipWinner: "1",
-      seamanshipRolls: { "1": 5, m1: 2 }, actionChosen: "fire", attackerHits: 1, defenderHits: 0,
+      seamanshipRolls: { "1": 5, m1: 2 }, actionChosen: "fire", attackerHits: 1, defenderHits: 0, volleys: [{ shooterId: "1", guns: 2, hits: 1 }],
       distance: 1, isNPCCombat: true, fleeOutcome: null, fleeRolls: null,
     };
     const view = playerViewFor(G, "0");

@@ -115,6 +115,9 @@ export function CombatPanel({
   const npcLabel = isNPC && defender ? npcKind(defender as NPCShip) : "Merchant";
   // Seats count from 1 on the board, as everywhere else (#110)
   const seatLabel = (id: string | null) => Number(id) + 1;
+  // A fight stored before #346 records no volleys.
+  const volleys = combat.volleys ?? [];
+  const shooterLabel = (id: string) => (isNPC && id === combat.defenderId ? npcLabel : `Player ${seatLabel(id)}`);
 
   return (
     <div style={{ top: safeInset("top", HUD_EDGE) }} className="absolute left-1/2 -translate-x-1/2 rounded-xl overflow-hidden border border-red-800/50 bg-gradient-to-br from-stone-900/95 via-red-950/90 to-stone-950/95 shadow-2xl shadow-black/50 backdrop-blur-md text-white p-4 text-sm w-96">
@@ -245,6 +248,10 @@ export function CombatPanel({
                 </div>
               )}
             </>
+          ) : combat.round === 1 ? (
+            <div className="text-amber-100/80 text-xs mb-2">
+              The ambush: the attacker fires first, and the defender answers if it still can
+            </div>
           ) : (
             <div className="text-amber-100/80 text-xs mb-2">
               Roll cannons to determine hits
@@ -261,23 +268,24 @@ export function CombatPanel({
 
       {combat.stage === "resolution" && (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-4 text-center">
-            <div>
-              <div className="text-amber-400 text-xs">Attacker Hits</div>
-              <div className="text-2xl font-heading text-red-400">
-                {combat.attackerHits}
+          {/* The round's volleys in the order they were fired; each one's damage has landed (#346) */}
+          <div className="space-y-1 text-center">
+            {volleys.map((volley, i) => (
+              <div key={i} className="text-xs text-amber-100/80">
+                <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> fired {volley.guns} gun
+                {volley.guns === 1 ? "" : "s"}:{" "}
+                <span className="font-heading text-red-400">
+                  {volley.hits} hit{volley.hits === 1 ? "" : "s"}
+                </span>
               </div>
-            </div>
-            <div>
-              <div className="text-amber-400 text-xs">Defender Hits</div>
-              <div className="text-2xl font-heading text-red-400">
-                {combat.defenderHits}
-              </div>
-            </div>
+            ))}
+            {volleys.length === 1 && combat.fleeOutcome !== "caught" && (
+              <div className="text-[10px] text-amber-400/60">No answer: the other ship could not fire back</div>
+            )}
           </div>
           <div className="text-center">
             <ActionButton
-              label="Apply Damage"
+              label="End Round"
               onClick={onApplyResolution}
               disabled={!mayAct}
               primary

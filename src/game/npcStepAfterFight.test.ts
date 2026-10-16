@@ -5,6 +5,7 @@ import { hex, hexDistance, hexEquals, hexGrid, type Hex } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import { WIN_SCORE, type Captain, type CaribbeanState, type NPCShip, type ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
+import { fightOneRound, fightToTheEnd, fireTheAmbush } from "../testSupport/combatSteps";
 import { createShipState } from "./economy";
 
 /**
@@ -77,7 +78,7 @@ function merchant(id: string, at: Hex, speed: number): NPCShip {
 
 /** Seeds found to give the rolls a test needs: a flight caught, a merchant spawned after the fight. */
 const CAUGHT_SEED = "s2";
-const SPAWN_SEED = "s10";
+const SPAWN_SEED = "s6";
 
 /** The merchant to attack, beside seat 0, and the witness far off. */
 const npcs = (): Record<string, NPCShip> => ({
@@ -129,10 +130,7 @@ const twoSeats = (guns: [boolean, boolean] = [true, true]): Record<string, ShipS
 
 /** Play cannon fire through to the end of the fight. */
 function fireToTheEnd(client: TestClient): void {
-  client.moves.rollSeamanship();
-  client.moves.chooseCombatAction("fire");
-  client.moves.rollCannons();
-  client.moves.applyResolution();
+  fightToTheEnd(client);
 }
 
 function expectFightOver(client: TestClient): void {
@@ -154,8 +152,6 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.attackNPC("prey");
     expect(stateOf(client).ctx.phase).toBe("combat");
     expect(npcSteps(client)).toBe(0);
-    client.moves.rollSeamanship();
-    client.moves.chooseCombatAction("fire");
     client.moves.rollCannons();
     expect(npcSteps(client)).toBe(0);
   });
@@ -170,8 +166,12 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
   });
 
   it("an NPC boarded: the NPCs sail once after the fight", () => {
-    const client = startGame(twoSeats());
+    // Gunless, so the ambush (#346) leaves the prey afloat; the faster sailor wins round 2's draw.
+    const seats = twoSeats([false, true]);
+    seats["0"].stats!.maneuverability = 20;
+    const client = startGame(seats);
     client.moves.attackNPC("prey");
+    fireTheAmbush(client);
     client.moves.rollSeamanship();
     client.moves.chooseCombatAction("board");
     expectFightOver(client);
@@ -210,6 +210,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
   it("a fight between seats, boarded: the NPCs sail once", () => {
     const client = startGame(twoSeats());
     client.moves.attackShip("1");
+    fireTheAmbush(client);
     client.moves.rollSeamanship();
     client.moves.chooseCombatAction("board");
     expectFightOver(client);
@@ -218,8 +219,11 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
 
   it("a flight from the fight, escaped: the NPCs sail once", () => {
     // The attacker, far the better sailor, wins seamanship and gets clean away
-    const client = startGame(twoSeats());
+    const seats = twoSeats();
+    seats["1"].stats!.maneuverability = 0;
+    const client = startGame(seats);
     client.moves.attackShip("1");
+    fireTheAmbush(client);
     client.moves.rollSeamanship();
     client.moves.chooseCombatAction("flee");
     client.moves.rollFleeAttempt();
@@ -233,6 +237,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     seats["1"].stats!.maneuverability = seats["0"].stats!.maneuverability;
     const client = startGame(seats, {}, CAUGHT_SEED);
     client.moves.attackShip("1");
+    fireTheAmbush(client);
     client.moves.rollSeamanship();
     client.moves.chooseCombatAction("flee");
     client.moves.rollFleeAttempt();
@@ -256,7 +261,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     expect(stateOf(client).G.npcs[spawned[0]].role).toBe("MERCHANT");
   });
 
-  it("both ships sunk: the NPCs sail once", () => {
+  it("a defender the ambush sinks never fires back (#346): the NPCs sail once", () => {
     const seats = twoSeats();
     seats["0"].stats!.hull = { current: 1, max: 1 };
     seats["1"].stats!.hull = { current: 1, max: 1 };
@@ -264,7 +269,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.attackShip("1");
     fireToTheEnd(client);
     expectFightOver(client);
-    expect(Object.keys(stateOf(client).G.ships)).toEqual([]);
+    expect(Object.keys(stateOf(client).G.ships)).toEqual(["0"]);
     expect(npcSteps(client)).toBe(1);
   });
 
@@ -291,7 +296,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.attackShip("1");
     let rounds = 0;
     while (stateOf(client).G.combat && rounds < 200) {
-      fireToTheEnd(client);
+      fightOneRound(client);
       rounds++;
       if (stateOf(client).G.combat) expect(npcSteps(client)).toBe(0);
     }

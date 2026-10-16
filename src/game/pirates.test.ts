@@ -6,6 +6,7 @@ import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, Nation, NPCRole, NPCShip, PirateRecord, ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
+import { fightToTheEnd, fireTheAmbush } from "../testSupport/combatSteps";
 import { isBannedAtPort, isPlayerPirate } from "./reputation";
 
 /**
@@ -116,12 +117,9 @@ function actAs(client: TestClient, playerId: string): void {
   expect(client.getState()!.ctx.currentPlayer).toBe(playerId);
 }
 
-/** Play one exchange of cannon fire through to the end of the combat. */
+/** Play cannon fire through to the end of the combat. */
 function fireOnce(client: TestClient): void {
-  client.moves.rollSeamanship();
-  client.moves.chooseCombatAction("fire");
-  client.moves.rollCannons();
-  client.moves.applyResolution();
+  fightToTheEnd(client);
   expect(stateOf(client).combat).toBeUndefined();
 }
 
@@ -138,8 +136,6 @@ describe("turning pirate (#201)", () => {
       { npcs: { merchant: npc("merchant", "MERCHANT", "Spain", 1, 0) } }
     );
     client.moves.attackNPC("merchant");
-    client.moves.rollSeamanship();
-    client.moves.chooseCombatAction("flee");
 
     expect(stateOf(client).ships["0"].bounties.Spain).toBe(30);
     expect(isPlayerPirate(stateOf(client), "0")).toBe(false);
@@ -161,11 +157,15 @@ describe("turning pirate (#201)", () => {
   });
 
   it("boarding a merchant turns the player pirate, and only that player", () => {
+    // Gunless, so the ambush (#346) leaves the merchant afloat; the faster sailor wins round 2's draw.
+    const boarder = ship(0, 0, { nation: "France", guns: false });
+    boarder.stats!.maneuverability = 20;
     const client = startGame(
-      { "0": ship(0, 0, { nation: "France" }), "1": ship(4, 0, { nation: "England" }) },
+      { "0": boarder, "1": ship(4, 0, { nation: "England" }) },
       { npcs: { merchant: npc("merchant", "MERCHANT", "Spain", 1, 0) } }
     );
     client.moves.attackNPC("merchant");
+    fireTheAmbush(client);
     client.moves.rollSeamanship();
     client.moves.chooseCombatAction("board");
 

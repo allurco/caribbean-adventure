@@ -77,6 +77,7 @@ function makeCombat(overrides: Partial<CombatState> = {}): CombatState {
     actionChosen: null,
     attackerHits: 0,
     defenderHits: 0,
+    volleys: [],
     distance: 1,
     isNPCCombat: false,
     fleeOutcome: null,
@@ -84,6 +85,9 @@ function makeCombat(overrides: Partial<CombatState> = {}): CombatState {
     ...overrides,
   };
 }
+
+/** A volley as the cannons record it (#346): who fired, how many guns, how many hit. */
+const fired = (shooterId: string, guns: number, hits: number) => ({ shooterId, guns, hits });
 
 const volleyOf = (beats: CombatBeat[]): VolleyBeat => {
   const volley = beats.find((b): b is VolleyBeat => b.kind === "volley");
@@ -105,7 +109,7 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
 
   it("a volley fires every gun the rules rolled, one after another, both ships", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
-    const after = makeState({ combat: makeCombat({ stage: "resolution", attackerHits: 3, defenderHits: 1 }) });
+    const after = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 3), fired("1", 2, 1)] }) });
     const volley = volleyOf(combatBeatsFrom(before, after));
     const [attack, reply] = volley.volleys;
     expect(attack).toMatchObject({ shooterId: "0", targetId: "1" });
@@ -124,17 +128,24 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(volley.seconds).toBeGreaterThanOrEqual(reply.shots[1].landAt);
   });
 
-  it("only guns with crew to work them fire", () => {
-    const frigate = makeShip("Frigate");
-    frigate.stats!.crew.current = 2;
-    const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
-    const after = makeState({ ships: { ...before.ships, "0": frigate }, combat: makeCombat({ stage: "resolution", attackerHits: 1 }) });
-    expect(volleyOf(combatBeatsFrom(before, after)).volleys[0].shots).toHaveLength(2);
+  it("the volleys play in the order they were fired: the draw's winner first, then the answer (#346)", () => {
+    const before = makeState({ combat: makeCombat({ stage: "cannons", round: 2, seamanshipWinner: "1" }) });
+    const after = makeState({ combat: makeCombat({ stage: "resolution", round: 2, seamanshipWinner: "1", volleys: [fired("1", 2, 1), fired("0", 4, 0)] }) });
+    const volleys = volleyOf(combatBeatsFrom(before, after)).volleys;
+    expect(volleys.map((v) => [v.shooterId, v.targetId])).toEqual([["1", "0"], ["0", "1"]]);
   });
 
-  it("a ship out of range does not return fire", () => {
+  it("each volley fires the guns it was rolled with, though the answer has since thinned the crew (#346)", () => {
+    const frigate = makeShip("Frigate");
+    frigate.stats!.crew.current = 1;
+    const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
+    const after = makeState({ ships: { ...before.ships, "0": frigate }, combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 1), fired("1", 2, 1)] }) });
+    expect(volleyOf(combatBeatsFrom(before, after)).volleys[0].shots).toHaveLength(4);
+  });
+
+  it("a ship that did not answer fires nothing back", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons", distance: 2 }) });
-    const after = makeState({ combat: makeCombat({ stage: "resolution", distance: 2, attackerHits: 1 }) });
+    const after = makeState({ combat: makeCombat({ stage: "resolution", distance: 2, volleys: [fired("0", 4, 1)] }) });
     expect(volleyOf(combatBeatsFrom(before, after)).volleys.map((v) => v.shooterId)).toEqual(["0"]);
   });
 
@@ -142,18 +153,31 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     // Ship 1 won the seamanship, fled, and was caught.
     const caught = { seamanshipWinner: "1", fleeOutcome: "caught" as const };
     const before = makeState({ combat: makeCombat({ ...caught, stage: "cannons" }) });
-    const after = makeState({ combat: makeCombat({ ...caught, stage: "resolution", attackerHits: 2 }) });
+    const after = makeState({ combat: makeCombat({ ...caught, stage: "resolution", volleys: [fired("0", 4, 2)] }) });
     const volleys = volleyOf(combatBeatsFrom(before, after)).volleys;
     expect(volleys.map((v) => [v.shooterId, v.targetId])).toEqual([["0", "1"]]);
   });
 
+  it("a volley with no gun to fire plays nothing", () => {
+    const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
+    const after = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 0, 0)] }) });
+    expect(combatBeatsFrom(before, after)).toEqual([]);
+  });
+
+  it("a fight stored before #346, with no volleys recorded, plays none", () => {
+    const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
+    const { volleys: _volleys, ...legacy } = makeCombat({ stage: "resolution", attackerHits: 2 });
+    void _volleys;
+    expect(combatBeatsFrom(before, makeState({ combat: legacy }))).toEqual([]);
+  });
+
   it("which shots hit is seeded: the same on every seat, different from fight to fight", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
-    const after = makeState({ combat: makeCombat({ stage: "resolution", attackerHits: 2 }) });
+    const after = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 2)] }) });
     const hits = (state: CaribbeanState) => volleyOf(combatBeatsFrom(before, state)).volleys[0].shots.map((s) => s.hit);
     expect(hits(after)).toEqual(hits(structuredClone(after)));
     const patterns = new Set(
-      [1, 2, 3, 4, 5, 6, 7, 8].map((round) => hits(makeState({ combat: makeCombat({ stage: "resolution", attackerHits: 2, round }) })).join())
+      [1, 2, 3, 4, 5, 6, 7, 8].map((round) => hits(makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 2)], round }) })).join())
     );
     expect(patterns.size).toBeGreaterThan(1);
   });
@@ -161,8 +185,8 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
   it("chain shot that hits brings a mast down", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
     const ships = { ...before.ships, "0": makeShip("Frigate", { upgrades: ["chain_shot"] }) };
-    const hit = makeState({ ships, combat: makeCombat({ stage: "resolution", attackerHits: 1 }) });
-    const miss = makeState({ ships, combat: makeCombat({ stage: "resolution", attackerHits: 0 }) });
+    const hit = makeState({ ships, combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 1)] }) });
+    const miss = makeState({ ships, combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 0)] }) });
     expect(volleyOf(combatBeatsFrom({ ...before, ships }, hit)).volleys[0].mastFalls).toBe(true);
     expect(volleyOf(combatBeatsFrom({ ...before, ships }, miss)).volleys[0].mastFalls).toBe(false);
   });
@@ -212,7 +236,7 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     const volleyIn = (round: number) =>
       combatBeatsFrom(
         makeState({ combat: makeCombat({ stage: "cannons", round }) }),
-        makeState({ combat: makeCombat({ stage: "resolution", round, attackerHits: 1 }) })
+        makeState({ combat: makeCombat({ stage: "resolution", round, volleys: [fired("0", 4, 1)] }) })
       )[0].seedKey;
     expect(volleyIn(1)).toBe(volleyIn(1));
     expect(volleyIn(2)).not.toBe(volleyIn(1));

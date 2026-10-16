@@ -14,6 +14,15 @@ const fight = (stage: CombatStage, winner: string | null, extra: Partial<FightTu
 });
 
 describe("combatActor: the seat that presses a fight's step", () => {
+  it("round 1, the ambush (#346): with no draw rolled, the attacker fires the opening broadside and ends the round", () => {
+    for (const stage of ["cannons", "resolution"] as const) {
+      expect(combatActor(fight(stage, null))).toBe("0");
+      expect(combatActor(fight(stage, null, { defenderId: "npc-1", isNPCCombat: true }))).toBe("0");
+      // The voyage list sends no NPC's id: the defender may be null
+      expect(combatActor(fight(stage, null, { defenderId: null, isNPCCombat: true }))).toBe("0");
+    }
+  });
+
   it("the attacker rolls the draw", () => {
     expect(combatActor(fight("seamanship", null))).toBe("0");
   });

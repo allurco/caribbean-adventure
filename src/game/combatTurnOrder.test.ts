@@ -5,6 +5,7 @@ import { hex, hexEquals, hexGrid } from "./hex";
 import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, NPCShip, ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
+import { fightToTheEnd, fireTheAmbush } from "../testSupport/combatSteps";
 import { createShipState } from "./economy";
 
 /**
@@ -107,20 +108,18 @@ type TestClient = ReturnType<typeof startGame>;
 const stateOf = (client: TestClient) => client.getState()!;
 const current = (client: TestClient) => stateOf(client).ctx.currentPlayer;
 
-/** The attacker wins seamanship and boards: the fight ends with nobody sunk. */
+/** The ambush, then the attacker wins round 2's draw and boards: the fight ends with nobody sunk. */
 function boardOnce(client: TestClient): void {
+  fireTheAmbush(client);
   client.moves.rollSeamanship();
   client.moves.chooseCombatAction("board");
   expect(stateOf(client).G.combat).toBeUndefined();
   expect(stateOf(client).ctx.phase).toBe("main");
 }
 
-/** Play one exchange of cannon fire through to the end of the combat. */
+/** Play cannon fire through to the end of the combat. */
 function fireOnce(client: TestClient): void {
-  client.moves.rollSeamanship();
-  client.moves.chooseCombatAction("fire");
-  client.moves.rollCannons();
-  client.moves.applyResolution();
+  fightToTheEnd(client);
   expect(stateOf(client).G.combat).toBeUndefined();
   expect(stateOf(client).ctx.phase).toBe("main");
 }
@@ -141,7 +140,7 @@ describe("the turn after a fight, with three seats (#284)", () => {
     client.moves.attackShip("1");
     expect(stateOf(client).ctx.phase).toBe("combat");
     expect(current(client)).toBe("0");
-    client.moves.rollSeamanship();
+    client.moves.rollCannons();
     expect(current(client)).toBe("0");
   });
 
@@ -199,7 +198,7 @@ describe("the turn after a fight, with three seats (#284)", () => {
     expect(nextTurns(client, 3)).toEqual(["2", "0", "1"]);
   });
 
-  it("both ships sink: the defender picks first, then every seat in turn, none skipped or doubled", () => {
+  it("the ambush sinks a defender that could have sunk the attacker: it never fires back, and the defender's turn comes next (#346)", () => {
     const seats = threeSeats();
     seats["0"].stats!.hull = { current: 1, max: 1 };
     seats["1"].stats!.hull = { current: 1, max: 1 };
@@ -207,14 +206,10 @@ describe("the turn after a fight, with three seats (#284)", () => {
     client.moves.attackShip("1");
     fireOnce(client);
 
-    expect(Object.keys(stateOf(client).G.ships)).toEqual(["2"]);
+    expect(Object.keys(stateOf(client).G.ships).sort()).toEqual(["0", "2"]);
     expect(current(client)).toBe("1");
     client.moves.pickCaptain(0, "Sloop");
-    expect(nextTurns(client, 1)).toEqual(["2"]);
-    expect(nextTurns(client, 1)).toEqual(["0"]);
-    client.moves.pickCaptain(0, "Sloop");
-    expect(Object.keys(stateOf(client).G.ships).sort()).toEqual(["0", "1", "2"]);
-    expect(nextTurns(client, 3)).toEqual(["1", "2", "0"]);
+    expect(nextTurns(client, 3)).toEqual(["2", "0", "1"]);
   });
 
   it("a seat out of captains is passed over for good, and the turns never stall", () => {

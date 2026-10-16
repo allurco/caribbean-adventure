@@ -113,6 +113,13 @@ export type CombatAction = (typeof COMBAT_ACTIONS)[number];
 export type CombatStage = (typeof COMBAT_STAGES)[number];
 export type FleeOutcome = "escaped" | "caught" | null;
 
+/** One broadside fired in a round (#346): who fired, how many guns, and how many hit. */
+export interface Volley {
+  shooterId: string;
+  guns: number;
+  hits: number;
+}
+
 export interface CombatState {
   attackerId: string;
   defenderId: string;
@@ -123,6 +130,13 @@ export interface CombatState {
   actionChosen: CombatAction | null;
   attackerHits: number;
   defenderHits: number;
+  /**
+   * This round's volleys, in the order they were fired (#346): each one's
+   * damage landed before the next was rolled. Empty until the cannons.
+   * Optional only because a fight stored before #346 lacks it (a match
+   * mid-fight as the change deployed): read it as none.
+   */
+  volleys?: Volley[];
   distance: number;
   isNPCCombat: boolean;
   fleeOutcome: FleeOutcome;
