@@ -25,6 +25,7 @@ import {
   applyFleeAttempt,
   applyCannons,
   applyCombatResolution,
+  openFight,
 } from "./combatMoves";
 import { movesLeft, spendMove, turnRunsOut } from "./turnMoves";
 import {
@@ -534,21 +535,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const distance = wrappedDistance(attacker.position, defender.position, G.wrap);
           if (!canAttack(attacker, defender, distance)) return INVALID_MOVE;
 
-          G.combat = {
-            attackerId: ctx.currentPlayer,
-            defenderId: targetId,
-            round: 1,
-            stage: "seamanship",
-            seamanshipWinner: null,
-            seamanshipRolls: {},
-            actionChosen: null,
-            attackerHits: 0,
-            defenderHits: 0,
-            distance,
-            isNPCCombat: false,
-            fleeOutcome: null,
-            fleeRolls: null,
-          };
+          G.combat = openFight(ctx.currentPlayer, targetId, distance, false);
 
           events.setPhase("combat");
         },
@@ -571,21 +558,7 @@ export const Caribbean: Game<CaribbeanState> = {
             }
           }
 
-          G.combat = {
-            attackerId: ctx.currentPlayer,
-            defenderId: npcId,
-            round: 1,
-            stage: "seamanship",
-            seamanshipWinner: null,
-            seamanshipRolls: {},
-            actionChosen: null,
-            attackerHits: 0,
-            defenderHits: 0,
-            distance,
-            isNPCCombat: true,
-            fleeOutcome: null,
-            fleeRolls: null,
-          };
+          G.combat = openFight(ctx.currentPlayer, npcId, distance, true);
 
           events.setPhase("combat");
         },

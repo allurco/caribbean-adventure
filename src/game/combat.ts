@@ -143,11 +143,15 @@ export function canAttack(
   return true;
 }
 
+/**
+ * May this ship answer a volley (#346)? Not when sunk or derelict, with no
+ * crew or no gun it can man, or out of its guns' range.
+ */
 export function canReturnFire(defender: ShipState | NPCShip, distance: number): boolean {
   if (defender.isDerelict) return false;
   // NPCs always have stats, player ships might not
   const stats = defender.stats;
-  if (!stats || stats.crew.current <= 0) return false;
+  if (!stats || stats.hull.current <= 0 || getEffectiveCannons(defender) < 1) return false;
   return distance <= getShipAttackRange(defender);
 }
 

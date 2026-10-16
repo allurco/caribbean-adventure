@@ -20,6 +20,7 @@ const fight: CombatState = {
   actionChosen: null,
   attackerHits: 0,
   defenderHits: 0,
+  volleys: [],
   distance: 1,
   isNPCCombat: false,
   fleeOutcome: null,

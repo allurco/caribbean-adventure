@@ -10,7 +10,7 @@
  * `G.combat` and answers "ended": the caller then sets the phase back to
  * main.
  */
-import type { CaribbeanState, CombatAction, CombatStage, CombatState } from "./types";
+import type { CaribbeanState, CombatAction, CombatStage, CombatState, NPCShip, ShipState } from "./types";
 import { COMBAT_ACTIONS } from "./types";
 import {
   canReturnFire,
@@ -46,6 +46,29 @@ function fightOf(G: CaribbeanState): CombatState {
   return G.combat;
 }
 
+/**
+ * A fight as it opens (#346): round 1 is the ambush, so there is no draw.
+ * The attacker's broadside is the first step, and fire the only action.
+ */
+export function openFight(attackerId: string, defenderId: string, distance: number, isNPCCombat: boolean): CombatState {
+  return {
+    attackerId,
+    defenderId,
+    round: 1,
+    stage: "cannons",
+    seamanshipWinner: null,
+    seamanshipRolls: {},
+    actionChosen: "fire",
+    attackerHits: 0,
+    defenderHits: 0,
+    volleys: [],
+    distance,
+    isNPCCombat,
+    fleeOutcome: null,
+    fleeRolls: null,
+  };
+}
+
 /** Is a fight on, at this step? Every combat move is refused otherwise. */
 export function atCombatStage(G: CaribbeanState, stage: CombatStage): boolean {
   return G.combat !== undefined && G.combat.stage === stage;
@@ -54,10 +77,12 @@ export function atCombatStage(G: CaribbeanState, stage: CombatStage): boolean {
 /**
  * May the draw's winner choose this action? Only while the fight waits on
  * the choice, only fire, board or flee, and boarding only from the next hex.
+ * Round 1 is the ambush (#346): fire is the only action then.
  */
 export function canChooseCombatAction(G: CaribbeanState, action: unknown): action is CombatAction {
   if (!atCombatStage(G, "chooseAction")) return false;
   if (!isOneOf(COMBAT_ACTIONS, action)) return false;
+  if (fightOf(G).round === 1 && action !== "fire") return false;
   if (action === "board" && fightOf(G).distance > 1) return false;
   return true;
 }
@@ -236,66 +261,81 @@ function fireBroadside(cannons: number, d6: RollD6): number {
   return countCannonHits(rolls);
 }
 
+/** A ship in the fight by its id: the NPC when it is the defender of an NPC fight. */
+function combatantOf(G: CaribbeanState, combat: CombatState, id: string): ShipState | NPCShip {
+  return combat.isNPCCombat && id === combat.defenderId ? G.npcs[id] : G.ships[id];
+}
+
+/** The other side of the fight from `id`. */
+function opponentOf(combat: CombatState, id: string): string {
+  return id === combat.attackerId ? combat.defenderId : combat.attackerId;
+}
+
 /**
- * The cannons: after a caught flight only the pursuer fires; otherwise the
- * attacker fires, then the defender if it can answer. Hits are counted
- * here and land in the resolution.
+ * One volley (#346): `shooterId` fires every gun its crew can man at the
+ * other side, and the damage lands at once, before anything else is rolled.
+ * Recorded in the round's volleys and in the side's hits.
+ */
+function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, d6: RollD6): void {
+  const shooter = combatantOf(G, combat, shooterId);
+  const targetId = opponentOf(combat, shooterId);
+  const target = combatantOf(G, combat, targetId);
+  const guns = getEffectiveCannons(shooter);
+  const hits = fireBroadside(guns, d6);
+  combat.volleys.push({ shooterId, guns, hits });
+  if (shooterId === combat.attackerId) combat.attackerHits = hits;
+  else combat.defenderHits = hits;
+  if (hits === 0) return;
+
+  const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
+  applyDamage(target, calculateDamage(hits, upgrades));
+  // An escort's attacker that takes a hit fails its no-damage condition.
+  if (targetId === combat.attackerId) {
+    const mission = G.ships[combat.attackerId].activeMission;
+    if (mission) failEscortMission(mission);
+  }
+}
+
+/**
+ * Who fires first this round: in round 1 (the ambush) the attacker; after a
+ * caught flight the pursuer, alone; otherwise the draw's winner, who chose
+ * to fire (the attacker in a fight from before #346 with no winner).
+ */
+export function firstToFire(combat: Pick<CombatState, "round" | "attackerId" | "defenderId" | "seamanshipWinner" | "fleeOutcome">): string {
+  if (combat.round === 1 || combat.seamanshipWinner === null) return combat.attackerId;
+  if (combat.fleeOutcome === "caught") {
+    return combat.seamanshipWinner === combat.attackerId ? combat.defenderId : combat.attackerId;
+  }
+  return combat.seamanshipWinner;
+}
+
+/**
+ * The cannons, volley by volley (#346): the first to fire (`firstToFire`)
+ * fires and its damage lands; then the other side answers if it still can
+ * (`canReturnFire`, after that damage), and its damage lands. After a caught
+ * flight only the pursuer fires. The sunk and the derelict are settled in
+ * the resolution.
  */
 export function applyCannons(G: CaribbeanState, d6: RollD6): void {
   const combat = fightOf(G);
+  combat.volleys = [];
+  combat.attackerHits = 0;
+  combat.defenderHits = 0;
 
-  const isNPC = combat.isNPCCombat;
-  const attacker = G.ships[combat.attackerId];
-  const defender = isNPC
-    ? G.npcs[combat.defenderId]
-    : G.ships[combat.defenderId];
+  const first = firstToFire(combat);
+  fireVolley(G, combat, first, d6);
 
-  // Check if this is a parting shot from failed flee
-  const isPartingShot = combat.fleeOutcome === "caught";
-
-  if (isPartingShot) {
-    // Only the pursuer fires, fleeer cannot return fire
-    const fleeingId = combat.seamanshipWinner!;
-    const pursuerId = fleeingId === combat.attackerId
-      ? combat.defenderId
-      : combat.attackerId;
-
-    const pursuerShip = isNPC && pursuerId === combat.defenderId
-      ? G.npcs[pursuerId]
-      : G.ships[pursuerId];
-
-    // Use effective cannons (limited by current crew)
-    const pursuerHits = fireBroadside(getEffectiveCannons(pursuerShip), d6);
-
-    // Assign hits based on who is the pursuer
-    if (pursuerId === combat.attackerId) {
-      combat.attackerHits = pursuerHits;
-      combat.defenderHits = 0; // Fleeer can't return fire
-    } else {
-      combat.attackerHits = 0; // Fleeer can't return fire
-      combat.defenderHits = pursuerHits;
-    }
-  } else {
-    // Normal combat - both sides fire
-
-    // Attacker fires - use effective cannons (limited by current crew)
-    combat.attackerHits = fireBroadside(getEffectiveCannons(attacker), d6);
-
-    // Defender fires back if in range
-    if (canReturnFire(defender, combat.distance)) {
-      // Use effective cannons (limited by current crew)
-      combat.defenderHits = fireBroadside(getEffectiveCannons(defender), d6);
-    } else {
-      combat.defenderHits = 0;
-    }
+  const answering = opponentOf(combat, first);
+  if (combat.fleeOutcome !== "caught" && canReturnFire(combatantOf(G, combat, answering), combat.distance)) {
+    fireVolley(G, combat, answering, d6);
   }
 
   combat.stage = "resolution";
 }
 
 /**
- * The resolution: both sides' hits land, then the sunk and the derelict
- * are settled (bounties, glory, missions, loot, a sunk captain lost). The
+ * The resolution: the volleys' damage has landed; the sunk and the
+ * derelict are settled (bounties, glory, missions, loot, a sunk captain lost). The
  * fight ends there, or after a parting shot; else a new round begins.
  * `turn` dates any bounty or claim it settles.
  */
@@ -307,25 +347,6 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
   const defender = isNPC
     ? G.npcs[combat.defenderId]
     : G.ships[combat.defenderId];
-
-  // Apply damage to defender from attacker's hits
-  if (combat.attackerHits > 0) {
-    const damage = calculateDamage(combat.attackerHits, attacker.upgrades);
-    applyDamage(defender, damage);
-  }
-
-  // Apply damage to attacker from defender's hits
-  if (combat.defenderHits > 0) {
-    // NPCs don't have upgrades array
-    const defenderUpgrades = isNPC ? [] : (defender as typeof attacker).upgrades;
-    const damage = calculateDamage(combat.defenderHits, defenderUpgrades);
-    applyDamage(attacker, damage);
-
-    // Fail escort mission if attacker took damage
-    if (attacker.activeMission) {
-      failEscortMission(attacker.activeMission);
-    }
-  }
 
   // Check for sunk/derelict
   let combatEnded = false;
@@ -427,5 +448,6 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
   combat.actionChosen = null;
   combat.attackerHits = 0;
   combat.defenderHits = 0;
+  combat.volleys = [];
   return "continues";
 }
