@@ -92,3 +92,25 @@ export function ownerSql(query: string): string {
   const url = ownerDbUrl();
   return execFileSync("psql", [url, "-v", "ON_ERROR_STOP=1", "-At", "-c", query], { encoding: "utf8" }).trim();
 }
+
+function sqlLiteral(text: string): string {
+  return `'${text.replace(/'/g, "''")}'`;
+}
+
+/**
+ * A user as Supabase Auth creates one on a first Discord or Google sign-in
+ * (#106): `raw_app_meta_data.provider` names the provider when the row is
+ * inserted, which is what `handle_new_user` reads. Inserted with `ownerSql`,
+ * since only a real OAuth round trip makes one. Returns the user's id; delete
+ * it with the admin API afterwards.
+ */
+export function oauthSignUp(provider: "discord" | "google", userMetadata: Record<string, string>): string {
+  const id = randomUUID();
+  const appMetadata = JSON.stringify({ provider, providers: [provider] });
+  ownerSql(
+    `insert into auth.users (id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+     values (${sqlLiteral(id)}, 'authenticated', 'authenticated', ${sqlLiteral(`rls-${id}@example.test`)},
+       ${sqlLiteral(appMetadata)}::jsonb, ${sqlLiteral(JSON.stringify(userMetadata))}::jsonb, now(), now())`,
+  );
+  return id;
+}

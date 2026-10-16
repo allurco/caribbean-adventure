@@ -10,8 +10,10 @@
  */
 export const AVATAR_URL_MAX_LENGTH = 2048;
 
-/** Discord's avatar CDN. */
+/** Discord's CDN, which also serves anyone's uploads: only its avatar paths are avatars. */
 const DISCORD_AVATAR_HOST = "cdn.discordapp.com";
+/** A user's avatar (`/avatars/<user id>/<hash>`) or one of Discord's default avatars (`/embed/avatars/<n>`). */
+const DISCORD_AVATAR_PATH = /^\/(?:avatars\/\d+\/|embed\/avatars\/)/;
 /** Google's profile pictures, served from lh3 to lh6 only (not the rest of googleusercontent.com, which hosts user content). */
 const GOOGLE_AVATAR_HOST = /^lh[3-6]\.googleusercontent\.com$/;
 
@@ -28,9 +30,10 @@ export function safeAvatarUrl(raw: string | null | undefined): string | null {
     return null;
   }
   if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
-  return isAvatarHost(url.hostname) ? url.href : null;
+  return isAvatar(url) ? url.href : null;
 }
 
-function isAvatarHost(hostname: string): boolean {
-  return hostname === DISCORD_AVATAR_HOST || GOOGLE_AVATAR_HOST.test(hostname);
+function isAvatar(url: URL): boolean {
+  if (url.hostname === DISCORD_AVATAR_HOST) return DISCORD_AVATAR_PATH.test(url.pathname);
+  return GOOGLE_AVATAR_HOST.test(url.hostname);
 }

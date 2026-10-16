@@ -25,6 +25,19 @@ describe("safeAvatarUrl", () => {
     }
   });
 
+  it("keeps only Discord's avatar paths, its default avatars included", () => {
+    expect(safeAvatarUrl("https://cdn.discordapp.com/embed/avatars/3.png")).toBe("https://cdn.discordapp.com/embed/avatars/3.png");
+    for (const url of [
+      "https://cdn.discordapp.com/attachments/1/2/pic.png",
+      "https://cdn.discordapp.com/emojis/1.png",
+      "https://cdn.discordapp.com/avatars/abc/a.png",
+      "https://cdn.discordapp.com/avatars/1",
+      "https://cdn.discordapp.com/x/avatars/1/a.png",
+    ]) {
+      expect(safeAvatarUrl(url), url).toBeNull();
+    }
+  });
+
   it("keeps Google's lh3 to lh6 picture hosts", () => {
     for (const host of ["lh3", "lh4", "lh5", "lh6"]) {
       expect(safeAvatarUrl(`https://${host}.googleusercontent.com/a/x`)).toBe(`https://${host}.googleusercontent.com/a/x`);
@@ -58,13 +71,13 @@ describe("safeAvatarUrl", () => {
 
   it("is null for something that is not a URL, or holds spaces or control characters", () => {
     expect(safeAvatarUrl("https://")).toBeNull();
-    expect(safeAvatarUrl("https://cdn.discordapp.com/a b.png")).toBeNull();
-    expect(safeAvatarUrl("https://cdn.discordapp.com/a\u0000.png")).toBeNull();
-    expect(safeAvatarUrl(" https://cdn.discordapp.com/a.png")).toBeNull();
+    expect(safeAvatarUrl("https://cdn.discordapp.com/avatars/1/a b.png")).toBeNull();
+    expect(safeAvatarUrl("https://cdn.discordapp.com/avatars/1/a\u0000.png")).toBeNull();
+    expect(safeAvatarUrl(" https://cdn.discordapp.com/avatars/1/a.png")).toBeNull();
   });
 
   it("is null past the length the table allows", () => {
-    const base = "https://cdn.discordapp.com/";
+    const base = "https://cdn.discordapp.com/avatars/1/";
     expect(safeAvatarUrl(base + "a".repeat(AVATAR_URL_MAX_LENGTH - base.length))).not.toBeNull();
     expect(safeAvatarUrl(base + "a".repeat(AVATAR_URL_MAX_LENGTH - base.length + 1))).toBeNull();
   });

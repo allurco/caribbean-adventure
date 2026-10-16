@@ -194,9 +194,64 @@ revoke execute on function public.provider_display_name(jsonb) from public, anon
 revoke execute on function public.handle_identity_change() from public, anon, authenticated;
 revoke execute on function public.handle_identity_removed() from public, anon, authenticated;
 
+-- handle_new_user (#105), redefined for one change: it takes the avatar from
+-- the sign-up's metadata only when the user signed up through Discord or
+-- Google. Anyone can sign up through Auth's /otp with any `data`, so an email
+-- sign-up's avatar_url is the player's own choice, and the avatar must always
+-- be one a provider gave. Auth sets raw_app_meta_data.provider before it
+-- inserts the user. Everything else is as #105 wrote it. (#108 redefines this
+-- function later and keeps the same condition.)
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  provided_name text := btrim(regexp_replace(regexp_replace(coalesce(
+    new.raw_user_meta_data ->> 'full_name',
+    new.raw_user_meta_data ->> 'name',
+    new.raw_user_meta_data ->> 'user_name',
+    ''
+  ), '[[:space:]]+', ' ', 'g'), '[[:cntrl:]]', '', 'g'));
+  provided_avatar text := case
+    when new.raw_app_meta_data ->> 'provider' in ('discord', 'google')
+      then new.raw_user_meta_data ->> 'avatar_url'
+  end;
+begin
+  insert into public.profiles (id, display_name, avatar_url)
+  values (
+    new.id,
+    case
+      when provided_name = '' then 'Captain ' || left(replace(new.id::text, '-', ''), 6)
+      else btrim(left(provided_name, 32))
+    end,
+    case
+      when char_length(provided_avatar) <= 2048 and provided_avatar ~ '^https://[^[:space:][:cntrl:]]+$'
+        then provided_avatar
+    end
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+
 -- The avatar is a provider's, never the player's choice: only the security
 -- definer triggers (handle_new_user, handle_identity_change) write it.
 revoke update (avatar_url) on table public.profiles from authenticated;
+
+-- An avatar an email sign-up chose before this migration (through /otp's
+-- metadata, or the update grant revoked above) is dropped; one a Discord or
+-- Google identity gave stays.
+update public.profiles as p
+  set avatar_url = null
+  where p.avatar_url is not null
+    and not exists (
+      select 1 from auth.identities as i
+      where i.user_id = p.id and i.provider in ('discord', 'google')
+    );
 
 create trigger on_auth_identity_saved
   after insert or update on auth.identities
