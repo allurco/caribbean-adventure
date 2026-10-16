@@ -13,6 +13,12 @@ export const BTN_BRASS = `${FOCUS} ${PRESS} inline-flex items-center justify-cen
 /** Ink-ruled button on parchment: secondary actions. */
 export const BTN_INK = `${FOCUS} ${PRESS} inline-flex items-center justify-center gap-1.5 px-3 py-1 font-garamond text-[15px] font-semibold text-shell-ink rounded-[3px] border border-[#5b3f22] bg-[#efe3c2] shadow-[0_2px_0_#5b3f22] hover:bg-[#f6ecd2] active:shadow-none`;
 
+/**
+ * Ink-ruled button in wax-red ink: an action that cannot be undone (deleting
+ * an account, #108). Not the wax plate, which is for taking your turn.
+ */
+export const BTN_INK_DANGER = `${FOCUS} ${PRESS} inline-flex items-center justify-center gap-1.5 px-3 py-1 font-garamond text-[15px] font-semibold text-shell-ink-wax rounded-[3px] border border-shell-ink-wax bg-[#efe3c2] shadow-[0_2px_0_var(--color-shell-ink-wax)] hover:bg-[#f6ecd2] active:shadow-none`;
+
 /** A text field on parchment. */
 export const INPUT =
   "block w-full rounded-[2px] border border-[#7a5c3a]/60 bg-[#f4ead0] px-3 py-2 font-garamond text-[16px] text-shell-ink placeholder:text-[#8a7458] outline-none focus:border-[#8a6a33] focus:ring-2 focus:ring-shell-gold/60";

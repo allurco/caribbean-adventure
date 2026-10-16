@@ -162,4 +162,18 @@ export interface OnlineStore {
    * write got there first (the client then refetches).
    */
   commitMove(update: MatchUpdate): Promise<boolean>;
+  /**
+   * The first half of deleting an account (#108), in one transaction:
+   * anonymises the profile (the "deleted player" placeholder, nothing
+   * personal kept) and leaves every room still open (the seat is freed, a room
+   * they hosted has no host, a room left empty is closed). Seats in started
+   * and finished matches stay. Idempotent.
+   */
+  anonymiseAccount(userId: string): Promise<void>;
+  /**
+   * The second half: removes the sign-in identity (Supabase Auth's user and
+   * its identities), so the same email or provider signs up afresh. Done
+   * already counts as done.
+   */
+  deleteSignIn(userId: string): Promise<void>;
 }

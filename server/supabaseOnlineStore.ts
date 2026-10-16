@@ -210,6 +210,18 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         }),
       ) as boolean;
     },
+
+    async anonymiseAccount(userId) {
+      const db = await client();
+      check(await db.rpc("delete_account", { p_user: userId }));
+    },
+
+    async deleteSignIn(userId) {
+      const db = await client();
+      const { error } = await db.auth.admin.deleteUser(userId);
+      // Gone already (a retry after a lost answer): done.
+      if (error && error.status !== 404) throw new Error(error.message);
+    },
   };
 }
 

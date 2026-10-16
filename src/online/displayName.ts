@@ -6,6 +6,13 @@
  */
 export const DISPLAY_NAME_MAX_LENGTH = 32;
 
+/**
+ * What a deleted account's profile is called (#108): the placeholder the
+ * database's `anonymise_profile` writes (supabase/migrations), kept so match
+ * records and others' histories still name a seat.
+ */
+export const DELETED_PLAYER_NAME = "Deleted player";
+
 export type DisplayNameResult = { ok: true; value: string } | { ok: false; reason: string };
 
 // eslint-disable-next-line no-control-regex

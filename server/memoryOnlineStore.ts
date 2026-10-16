@@ -17,6 +17,7 @@ import {
   type VoyageRecord,
 } from "./onlineStore";
 import { isSeatId } from "../src/game/seats";
+import { DELETED_PLAYER_NAME } from "../src/online/displayName";
 import { COMBAT_STAGES } from "../src/game/types";
 
 interface StoredMatch extends InitialMatch {
@@ -51,10 +52,14 @@ export interface MemoryOnlineStore extends OnlineStore {
   peekMatch(matchId: string): Promise<StoredMatch | null>;
   /** The match's move log, oldest first: for tests only. */
   peekMoves(matchId: string): Promise<(MoveEntry & { at: string })[]>;
+  /** Whether the player's profile is the "deleted player" placeholder (#108): for tests only. */
+  peekProfileDeleted(userId: string): Promise<boolean>;
+  /** Whether the player's sign-in identity is deleted (#108): for tests and the e2e backend's token check. */
+  peekSignInDeleted(userId: string): Promise<boolean>;
 }
 
 export function createMemoryOnlineStore({
-  displayName = () => null,
+  displayName: profileName = () => null,
   now = () => Date.now(),
 }: { displayName?: (userId: string) => string | null; now?: () => number } = {}): MemoryOnlineStore {
   const rooms = new Map<string, StoredRoom>();
@@ -62,6 +67,9 @@ export function createMemoryOnlineStore({
   const matches = new Map<string, StoredMatch>();
   const counters = new Map<string, number>();
   const moves = new Map<string, (MoveEntry & { at: string })[]>();
+  const deletedProfiles = new Set<string>();
+  const deletedSignIns = new Set<string>();
+  const displayName = (userId: string) => (deletedProfiles.has(userId) ? DELETED_PLAYER_NAME : profileName(userId));
   let ids = 0;
   const newId = () => `00000000-0000-4000-9000-${String(++ids).padStart(12, "0")}`;
 
@@ -198,6 +206,33 @@ export function createMemoryOnlineStore({
         room.status = "open";
         room.startClaimedAt = null;
       }
+    },
+
+    async anonymiseAccount(userId) {
+      // As `delete_account` in SQL: the profile, then every room still open.
+      deletedProfiles.add(userId);
+      for (const [roomId, room] of rooms) {
+        const taken = seats.get(roomId)!;
+        if (room.status !== "open" || ![...taken.values()].includes(userId)) continue;
+        for (const [index, seated] of taken) if (seated === userId) taken.delete(index);
+        if (room.hostId === userId) room.hostId = null;
+        if (taken.size === 0) {
+          rooms.delete(roomId);
+          seats.delete(roomId);
+        }
+      }
+    },
+
+    async deleteSignIn(userId) {
+      deletedSignIns.add(userId);
+    },
+
+    async peekProfileDeleted(userId) {
+      return deletedProfiles.has(userId);
+    },
+
+    async peekSignInDeleted(userId) {
+      return deletedSignIns.has(userId);
     },
 
     async peekMatch(matchId) {
