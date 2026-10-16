@@ -115,3 +115,35 @@ describe("accountLinkPlacement", () => {
     expect(compact(844, false)).toEqual({ top: 16, right: 16, minHeight: MIN_TAP_TARGET, width: ACCOUNT_LINK_COMPACT_WIDTH });
   });
 });
+
+describe("accountLinkPlacement under a notch (#123)", () => {
+  // An iPhone held sideways in Safari: the notch side and the far side both inset by 47 px, nothing at the top.
+  const notch = { top: 0, right: 47, bottom: 21, left: 47 };
+
+  it("moves with the HUD stack, which pads by the left inset", () => {
+    expect(accountLinkPlacement("compact", { hudStack: true, portPanel: false, viewportWidth: 844, insets: notch })).toMatchObject({
+      top: HUD_STACK_TOP,
+      left: SAVE_LEAVE_RIGHT + GAP + 47,
+    });
+  });
+
+  it("counts both insets when it checks for room beside the port panel", () => {
+    // Without insets an 844 px phone has room on Save & leave's row; with them the row reaches the panel.
+    expect(compact(844)).toMatchObject({ top: HUD_STACK_TOP, left: SAVE_LEAVE_RIGHT + GAP });
+    expect(accountLinkPlacement("compact", { hudStack: true, portPanel: true, viewportWidth: 844, insets: notch })).toMatchObject({
+      top: HUD_STACK_TOP + HUD_SAVE_LEAVE_HEIGHT + GAP,
+      left: GLORY_BOARD_RIGHT + GAP + 47,
+    });
+  });
+
+  it("keeps clear of the right inset in the top-right corner", () => {
+    expect(accountLinkPlacement("compact", { hudStack: false, portPanel: false, viewportWidth: 844, insets: notch })).toMatchObject({
+      top: 16,
+      right: 16 + 47,
+    });
+    expect(accountLinkPlacement("desktop", { hudStack: true, portPanel: false, viewportWidth: 1440, insets: { ...notch, top: 20 } })).toEqual({
+      top: HUD_TOP_BAR_HEIGHT + 12 + 20,
+      right: 16 + 47,
+    });
+  });
+});

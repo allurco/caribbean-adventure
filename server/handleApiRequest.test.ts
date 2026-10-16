@@ -33,6 +33,20 @@ describe("GET /api/health", () => {
     expect(JSON.stringify(body)).not.toContain("example.supabase.co");
   });
 
+  it("says when a preview was refused production's database (#107)", async () => {
+    const production = "https://prod-ref.supabase.co";
+    const env = { VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_PRODUCTION_URL: production, SUPABASE_SECRET_KEY: "sk" };
+    const refused = (await (await get("/api/health", { ...env, SUPABASE_URL: production })).json()) as { supabase: unknown };
+    expect(refused.supabase).toEqual({ configured: false, previewOnProduction: true });
+    const ownBranch = await get("/api/health", { ...env, SUPABASE_URL: "https://branch-ref.supabase.co" });
+    expect(((await ownBranch.json()) as { supabase: unknown }).supabase).toEqual({ configured: true });
+  });
+
+  it("says when a preview's guard is not configured, still serving the backend (#107)", async () => {
+    const res = await get("/api/health", { VERCEL_ENV: "preview", SUPABASE_URL: "https://branch-ref.supabase.co", SUPABASE_SECRET_KEY: "sk" });
+    expect(((await res.json()) as { supabase: unknown }).supabase).toEqual({ configured: true, guard: "unset" });
+  });
+
   it("is also served with a trailing slash", async () => {
     expect((await get("/api/health/")).status).toBe(200);
   });

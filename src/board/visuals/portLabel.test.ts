@@ -377,4 +377,9 @@ describe("portLabelScreenShift", () => {
   it("never pushes a label up", () => {
     expect(portLabelScreenShift({ baselineY: 300, topY: 270, portY: 200 })).toBe(0);
   });
+
+  it("keeps the label under the turn bar where a notch pushes the bar down (#123)", () => {
+    const shift = portLabelScreenShift({ baselineY: 10, topY: -20, portY: 350, insetTop: 59 });
+    expect(-20 + shift).toBeCloseTo(M + 59, 10);
+  });
 });
