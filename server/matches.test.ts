@@ -532,6 +532,37 @@ describe("a fight between two seats (#113 review)", () => {
   }
 });
 
+describe("the parting shot after a caught flight", () => {
+  for (const fled of ["attacker", "defender"] as const) {
+    it(`is fired only by the pursuer, never the ${fled} that fled`, async () => {
+      const matchId = await startedMatch();
+      const main = await draftBoth(matchId);
+      const attacker = main.ctx.currentPlayer;
+      const defender = attacker === "0" ? "1" : "0";
+      const tokenOf = (seat: string) => (seat === "0" ? "anne" : "jack");
+      const stored = (await store.peekMatch(matchId))!.state as View;
+      stored.G.ships[defender].position = wrappedNeighbors(stored.G.ships[attacker].position, stored.G.wrap)[0];
+      clock += 1000;
+      const res = await act(matchId, tokenOf(attacker), move(main._stateID, "attackShip", defender));
+      const { state } = (await res.json()) as MatchBody;
+      // Set-up: the faster ship fled and was caught, written straight into the store.
+      const fleeing = fled === "attacker" ? attacker : defender;
+      const pursuer = fleeing === attacker ? defender : attacker;
+      const combat = ((await store.peekMatch(matchId))!.state as View).G.combat!;
+      Object.assign(combat, { stage: "cannons", seamanshipWinner: fleeing, actionChosen: "flee", fleeOutcome: "caught", fleeRolls: { pursuer: 6, fleeer: 1 } });
+
+      clock += 1000;
+      const refused = await act(matchId, tokenOf(fleeing), move(state._stateID, "rollCannons"));
+      expect(refused.status).toBe(403);
+      expect(await refused.json()).toMatchObject({ code: "not_your_turn" });
+      clock += 1000;
+      const fired = await act(matchId, tokenOf(pursuer), move(state._stateID, "rollCannons"));
+      expect(fired.status).toBe(200);
+      expect(((await fired.json()) as MatchBody).state.G.combat?.stage).toBe("resolution");
+    });
+  }
+});
+
 describe("reading a match (#113 review)", () => {
   it("answers 409 match_over to an action once the game has ended", async () => {
     const matchId = await startedMatch();

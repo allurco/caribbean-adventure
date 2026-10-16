@@ -27,7 +27,14 @@ interface VoyageRow {
   match_id: string | null;
   current_seat: number | null;
   phase: string | null;
-  fight: { stage: VoyageFight["stage"]; attacker_id: string; seamanship_winner: string | null; is_npc_combat: boolean } | null;
+  fight: {
+    stage: VoyageFight["stage"];
+    attacker_id: string;
+    defender_id?: string | null;
+    seamanship_winner: string | null;
+    is_npc_combat: boolean;
+    flee_outcome?: VoyageFight["fleeOutcome"];
+  } | null;
   choosing: number[];
   updated_at: string;
   seats: { seat_index: number; user_id: string; display_name: string | null }[];
@@ -189,8 +196,10 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         fight: row.fight && {
           stage: row.fight.stage,
           attackerId: row.fight.attacker_id,
+          defenderId: row.fight.defender_id ?? null,
           seamanshipWinner: row.fight.seamanship_winner,
           isNPCCombat: row.fight.is_npc_combat,
+          fleeOutcome: row.fight.flee_outcome ?? null,
         },
         choosing: row.choosing,
         updatedAt: new Date(row.updated_at).toISOString(),

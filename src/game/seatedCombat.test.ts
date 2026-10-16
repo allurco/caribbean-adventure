@@ -30,6 +30,15 @@ describe("withSeatedCombat (#113 review)", () => {
     }
   });
 
+  it("refuses the parting shot, and its damage, from the ship caught fleeing: its pursuer fires it", () => {
+    for (const fled of ["0", "1"]) {
+      for (const [name, stage] of [["rollCannons", "cannons"], ["applyResolution", "resolution"]] as const) {
+        const caught = { ...fight(fled), stage, fleeOutcome: "caught" as const };
+        expect(press(name, fled, caught), `${name} by ${fled}`).toBe(INVALID_MOVE);
+      }
+    }
+  });
+
   it("wraps every combat move and leaves the hotseat game's moves untouched", () => {
     const seated = withSeatedCombat(Caribbean);
     expect(Object.keys(seated.phases!.combat.moves!)).toEqual(Object.keys(Caribbean.phases!.combat.moves!));

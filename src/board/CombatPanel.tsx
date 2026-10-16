@@ -210,11 +210,12 @@ export function CombatPanel({
           <div className="text-center">
             <div className="text-amber-400 text-xs mb-1">Flee Attempt</div>
             <div className="text-amber-100/80 text-xs">
-              {combat.seamanshipWinner === combat.attackerId
-                ? "You are attempting to escape!"
-                : isNPC
-                  ? `The ${npcLabel.toLowerCase()} is trying to flee!`
-                  : `Player ${seatLabel(combat.seamanshipWinner)} is attempting to flee!`}
+              {/* "You" only against an NPC: between two seats both screens show this, so it names the seat */}
+              {!isNPC
+                ? `Player ${seatLabel(combat.seamanshipWinner)} is attempting to flee!`
+                : combat.seamanshipWinner === combat.attackerId
+                  ? "You are attempting to escape!"
+                  : `The ${npcLabel.toLowerCase()} is trying to flee!`}
             </div>
           </div>
           <div className="text-center">

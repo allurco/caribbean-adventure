@@ -6,7 +6,7 @@ import { Caribbean } from "../game/Game";
 import { createShipState, STARTING_GOLD } from "../game/economy";
 import { hex } from "../game/hex";
 import { createNPCShip } from "../game/npcManager";
-import type { Captain, CaribbeanState, CombatState, NPCShip } from "../game/types";
+import type { Captain, CaribbeanState, CombatState, FleeOutcome, NPCShip } from "../game/types";
 import { choosingCaptain, combatWaitingFor, draftView, fightBystander, fightWatched, gloryScoreboard, hudSeat, hudShip, viewerSeat, seatMayAct, seatMayActInCombat, seatName, waitingFor } from "./seat";
 import { startHandoff } from "./turnHandoff";
 
@@ -281,12 +281,13 @@ describe("gloryScoreboard: every seat's captain and glory, which is public", () 
 
 describe("seatMayActInCombat: who presses each step of a fight", () => {
   type Step = CombatState["stage"];
-  const fight = (stage: Step, seamanshipWinner: string | null, isNPCCombat = false) => ({
+  const fight = (stage: Step, seamanshipWinner: string | null, isNPCCombat = false, fleeOutcome: FleeOutcome = null) => ({
     attackerId: "0",
     defenderId: isNPCCombat ? "npc-1" : "1",
     isNPCCombat,
     stage,
     seamanshipWinner,
+    fleeOutcome,
   });
   const presses = (combat: ReturnType<typeof fight>) =>
     ["0", "1", "2"].filter((playerID) => seatMayActInCombat({ playerID, combat }));
@@ -308,6 +309,15 @@ describe("seatMayActInCombat: who presses each step of a fight", () => {
     }
   });
 
+  it("a flight caught: the pursuer fires the parting shot and applies it, not the ship that fled", () => {
+    for (const stage of ["cannons", "resolution"] as const) {
+      // The attacker fled and was caught: the defender fires
+      expect(presses(fight(stage, "0", false, "caught"))).toEqual(["1"]);
+      // The defender fled and was caught: the attacker fires
+      expect(presses(fight(stage, "1", false, "caught"))).toEqual(["0"]);
+    }
+  });
+
   it("against an NPC the attacker presses every step, even when the NPC wins the draw", () => {
     for (const stage of ["seamanship", "chooseAction", "fleeAttempt", "cannons", "resolution"] as const) {
       expect(presses(fight(stage, "npc-1", true))).toEqual(["0"]);
@@ -320,7 +330,7 @@ describe("combatWaitingFor: the line a seat sees while another seat presses", ()
   const G = table(3);
   G.ships["0"].captain = captain("a", "Anne Bonny");
   G.ships["1"].captain = captain("b", "Calico Jack");
-  const pvp = { attackerId: "0", defenderId: "1", isNPCCombat: false };
+  const pvp = { attackerId: "0", defenderId: "1", isNPCCombat: false, fleeOutcome: null };
 
   it("names who it waits on and for what", () => {
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "seamanship", seamanshipWinner: null } })).toBe(
@@ -332,6 +342,10 @@ describe("combatWaitingFor: the line a seat sees while another seat presses", ()
     expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1" } })).toBe(
       "Waiting for Calico Jack to fire"
     );
+    // Calico Jack fled and was caught: Anne Bonny fires the parting shot
+    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1", fleeOutcome: "caught" } })).toBe(
+      "Waiting for Anne Bonny to fire"
+    );
   });
 
   it("is nothing for the seat that presses, and nothing in hotseat", () => {
@@ -342,7 +356,7 @@ describe("combatWaitingFor: the line a seat sees while another seat presses", ()
 
 describe("fightBystander: a seat with no ship in the fight, which sees who is fighting whom", () => {
   it("is a seat neither attacking nor attacked; never a combatant, never hotseat", () => {
-    const pvp = { attackerId: "0", defenderId: "1", isNPCCombat: false };
+    const pvp = { attackerId: "0", defenderId: "1", isNPCCombat: false, fleeOutcome: null };
     expect(fightBystander("2", pvp)).toBe(true);
     expect(fightBystander("0", pvp)).toBe(false);
     expect(fightBystander("1", pvp)).toBe(false);
