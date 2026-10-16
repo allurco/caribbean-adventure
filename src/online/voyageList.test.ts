@@ -23,6 +23,7 @@ const voyage = (over: Partial<VoyageView>): VoyageView => ({
   yourSeat: 0,
   currentSeat: null,
   drafting: false,
+  choosing: [],
   yourTurn: false,
   updatedAt: "2026-10-15T12:00:00.000Z",
   ...over,
@@ -115,9 +116,19 @@ describe("harbourVoyages", () => {
   });
 
   it("says a match is drafting its captains, as the lead and among the others", () => {
-    const drafting = harbourVoyages([underWay({ roomId: ROOM_B, currentSeat: 0, yourTurn: true, drafting: true })]);
+    const drafting = harbourVoyages([underWay({ roomId: ROOM_B, yourTurn: true, drafting: true, choosing: [0, 1] })]);
     expect(drafting.lead?.line).toBe("Drafting captains, 2 captains, small map.");
-    const waiting = harbourVoyages([underWay({ roomId: ROOM_B, currentSeat: 1, drafting: true })]);
+    const waiting = harbourVoyages([underWay({ roomId: ROOM_B, drafting: true, choosing: [1] })]);
     expect(waiting.others[0].line).toBe("Drafting captains, 2 captains, small map. Waiting on Calico Jack.");
+  });
+
+  it("in the draft, waits on every captain yet to pick, not on one seat's turn (#111)", () => {
+    const seats = [ANNE, JACK, MARY];
+    const waiting = harbourVoyages([underWay({ roomId: ROOM_B, seatCount: 3, seats, drafting: true, choosing: [1, 2] })]);
+    expect(waiting.lead).toBeNull();
+    expect(waiting.others[0]).toMatchObject({
+      yourTurn: false,
+      line: "Drafting captains, 3 captains, small map. Waiting on Calico Jack and Mary Read.",
+    });
   });
 });

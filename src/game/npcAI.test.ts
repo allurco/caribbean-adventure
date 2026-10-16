@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
+import { withMainPhase } from "../testSupport/withMainPhase";
 import type { Game } from "boardgame.io";
 import { Caribbean, withHotseatView } from "./Game";
 import type { CaribbeanState, Captain, MapCell, NPCShip } from "./types";
@@ -94,7 +95,7 @@ function setupMainPhaseWithNPCs() {
       wrap: null,
     }),
   };
-  const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
+  const client = Client<CaribbeanState>({ game: withHotseatView(withMainPhase(TestGame)), numPlayers: 2 });
   client.start();
   return client;
 }
@@ -155,7 +156,7 @@ describe("NPC AI movement", () => {
         wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(withMainPhase(TestGame)), numPlayers: 2 });
     client.start();
 
     expect(client.getState()!.G.npcs["npc-1"]).toBeDefined();
@@ -203,7 +204,7 @@ describe("NPC AI movement", () => {
         wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(withMainPhase(TestGame)), numPlayers: 2 });
     client.start();
 
     client.events.endTurn!();
@@ -301,7 +302,7 @@ describe("Flotilla hunting behavior", () => {
         wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(withMainPhase(TestGame)), numPlayers: 2 });
     client.start();
 
     const distanceBefore = hexDistance(flotilla.position, ship0.position);
@@ -351,7 +352,7 @@ describe("Flotilla hunting behavior", () => {
         wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(withMainPhase(TestGame)), numPlayers: 2 });
     client.start();
 
     const posBefore = { ...client.getState()!.G.npcs["flotilla-1"].position };
@@ -400,7 +401,7 @@ describe("Flotilla hunting behavior", () => {
         wrap: null,
       }),
     };
-    const client = Client<CaribbeanState>({ game: withHotseatView(TestGame), numPlayers: 2 });
+    const client = Client<CaribbeanState>({ game: withHotseatView(withMainPhase(TestGame)), numPlayers: 2 });
     client.start();
 
     client.events.endTurn!();

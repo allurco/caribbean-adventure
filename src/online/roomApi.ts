@@ -35,10 +35,12 @@ export interface VoyageView {
   mapSize: MapSizeId;
   seats: { index: number; displayName: string | null }[];
   yourSeat: number;
-  /** The seat that may act in a match under way (in a fight, the one whose step it is); null otherwise. */
+  /** The seat that may act in a match under way (in a fight, the one whose step it is); null otherwise, and in the draft. */
   currentSeat: number | null;
   /** The match is in its captain draft. */
   drafting: boolean;
+  /** In the draft, the seats yet to pick their captain, each free to pick now (#111); none otherwise. */
+  choosing: number[];
   yourTurn: boolean;
   updatedAt: string;
 }

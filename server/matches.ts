@@ -5,13 +5,17 @@
  * sends one action at a time. The server loads the match, checks the seat
  * and the action, runs boardgame.io's reducer over the shared game code, and
  * writes the new snapshot and the move log only if the match is still at the
- * `stateID` the action was made against, then signals the match's seats
- * over realtime (#114, `matchSignals.ts`: the new version alone). Responses
- * carry `viewFor(state, seat)`, never the whole state.
+ * `stateID` the action was made against (but for a captain pick in the
+ * draft, which runs against the latest state: `commutesInDraft`, #111), then
+ * signals the match's seats over realtime (#114, `matchSignals.ts`: the new
+ * version alone). Responses carry `viewFor(state, seat)`, never the whole
+ * state.
  */
 import { afterResponse } from "./afterResponse";
 import { fail, isUuid, json, readBoundedJsonObject } from "./http";
-import { applyAction, parseAction, seatMayActNow, viewFor, type MatchState } from "./matchEngine";
+import { applyAction, parseAction, seatMayActNow, viewFor, type MatchAction, type MatchState } from "./matchEngine";
+import { hasPicked } from "../src/game/draftOrder";
+import { MAX_SEATS } from "../src/game/seats";
 import type { ApiServices } from "./handleApiRequest";
 import type { MatchSignals } from "./matchSignals";
 import type { SeatRecord, SeatSeen } from "./onlineStore";
@@ -103,6 +107,15 @@ export async function getMatch(request: Request, matchId: string, userId: string
   return json({ ok: true, changed: true, ...seatView(match.id, seat, match.state as MatchState, online) });
 }
 
+/**
+ * How many times a draft pick is tried against the latest state. In the
+ * draft the only writes are picks, one per seat (End Turn is refused, there
+ * are no fights), so a pick can lose its write at most once to each other
+ * seat: a match of `seats` needs `seats` tries. Past that something else is
+ * writing, and the pick is sent back to refetch.
+ */
+const commitAttempts = (seats: readonly SeatRecord[]) => Math.min(seats.length, MAX_SEATS);
+
 /** `POST /api/matches/:id/actions` with `{ stateID, action }`. */
 export async function postAction(
   request: Request,
@@ -120,53 +133,75 @@ export async function postAction(
       return fail(429, "rate_limited", "too many moves: slow down");
     }
   }
-  const match = await store.getMatch(matchId);
-  const seat = match && seatOf(match.seats, userId);
-  if (!match || seat === null) return fail(404, "not_found", "no such match");
+  const loaded = await store.getMatch(matchId);
+  const seat = loaded && seatOf(loaded.seats, userId);
+  if (!loaded || seat === null) return fail(404, "not_found", "no such match");
   const body = read.kind === "object" ? read.body : null;
   if (!body || typeof body.stateID !== "number") return fail(400, "bad_request", "expected a stateID and an action");
+  const sentAgainst = body.stateID;
   // A well-formed action marks its seat seen, alongside checking and committing it rather than a hop before.
-  const seeing = seeSeat(services, match.roomId, seat);
-  const state = match.state as MatchState;
-  const current = async () => seatView(match.id, seat, state, await seeing);
+  const seeing = seeSeat(services, loaded.roomId, seat);
 
-  if (state.ctx.gameover !== undefined) return fail(409, "match_over", "match over", await current());
-  if (!seatMayActNow(state, seat)) return fail(403, "not_your_turn", "not your turn", await current());
-  if (body.stateID !== match.stateId) return fail(409, "stale_state", "stale state", await current());
+  let match = loaded;
+  for (let attempt = 1; ; attempt++) {
+    const state = match.state as MatchState;
+    const current = async () => seatView(match.id, seat, state, await seeing);
+    if (state.ctx.gameover !== undefined) return fail(409, "match_over", "match over", await current());
+    if (!seatMayActNow(state, seat)) return fail(403, "not_your_turn", "not your turn", await current());
 
-  const parsed = parseAction(state, seat, body.action);
-  if (!parsed.ok) return fail(400, "move_refused", parsed.error, await current());
-  const applied = applyAction(state, seat, parsed.action);
-  if (!applied.ok) return fail(400, "move_refused", applied.error, await current());
+    const parsed = parseAction(state, seat, body.action);
+    if (!parsed.ok) return fail(400, "move_refused", parsed.error, await current());
+    if (sentAgainst !== match.stateId && !(sentAgainst < match.stateId && commutesInDraft(state, seat, parsed.action))) {
+      return fail(409, "stale_state", "stale state", await current());
+    }
+    const applied = applyAction(state, seat, parsed.action);
+    if (!applied.ok) return fail(400, "move_refused", applied.error, await current());
 
-  const next = applied.state;
-  const commit = store.commitMove({
-    matchId: match.id,
-    expectedStateId: match.stateId,
-    state: next,
-    stateId: next._stateID,
-    phase: next.ctx.phase ?? null,
-    finished: next.ctx.gameover !== undefined,
-    move: {
-      seat: Number(seat),
-      userId,
-      kind: parsed.action.type === "MAKE_MOVE" ? "move" : "event",
-      name: parsed.action.payload.type,
-      args: parsed.action.payload.args,
-      stateIdBefore: match.stateId,
-      stateIdAfter: next._stateID,
-    },
-  });
-  const [committed, online] = await Promise.all([commit, seeing]);
-  if (!committed) {
-    // Another write won: send what is there now.
+    const next = applied.state;
+    const commit = store.commitMove({
+      matchId: match.id,
+      expectedStateId: match.stateId,
+      state: next,
+      stateId: next._stateID,
+      phase: next.ctx.phase ?? null,
+      finished: next.ctx.gameover !== undefined,
+      move: {
+        seat: Number(seat),
+        userId,
+        kind: parsed.action.type === "MAKE_MOVE" ? "move" : "event",
+        name: parsed.action.payload.type,
+        args: parsed.action.payload.args,
+        stateIdBefore: match.stateId,
+        stateIdAfter: next._stateID,
+      },
+    });
+    const [committed, online] = await Promise.all([commit, seeing]);
+    if (committed) {
+      // After the response where the platform allows (`defer`, Vercel's waitUntil): the move never waits on Realtime.
+      const signalled = signalChanged(signals, match.id, next._stateID);
+      await afterResponse(services, signalled);
+      return json({ ok: true, ...seatView(match.id, seat, next, online) });
+    }
+
+    // Another write won. A draft pick is tried again on what is there now; anything else is sent back to refetch.
     const latest = await store.getMatch(matchId);
-    return fail(409, "stale_state", "stale state", latest ? seatView(match.id, seat, latest.state as MatchState, online) : {});
+    if (!latest) return fail(409, "stale_state", "stale state", {});
+    const retry = attempt < commitAttempts(loaded.seats) && commutesInDraft(latest.state as MatchState, seat, parsed.action);
+    if (!retry) return fail(409, "stale_state", "stale state", seatView(match.id, seat, latest.state as MatchState, online));
+    match = latest;
   }
-  // After the response where the platform allows (`defer`, Vercel's waitUntil): the move never waits on Realtime.
-  const signalled = signalChanged(signals, match.id, next._stateID);
-  await afterResponse(services, signalled);
-  return json({ ok: true, ...seatView(match.id, seat, next, online) });
+}
+
+/**
+ * May `action`, made against an older state, run against `state` instead?
+ * Only a captain pick in the draft from a seat yet to pick (#111): every seat
+ * drafts at once, each from its own hand into its own ship, so picks by
+ * different seats commute, and a pick sent while another seat's landed is
+ * not undone. Every other move stays strict: made against the state it saw,
+ * or refused.
+ */
+function commutesInDraft(state: MatchState, seat: string, action: MatchAction): boolean {
+  return state.ctx.phase === "draft" && action.type === "MAKE_MOVE" && action.payload.type === "pickCaptain" && !hasPicked(state.G, seat);
 }
 
 const now = (services: ApiServices) => (services.now ?? Date.now)();

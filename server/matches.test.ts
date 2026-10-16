@@ -17,7 +17,8 @@ silenceInvalidMoveLogs();
 const ANNE = "00000000-0000-4000-8000-00000000000a";
 const JACK = "00000000-0000-4000-8000-00000000000b";
 const MARY = "00000000-0000-4000-8000-00000000000c";
-const TOKENS: Record<string, string> = { anne: ANNE, jack: JACK, mary: MARY };
+const NED = "00000000-0000-4000-8000-00000000000d";
+const TOKENS: Record<string, string> = { anne: ANNE, jack: JACK, mary: MARY, ned: NED };
 
 let store: MemoryOnlineStore;
 let services: ApiServices;
@@ -53,6 +54,36 @@ async function startedMatch(): Promise<string> {
   await call("POST", "/api/rooms/join", "jack", { inviteCode: created.room.inviteCode });
   const started = (await (await call("POST", `/api/rooms/${created.room.id}/start`, "anne")).json()) as { room: { matchId: string } };
   return started.room.matchId;
+}
+
+/** A started match seating `tokens` in order: the first is the host, seat 0. */
+async function startedMatchOf(tokens: readonly string[]): Promise<string> {
+  const [host, ...guests] = tokens;
+  const created = (await (await call("POST", "/api/rooms", host, { seats: tokens.length, mapSize: "small", mapSeed: 5 })).json()) as {
+    room: { id: string; inviteCode: string };
+  };
+  for (const guest of guests) await call("POST", "/api/rooms/join", guest, { inviteCode: created.room.inviteCode });
+  const started = (await (await call("POST", `/api/rooms/${created.room.id}/start`, host)).json()) as { room: { matchId: string } };
+  return started.room.matchId;
+}
+
+/**
+ * Makes `userId`'s next writes lose the compare-and-swap, one per entry of
+ * `losses`, in order: each entry runs first (another seat's pick landing, or
+ * nothing for a write that leaves the state as it was) and the write is then
+ * refused, as the database refuses a write whose expected state id has moved on.
+ */
+function loseWritesOf(userId: string, losses: Array<() => Promise<unknown>>): void {
+  const inner = services.store;
+  services.store = {
+    ...inner,
+    async commitMove(update) {
+      const loss = update.move.userId === userId ? losses.shift() : undefined;
+      if (!loss) return inner.commitMove(update);
+      await loss();
+      return false;
+    },
+  };
 }
 
 async function view(matchId: string, token: string): Promise<MatchBody> {
@@ -161,28 +192,149 @@ describe("POST /api/matches/:id/actions", () => {
     ]);
   });
 
+  it("lets every seat pick its captain at once in the draft, in any order, and then sails seat 0 first (#111)", async () => {
+    const matchId = await startedMatch();
+    const s0 = (await view(matchId, "jack")).state._stateID;
+    const jack = await act(matchId, "jack", move(s0, "pickCaptain", 1, "Flute"));
+    expect(jack.status).toBe(200);
+    const afterJack = ((await jack.json()) as MatchBody).state;
+    expect(afterJack.ctx).toMatchObject({ phase: "draft", currentPlayer: "0" });
+    expect(afterJack.G.ships["1"].shipClass).toBe("Flute");
+    // Anne sees that Jack has picked, never his hand, and until the draft is over not which captain or ship
+    const anne = (await view(matchId, "anne")).state;
+    expect(anne.G.ships["1"].draftPicked).toBe(true);
+    expect(anne.G.ships["1"].captain).toBeUndefined();
+    expect(anne.G.ships["1"].shipClass).toBeUndefined();
+    expect(Object.keys(anne.G.draftHands)).toEqual(["0"]);
+
+    // A seat picks once, from its own hand only
+    for (const bad of [move(s0 + 1, "pickCaptain", 0, "Sloop"), move(s0 + 1, "pickCaptain", 2, "Sloop")]) {
+      expect((await act(matchId, "jack", bad)).status, JSON.stringify(bad)).toBe(400);
+    }
+
+    const last = await act(matchId, "anne", move(s0 + 1, "pickCaptain", 0, "Sloop"));
+    expect(last.status).toBe(200);
+    const main = ((await last.json()) as MatchBody).state;
+    expect(main.ctx).toMatchObject({ phase: "main", currentPlayer: "0" });
+    // The draft over, every captain and ship is shown
+    expect(main.G.ships["1"]).toMatchObject({ shipClass: "Flute", captain: expect.objectContaining({ name: expect.any(String) }) });
+    expect(main.G.ships["1"]).not.toHaveProperty("draftPicked");
+  });
+
   it("refuses a move from a player who does not hold the current seat", async () => {
     const matchId = await startedMatch();
-    const { state } = await view(matchId, "jack");
-    const res = await act(matchId, "jack", move(state._stateID, "pickCaptain", 0, "Sloop"));
+    const { _stateID } = await draftBoth(matchId);
+    const res = await act(matchId, "jack", move(_stateID, "spyglass", "1"));
     expect(res.status).toBe(403);
     expect(await res.json()).toMatchObject({ code: "not_your_turn" });
-    const stranger = await act(matchId, "mary", move(state._stateID, "pickCaptain", 0, "Sloop"));
+    const stranger = await act(matchId, "mary", move(_stateID, "spyglass", "1"));
     expect(stranger.status).toBe(404);
-    expect((await store.peekMatch(matchId))!.stateId).toBe(state._stateID);
-    expect(await store.peekMoves(matchId)).toEqual([]);
+    expect((await store.peekMatch(matchId))!.stateId).toBe(_stateID);
+    expect(await store.peekMoves(matchId)).toHaveLength(2);
   });
 
   it("rejects a move made against a stale state and sends the current view to refetch from", async () => {
     const matchId = await startedMatch();
-    const { state } = await view(matchId, "anne");
-    const res = await act(matchId, "anne", move(state._stateID - 1, "pickCaptain", 0, "Sloop"));
+    const state = await draftBoth(matchId);
+    const current = state.ctx.currentPlayer === "0" ? "anne" : "jack";
+    const res = await act(matchId, current, event(state._stateID - 1, "endTurn"));
     expect(res.status).toBe(409);
     const body = (await res.json()) as MatchBody;
     expect(body).toMatchObject({ code: "stale_state" });
     expect(body.state._stateID).toBe(state._stateID);
-    expect(Object.keys(body.state.G.draftHands)).toEqual(["0"]);
-    expect(await store.peekMoves(matchId)).toEqual([]);
+    expect(body.state.G.captainDeck).toEqual([]);
+    expect(await store.peekMoves(matchId)).toHaveLength(2);
+  });
+
+  it("takes two seats' captain picks made against the same state: draft picks commute (#111)", async () => {
+    const matchId = await startedMatch();
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    const jack = await act(matchId, "jack", move(s0, "pickCaptain", 1, "Flute"));
+    expect(jack.status).toBe(200);
+    // Anne picked from what she saw before Jack's pick reached her
+    const anne = await act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop"));
+    expect(anne.status).toBe(200);
+    const after = ((await anne.json()) as MatchBody).state;
+    expect(after.ctx).toMatchObject({ phase: "main", currentPlayer: "0" });
+    expect(after.G.ships["0"].shipClass).toBe("Sloop");
+    const log = await store.peekMoves(matchId);
+    expect(log.map((m) => [m.seat, m.stateIdBefore, m.stateIdAfter])).toEqual([
+      [1, s0, s0 + 1],
+      [0, s0 + 1, after._stateID],
+    ]);
+  });
+
+  it("takes both picks when two seats' picks race for the same write (#111)", async () => {
+    const matchId = await startedMatch();
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    const [a, b] = await Promise.all([
+      act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop")),
+      act(matchId, "jack", move(s0, "pickCaptain", 1, "Flute")),
+    ]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    expect(await store.peekMoves(matchId)).toHaveLength(2);
+    expect(((await store.peekMatch(matchId))!.state as View).ctx.phase).toBe("main");
+  });
+
+  it("retries a draft pick that lost its write to each other seat's pick, and lands it: four seats at once (#111)", async () => {
+    const matchId = await startedMatchOf(["anne", "jack", "mary", "ned"]);
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    // While Anne's pick is in flight, Jack's, Mary's and Ned's land first, each winning the write
+    loseWritesOf(ANNE, [
+      () => act(matchId, "jack", move(s0, "pickCaptain", 0, "Sloop")),
+      () => act(matchId, "mary", move(s0, "pickCaptain", 0, "Sloop")),
+      () => act(matchId, "ned", move(s0, "pickCaptain", 0, "Sloop")),
+    ]);
+    const anne = await act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop"));
+    expect(anne.status).toBe(200);
+    expect(((await anne.json()) as MatchBody).state.ctx).toMatchObject({ phase: "main", currentPlayer: "0" });
+    expect((await store.peekMoves(matchId)).map((m) => m.seat)).toEqual([1, 2, 3, 0]);
+  });
+
+  it("retries a draft pick once after one lost write, and lands it (#111)", async () => {
+    const matchId = await startedMatchOf(["anne", "jack", "mary"]);
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    loseWritesOf(ANNE, [() => act(matchId, "jack", move(s0, "pickCaptain", 0, "Sloop"))]);
+    const anne = await act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop"));
+    expect(anne.status).toBe(200);
+    expect(((await anne.json()) as MatchBody).state.ctx.phase).toBe("draft");
+    expect((await store.peekMoves(matchId)).map((m) => [m.seat, m.stateIdBefore])).toEqual([
+      [1, s0],
+      [0, s0 + 1],
+    ]);
+  });
+
+  it("gives up on a draft pick with 409 once it has lost more writes than the match has other seats (#111)", async () => {
+    const matchId = await startedMatchOf(["anne", "jack", "mary", "ned"]);
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    const nothing = async () => undefined;
+    loseWritesOf(ANNE, [nothing, nothing, nothing, nothing, nothing]);
+    const anne = await act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop"));
+    expect(anne.status).toBe(409);
+    expect(await anne.json()).toMatchObject({ code: "stale_state" });
+    expect(await store.peekMoves(matchId)).toHaveLength(0);
+  });
+
+  it("still refuses a stale pick from a seat that has already picked (#111)", async () => {
+    const matchId = await startedMatch();
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    expect((await act(matchId, "jack", move(s0, "pickCaptain", 1, "Flute"))).status).toBe(200);
+    const again = await act(matchId, "jack", move(s0, "pickCaptain", 0, "Sloop"));
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ code: "stale_state" });
+    expect(await store.peekMoves(matchId)).toHaveLength(1);
+  });
+
+  it("keeps every move outside the draft strict: a stale one is refused (#111)", async () => {
+    const matchId = await startedMatch();
+    const main = await draftBoth(matchId);
+    const [current, next] = main.ctx.currentPlayer === "0" ? ["anne", "jack"] : ["jack", "anne"];
+    clock += 1000;
+    expect((await act(matchId, current, event(main._stateID, "endTurn"))).status).toBe(200);
+    // The next seat ends its turn from the state before: refused, though the turn is now its own
+    const stale = await act(matchId, next, event(main._stateID, "endTurn"));
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ code: "stale_state" });
   });
 
   it("rejects the loser of two concurrent writes of the same state", async () => {
@@ -451,10 +603,15 @@ describe("the realtime 'changed' signal (#114)", () => {
     const sent = recordSignals();
     const matchId = await startedMatch();
     const { state } = await view(matchId, "anne");
-    await act(matchId, "anne", move(state._stateID, "pickCaptain", 9, "Sloop"));
-    await act(matchId, "anne", move(state._stateID - 1, "pickCaptain", 0, "Sloop"));
-    await act(matchId, "jack", move(state._stateID, "pickCaptain", 0, "Sloop"));
-    await call("GET", `/api/matches/${matchId}?since=${state._stateID}`, "jack");
+    expect((await act(matchId, "anne", move(state._stateID, "pickCaptain", 9, "Sloop"))).status).toBe(400);
+    expect(sent).toEqual([]);
+    // Draft picks commute (#111), so the stale and out-of-turn moves are tried once the draft is over
+    const main = await draftBoth(matchId);
+    sent.length = 0;
+    const [current, other] = main.ctx.currentPlayer === "0" ? ["anne", "jack"] : ["jack", "anne"];
+    expect((await act(matchId, current, event(main._stateID - 1, "endTurn"))).status).toBe(409);
+    expect((await act(matchId, other, event(main._stateID, "endTurn"))).status).toBe(403);
+    await call("GET", `/api/matches/${matchId}?since=${main._stateID}`, "jack");
     expect(sent).toEqual([]);
   });
 
@@ -467,6 +624,19 @@ describe("the realtime 'changed' signal (#114)", () => {
       act(matchId, "anne", move(state._stateID, "pickCaptain", 1, "Flute")),
     ]);
     expect(sent).toHaveLength(1);
+  });
+
+  it("signals each of two seats' racing draft picks, the one retried on the state that won included (#111)", async () => {
+    const sent = recordSignals();
+    const matchId = await startedMatch();
+    const s0 = (await view(matchId, "anne")).state._stateID;
+    const responses = await Promise.all([
+      act(matchId, "anne", move(s0, "pickCaptain", 0, "Sloop")),
+      act(matchId, "jack", move(s0, "pickCaptain", 1, "Flute")),
+    ]);
+    const versions = await Promise.all(responses.map(async (r) => ((await r.json()) as MatchBody).state._stateID));
+    expect(sent.map((s) => s.stateId).sort((a, b) => a - b)).toEqual([...versions].sort((a, b) => a - b));
+    expect(sent.map((s) => s.stateId).sort((a, b) => a - b)).toEqual([s0 + 1, (await store.peekMatch(matchId))!.stateId]);
   });
 
   it("answers the move without waiting for the signal when the platform keeps work running after the response", async () => {

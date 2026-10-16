@@ -73,3 +73,16 @@ Online play (PRD #104) has no boardgame.io server: the backend is one Vercel Fun
 - The online dot lags by up to a poll: a seat is online for 60 s after its last read or move, and the board learns of it on its next signal or poll (every 30 s while live). It is a hint on the board, never a rule.
 - Rate-limit windows are fixed, so a burst across a window boundary can reach twice the limit; acceptable for abuse control.
 - A room whose host deletes their account keeps `host_id` null and loses the host's seat (both cascade): others may still join, but nobody can start it. The lobby says so. Host handover or room expiry belongs to a later slice (turn timers and the cron sweep).
+
+## Amendments
+
+### (a) Every seat drafts at once: a draft pick commutes (#111)
+
+The captain draft is no longer one seat after another: every seat picks its own captain at once, from its own hand into its own ship, so picks by different seats commute. The move pipeline above changes for them, and only for them:
+
+- **Order.** The action is checked (step 8, `parseAction`) before the `stateID` (step 7), because whether a stale action may still be taken depends on what it is. A body that is both malformed and stale is now a 400 `move_refused`, not a 409 `stale_state`.
+- **Step 7.** A stale `stateID` is still refused with 409 and the seat's current view, unless the action is a `pickCaptain` in the `draft` phase from a seat that has not picked yet (`commutesInDraft` in `server/matches.ts`): that pick runs against the latest state instead. A seat that has already picked, and every move outside the draft, stays strict.
+- **Step 10.** A draft pick that loses the `commit_move` race is reloaded and tried again against the state that won, rather than answered 409. In the draft the only possible writes are picks, one per seat (`endTurn` is refused, there are no fights), so a pick can lose at most once to each other seat: it is tried up to the match's seat count (at most `MAX_SEATS`, 4) times, and past that it gets 409 `stale_state` as before. Any other move that loses the race still gets 409.
+- **Step 6.** While the draft is on, every seat yet to pick may act (boardgame.io's `activePlayers`), not only the current player.
+- **Voyages.** Of a match in the draft, `GET /api/me/rooms` carries `choosing`, the seats yet to pick (read inside Postgres by `list_voyages`), in place of a current seat: in the draft it is no one seat's turn, and `yourTurn` is whether the caller's seat is among them.
+- **Views.** While the draft is on, `playerViewFor` hides which captain and ship another seat picked, showing only that it has picked (`draftPicked`), so nobody picks knowing another's choice; everything is shown once the draft ends.

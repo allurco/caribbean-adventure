@@ -4,11 +4,12 @@ import { STARTER_SHIP_CLASSES } from "../game/types";
 import { SHIP_SPECS } from "../game/constants";
 import { NationFlag } from "./NationFlag";
 import type { DraftView } from "./seat";
+import { DraftSeats } from "./DraftSeats";
 
 interface DraftScreenProps {
   /** What this screen shows: a hand to pick from or a line to wait on (`draftView`, #110). */
   view: DraftView;
-  /** Whoever is drafting, as the board names them ("Player n"). */
+  /** Whoever this screen drafts for, as the board names them ("Player n"): the seat's own, or in hotseat the current player. */
   drafting: string;
   onPickCaptain: (index: number, shipClass: ShipClass) => void;
 }
@@ -158,6 +159,7 @@ export function DraftScreen({
           <div className="text-amber-200/50 text-lg italic">
             {view.line}
           </div>
+          <DraftSeats others={view.others} />
         </div>
       </div>
     );
@@ -213,6 +215,7 @@ export function DraftScreen({
               Back to captain selection
             </button>
           </div>
+          <DraftSeats others={view.others} />
         </div>
       </div>
     );
@@ -246,6 +249,7 @@ export function DraftScreen({
             />
           ))}
         </div>
+        <DraftSeats others={view.others} />
       </div>
     </div>
   );
