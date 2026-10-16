@@ -64,7 +64,7 @@ describe.skipIf(!dbTestsEnabled)("the move API (local Supabase)", () => {
     action: { type: "MAKE_MOVE", payload: { type: "pickCaptain", args: [index, "Sloop"] } },
   });
 
-  it("plays a move, logs it, and rejects a second move made against the state before it", async () => {
+  it("plays moves and logs them, takes another seat's draft pick made against the same state, and rejects a stale move after the draft", async () => {
     const { anne, jack, matchId } = await startedMatch();
     const view = (await (await api("GET", `/api/matches/${matchId}`, anne)).json()) as ViewBody;
     expect(Object.keys(view.state.G.draftHands)).toEqual(["0"]);
@@ -72,14 +72,22 @@ describe.skipIf(!dbTestsEnabled)("the move API (local Supabase)", () => {
     const s0 = view.state._stateID;
 
     expect((await api("POST", `/api/matches/${matchId}/actions`, anne, pick(s0, 0))).status).toBe(200);
-    const stale = await api("POST", `/api/matches/${matchId}/actions`, jack, pick(s0, 0));
+    // Every seat drafts at once (#111): Jack's pick, sent against the state before Anne's, still lands.
+    const jacksPick = await api("POST", `/api/matches/${matchId}/actions`, jack, pick(s0, 0));
+    expect(jacksPick.status).toBe(200);
+    const afterDraft = ((await jacksPick.json()) as ViewBody).state._stateID;
+
+    // Outside the draft every move stays strict: made against the state it saw, or refused.
+    const endTurn = { stateID: s0, action: { type: "GAME_EVENT", payload: { type: "endTurn", args: [] } } };
+    const stale = await api("POST", `/api/matches/${matchId}/actions`, anne, endTurn);
     expect(stale.status).toBe(409);
     expect(((await stale.json()) as ViewBody).code).toBe("stale_state");
 
-    const log = (await admin.from("moves").select("seat_index, user_id, kind, name, args, state_id_before, state_id_after").eq("match_id", matchId))
+    const log = (await admin.from("moves").select("seat_index, user_id, kind, name, args, state_id_before, state_id_after").eq("match_id", matchId).order("state_id_before"))
       .data;
     expect(log).toEqual([
       { seat_index: 0, user_id: anne.id, kind: "move", name: "pickCaptain", args: [0, "Sloop"], state_id_before: s0, state_id_after: s0 + 1 },
+      { seat_index: 1, user_id: jack.id, kind: "move", name: "pickCaptain", args: [0, "Sloop"], state_id_before: s0 + 1, state_id_after: afterDraft },
     ]);
   });
 
