@@ -1,3 +1,14 @@
+import {
+  HUD_GLORY_BOARD_LEFT,
+  HUD_GLORY_BOARD_WIDTH,
+  HUD_PORT_PANEL_INSET,
+  HUD_PORT_PANEL_WIDTH,
+  HUD_SAVE_LEAVE_HEIGHT,
+  HUD_SAVE_LEAVE_LEFT,
+  HUD_SAVE_LEAVE_WIDTH,
+  HUD_STACK_TOP,
+  HUD_TOP_BAR_HEIGHT,
+} from "../board/hudLayout";
 import type { ShellLayout } from "./shellLayout";
 
 /** The smallest tap target on a phone, in CSS pixels. */
@@ -14,41 +25,54 @@ export const MIN_TAP_TARGET = 48;
  */
 export const ACCOUNT_LINK_Z = 58;
 
-/** Under the HUD's 58 px turn bar, with a gap. */
-const TOP = 70;
+/** Under the HUD's turn bar, with a gap. */
+const TOP = HUD_TOP_BAR_HEIGHT + 12;
 const EDGE = 16;
 const GAP = 8;
-/** Save & leave (`HudSaveLeave`, `top-12`): about 31 px tall, so its foot is at 79. */
-const SAVE_LEAVE_BOTTOM = 48 + 31;
-/** The glory panel (`HudGloryBoard`, `left-5 w-52`): its right edge. */
-const GLORY_BOARD_RIGHT = 20 + 208;
+
+/** The compact link's width, fixed so it can be placed beside the HUD: "The harbour" with its padding is about 102 px. */
+export const ACCOUNT_LINK_COMPACT_WIDTH = 112;
+
+/** On Save & leave's row, right of it. */
+const ROW_LEFT = HUD_SAVE_LEAVE_LEFT + HUD_SAVE_LEAVE_WIDTH + GAP;
+/** Under Save & leave, right of the glory panel. */
+const UNDER_TOP = HUD_STACK_TOP + HUD_SAVE_LEAVE_HEIGHT + GAP;
+const UNDER_LEFT = HUD_GLORY_BOARD_LEFT + HUD_GLORY_BOARD_WIDTH + GAP;
+/** The port panel's column on the right, which on a phone runs from the top of the screen to the bottom. */
+const PORT_COLUMN = HUD_PORT_PANEL_INSET + HUD_PORT_PANEL_WIDTH;
 
 export interface AccountLinkPlacement {
   top: number;
   /** One of `right` and `left` is set. */
   right?: number;
   left?: number;
-  /** Set on compact screens, where the link must be a full tap target. */
+  /** Set on compact screens, where the link must be a full tap target of a known width. */
   minHeight?: number;
+  width?: number;
 }
 
-/** What the board shows under the link: whether the HUD's turn bar is up (not in the captain draft or a fight). */
+/** What is under the link: whether the board's HUD stack shows (`hudStackShows`), and the window's width. */
 export interface AccountLinkScene {
-  turnBar: boolean;
+  hudStack: boolean;
+  viewportWidth: number;
 }
 
 /**
  * Where the corner link over the local game sits (#125). On desktop, the top
  * right corner under the turn bar. On a compact screen (a phone held
- * sideways) it is a full 48 px tap target and goes where nothing else is
- * (measured at 844×390 and 667×375): on the board it joins the HUD's top-left
- * stack, under Save & leave and right of the glory panel, above the captain
- * card and left of the port panel; with the turn bar down (the captain draft,
- * a fight) it takes the empty top-right corner, beside the draft's title and
- * the combat panel. Pure, no React.
+ * sideways) it is a full 48 px tap target. While the HUD stack shows it sits
+ * on Save & leave's row, right of it: the highest spot left of the port
+ * panel, so the captain and ship card, which grows upward as the ship takes
+ * on cargo, upgrades, damage and bounties, would cover the glory panel before
+ * it reached the link. Where that row meets the port panel's column (a phone
+ * under about 750 px wide) it goes under Save & leave, right of the glory
+ * panel instead. With the stack down (a captain picked, a fight, game over)
+ * it takes the empty top-right corner. Pure, no React.
  */
 export function accountLinkPlacement(layout: ShellLayout, scene: AccountLinkScene): AccountLinkPlacement {
   if (layout === "desktop") return { top: TOP, right: EDGE };
-  if (!scene.turnBar) return { top: EDGE, right: EDGE, minHeight: MIN_TAP_TARGET };
-  return { top: SAVE_LEAVE_BOTTOM + GAP, left: GLORY_BOARD_RIGHT + GAP, minHeight: MIN_TAP_TARGET };
+  const size = { minHeight: MIN_TAP_TARGET, width: ACCOUNT_LINK_COMPACT_WIDTH };
+  if (!scene.hudStack) return { top: EDGE, right: EDGE, ...size };
+  const rowFits = ROW_LEFT + ACCOUNT_LINK_COMPACT_WIDTH + GAP <= scene.viewportWidth - PORT_COLUMN;
+  return rowFits ? { top: HUD_STACK_TOP, left: ROW_LEFT, ...size } : { top: UNDER_TOP, left: UNDER_LEFT, ...size };
 }
