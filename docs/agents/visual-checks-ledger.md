@@ -90,6 +90,12 @@ One entry per report. Newest first.
 - **The wash:** three meshes (the wrap copies) of about 54 to 108 triangles each. The frame rate held 120 fps, with the frame time at a median of 8.3 ms and p95 9.8 ms, whether it was shown or hidden. With the wash on, the deep hex's mean colour drops about 9% (RGB 26/57/96 to 20/49/87). It can be seen side by side, but is easy to miss on the dark open sea. A forced magenta run found the expected hex.
 - **For the maintainer:** the End Turn warning is small text (11 px) in pale red and loses contrast where it falls over sand or the sun's glare (top right).
 
+### 2026-10-16: the rival's ship missing beside a seat's own in `?seats=1` (#346 check)
+
+- **Symptom:** in `?seats=1&players=2&size=small&seed=1`, mid-fight, the defender's board showed only its own ship although the attacker was one hex off.
+- **Ruled out:** zooming out showed the attacker's ship at the bottom of the frame: the default camera is close and the neighbour sat just outside it. Every ship in `G.ships` is drawn.
+- **Also seen, not this PR:** after a seat switch more than 90 s after page load, the remounted board shows at once and logs `[loading] showing the board after 90000 ms; still pending: …` (the readiness timeout counts from page load). The boards drawn were whole.
+
 ### 2026-10-16: the rotate gate's review follow-ups (#123, PR #312)
 
 - **Branch and commit:** `feat/123-landscape-phones` at `83c11b5` (on main at `05fd37e`).
@@ -203,6 +209,14 @@ When an agent reports screenshots, it states for the batch:
 That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
+
+### 2026-10-16: the round-1 ambush and per-volley damage (#346, PR #355)
+
+- **Branch and commit:** `main` at `c277fa5` (PR #355 merged).
+- **Renderer:** the Playwright MCP browser, Chromium 155 on the GPU (ANGLE Metal), 1602×882 at DPR 2.
+- **View:** dev server, `?players=2&size=small&seed=1` (hotseat), `?size=small&seed=1` (solo) and `?seats=1&players=2&size=small&seed=1`; camera at each board's default over the seat's ship. Captains picked with `moves.pickCaptain(0, "Sloop")`. Ships set next to each other by rewriting the state: in hotseat and solo an `UPDATE` dispatched to the client's store (found through the React fiber), in `?seats=1` the local master's `storageAPI.state` before a seat switch. Hulls raised to 20 so fights last several rounds; in solo a hand-built England Flute merchant at hull 1, and the player's crew raised to 8 for the no-answer case. Fights opened with the board's Attack button and a click on the red hex (once with `moves.attackNPC`), then played with the panel's buttons. Rolls are random.
+- **Findings, all as intended:** a fight opens on "Combat - Round 1" with "The ambush: the attacker fires first, and the defender answers if it still can" and Fire Cannons!, no seamanship draw. The resolution lists the volleys in firing order ("Player 1 fired 2 guns: 1 hit", then "Player 2 …" or "Merchant …"), the hulls already lowered, and its button reads End Round. When the merchant sank on the first volley: one line, then "No answer: the other ship could not fire back". After a caught flee's parting shot the no-answer line correctly does not show. Round 2 on: Roll Seamanship, then the winner's name and rolls; when the defender won the draw (hotseat round 3, seats round 4) its volley is listed first. In `?seats=1` the other seat sees "Waiting for <captain> to fire / to end the round / to roll for seamanship / to choose", with its button off, the right seat each step, including the defender when it won the draw. Console: no errors besides the invalid moves the harness sent on purpose.
+- **Not checked:** the online match (`/api`); 3 or 4 seats.
 
 ### 2026-10-16: every seat drafts at once (#111)
 
