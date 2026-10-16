@@ -336,6 +336,14 @@ describe("combatWaitingFor: the line a seat sees while another seat presses", ()
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "seamanship", seamanshipWinner: null } })).toBe(
       "Waiting for Anne Bonny to roll for seamanship"
     );
+    // From round 2 each captain rolls its own die (#347): the attacker has rolled, the defender rolls next
+    expect(combatWaitingFor(G, { playerID: "0", combat: { ...pvp, stage: "defenderSeamanship", seamanshipWinner: null } })).toBe(
+      "Waiting for Calico Jack to roll for seamanship"
+    );
+    expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "defenderSeamanship", seamanshipWinner: null } })).toBe(
+      "Waiting for Calico Jack to roll for seamanship"
+    );
+    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "defenderSeamanship", seamanshipWinner: null } })).toBeNull();
     expect(combatWaitingFor(G, { playerID: "0", combat: { ...pvp, stage: "chooseAction", seamanshipWinner: "1" } })).toBe(
       "Waiting for Calico Jack to choose"
     );

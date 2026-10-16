@@ -8,7 +8,7 @@ import type { CaribbeanState, CombatAction } from "../game/types";
 /** A client's state and the combat moves a fight presses. */
 export interface FightClient {
   getState(): { G: CaribbeanState } | null;
-  /** boardgame.io's moves by name: rollSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons, applyResolution. */
+  /** boardgame.io's moves by name: rollSeamanship, rollDefenderSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons, applyResolution. */
   moves: Record<string, (...args: CombatAction[]) => void>;
 }
 
@@ -23,6 +23,7 @@ function pressStep(client: FightClient, action: CombatAction): void {
   const combat = client.getState()?.G.combat;
   if (!combat) return;
   if (combat.stage === "seamanship") client.moves.rollSeamanship();
+  else if (combat.stage === "defenderSeamanship") client.moves.rollDefenderSeamanship();
   else if (combat.stage === "chooseAction") client.moves.chooseCombatAction(action);
   else if (combat.stage === "fleeAttempt") client.moves.rollFleeAttempt();
   else if (combat.stage === "cannons") client.moves.rollCannons();

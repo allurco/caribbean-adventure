@@ -137,6 +137,8 @@ export function draftView(G: Pick<CaribbeanState, "ships" | "draftHands" | "lost
 
 const STEP_WAITED_ON: Record<CombatStage, string> = {
   seamanship: "to roll for seamanship",
+  // Each captain rolls its own die of the draw (#347): the defender's, after the attacker's.
+  defenderSeamanship: "to roll for seamanship",
   chooseAction: "to choose",
   fleeAttempt: "to roll the pursuit",
   cannons: "to fire",

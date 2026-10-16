@@ -8,6 +8,8 @@ interface CombatPanelProps {
   ships: Record<string, ShipState>;
   npcs: Record<string, NPCShip>;
   onRollSeamanship: () => void;
+  /** The defender's die of the draw (#347), rolled after the attacker's. */
+  onRollDefenderSeamanship: () => void;
   onChooseAction: (action: CombatAction) => void;
   onRollFleeAttempt: () => void;
   onRollCannons: () => void;
@@ -98,6 +100,7 @@ export function CombatPanel({
   ships,
   npcs,
   onRollSeamanship,
+  onRollDefenderSeamanship,
   onChooseAction,
   onRollFleeAttempt,
   onRollCannons,
@@ -149,11 +152,28 @@ export function CombatPanel({
       {combat.stage === "seamanship" && (
         <div className="text-center space-y-2">
           <div className="text-amber-100/80 text-xs mb-2">
-            Roll for seamanship to determine who acts first
+            {isNPC
+              ? "Roll for seamanship to determine who acts first"
+              : `Player ${seatLabel(combat.attackerId)} rolls first, then Player ${seatLabel(combat.defenderId)}. Ties go to the defender.`}
           </div>
           <ActionButton
             label="Roll Seamanship"
             onClick={onRollSeamanship}
+            disabled={!mayAct}
+            primary
+          />
+        </div>
+      )}
+
+      {combat.stage === "defenderSeamanship" && (
+        <div className="text-center space-y-2">
+          <div className="text-amber-100/80 text-xs mb-2">
+            Player {seatLabel(combat.attackerId)} rolled {combat.seamanshipRolls[combat.attackerId]}. Player{" "}
+            {seatLabel(combat.defenderId)}, roll for seamanship. Ties go to the defender.
+          </div>
+          <ActionButton
+            label="Roll Seamanship"
+            onClick={onRollDefenderSeamanship}
             disabled={!mayAct}
             primary
           />

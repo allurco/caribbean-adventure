@@ -212,6 +212,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.attackShip("1");
     fireTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     client.moves.chooseCombatAction("board");
     expectFightOver(client);
     expect(npcSteps(client)).toBe(1);
@@ -225,6 +226,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.attackShip("1");
     fireTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     client.moves.chooseCombatAction("flee");
     client.moves.rollFleeAttempt();
     expectFightOver(client);
@@ -239,6 +241,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.attackShip("1");
     fireTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     client.moves.chooseCombatAction("flee");
     client.moves.rollFleeAttempt();
     expect(stateOf(client).G.combat?.fleeOutcome).toBe("caught");

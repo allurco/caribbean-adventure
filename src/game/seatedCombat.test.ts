@@ -25,6 +25,8 @@ describe("withSeatedCombat (#113 review)", () => {
     expect(press("chooseCombatAction", "0", fight("1"))).toBe(INVALID_MOVE);
     expect(press("chooseCombatAction", "1", fight("0"))).toBe(INVALID_MOVE);
     expect(press("rollSeamanship", "1", { ...fight("1"), stage: "seamanship" })).toBe(INVALID_MOVE);
+    // Each captain rolls its own die of the draw (#347): the attacker may not roll the defender's
+    expect(press("rollDefenderSeamanship", "0", { ...fight("1"), stage: "defenderSeamanship", seamanshipWinner: null })).toBe(INVALID_MOVE);
     for (const name of ["rollFleeAttempt", "rollCannons", "applyResolution"]) {
       expect(press(name, "0", { ...fight("1"), stage: "cannons" }), name).toBe(INVALID_MOVE);
     }

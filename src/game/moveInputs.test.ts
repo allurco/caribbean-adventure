@@ -194,6 +194,7 @@ describe("the main phase's moves refuse malformed arguments", () => {
     client.moves.attackShip("1");
     fireTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     expect(client.getState()!.G.combat?.stage).toBe("chooseAction");
     refused(client, () => client.moves.chooseCombatAction("broadside"));
     refused(client, () => client.moves.chooseCombatAction(undefined));

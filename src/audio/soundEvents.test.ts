@@ -179,6 +179,13 @@ describe("soundEventsFrom", () => {
     expect(soundEventsFrom(prev, next)).toEqual([{ type: "seamanshipRolled" }]);
   });
 
+  it("emits each captain's seamanship roll: the attacker's, then the defender's (#347)", () => {
+    const attackerRolled = makeState({ combat: makeCombat({ stage: "defenderSeamanship" }) });
+    expect(soundEventsFrom(makeState({ combat: makeCombat() }), attackerRolled)).toEqual([{ type: "seamanshipRolled" }]);
+    const drawn = makeState({ combat: makeCombat({ stage: "chooseAction", seamanshipWinner: "1" }) });
+    expect(soundEventsFrom(attackerRolled, drawn)).toEqual([{ type: "seamanshipRolled" }]);
+  });
+
   it("emits cannon fire with both sides' hits when the cannons are rolled", () => {
     const prev = makeState({ combat: makeCombat({ stage: "cannons", actionChosen: "fire" }) });
     const next = makeState({

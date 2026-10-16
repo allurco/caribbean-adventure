@@ -1261,11 +1261,12 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           ships={G.ships}
           npcs={G.npcs}
           onRollSeamanship={() => props.moves.rollSeamanship()}
+          onRollDefenderSeamanship={() => props.moves.rollDefenderSeamanship()}
           onChooseAction={(action) => props.moves.chooseCombatAction(action)}
           onRollFleeAttempt={() => props.moves.rollFleeAttempt()}
           onRollCannons={() => props.moves.rollCannons()}
           onApplyResolution={() => props.moves.applyResolution()}
-          // Only the seat whose step it is presses it (the attacker the draw, then the faster ship)
+          // Only the seat whose step it is presses it (each captain its own die of the draw, then the faster ship)
           mayAct={seatMayActInCombat({ playerID: props.playerID, combat: G.combat })}
           waitingLine={combatWaitingFor(G, { playerID: props.playerID, combat: G.combat })}
           watchingLine={fightBystander(props.playerID, G.combat) ? fightWatched(G, G.combat) : null}
