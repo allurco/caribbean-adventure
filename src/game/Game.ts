@@ -48,7 +48,7 @@ import {
 } from "./economy";
 import { createCaptainDeck, dealHands, isCaptainPick, takeCommand } from "./captains";
 import { isOneOf, isOwnKey, isWhole } from "./moveArgs";
-import { draftOver, everySeatPicked, nextToPick } from "./draftOrder";
+import { draftOver, nextToPick } from "./draftOrder";
 import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
 import { spawnFlotillaForPlayer } from "./npcManager";
 import { npcTurnEndStep } from "./npcTurnStep";
@@ -306,7 +306,10 @@ export const Caribbean: Game<CaribbeanState> = {
       start: true,
       // Every seat still choosing may pick at once (#111); the turns walk the
       // seats in order, each passing on as its seat picks, so the hotseat
-      // screen passes the pick from player to player (draftOrder.ts)
+      // screen passes the pick from player to player (draftOrder.ts). The
+      // seat whose turn it is has always yet to pick, so the last pick is
+      // its own and ends its turn (maxMoves); the draft then ends on the
+      // last seat's turn, and main begins at seat 0.
       turn: {
         minMoves: 1,
         maxMoves: 1,
@@ -315,8 +318,6 @@ export const Caribbean: Game<CaribbeanState> = {
           first: () => 0,
           next: ({ G, ctx }) => nextToPick(G, ctx.playOrder, ctx.playOrderPos),
         },
-        // The last pick, from whichever seat, ends the turn, and the draft then ends on the last seat's
-        endIf: ({ G }) => everySeatPicked(G),
       },
       moves: {
         pickCaptain: (
