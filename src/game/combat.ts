@@ -155,6 +155,7 @@ export function canReturnFire(defender: ShipState | NPCShip, distance: number): 
   return distance <= getShipAttackRange(defender);
 }
 
+/** The draw (#347): who wins it, each die plus its ship's manoeuvrability, a tie to the defender. */
 export function resolveSeamanship(
   attackerManeuv: number,
   attackerRoll: number,
@@ -163,8 +164,8 @@ export function resolveSeamanship(
 ): "attacker" | "defender" {
   const attackerTotal = attackerManeuv + attackerRoll;
   const defenderTotal = defenderManeuv + defenderRoll;
-  // Attacker wins ties
-  return attackerTotal >= defenderTotal ? "attacker" : "defender";
+  // The defender wins ties (#347): the attacker already had the ambush
+  return attackerTotal > defenderTotal ? "attacker" : "defender";
 }
 
 export function countCannonHits(rolls: number[]): number {

@@ -155,9 +155,23 @@ describe("resolveSeamanship", () => {
     expect(resolveSeamanship(2, 1, 4, 5)).toBe("defender");
   });
 
-  it("attacker wins ties", () => {
-    // Both have same total
-    expect(resolveSeamanship(3, 3, 4, 2)).toBe("attacker");
+  it("defender wins ties (#347)", () => {
+    // Both have same total: 3 + 3 = 4 + 2
+    expect(resolveSeamanship(3, 3, 4, 2)).toBe("defender");
+  });
+
+  it("over every roll and manoeuvrability, the attacker wins only on a strictly higher total (#347)", () => {
+    for (let attackerManeuv = 1; attackerManeuv <= 4; attackerManeuv++) {
+      for (let defenderManeuv = 1; defenderManeuv <= 4; defenderManeuv++) {
+        for (let attackerRoll = 1; attackerRoll <= 6; attackerRoll++) {
+          for (let defenderRoll = 1; defenderRoll <= 6; defenderRoll++) {
+            const winner = resolveSeamanship(attackerManeuv, attackerRoll, defenderManeuv, defenderRoll);
+            const attackerAhead = attackerManeuv + attackerRoll > defenderManeuv + defenderRoll;
+            expect(winner).toBe(attackerAhead ? "attacker" : "defender");
+          }
+        }
+      }
+    }
   });
 });
 
