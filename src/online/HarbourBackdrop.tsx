@@ -15,7 +15,7 @@ const HarbourScene = lazy(() => import("../board/harbour/HarbourScene").then((m)
  *    over its inlined blurred copy (HarbourStill). The app shows this same
  *    backdrop while the shell's chunk loads, so it is the very first frame.
  * 2. Once the shell is `interactive` and the page idle, the lightened live
- *    scene mounts under the still, invisible, its waves held at the still's
+ *    scene mounts under the still, invisible, its waves, surf and palms held at the still's
  *    moment.
  * 3. When it reports a settled frame (never on a timer) it fades in over
  *    the still and its waves start: the same framing, so the fade shows only
@@ -43,6 +43,7 @@ export function HarbourBackdrop({ interactive }: { interactive: boolean }) {
     console.warn("[harbour] the live scene cannot run; keeping the still", error);
     dispatch("failed");
   }, []);
+  // An interrupted fade (transitioncancel) ends it too, so the still is never left over the live scene
   const onFadeEnd = (event: TransitionEvent) => {
     if (event.target === event.currentTarget) dispatch("fadeEnded");
   };
@@ -53,6 +54,7 @@ export function HarbourBackdrop({ interactive }: { interactive: boolean }) {
       {view.mountScene && (
         <div
           onTransitionEnd={onFadeEnd}
+          onTransitionCancel={onFadeEnd}
           className={`absolute inset-0 transition-opacity duration-[1200ms] ease-out ${view.sceneVisible ? "opacity-100" : "opacity-0"}`}
         >
           <ErrorBoundary fallback={null} onError={onFailed}>
