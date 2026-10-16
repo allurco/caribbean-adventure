@@ -92,6 +92,65 @@ describe("the online match sync (#113)", () => {
     expect(calls).toHaveLength(3);
   });
 
+  it("shows only the answer to the last of the actions queued: an earlier one would undo the later moves the board already shows", async () => {
+    const { api, calls, answer } = fakeApi();
+    const views: number[] = [];
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+    // A route of three hexes: the board shows each step at once and sends it on
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 0] } });
+    sync.send(5, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [2, 0] } });
+    sync.send(6, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [3, 0] } });
+    for (const id of [5, 6, 7]) {
+      await flush();
+      answer({ ok: true, state: view(id) });
+    }
+    await flush();
+    expect(calls).toEqual(["send moveShip at 4", "send moveShip at 5", "send moveShip at 6"]);
+    expect(views).toEqual([7]);
+  });
+
+  it("holds back a whole view fetched while actions are queued (a refusal's refetch, or one asked for), showing the last answer instead", async () => {
+    const { api, calls, answer } = fakeApi();
+    const views: number[] = [];
+    const errors: string[] = [];
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: (e) => errors.push(e) });
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 0] } });
+    sync.send(5, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [2, 0] } });
+    sync.send(6, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [3, 0] } });
+    // A refetch asked for while the first is on its way sees the server before any of them
+    api.nextGet = () => ({ ok: true, changed: true, seat: "0", state: view(4) });
+    sync.refresh();
+    await flush();
+    // The first is refused (a 429): its refetch sees the server still at 4, behind the board
+    answer({ ok: false, status: 429, code: "rate_limited", error: "Slow down." });
+    await flush();
+    await flush();
+    // The others land, the last bringing the whole view
+    answer({ ok: true, state: view(5) });
+    await flush();
+    answer({ ok: true, state: view(6) });
+    await flush();
+    expect(calls).toEqual(["get since=-", "send moveShip at 4", "get since=-", "send moveShip at 5", "send moveShip at 6"]);
+    expect(errors).toEqual(["Slow down."]);
+    expect(views).toEqual([6]);
+  });
+
+  it("still shows the whole view when a later queued action is refused after an earlier answer was held back", async () => {
+    const { api, answer } = fakeApi();
+    const views: number[] = [];
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 0] } });
+    sync.send(5, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [2, 0] } });
+    await flush();
+    answer({ ok: true, state: view(5) });
+    await flush();
+    api.nextGet = () => ({ ok: true, changed: true, seat: "0", state: view(5) });
+    answer({ ok: false, status: 400, code: "invalid_move", error: "No." });
+    await flush();
+    await flush();
+    expect(views).toEqual([5]);
+  });
+
   it("does not poll while an action is on its way", async () => {
     const { api, calls, answer } = fakeApi();
     const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: () => {}, onError: () => {} });

@@ -72,10 +72,29 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
     onView(view);
   };
 
-  async function refresh(): Promise<void> {
+  /**
+   * Whether actions are queued behind the `own` ones in flight (1 inside a
+   * send, 0 outside): the board already shows their moves, since
+   * boardgame.io applies each at once, so a view from the server now would
+   * take them back (a ship sailing a route would turn round to an earlier
+   * hex and sail on again). The view that answers the last of them shows
+   * instead; until then the state id still moves on.
+   */
+  const actionsQueuedBehind = (own: number) => inFlight > own;
+
+  const holdBack = (view: SeatView) => {
+    stateID = Math.max(stateID, view._stateID);
+  };
+
+  async function refresh(own = 0): Promise<void> {
     const result = await api.getMatch(matchId);
     if (!result.ok) {
       onError(result.error);
+      return;
+    }
+    if (actionsQueuedBehind(own)) {
+      // Still wants the whole view, should the queued actions not bring one
+      if (result.changed) holdBack(result.state);
       return;
     }
     needsFullView = false;
@@ -97,18 +116,19 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
       onError("That cannot be done in an online match.");
       // As for a refusal: the board may show it until a whole view arrives.
       needsFullView = true;
-      return refresh();
+      return refresh(1);
     }
     const result = await api.sendAction(matchId, baseStateID, { type: action.type, payload: { type: name, args } });
     if (result.ok) {
-      show(result.state);
+      if (actionsQueuedBehind(1)) holdBack(result.state);
+      else show(result.state);
       return;
     }
     onError(result.error);
     // The board may show the refused move; until a whole view arrives (this
     // refetch may itself be refused, a 429 or a 5xx), polls ask for it.
     needsFullView = true;
-    return refresh();
+    return refresh(1);
   }
 
   const offline = () => onError("Could not reach the harbour. Check your connection.");
@@ -123,7 +143,7 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
           // The action may or may not have arrived: only a full read tells.
           needsFullView = true;
           offline();
-          return refresh().catch(() => {});
+          return refresh(1).catch(() => {});
         })
         .finally(() => {
           inFlight--;
