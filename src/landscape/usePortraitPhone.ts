@@ -1,24 +1,23 @@
 import { useSyncExternalStore } from "react";
+import { onViewportChange } from "../board/onViewportChange";
 import { isPortraitPhone, type ViewportSample } from "./phoneOrientation";
 
 const COARSE = "(pointer: coarse)";
 
-/** The window as `phoneOrientation` reads it: its size and whether its primary pointer is a finger. */
+/** The device as `phoneOrientation` reads it: the screen's size, the window's, and whether its primary pointer is a finger. */
 export function sampleViewport(): ViewportSample {
   const coarse = typeof window.matchMedia === "function" && window.matchMedia(COARSE).matches;
-  return { width: window.innerWidth, height: window.innerHeight, coarse };
+  return { screenWidth: screen.width, screenHeight: screen.height, width: window.innerWidth, height: window.innerHeight, coarse };
 }
 
 const portrait = () => isPortraitPhone(sampleViewport());
 
 function subscribe(onChange: () => void): () => void {
   const pointer = typeof window.matchMedia === "function" ? window.matchMedia(COARSE) : null;
-  window.addEventListener("resize", onChange);
-  window.addEventListener("orientationchange", onChange);
+  const stopViewport = onViewportChange(onChange);
   pointer?.addEventListener("change", onChange);
   return () => {
-    window.removeEventListener("resize", onChange);
-    window.removeEventListener("orientationchange", onChange);
+    stopViewport();
     pointer?.removeEventListener("change", onChange);
   };
 }
