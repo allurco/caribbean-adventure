@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 4 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 5 1`] = `
 {
   "cellPatches": [],
   "map": {

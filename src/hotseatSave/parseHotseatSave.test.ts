@@ -49,6 +49,21 @@ describe("reading a saved game back", () => {
     }
   });
 
+  it("reads a version 4 save, from before each captain rolled its own die of the draw (#347), as this version's, mid-fight too", () => {
+    // Version 4's draw waits on the attacker at `seamanship`, as version 5's does: its next roll is the attacker's die, then the defender's
+    const combat = { attackerId: "0", defenderId: "1", round: 2, stage: "seamanship" };
+    for (const G of [save.state.G, { ...save.state.G, combat }]) {
+      const older = { ...save, version: 4, state: { ...save.state, G } };
+      expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+    }
+  });
+
+  it("still sets aside a version 3 save made mid-fight, on its way through version 4", () => {
+    const combat = { attackerId: "0", defenderId: "1", round: 2, stage: "seamanship" };
+    const midFight = { ...save, version: 3, state: { ...save.state, G: { ...save.state.G, combat } } };
+    expect(parseHotseatSave(JSON.stringify(midFight))).toEqual({ kind: "unreadable", reason: "version" });
+  });
+
   it("calls anything else corrupt, without throwing", () => {
     const corrupt = [
       "",
