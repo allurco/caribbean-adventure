@@ -59,4 +59,18 @@ describe("combatActor: the seat that presses a fight's step", () => {
     expect(combatActor(fight("cannons", "npc-1", { ...npc, fleeOutcome: "caught" }))).toBe("0");
     expect(combatActor(fight("resolution", "npc-1", { ...npc, fleeOutcome: "caught" }))).toBe("0");
   });
+
+  it("the ship answering a volley aims and fires its own answer (#348): the other side from the one that fired first", () => {
+    // Round 1, the ambush: the attacker fired, the defender answers
+    expect(combatActor(fight("returnFire", null))).toBe("1");
+    expect(combatActor(fight("returnFire", null, { attackerId: "2", defenderId: "0" }))).toBe("0");
+    // From round 2 the draw's winner fired first; the loser answers
+    expect(combatActor(fight("returnFire", "0"))).toBe("1");
+    expect(combatActor(fight("returnFire", "1"))).toBe("0");
+  });
+
+  it("against an NPC the attacker aims its own answer to the NPC's volley (#348)", () => {
+    expect(combatActor(fight("returnFire", "npc-1", { defenderId: "npc-1", isNPCCombat: true }))).toBe("0");
+    expect(combatActor(fight("returnFire", null, { defenderId: null, isNPCCombat: true }))).toBe("0");
+  });
 });

@@ -506,12 +506,24 @@ describe("a fight between two seats (#113 review)", () => {
     clock += 1000;
     expect((await act(matchId, tokenOf(attacker), move(state._stateID, "rollSeamanship"))).status).toBe(400);
     clock += 1000;
-    expect((await act(matchId, tokenOf(defender), move(state._stateID, "rollCannons"))).status).toBe(403);
+    expect((await act(matchId, tokenOf(defender), move(state._stateID, "rollCannons", "hull"))).status).toBe(403);
+    // Every volley is aimed by the ship firing it (#348): no aim, no broadside
     clock += 1000;
-    res = await act(matchId, tokenOf(attacker), move(state._stateID, "rollCannons"));
+    expect((await act(matchId, tokenOf(attacker), move(state._stateID, "rollCannons"))).status).toBe(400);
+    clock += 1000;
+    res = await act(matchId, tokenOf(attacker), move(state._stateID, "rollCannons", "masts"));
     expect(res.status).toBe(200);
     state = ((await res.json()) as MatchBody).state;
-    expect(state.G.combat?.volleys?.[0]?.shooterId).toBe(attacker);
+    expect(state.G.combat?.volleys?.[0]).toMatchObject({ shooterId: attacker, aim: "masts" });
+    // The answer is the defender's to aim, never the attacker's for it
+    expect(state.G.combat?.stage).toBe("returnFire");
+    clock += 1000;
+    expect((await act(matchId, tokenOf(attacker), move(state._stateID, "returnFire", "hull"))).status).toBe(403);
+    clock += 1000;
+    res = await act(matchId, tokenOf(defender), move(state._stateID, "returnFire", "crew"));
+    expect(res.status).toBe(200);
+    state = ((await res.json()) as MatchBody).state;
+    expect(state.G.combat?.volleys?.[1]).toMatchObject({ shooterId: defender, aim: "crew" });
     clock += 1000;
     expect((await act(matchId, tokenOf(defender), move(state._stateID, "applyResolution"))).status).toBe(403);
 
@@ -570,19 +582,23 @@ describe("the parting shot after a caught flight", () => {
       const res = await act(matchId, tokenOf(attacker), move(main._stateID, "attackShip", defender));
       const { state } = (await res.json()) as MatchBody;
       // Set-up: the faster ship fled and was caught, written straight into the store.
+      // Round 2: a flight is never chosen in round 1 (the ambush), so the parting shot's firer is only defined from round 2.
       const fleeing = fled === "attacker" ? attacker : defender;
       const pursuer = fleeing === attacker ? defender : attacker;
       const combat = ((await store.peekMatch(matchId))!.state as View).G.combat!;
-      Object.assign(combat, { stage: "cannons", seamanshipWinner: fleeing, actionChosen: "flee", fleeOutcome: "caught", fleeRolls: { pursuer: 6, fleeer: 1 } });
+      Object.assign(combat, { round: 2, stage: "cannons", seamanshipWinner: fleeing, actionChosen: "flee", fleeOutcome: "caught", fleeRolls: { pursuer: 6, fleeer: 1 } });
 
       clock += 1000;
-      const refused = await act(matchId, tokenOf(fleeing), move(state._stateID, "rollCannons"));
+      const refused = await act(matchId, tokenOf(fleeing), move(state._stateID, "rollCannons", "hull"));
       expect(refused.status).toBe(403);
       expect(await refused.json()).toMatchObject({ code: "not_your_turn" });
       clock += 1000;
-      const fired = await act(matchId, tokenOf(pursuer), move(state._stateID, "rollCannons"));
+      // The pursuer aims its parting shot (#348)
+      const fired = await act(matchId, tokenOf(pursuer), move(state._stateID, "rollCannons", "masts"));
       expect(fired.status).toBe(200);
-      expect(((await fired.json()) as MatchBody).state.G.combat?.stage).toBe("resolution");
+      const after = ((await fired.json()) as MatchBody).state.G.combat;
+      expect(after?.stage).toBe("resolution");
+      expect(after?.volleys).toEqual([expect.objectContaining({ shooterId: pursuer, aim: "masts" })]);
     });
   }
 });

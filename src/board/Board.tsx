@@ -1281,7 +1281,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onRollDefenderSeamanship={() => props.moves.rollDefenderSeamanship()}
           onChooseAction={(action) => props.moves.chooseCombatAction(action)}
           onRollFleeAttempt={() => props.moves.rollFleeAttempt()}
-          onRollCannons={() => props.moves.rollCannons()}
+          // An NPC's volley is sent with no aim: the engine aims it (#348)
+          onRollCannons={(aim) => (aim === undefined ? props.moves.rollCannons() : props.moves.rollCannons(aim))}
+          onReturnFire={(aim) => props.moves.returnFire(aim)}
           onApplyResolution={() => props.moves.applyResolution()}
           // Only the seat whose step it is presses it (each captain its own die of the draw, then the faster ship)
           mayAct={seatMayActInCombat({ playerID: props.playerID, combat: G.combat })}
