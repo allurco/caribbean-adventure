@@ -10,8 +10,9 @@ import type { Hex } from "../game/hex";
 import type { NPCShip, MapCell } from "../game/types";
 import { hexToWorld, hexEquals, hexKey, wrapWorldWidth } from "../game/hex";
 import { deepSeaHexes } from "../game/deepSea";
-import { deepReach, endTurnSeaWarning, freshSeaWears, seaWearNotices, seaWearToastTop, targetSeaWarning } from "./seaWearView";
+import { deepReach, endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
 import { SeaWearToast } from "./SeaWearToast";
+import { HudToastStack } from "./HudToastStack";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
 import { turnReach, routeTo, reachCost } from "../game/reach";
 import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
@@ -1450,19 +1451,18 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         />
       )}
 
-      {/* The open sea wore a ship as its turn ended (#340) */}
-      {seaWearLines && (
-        <SeaWearToast lines={seaWearLines} top={seaWearToastTop(hudLayoutKind, completedMission !== null)} onDone={clearSeaWearLines} />
-      )}
-
-      {/* Mission Complete Toast */}
-      {completedMission && (
-        <MissionCompleteToast
-          title={completedMission.title}
-          reward={completedMission.reward}
-          top={hudToastTop(hudLayoutKind)}
-          onComplete={() => setCompletedMission(null)}
-        />
+      {/* The toasts, stacked: a mission completed, then the open sea wearing a ship as its turn ended (#340) */}
+      {(completedMission || seaWearLines) && (
+        <HudToastStack top={hudToastTop(hudLayoutKind)}>
+          {completedMission && (
+            <MissionCompleteToast
+              title={completedMission.title}
+              reward={completedMission.reward}
+              onComplete={() => setCompletedMission(null)}
+            />
+          )}
+          {seaWearLines && <SeaWearToast lines={seaWearLines} onDone={clearSeaWearLines} />}
+        </HudToastStack>
       )}
 
       {/* Turn Change Animation */}

@@ -8,8 +8,6 @@
 import { seaWearsOnDeep, type SeaState } from "../game/deepSea";
 import { hexKey, type Hex } from "../game/hex";
 import type { CaribbeanState, ShipState } from "../game/types";
-import type { ShellLayout } from "../online/shellLayout";
-import { hudToastTop } from "./hudLayout";
 import { seatName } from "./seat";
 
 type Ship = Pick<ShipState, "position" | "stats" | "shipClass">;
@@ -63,12 +61,4 @@ export function seaWearNotices(
     const you = playerID != null ? playerID === player : numPlayers === 1;
     return `The open sea strains ${you ? "your" : `${seatName({ ships }, player)}’s`} hull: −1 hull`;
   });
-}
-
-/** How far below the mission toast the sea's line drops when both are up. */
-const UNDER_MISSION_TOAST = 104;
-
-/** Where the sea's line sits: the toast band, or under the mission toast when that is up too. */
-export function seaWearToastTop(layout: ShellLayout, missionToastShown: boolean): number {
-  return hudToastTop(layout) + (missionToastShown ? UNDER_MISSION_TOAST : 0);
 }

@@ -3,8 +3,7 @@ import { hexKey, hexRect, offsetToHex } from "../game/hex";
 import { deepSeaHexes } from "../game/deepSea";
 import type { CombatState, MapCell, ShipState } from "../game/types";
 import { createShipState } from "../game/economy";
-import { deepReach, endTurnSeaWarning, freshSeaWears, seaWearNotices, seaWearToastTop, targetSeaWarning } from "./seaWearView";
-import { hudToastTop } from "./hudLayout";
+import { deepReach, endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
 
 // Open water seven hexes across: columns 3 to 5 are deep sea
 const cells: MapCell[] = hexRect(9, 9).map((h) => {
@@ -53,11 +52,6 @@ describe("telling the table the sea wore a ship (#340)", () => {
   it("speaks to the solo captain, and names the captain in hotseat", () => {
     expect(seaWearNotices(["0"], { playerID: null, numPlayers: 1, ships })).toEqual(["The open sea strains your hull: −1 hull"]);
     expect(seaWearNotices(["0"], { playerID: undefined, numPlayers: 2, ships })).toEqual(["The open sea strains Anne Bonny’s hull: −1 hull"]);
-  });
-
-  it("sits under the mission toast when both are up", () => {
-    expect(seaWearToastTop("desktop", false)).toBe(hudToastTop("desktop"));
-    expect(seaWearToastTop("desktop", true)).toBeGreaterThan(hudToastTop("desktop") + 80);
   });
 });
 
