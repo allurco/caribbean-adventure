@@ -5,22 +5,26 @@
  * players drafts through the real `pickCaptain` move, and no two ships may
  * share a hex, nor sit anywhere but on water.
  *
- * Shared by the `draftPlacement.<size>.test.ts` files, one per map size, so
- * the sizes run on separate workers.
+ * Shared by the `src/game/draftPlacement.<size>.test.ts` files, one per map
+ * size (`DRAFT_SWEEP_SIZES`), so the sizes run on separate workers.
  */
-import { beforeEach, describe, it, expect } from "vitest";
+import { describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
-import { Caribbean, withHotseatView } from "./Game";
-import type { CaribbeanState } from "./Game";
-import { createCaptainDeck, dealHands } from "./captains";
-import { createShipState } from "./economy";
-import { createWrap, hex, hexEquals, wrappedDistance } from "./hex";
-import { getMapPreset, type MapSizeId } from "./mapConfig";
-import { generateMapFor } from "./mapRequest";
-import { STARTER_SHIP_CLASSES } from "./types";
+import { Caribbean, withHotseatView } from "../game/Game";
+import type { CaribbeanState } from "../game/Game";
+import { createCaptainDeck, dealHands } from "../game/captains";
+import { createShipState } from "../game/economy";
+import { createWrap, hex, hexEquals, wrappedDistance } from "../game/hex";
+import { getMapPreset, type MapSizeId } from "../game/mapConfig";
+import { generateMapFor } from "../game/mapRequest";
+import { STARTER_SHIP_CLASSES } from "../game/types";
+import { describeSeedBlocks } from "./seedBlocks";
 
-const SEEDS = 200;
+/** Seeds per map size: 1 to DRAFT_SEEDS, each size in its own file. */
+export const DRAFT_SEEDS = 200;
+/** The map sizes the sweep covers, one `draftPlacement.<size>.test.ts` file each. */
+export const DRAFT_SWEEP_SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
 const PLAYERS = 6;
 
 /** A small seeded generator for the deck's shuffle, so every run deals the same hands. */
@@ -65,21 +69,13 @@ function draftedShips(mapSize: MapSizeId, mapSeed: number) {
   return { G, phase: ctx.phase, cells, regions };
 }
 
-/**
- * Seeds per test: a whole size in one block runs long enough on a CI runner to
- * starve the worker past vitest's 60 s RPC timeout, so it runs in short tests
- * with a macrotask yield before each (as villagePlacementSweep.ts does).
- */
+/** Seeds per test (see `describeSeedBlocks`). */
 const SEEDS_PER_TEST = 20;
 
-/** The draft placement tests on `mapSize` maps, seeds 1 to SEEDS, in blocks of SEEDS_PER_TEST. */
+/** The draft placement tests on `mapSize` maps, seeds 1 to DRAFT_SEEDS, in blocks of SEEDS_PER_TEST. */
 export function describeDraftPlacement(mapSize: MapSizeId): void {
-  describe(`the draft's ship placement on ${mapSize} maps over ${SEEDS} seeds (#166, #239)`, () => {
-    // Tests in a file chain on microtasks, so without this the worker never reaches
-    // its message queue between them and vitest's onTaskUpdate RPC times out.
-    beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-    for (let first = 1; first <= SEEDS; first += SEEDS_PER_TEST) {
-      const last = Math.min(SEEDS, first + SEEDS_PER_TEST - 1);
+  describe(`the draft's ship placement on ${mapSize} maps over ${DRAFT_SEEDS} seeds (#166, #239)`, () => {
+    describeSeedBlocks(1, DRAFT_SEEDS, SEEDS_PER_TEST, (first, last) => {
       it(`never draws two ships on one hex centre, and starts every captain at a home port in their nation's region, on ${mapSize} maps, seeds ${first} to ${last}`, () => {
         for (let seed = first; seed <= last; seed++) {
           const { G, phase, cells, regions } = draftedShips(mapSize, seed);
@@ -102,6 +98,6 @@ export function describeDraftPlacement(mapSize: MapSizeId): void {
           }
         }
       }, 120_000);
-    }
+    });
   });
 }
