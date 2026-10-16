@@ -13,6 +13,17 @@ import type { ShellLayout } from "../online/shellLayout";
  */
 export const HUD_TOP_BAR_HEIGHT = 58;
 
+/**
+ * Gap between the HUD's corner pieces (the captain and ship cards, the action
+ * buttons, the combat panel) and the screen's edges, in CSS pixels.
+ */
+export const HUD_EDGE = 16;
+/**
+ * How far the turn bar's content, the sound control (left) and an online
+ * match's Leave to harbour (right) sit in from the side edges, in CSS pixels.
+ */
+export const HUD_SIDE_INSET = 20;
+
 /** Width of the port panel (`PortPanel`), in CSS pixels; the ship view keeps the ship clear of it. */
 export const HUD_PORT_PANEL_WIDTH = 288;
 /** Gap between the port panel and the screen's right edge, in CSS pixels. */

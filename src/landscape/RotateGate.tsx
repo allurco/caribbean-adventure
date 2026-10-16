@@ -1,0 +1,58 @@
+import { useState } from "react";
+import { safeInset } from "../board/safeArea";
+import { HarbourStill } from "../online/HarbourStill";
+import { Nameboard } from "../online/Nameboard";
+import { BTN_BRASS, SHEET } from "../online/shellStyles";
+import { useShellFonts } from "../online/useShellFonts";
+import { browserLockPorts, canLockLandscape, lockLandscape } from "./landscapeLock";
+import { ROTATE_GATE_Z } from "./rotateGateLayer";
+import { RotateGlyph } from "./RotateGlyph";
+
+/**
+ * The rotate gate (#123): Caribbean Merchant is played in landscape, so a
+ * phone held upright sees this over whatever is mounted, the shell or the
+ * game. It only covers: the app stays mounted underneath, inert while this
+ * shows (`LandscapeOnPhones`), so turning the phone back finds it as it was.
+ * In the Harbour launcher's dress: the harbour still behind, dimmed, a
+ * hanging nameboard and a parchment card. "Turn it for me" shows only where
+ * the browser can lock the screen (Android).
+ */
+export function RotateGate() {
+  useShellFonts();
+  const [canLock] = useState(() => canLockLandscape(browserLockPorts()));
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rotate-gate-title"
+      className="fixed inset-0 flex touch-none flex-col overflow-hidden bg-shell-harbour select-none"
+      style={{
+        zIndex: ROTATE_GATE_Z,
+        paddingTop: safeInset("top", 0),
+        paddingBottom: safeInset("bottom", 0),
+        paddingLeft: safeInset("left", 16),
+        paddingRight: safeInset("right", 16),
+      }}
+    >
+      <HarbourStill />
+      <div aria-hidden="true" className="absolute inset-0 bg-linear-to-b from-shell-scrim/35 via-shell-scrim/72 via-60% to-shell-scrim/85" />
+
+      <div id="rotate-gate-title" className="relative">
+        <Nameboard title="Turn your ship" meta="Hold your phone sideways to take the helm" />
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 items-center justify-center pb-10">
+        <div className={`${SHEET} flex w-full max-w-[320px] flex-col items-center px-6 pt-5 pb-6 text-center`}>
+          <RotateGlyph className="h-32 w-32" />
+          <p className="mt-1 text-[18px] leading-snug text-balance">Caribbean Merchant is played in landscape.</p>
+          <p className="mt-1.5 text-[15px] leading-snug text-shell-ink-soft italic">Your game waits underneath, just as you left it.</p>
+          {canLock && (
+            <button type="button" onClick={() => void lockLandscape(browserLockPorts())} className={`${BTN_BRASS} mt-5 w-full py-3!`}>
+              Turn it for me
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { MissionReward } from "../game/types";
+import { safeInset } from "./safeArea";
 
 interface MissionCompleteToastProps {
   title: string;
@@ -29,7 +30,7 @@ export function MissionCompleteToast({
 
   return (
     <div
-      style={{ top }}
+      style={{ top: safeInset("top", top) }}
       className={`fixed left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
         phase === "enter"
           ? "opacity-0 -translate-y-4"

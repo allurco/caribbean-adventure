@@ -127,7 +127,8 @@ import { HudSoundControl } from "./HudSoundControl";
 import { HudSaveLeave } from "./HudSaveLeave";
 import { hudStackShows } from "./hudStack";
 import { hudStackPresence, portPanelPresence } from "./hudPresence";
-import { hudHintTop, hudToastTop } from "./hudLayout";
+import { HUD_EDGE, hudHintTop, hudToastTop } from "./hudLayout";
+import { safeInset } from "./safeArea";
 import { useShellLayout } from "../online/useShellLayout";
 import { RenderStatsProbe } from "./RenderStatsProbe";
 import { RenderStatsOverlay } from "./RenderStatsOverlay";
@@ -1302,7 +1303,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
       {/* Action buttons - only in main phase */}
       {!inCombat && boardActive && currentShipState && (hasAttackTargets || hasSpyglassTargets) && (
-        <div className="absolute bottom-4 right-4 flex gap-2">
+        <div className="absolute flex gap-2" style={{ bottom: safeInset("bottom", HUD_EDGE), right: safeInset("right", HUD_EDGE) }}>
           {/* Spyglass button */}
           {hasSpyglassTargets && (
             <button
@@ -1352,7 +1353,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {attackMode && (
         <div
           className="absolute left-1/2 -translate-x-1/2 bg-red-900/90 text-red-100 px-4 py-2 rounded-lg text-sm border border-red-700"
-          style={{ top: hudHintTop(hudLayoutKind) }}
+          style={{ top: safeInset("top", hudHintTop(hudLayoutKind)) }}
         >
           Select an enemy ship to attack (red hexes)
         </div>
@@ -1362,7 +1363,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {spyglassMode && (
         <div
           className="absolute left-1/2 -translate-x-1/2 bg-cyan-900/90 text-cyan-100 px-4 py-2 rounded-lg text-sm border border-cyan-700"
-          style={{ top: hudHintTop(hudLayoutKind) }}
+          style={{ top: safeInset("top", hudHintTop(hudLayoutKind)) }}
         >
           Select a ship to scout with your spyglass (red hexes)
         </div>
