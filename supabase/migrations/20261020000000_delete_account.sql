@@ -101,11 +101,11 @@ create policy "A player updates only their own profile"
   using ((select auth.uid()) = id and deleted_at is null)
   with check ((select auth.uid()) = id and deleted_at is null);
 
--- A new auth user gets a profile, as in 20261014000000_profiles.sql and as
--- #106 (20261019000000_profile_identities.sql) left it, except that a
--- provider's name equal to the reserved placeholder (any case) is treated as
--- no name: the sign-up never fails on the check above. As in #106, the
--- avatar is taken only from a Discord or Google sign-up, never from an email
+-- A new auth user gets a profile, as in 20261014000000_profiles.sql, except
+-- that a provider's name equal to the reserved placeholder (any case) is
+-- treated as no name: the sign-up never fails on the check above. As #106
+-- asks (20261024000000_profile_identities.sql, which runs after this one and
+-- keeps this definition), the avatar is taken only from a Discord or Google sign-up, never from an email
 -- or one-time-code sign-up's own metadata (profileColumns.test.ts holds it).
 create or replace function public.handle_new_user()
 returns trigger
