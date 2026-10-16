@@ -11,8 +11,8 @@ const DOT_Y = 0.03;
 const DOT_RADIUS = 0.055;
 const OUTLINE_COLOUR = "#fef3c7";
 const TINT_COLOUR = "#fcd34d";
-/** The open sea a coaster would lose hull on (#340): a cold, dark wash over the water. */
-const DEEP_COLOUR = "#0b1e3a";
+/** The open sea a coaster would lose hull on (#340): a cold, dark wash over the water, about a fifth darker. */
+const DEEP_COLOUR = "#061636";
 const ROUTE_COLOUR = "#fffbeb";
 
 const dotGeometry = new CircleGeometry(DOT_RADIUS, 12).rotateX(-Math.PI / 2);
@@ -107,7 +107,7 @@ export function ReachOverlay({ reach, target, dots }: ReachOverlayProps) {
     <>
       {reach && (
         <>
-          <Triangles positions={reach.deep} color={DEEP_COLOUR} opacity={0.22} renderOrder={2} />
+          <Triangles positions={reach.deep} color={DEEP_COLOUR} opacity={0.5} renderOrder={2} />
           <Triangles positions={reach.tint} color={TINT_COLOUR} opacity={0.05} renderOrder={2} additive />
           <Triangles positions={reach.rings} color={OUTLINE_COLOUR} opacity={0.3} renderOrder={3} />
           <Triangles positions={reach.outline} color={OUTLINE_COLOUR} opacity={0.75} renderOrder={3} />

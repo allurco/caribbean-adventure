@@ -95,7 +95,10 @@ export function HudTurnBar({
         {/* Right: End Turn */}
         <div className="pointer-events-auto flex items-center gap-3">
           {turnOpen && seaWarning && (
-            <span className="text-red-300 text-[11px] tracking-wide font-medium" role="note">
+            <span
+              className="px-2.5 py-1 rounded bg-black/75 border border-red-500/50 text-red-200 text-xs font-semibold tracking-wide shadow-[0_2px_6px_rgba(0,0,0,0.5)]"
+              role="note"
+            >
               {seaWarning}
             </span>
           )}
