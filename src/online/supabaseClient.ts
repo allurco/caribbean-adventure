@@ -3,7 +3,7 @@
  * loaded with a dynamic import, so supabase-js is its own chunk and a build
  * with no backend configured never fetches it.
  */
-import type { AccountClient } from "./accountClient";
+import type { AccountClient, IdentityRow } from "./accountClient";
 import { readSupabaseConfig, type SupabaseConfig } from "./supabaseConfig";
 
 /** The backend this build talks to, or null for the local hotseat game alone. */
@@ -35,6 +35,12 @@ export function getAccountClient(config: SupabaseConfig): Promise<AccountClient>
               maybeSingle: () => supabase.from(table).update(values).eq(column, value).select(columns).maybeSingle(),
             }),
           }),
+        }),
+      }),
+      identities: () => ({
+        select: (columns) => ({
+          eq: (column, value) =>
+            supabase.from("profile_identities").select(columns).eq(column, value).overrideTypes<IdentityRow[], { merge: false }>(),
         }),
       }),
     };

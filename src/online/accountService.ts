@@ -37,6 +37,34 @@ export async function sendMagicLink(client: AccountClient, rawEmail: string, red
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+/** The providers a player may sign in with besides an email link (#106), in the order they are shown. */
+export const OAUTH_PROVIDERS = ["discord", "google"] as const;
+export type OAuthProvider = (typeof OAUTH_PROVIDERS)[number];
+
+/**
+ * Starts a Discord or Google sign-in that brings the player back to
+ * `redirectTo`. On success supabase-js sends the browser to the provider, so
+ * the page is about to unload; a result comes back only on failure.
+ */
+export async function signInWithProvider(client: AccountClient, provider: OAuthProvider, redirectTo: string): Promise<Result> {
+  try {
+    const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo } });
+    return error ? { ok: false, error: error.message } : { ok: true };
+  } catch (thrown) {
+    return { ok: false, error: thrown instanceof Error ? thrown.message : "Sign-in could not start." };
+  }
+}
+
+export type LinkedProvidersResult = { ok: true; providers: OAuthProvider[] } | { ok: false; error: string };
+
+/** The Discord and Google accounts the signed-in player signs in with; only their own are readable. */
+export async function fetchLinkedProviders(client: AccountClient, id: string): Promise<LinkedProvidersResult> {
+  const { data, error } = await client.identities().select("provider").eq("profile_id", id);
+  if (error) return { ok: false, error: error.message };
+  const linked = new Set((Array.isArray(data) ? data : []).map((row) => row.provider));
+  return { ok: true, providers: OAUTH_PROVIDERS.filter((provider) => linked.has(provider)) };
+}
+
 export async function signOut(client: AccountClient): Promise<Result> {
   const { error } = await client.auth.signOut();
   return error ? { ok: false, error: error.message } : { ok: true };

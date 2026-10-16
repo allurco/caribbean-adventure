@@ -33,6 +33,11 @@ export interface AuthPort {
     email: string;
     options?: { emailRedirectTo?: string; shouldCreateUser?: boolean };
   }): PromiseLike<{ error: ClientError | null }>;
+  /** Starts a Discord or Google sign-in (#106): supabase-js sends the browser to the provider. */
+  signInWithOAuth(credentials: {
+    provider: "discord" | "google";
+    options?: { redirectTo?: string };
+  }): PromiseLike<{ data: { url: string | null }; error: ClientError | null }>;
   signOut(): PromiseLike<{ error: ClientError | null }>;
   getSession(): PromiseLike<{ data: { session: SessionLike | null }; error: ClientError | null }>;
   onAuthStateChange(callback: (event: string, session: SessionLike | null) => void): {
@@ -56,7 +61,23 @@ export interface ProfilesTable {
   };
 }
 
+/** A row of `public.profile_identities` (#106), as far as the client reads it; only its owner may. */
+export interface IdentityRow {
+  provider: string;
+}
+
+export interface IdentitiesResult {
+  data: IdentityRow[] | null;
+  error: ClientError | null;
+}
+
+export interface IdentitiesTable {
+  select(columns: string): { eq(column: string, value: string): PromiseLike<IdentitiesResult> };
+}
+
 export interface AccountClient {
   auth: AuthPort;
   from(table: "profiles"): ProfilesTable;
+  /** `public.profile_identities` (#106): the Discord and Google accounts a player signs in with. */
+  identities(): IdentitiesTable;
 }

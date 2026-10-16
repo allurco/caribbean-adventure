@@ -1,20 +1,33 @@
 import type { ReactNode } from "react";
 import type { AccountClient } from "./accountClient";
+import { ProviderButtons } from "./ProviderButtons";
 import { SignInForm } from "./SignInForm";
 import { SHEET, TIMBER_FRAME } from "./shellStyles";
+import { useSignInReturnError } from "./useSignInReturnError";
 
 /**
  * The shell's sign-in screen (#125): the whole harbour, the game's name over
- * it, and one parchment card in a timber frame with #105's email sign-in.
- * Discord and Google (#106) join the card above an "or by email" rule; on a
+ * it, and one parchment card in a timber frame: Discord and Google (#106)
+ * above an "or by email" rule and #105's email sign-in. A sign-in that came
+ * back failed or cancelled says so at the top of the card. On a
  * phone held sideways the two halves sit side by side and centre themselves,
  * so a card taller than the screen scrolls from its top.
  */
 export function ShellSignIn({ client }: { client: AccountClient }) {
+  const returnError = useSignInReturnError();
   return (
     <SignInLayout>
       <h2 className="font-fell text-[28px] leading-tight short-landscape:text-[23px]">Sign in to sail</h2>
       <p className="mb-5 text-[15px] text-shell-ink-soft short-landscape:mb-2.5">Your matches wait for you on any device.</p>
+      {returnError && (
+        <p role="alert" className="mb-4 border-l-2 border-shell-ink-wax pl-2.5 text-[15px] text-shell-ink-wax short-landscape:mb-2.5">
+          {returnError}
+        </p>
+      )}
+      <ProviderButtons client={client} />
+      <p className="my-4 flex items-center gap-3 text-[14px] text-shell-ink-soft italic short-landscape:my-2.5 before:h-px before:flex-1 before:bg-shell-rule/45 after:h-px after:flex-1 after:bg-shell-rule/45">
+        or by email
+      </p>
       <SignInForm client={client} />
     </SignInLayout>
   );

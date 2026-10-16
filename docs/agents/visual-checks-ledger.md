@@ -156,6 +156,13 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-16: Discord and Google sign-in (#106)
+
+- **Branch and commit:** `feat/106-oauth-sign-in`, uncommitted work on `05fd37e` (main).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal); 1440×900, and 844×390 as a phone held sideways (`isMobile`, touch, DPR 2).
+- **View:** the e2e dev server (`e2e/vite.e2e.config.ts` with `E2E_BACKEND=1`; the client's Supabase URL is the server's `/e2e-supabase`, so no real provider is reached). The sign-in screen signed out; a provider button clicked from `?view=account&error=old&error_description=stale`, with the navigation request caught; the sign-in screen opened with a cancelled consent in the hash (`#error=access_denied&error_description=…`) and with Supabase's unverified-Discord-email error in the query; signed in as the e2e captain Anne, the own and public profiles with request intercepts answering the `profiles` row with and without a Discord CDN avatar (the image itself served by the intercept), `profile_identities` with a Discord row, an avatar on a host not allowed, and an avatar answering 404.
+- **Findings:** the card fits both sizes with no sideways scroll; at 844×390 the two buttons sit side by side reading "Discord" and "Google" (their accessible names keep "Continue with …"), and with an error shown the card scrolls, as the layout means it to. Discord and Google go to `/e2e-supabase/auth/v1/authorize?provider=discord|google&redirect_to=<origin>/?view=account`, without the earlier error. Both errors show at the top of the card and leave the address bar; nothing is blank. The avatar shows on the profile, the nav board's footer seal and the public profile, loaded with `referrerpolicy="no-referrer"` (no Referer sent); the own page reads "Signs in with Discord." With no avatar, an avatar on another host (never requested) or one that fails to load, the wax seal shows.
+
 ### 2026-10-15: the harbour link against the hint band and the port panel (#125, PR #308 second review)
 
 - **Branch and commit:** `fix/125-harbour-link-phone` at `4038e26`.
