@@ -301,7 +301,7 @@ function fireVolley(G: CaribbeanState, combat: CombatState, volleys: Volley[], s
  * caught flight the pursuer, alone; otherwise the draw's winner, who chose
  * to fire (the attacker in a fight from before #346 with no winner).
  */
-export function firstToFire(combat: Pick<CombatState, "round" | "attackerId" | "defenderId" | "seamanshipWinner" | "fleeOutcome">): string {
+function firstToFire(combat: Pick<CombatState, "round" | "attackerId" | "defenderId" | "seamanshipWinner" | "fleeOutcome">): string {
   if (combat.round === 1 || combat.seamanshipWinner === null) return combat.attackerId;
   if (combat.fleeOutcome === "caught") {
     return combat.seamanshipWinner === combat.attackerId ? combat.defenderId : combat.attackerId;
