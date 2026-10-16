@@ -1,5 +1,6 @@
 import type { CombatState, ShipState, CombatAction, NPCShip } from "../game/types";
 import { npcKind } from "./npcName";
+import { defenderRollLine, drawIntro } from "./seamanshipText";
 import { HUD_EDGE } from "./hudLayout";
 import { safeInset } from "./safeArea";
 
@@ -152,9 +153,7 @@ export function CombatPanel({
       {combat.stage === "seamanship" && (
         <div className="text-center space-y-2">
           <div className="text-amber-100/80 text-xs mb-2">
-            {isNPC
-              ? "Roll for seamanship to determine who acts first"
-              : `Player ${seatLabel(combat.attackerId)} rolls first, then Player ${seatLabel(combat.defenderId)}. Ties go to the defender.`}
+            {drawIntro(combat)}
           </div>
           <ActionButton
             label="Roll Seamanship"
@@ -168,8 +167,7 @@ export function CombatPanel({
       {combat.stage === "defenderSeamanship" && (
         <div className="text-center space-y-2">
           <div className="text-amber-100/80 text-xs mb-2">
-            Player {seatLabel(combat.attackerId)} rolled {combat.seamanshipRolls[combat.attackerId]}. Player{" "}
-            {seatLabel(combat.defenderId)}, roll for seamanship. Ties go to the defender.
+            {defenderRollLine(combat, attacker?.stats)}
           </div>
           <ActionButton
             label="Roll Seamanship"
