@@ -63,6 +63,12 @@ export interface InitialMatch {
   phase: string | null;
 }
 
+/** A match's seat, with when it was last seen (#114, `seatSeen.ts`): kept on the server, never sent. */
+export interface MatchSeat extends SeatRecord {
+  /** ISO 8601, or null before the seat's first read or move. */
+  lastSeenAt: string | null;
+}
+
 /** A started match as the move API loads it (#113). */
 export interface MatchRecord {
   id: string;
@@ -70,7 +76,7 @@ export interface MatchRecord {
   /** boardgame.io's whole state, secrets included: never sent as it is. */
   state: unknown;
   stateId: number;
-  seats: SeatRecord[];
+  seats: MatchSeat[];
 }
 
 /** One accepted action, for the append-only move log. */
@@ -162,4 +168,6 @@ export interface OnlineStore {
    * write got there first (the client then refetches).
    */
   commitMove(update: MatchUpdate): Promise<boolean>;
+  /** Records that seat `seatIndex` of room `roomId` was seen at `at` (ISO 8601): its read or move of the match (#114). */
+  markSeatSeen(roomId: string, seatIndex: number, at: string): Promise<void>;
 }

@@ -7,7 +7,7 @@ import { apiTransport } from "./apiTransport";
 import type { MatchLive } from "./matchLive";
 import type { MatchSyncApi } from "./matchSync";
 
-/** The match client's props: the seat, and which seats are online (#114) for the board. */
+/** The match client's props: the seat, and which seats the server saw lately (#114) for the board. */
 export interface MatchClientProps {
   playerID: string;
   matchID: string;
@@ -25,13 +25,15 @@ export type OnlineMatchState =
  * game's rules run on the server; the client never sees more than its seat's
  * view. `onError` hears why an order was refused. `live`, the match's
  * realtime channel (#114), tells the board when to read again; without it
- * the board polls.
+ * the board polls. `onOnline` hears which seats the server saw lately, from
+ * the first read and every answer after it.
  */
 export function useOnlineMatch(
   api: MatchSyncApi,
   matchId: string | null,
   onError: (message: string) => void,
   live: MatchLive | null = null,
+  onOnline?: (seats: readonly string[]) => void,
 ): OnlineMatchState {
   const [state, setState] = useState<OnlineMatchState>(
     matchId ? { status: "loading" } : { status: "error", error: "That match link is not complete." },
@@ -43,12 +45,13 @@ export function useOnlineMatch(
       if (!mounted) return;
       if (!result.ok) return setState({ status: "error", error: result.error });
       if (!result.changed) return setState({ status: "error", error: "The match could not be read." });
+      if (result.online) onOnline?.(result.online);
       const MatchClient = Client({
         // The game the server runs: a seat presses only its own combat steps.
         game: withSeatedCombat(Caribbean),
         board: CaribbeanBoard,
         numPlayers: result.state.ctx.numPlayers,
-        multiplayer: apiTransport(api, result.state, onError, live),
+        multiplayer: apiTransport({ api, initial: result.state, onError, live, onOnline }),
         debug: false,
       }) as ComponentType<MatchClientProps>;
       setState({ status: "ready", MatchClient, seat: result.seat, matchId });
@@ -56,6 +59,6 @@ export function useOnlineMatch(
     return () => {
       mounted = false;
     };
-  }, [api, matchId, onError, live]);
+  }, [api, matchId, onError, live, onOnline]);
   return state;
 }

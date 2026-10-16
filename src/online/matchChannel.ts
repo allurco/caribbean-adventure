@@ -7,10 +7,10 @@
  *
  * It carries no game state, ever. After an accepted move the server
  * broadcasts `changed` with the new state's version alone, and each seat
- * then fetches its own view through `/api`. Presence says which seats are
- * online: keyed by seat, with an online flag and nothing more.
+ * then fetches its own view through `/api`. Clients only listen: they send
+ * nothing on it, presence included. Which seats are online the server keeps
+ * from each seat's own reads and moves (`server/seatSeen.ts`).
  */
-import { MAX_SEATS } from "../game/seats";
 
 /** The channel of one match, its id in lower case as Postgres writes it (the policies match it so). */
 export function matchTopic(matchId: string): string {
@@ -34,13 +34,4 @@ export function parseChangedSignal(payload: unknown): number | null {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) return null;
   const v = (payload as { v?: unknown }).v;
   return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : null;
-}
-
-/** What a seat tracks on the channel, under its seat as the presence key: that it is online, no more. */
-export const SEAT_PRESENCE = { online: true } as const;
-
-/** The seats online, from the channel's presence keys: sorted, each once, anything that is not a seat left out. */
-export function onlineSeatsFrom(keys: readonly string[]): string[] {
-  const seats = keys.filter((key) => /^[0-9]$/.test(key) && Number(key) < MAX_SEATS);
-  return [...new Set(seats)].sort((a, b) => Number(a) - Number(b));
 }

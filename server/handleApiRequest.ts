@@ -39,6 +39,14 @@ export interface ApiServices {
    * poll.
    */
   signals?: MatchSignals;
+  /**
+   * Keeps work running after the response is sent (Vercel's `waitUntil`,
+   * `vercelHandler.ts`): the realtime signal, so a move never waits on it.
+   * Left out, the route awaits that work before it answers.
+   */
+  defer?: (work: Promise<unknown>) => void;
+  /** The clock, in ms since the epoch (#114: when a seat was last seen); `Date.now` when left out. */
+  now?: () => number;
 }
 
 type Route = (request: Request, userId: string, services: ApiServices) => Promise<Response>;
@@ -72,11 +80,11 @@ const ROUTES: RouteEntry[] = [
     match: (path) => (path === "/api/rooms/join" ? null : pattern(/^\/api\/rooms\/([^/]+)$/)(path)),
     run: (_req, user, s, [id]) => getRoom(id, user, s),
   },
-  { method: "GET", match: pattern(/^\/api\/matches\/([^/]+)$/), run: (req, user, s, [id]) => getMatch(req, id, user, s.store) },
+  { method: "GET", match: pattern(/^\/api\/matches\/([^/]+)$/), run: (req, user, s, [id]) => getMatch(req, id, user, s) },
   {
     method: "POST",
     match: pattern(/^\/api\/matches\/([^/]+)\/actions$/),
-    run: (req, user, s, [id]) => postAction(req, id, user, s.store, s.signals),
+    run: (req, user, s, [id]) => postAction(req, id, user, s),
   },
 ];
 

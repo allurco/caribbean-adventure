@@ -7,7 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MapSizeId } from "../src/game/mapConfig";
 import type { AuthVerifier } from "./handleApiRequest";
-import type { ClaimOutcome, JoinOutcome, OnlineStore, RoomRecord, RoomStatus, StartOutcome, VoyageFight } from "./onlineStore";
+import type { ClaimOutcome, JoinOutcome, MatchSeat, OnlineStore, RoomRecord, RoomStatus, StartOutcome, VoyageFight } from "./onlineStore";
 
 interface VoyageRow {
   room_id: string;
@@ -40,6 +40,19 @@ interface RoomRow {
 function check<T>({ data, error }: { data: T; error: { message: string } | null }): T {
   if (error) throw new Error(error.message);
   return data;
+}
+
+/** A match's seats, with when each was last seen (#114). */
+async function matchSeats(db: ServiceClient, roomId: string): Promise<MatchSeat[]> {
+  const rows = check(
+    await db.from("seats").select("seat_index, user_id, last_seen_at").eq("room_id", roomId).order("seat_index"),
+  ) as { seat_index: number; user_id: string; last_seen_at: string | null }[];
+  return rows.map((s) => ({
+    index: s.seat_index,
+    userId: s.user_id,
+    displayName: null,
+    lastSeenAt: s.last_seen_at === null ? null : new Date(s.last_seen_at).toISOString(),
+  }));
 }
 
 export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>): OnlineStore {
@@ -161,15 +174,13 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         await db.from("matches").select("id, room_id, state, state_id").eq("id", matchId).maybeSingle(),
       ) as { id: string; room_id: string; state: unknown; state_id: number } | null;
       if (!row) return null;
-      const seats = check(
-        await db.from("seats").select("seat_index, user_id").eq("room_id", row.room_id).order("seat_index"),
-      ) as { seat_index: number; user_id: string }[];
+      const seats = await matchSeats(db, row.room_id);
       return {
         id: row.id,
         roomId: row.room_id,
         state: row.state,
         stateId: row.state_id,
-        seats: seats.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: null })),
+        seats,
       };
     },
 
@@ -181,14 +192,12 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
         state_id: number;
       } | null;
       if (!row) return null;
-      const seats = check(
-        await db.from("seats").select("seat_index, user_id").eq("room_id", row.room_id).order("seat_index"),
-      ) as { seat_index: number; user_id: string }[];
+      const seats = await matchSeats(db, row.room_id);
       return {
         id: row.id,
         roomId: row.room_id,
         stateId: row.state_id,
-        seats: seats.map((s) => ({ index: s.seat_index, userId: s.user_id, displayName: null })),
+        seats,
       };
     },
 
@@ -209,6 +218,11 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
           p_args: update.move.args,
         }),
       ) as boolean;
+    },
+
+    async markSeatSeen(roomId, seatIndex, at) {
+      const db = await client();
+      check(await db.from("seats").update({ last_seen_at: at }).eq("room_id", roomId).eq("seat_index", seatIndex));
     },
   };
 }

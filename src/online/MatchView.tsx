@@ -5,7 +5,7 @@ import { LeaveToHarbour } from "./LeaveToHarbour";
 import { createMatchApi } from "./matchApi";
 import { OnlineSheet } from "./OnlineSheet";
 import { useApiDeps } from "./useRoomApi";
-import { useMatchLive, useMatchPresence } from "./useMatchLive";
+import { useMatchLive } from "./useMatchLive";
 import { useOnlineMatch } from "./useOnlineMatch";
 
 /** How long a refused order's reason stays on screen. */
@@ -17,10 +17,10 @@ export function MatchView({ client, matchId }: { client: AccountClient; matchId:
   const api = useMemo(() => createMatchApi(deps), [deps]);
   const [notice, setNotice] = useState<string>();
   const onError = useCallback((message: string) => setNotice(message), []);
-  // The match's realtime channel (#114): signals when to read, and who is online.
+  // The match's realtime channel (#114) signals when to read; the server's answers say who is online.
   const live = useMatchLive(client, matchId);
-  const match = useOnlineMatch(api, matchId, onError, live);
-  const onlineSeats = useMatchPresence(live, match.status === "ready" ? match.seat : null);
+  const [onlineSeats, setOnlineSeats] = useState<readonly string[] | null>(null);
+  const match = useOnlineMatch(api, matchId, onError, live, setOnlineSeats);
 
   useEffect(() => {
     if (!notice) return;

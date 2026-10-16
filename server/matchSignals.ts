@@ -5,10 +5,9 @@
  * (`changedSignal`, `src/online/matchChannel.ts`), never game state.
  *
  * Sent through Supabase Realtime's REST broadcast endpoint with the
- * service-role (secret) key, which only the server holds: clients may join
- * the channel and track presence, but row-level security on
- * `realtime.messages` refuses them a broadcast, so no client can send
- * `changed`. A port, so the route tests, the in-memory store and the e2e
+ * service-role (secret) key, which only the server holds: clients may only
+ * join the channel to listen, as row-level security on `realtime.messages`
+ * gives them no insert at all, so no client can send `changed`. A port, so the route tests, the in-memory store and the e2e
  * backend run without Realtime.
  */
 import { changedSignal, MATCH_CHANGED_EVENT, matchTopic } from "../src/online/matchChannel";
@@ -20,7 +19,7 @@ export interface MatchSignals {
 
 type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
-/** How long a move's response waits on the signal before giving up on it (clients still poll). */
+/** How long the signal may take before it is given up (clients still poll); sent after the move's response where the platform allows. */
 export const SIGNAL_TIMEOUT_MS = 1500;
 
 interface RealtimeSignalsOptions {

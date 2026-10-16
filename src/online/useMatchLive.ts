@@ -1,33 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import type { AccountClient } from "./accountClient";
 import { createMatchLive, type MatchLive } from "./matchLive";
 
 /**
  * The live link to a match's realtime channel (#114), for the board's
- * transport to listen to; null without a channel to open (a fake client),
- * and the board then polls. `useMatchPresence` joins it.
+ * transport to listen to: joined while the match view is mounted, left when
+ * it unmounts (closing the channel). Null without a channel to open (a fake
+ * client), and the board then polls.
  */
 export function useMatchLive(client: AccountClient, matchId: string | null): MatchLive | null {
   const open = client.openMatchChannel;
-  return useMemo(() => (open && matchId ? createMatchLive({ open: async () => open, matchId }) : null), [open, matchId]);
-}
-
-/**
- * Joins the channel as `seat` once it is known, and leaves it when the
- * board unmounts (closing the channel); the seats online meanwhile, or null
- * while unknown.
- */
-export function useMatchPresence(live: MatchLive | null, seat: string | null): readonly string[] | null {
-  const [onlineSeats, setOnlineSeats] = useState<readonly string[] | null>(null);
+  const live = useMemo(() => (open && matchId ? createMatchLive({ open: async () => open, matchId }) : null), [open, matchId]);
   useEffect(() => {
-    if (!live || seat === null) return;
-    const unsubscribe = live.subscribe({ onSignal: () => {}, onLive: () => {}, onOnline: setOnlineSeats });
-    live.start(seat);
-    return () => {
-      unsubscribe();
-      live.stop();
-      setOnlineSeats(null);
-    };
-  }, [live, seat]);
-  return onlineSeats;
+    if (!live) return;
+    live.start();
+    return () => live.stop();
+  }, [live]);
+  return live;
 }

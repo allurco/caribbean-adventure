@@ -22,18 +22,15 @@ export function getAccountClient(config: SupabaseConfig): Promise<AccountClient>
     // still has the shape the account code and its fakes assume.
     const auth: AccountClient["auth"] = supabase.auth;
     // A match's channel (#114): private, so Realtime checks the player's
-    // token against the policies on `realtime.messages` before it joins.
-    const openMatchChannel: OpenMatchChannel = async (topic, presenceKey, handlers) => {
+    // token against the policies on `realtime.messages` before it joins. It
+    // only listens: no presence, no broadcast of its own.
+    const openMatchChannel: OpenMatchChannel = async (topic, handlers) => {
       await supabase.realtime.setAuth();
-      const channel = supabase.channel(topic, { config: { private: true, presence: { key: presenceKey } } });
+      const channel = supabase.channel(topic, { config: { private: true } });
       channel
         .on("broadcast", { event: MATCH_CHANGED_EVENT }, (message) => handlers.onChanged(message.payload))
-        .on("presence", { event: "sync" }, () => handlers.onPresence(Object.keys(channel.presenceState())))
         .subscribe((status) => handlers.onStatus(status as ChannelStatus));
-      return {
-        track: (presence) => void channel.track(presence).catch(() => {}),
-        close: () => void supabase.removeChannel(channel).catch(() => {}),
-      };
+      return { close: () => void supabase.removeChannel(channel).catch(() => {}) };
     };
     const port: AccountClient = {
       auth,

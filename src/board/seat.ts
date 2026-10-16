@@ -129,7 +129,7 @@ export interface GloryRow {
   viewer: boolean;
   /** Out of the game: its ship lost with no captain left to deal (#265). */
   out: boolean;
-  /** Whether the seat is on its match's channel now (#114): only in an online match whose channel is live. */
+  /** Whether the server saw the seat read or move lately (#114): only in an online match. */
   online?: boolean;
 }
 
@@ -138,9 +138,9 @@ export interface GloryRow {
  * Glory (`score`) is public (#109); purses and holds are not, so they are
  * not on it. A seat whose ship was lost keeps its glory on the board until
  * its new captain sails, and for good, marked out, once it is out of the
- * game (#265). `onlineSeats`, in an online match while its channel is live,
- * marks which seats are online (#114); hotseat and solo pass none, and the
- * rows then say nothing of it.
+ * game (#265). `onlineSeats`, in an online match, marks the seats the server
+ * saw read or move within the last minute (#114); hotseat and solo pass
+ * none, and the rows then say nothing of it.
  */
 export function gloryScoreboard(
   G: Pick<CaribbeanState, "ships" | "lostShips">,

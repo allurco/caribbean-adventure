@@ -8,6 +8,7 @@ import {
   type ClaimOutcome,
   type InitialMatch,
   type JoinOutcome,
+  type MatchSeat,
   type MoveEntry,
   type NewRoom,
   type OnlineStore,
@@ -62,6 +63,8 @@ export function createMemoryOnlineStore({
   const matches = new Map<string, StoredMatch>();
   const counters = new Map<string, number>();
   const moves = new Map<string, (MoveEntry & { at: string })[]>();
+  /** `roomId|seatIndex` to when the seat was last seen. */
+  const seen = new Map<string, string>();
   let ids = 0;
   const newId = () => `00000000-0000-4000-9000-${String(++ids).padStart(12, "0")}`;
 
@@ -78,6 +81,10 @@ export function createMemoryOnlineStore({
       seats: taken.map(([index, userId]) => ({ index, userId, displayName: displayName(userId) })),
       matchId: match?.id ?? null,
     };
+  }
+
+  function matchSeats(roomId: string): MatchSeat[] {
+    return record(roomId)!.seats.map((s) => ({ ...s, lastSeenAt: seen.get(`${roomId}|${s.index}`) ?? null }));
   }
 
   function consume(userId: string, action: string, limit: number, windowSeconds: number, commit: boolean): boolean {
@@ -171,13 +178,17 @@ export function createMemoryOnlineStore({
     async getMatch(matchId) {
       const match = matches.get(matchId);
       if (!match) return null;
-      return { id: match.id, roomId: match.roomId, state: structuredClone(match.state), stateId: match.stateId, seats: record(match.roomId)!.seats };
+      return { id: match.id, roomId: match.roomId, state: structuredClone(match.state), stateId: match.stateId, seats: matchSeats(match.roomId) };
     },
 
     async getMatchHead(matchId) {
       const match = matches.get(matchId);
       if (!match) return null;
-      return { id: match.id, roomId: match.roomId, stateId: match.stateId, seats: record(match.roomId)!.seats };
+      return { id: match.id, roomId: match.roomId, stateId: match.stateId, seats: matchSeats(match.roomId) };
+    },
+
+    async markSeatSeen(roomId, seatIndex, at) {
+      if (seats.get(roomId)?.has(seatIndex)) seen.set(`${roomId}|${seatIndex}`, at);
     },
 
     async commitMove(update) {

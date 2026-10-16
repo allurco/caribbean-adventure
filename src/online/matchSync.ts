@@ -10,7 +10,9 @@
  * `changed` signal (`signal`), and the view is read when the signal is newer
  * than the board; while the channel is live (`setLive`) polling slows to a
  * rare fallback, and it is back every few seconds whenever the channel is
- * not. Pure apart from the injected API and timers; `apiTransport.ts` plugs
+ * not, or a signalled read failed (a 429, the network) until a read
+ * succeeds. Every answer also says which seats the server saw lately
+ * (`onOnline`, the board's online dots). Pure apart from the injected API and timers; `apiTransport.ts` plugs
  * it into boardgame.io.
  */
 import type { State } from "boardgame.io";
@@ -20,11 +22,13 @@ import type { CaribbeanState } from "../game/types";
 export type SeatView = State<CaribbeanState>;
 
 export type Refusal = { ok: false; status: number; code: string; error: string };
+/** The seats the server saw read or move lately (#114, `server/seatSeen.ts`): on every answer from a current server. */
+type Online = { online?: string[] };
 export type MatchGetResult =
-  | { ok: true; changed: true; seat: string; state: SeatView }
-  | { ok: true; changed: false; seat: string; stateID: number }
+  | ({ ok: true; changed: true; seat: string; state: SeatView } & Online)
+  | ({ ok: true; changed: false; seat: string; stateID: number } & Online)
   | Refusal;
-export type MatchSendResult = { ok: true; state: SeatView } | Refusal;
+export type MatchSendResult = ({ ok: true; state: SeatView } & Online) | Refusal;
 
 /** What a client may send: one of the game's moves, or End Turn (the server allows no more). Shared with `server/matchEngine.ts`. */
 export interface MatchAction {
@@ -55,6 +59,8 @@ interface MatchSyncOptions {
   onView: (view: SeatView) => void;
   /** Say why an action was refused, or why the match could not be read. */
   onError: (message: string) => void;
+  /** The seats online, as the server's latest answer says. */
+  onOnline?: (seats: readonly string[]) => void;
 }
 
 /** boardgame.io's client action, as its transport receives it. */
@@ -64,7 +70,7 @@ export interface ClientAction {
   payload?: { type?: unknown; args?: unknown; [field: string]: unknown } | null;
 }
 
-export function createMatchSync({ api, matchId, initialStateID, onView, onError }: MatchSyncOptions) {
+export function createMatchSync({ api, matchId, initialStateID, onView, onError, onOnline }: MatchSyncOptions) {
   let stateID = initialStateID;
   let queue: Promise<void> = Promise.resolve();
   let inFlight = 0;
@@ -80,12 +86,24 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
   /** The newest version a `changed` signal announced. */
   let signalled = -1;
   let signalTimer: ReturnType<typeof setTimeout> | undefined;
+  /** A signalled read failed: poll every few seconds, live or not, until a read succeeds. */
+  let catchingUp = false;
 
   /** The server's view replaces the board's, unless it is older than one already shown (a late poll). */
   const show = (view: SeatView) => {
     if (view._stateID < stateID) return;
     stateID = view._stateID;
+    if (signalled <= stateID) signalled = -1;
     onView(view);
+  };
+
+  /** What any successful answer carries besides the view: which seats are online. */
+  const heard = (result: Online) => {
+    if (result.online) onOnline?.(result.online);
+    if (catchingUp) {
+      catchingUp = false;
+      if (started) startTimer();
+    }
   };
 
   async function refresh(): Promise<void> {
@@ -95,15 +113,23 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
       return;
     }
     needsFullView = false;
+    heard(result);
     if (result.changed) show(result.state);
   }
 
-  async function poll(): Promise<void> {
-    if (inFlight > 0) return;
-    if (needsFullView) return refresh();
+  /** Asks whether the match moved on; false when the read was refused. */
+  async function poll(): Promise<boolean> {
+    if (inFlight > 0) return true;
+    if (needsFullView) {
+      await refresh();
+      return !needsFullView;
+    }
     const result = await api.getMatch(matchId, stateID);
-    if (inFlight > 0) return;
-    if (result.ok && result.changed) show(result.state);
+    if (!result.ok) return false;
+    heard(result);
+    if (inFlight > 0) return true;
+    if (result.changed) show(result.state);
+    return true;
   }
 
   async function deliver(baseStateID: number, action: ClientAction): Promise<void> {
@@ -117,6 +143,7 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
     }
     const result = await api.sendAction(matchId, baseStateID, { type: action.type, payload: { type: name, args } });
     if (result.ok) {
+      heard(result);
       show(result.state);
       return;
     }
@@ -129,15 +156,22 @@ export function createMatchSync({ api, matchId, initialStateID, onView, onError 
 
   const offline = () => onError("Could not reach the harbour. Check your connection.");
 
-  /** Reads the view if a signal said the match is past the board, unless an action is on its way (it reads again once that settles). */
-  const readSignalled = () => {
-    if (signalled > stateID && inFlight === 0) void poll().catch(() => {});
+  /** A signalled read failed: the next read is a few seconds away, not the live fallback's half a minute. */
+  const fallBehind = () => {
+    if (catchingUp) return;
+    catchingUp = true;
+    if (started) startTimer();
   };
 
-  const startTimer = () => {
-    if (timer !== undefined) clearInterval(timer);
-    timer = setInterval(() => void poll().catch(() => {}), live ? LIVE_POLL_MS : MATCH_POLL_MS);
+  /** Reads the view if a signal said the match is past the board, unless an action is on its way (it reads again once that settles). */
+  const readSignalled = () => {
+    if (signalled > stateID && inFlight === 0) void poll().then((ok) => ok || fallBehind(), fallBehind);
   };
+
+  function startTimer() {
+    if (timer !== undefined) clearInterval(timer);
+    timer = setInterval(() => void poll().catch(() => {}), live && !catchingUp ? LIVE_POLL_MS : MATCH_POLL_MS);
+  }
 
   return {
     /** Queues an action made against `baseStateID` (the state the board held when it was made). */

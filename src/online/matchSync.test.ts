@@ -299,4 +299,67 @@ describe("the realtime signal and the fallback poll (#114)", () => {
     await vi.advanceTimersByTimeAsync(SIGNAL_DEBOUNCE_MS * 2);
     expect(calls).toEqual(["send moveShip at 4"]);
   });
+
+  for (const [how, failure] of [
+    ["is refused (a 429)", "refused"],
+    ["cannot reach the server", "thrown"],
+  ] as const) {
+    it(`polls every few seconds, even while live, after a signalled read that ${how}, until a read succeeds`, async () => {
+      const { api, calls } = fakeApi();
+      const views: number[] = [];
+      const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+      api.nextGet = unchanged;
+      sync.start();
+      sync.setLive(true);
+      await vi.advanceTimersByTimeAsync(0);
+      calls.length = 0;
+      let fails = 2;
+      api.nextGet = () => {
+        if (fails-- > 0) {
+          if (failure === "thrown") throw new TypeError("Failed to fetch");
+          return { ok: false, status: 429, code: "rate_limited", error: "Too many orders at once. Slow down." };
+        }
+        return { ok: true, changed: true, seat: "0", state: view(6) };
+      };
+      sync.signal(6);
+      await vi.advanceTimersByTimeAsync(SIGNAL_DEBOUNCE_MS);
+      expect(calls).toEqual(["get since=4"]);
+      await vi.advanceTimersByTimeAsync(MATCH_POLL_MS * 2);
+      expect(calls).toEqual(["get since=4", "get since=4", "get since=4"]);
+      expect(views).toEqual([6]);
+      // Caught up: back to the live channel's rare fallback poll.
+      api.nextGet = unchanged;
+      await vi.advanceTimersByTimeAsync(LIVE_POLL_MS - 1);
+      expect(calls).toHaveLength(3);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(calls).toHaveLength(4);
+      sync.stop();
+    });
+  }
+
+});
+
+describe("which seats are online (#114): from the server, on every answer", () => {
+  it("tells the board the seats the server saw lately, from reads, polls and actions alike", async () => {
+    const { api, answer } = fakeApi();
+    const online: string[][] = [];
+    const sync = createMatchSync({
+      api,
+      matchId: MATCH,
+      initialStateID: 4,
+      onView: () => {},
+      onError: () => {},
+      onOnline: (seats) => online.push([...seats]),
+    });
+    api.nextGet = (since) => ({ ok: true, changed: false, seat: "0", stateID: since!, online: ["0", "1"] });
+    sync.start();
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    expect(online).toEqual([["0", "1"]]);
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 2] } });
+    await vi.advanceTimersByTimeAsync(0);
+    answer({ ok: true, state: view(5), online: ["0"] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(online).toEqual([["0", "1"], ["0"]]);
+    sync.stop();
+  });
 });

@@ -3,6 +3,7 @@ import type { State } from "boardgame.io";
 import { handleApiRequest, type ApiServices } from "./handleApiRequest";
 import { createMemoryOnlineStore, type MemoryOnlineStore } from "./memoryOnlineStore";
 import { MOVE_LIMITS, READ_LIMIT } from "./matches";
+import { ONLINE_WINDOW_SECONDS, SEEN_REFRESH_SECONDS } from "./seatSeen";
 import { MATCH_POLL_MS } from "../src/online/matchSync";
 import type { CaribbeanState } from "../src/game/types";
 import { wrappedNeighbors } from "../src/game/hex";
@@ -32,6 +33,7 @@ interface MatchBody {
   changed?: boolean;
   stateID?: number;
   error?: string;
+  online?: string[];
 }
 
 function call(method: string, path: string, token?: string, body?: unknown): Promise<Response> {
@@ -85,6 +87,7 @@ beforeEach(() => {
     newInviteCode: () => `invite-code-${String(++codes).padStart(10, "0")}`,
     newMapSeed: () => 1,
     newMatchSeed: () => "f".repeat(32),
+    now: () => clock,
   };
 });
 
@@ -113,7 +116,7 @@ describe("GET /api/matches/:id", () => {
     const matchId = await startedMatch();
     const { state } = await view(matchId, "anne");
     const same = (await (await call("GET", `/api/matches/${matchId}?since=${state._stateID}`, "anne")).json()) as MatchBody;
-    expect(same).toEqual({ ok: true, matchId, seat: "0", changed: false, stateID: state._stateID });
+    expect(same).toEqual({ ok: true, matchId, seat: "0", changed: false, stateID: state._stateID, online: ["0"] });
     await act(matchId, "anne", move(state._stateID, "pickCaptain", 0, "Sloop"));
     const moved = (await (await call("GET", `/api/matches/${matchId}?since=${state._stateID}`, "jack")).json()) as MatchBody;
     expect(moved.changed).toBe(true);
@@ -466,6 +469,34 @@ describe("the realtime 'changed' signal (#114)", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("answers the move without waiting for the signal when the platform keeps work running after the response", async () => {
+    const matchId = await startedMatch();
+    const { state } = await view(matchId, "anne");
+    const deferred: Promise<unknown>[] = [];
+    let release!: () => void;
+    const sent: number[] = [];
+    services = {
+      ...services,
+      defer: (work) => void deferred.push(work),
+      signals: {
+        changed: (_id, stateId) =>
+          new Promise<void>((resolve) => {
+            release = () => {
+              sent.push(stateId);
+              resolve();
+            };
+          }),
+      },
+    };
+    const res = await act(matchId, "anne", move(state._stateID, "pickCaptain", 0, "Sloop"));
+    expect(res.status).toBe(200);
+    expect(sent).toEqual([]);
+    expect(deferred).toHaveLength(1);
+    release();
+    await Promise.all(deferred);
+    expect(sent).toEqual([state._stateID + 1]);
+  });
+
   it("still accepts the move when the signal cannot be sent: clients fall back to polling", async () => {
     recordSignals(true);
     const errors: unknown[] = [];
@@ -478,6 +509,85 @@ describe("the realtime 'changed' signal (#114)", () => {
       expect(res.status).toBe(200);
       expect(await store.peekMoves(matchId)).toHaveLength(1);
       expect(errors).toHaveLength(1);
+    } finally {
+      console.error = original;
+    }
+  });
+});
+
+describe("which seats were seen lately: server-side, from each seat's own reads and moves (#114)", () => {
+  /** Counts the store's last-seen writes. */
+  function countSeenWrites(): { count: number } {
+    const writes = { count: 0 };
+    const markSeatSeen = store.markSeatSeen.bind(store);
+    store.markSeatSeen = async (...args) => {
+      writes.count++;
+      return markSeatSeen(...args);
+    };
+    return writes;
+  }
+
+  it("says a seat is online once it has read or moved, and the caller always is", async () => {
+    const matchId = await startedMatch();
+    const anne = await view(matchId, "anne");
+    expect(anne.online).toEqual(["0"]);
+    const jack = await view(matchId, "jack");
+    expect(jack.online).toEqual(["0", "1"]);
+    const since = (await (await call("GET", `/api/matches/${matchId}?since=${anne.state._stateID}`, "anne")).json()) as MatchBody;
+    expect(since.online).toEqual(["0", "1"]);
+    const moved = (await (await act(matchId, "anne", move(anne.state._stateID, "pickCaptain", 0, "Sloop"))).json()) as MatchBody;
+    expect(moved.online).toEqual(["0", "1"]);
+  });
+
+  it("says a seat is offline once it has been silent for over a minute", async () => {
+    const matchId = await startedMatch();
+    await view(matchId, "jack");
+    clock += (ONLINE_WINDOW_SECONDS - 1) * 1000;
+    expect((await view(matchId, "anne")).online).toEqual(["0", "1"]);
+    clock += 2000;
+    expect((await view(matchId, "anne")).online).toEqual(["0"]);
+  });
+
+  it("writes a seat's last-seen time at most once every few seconds, however often it polls", async () => {
+    const matchId = await startedMatch();
+    const writes = countSeenWrites();
+    for (let i = 0; i < 5; i++) {
+      await call("GET", `/api/matches/${matchId}?since=0`, "anne");
+      clock += 1000;
+    }
+    expect(writes.count).toBe(1);
+    clock += SEEN_REFRESH_SECONDS * 1000;
+    await call("GET", `/api/matches/${matchId}?since=0`, "anne");
+    expect(writes.count).toBe(2);
+  });
+
+  it("records nobody who is not seated, and refuses them as before", async () => {
+    const matchId = await startedMatch();
+    const writes = countSeenWrites();
+    expect((await call("GET", `/api/matches/${matchId}`, "mary")).status).toBe(404);
+    expect((await act(matchId, "mary", move(0, "pickCaptain", 0, "Sloop"))).status).toBe(404);
+    expect(writes.count).toBe(0);
+  });
+
+  it("sends only which seats were seen: no times, no user ids, nothing else about a player", async () => {
+    const matchId = await startedMatch();
+    await view(matchId, "jack");
+    const body = (await (await call("GET", `/api/matches/${matchId}?since=0`, "anne")).json()) as MatchBody;
+    expect(body.online).toEqual(["0", "1"]);
+    const text = JSON.stringify(body);
+    expect(text).not.toContain(JACK);
+    expect(text).not.toContain(new Date(clock).toISOString().slice(0, 16));
+  });
+
+  it("still answers the read when the last-seen write fails", async () => {
+    const matchId = await startedMatch();
+    store.markSeatSeen = async () => {
+      throw new Error("database is down");
+    };
+    const original = console.error;
+    console.error = () => {};
+    try {
+      expect((await call("GET", `/api/matches/${matchId}`, "anne")).status).toBe(200);
     } finally {
       console.error = original;
     }
