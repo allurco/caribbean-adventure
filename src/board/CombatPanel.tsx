@@ -153,7 +153,7 @@ export function CombatPanel({
       {combat.stage === "seamanship" && (
         <div className="text-center space-y-2">
           <div className="text-amber-100/80 text-xs mb-2">
-            {drawIntro(combat)}
+            {drawIntro({ ships }, combat)}
           </div>
           <ActionButton
             label="Roll Seamanship"
@@ -167,7 +167,7 @@ export function CombatPanel({
       {combat.stage === "defenderSeamanship" && (
         <div className="text-center space-y-2">
           <div className="text-amber-100/80 text-xs mb-2">
-            {defenderRollLine(combat, attacker?.stats)}
+            {defenderRollLine({ ships }, combat)}
           </div>
           <ActionButton
             label="Roll Seamanship"
