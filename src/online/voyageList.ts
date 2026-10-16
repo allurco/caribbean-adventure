@@ -54,6 +54,12 @@ function matchLine(voyage: VoyageView): string {
   return `${voyage.drafting ? "Drafting captains, " : ""}${voyage.seatCount} captains, ${voyage.mapSize} map.`;
 }
 
+/** Who the match waits on: in the draft every captain yet to pick (#111), else the seat whose turn it is, if known. */
+function waitingOnNames(voyage: VoyageView): string[] {
+  const seats = voyage.drafting ? voyage.choosing : voyage.currentSeat === null ? [] : [voyage.currentSeat];
+  return seats.map((index) => voyage.seats.find((s) => s.index === index)?.displayName ?? UNNAMED);
+}
+
 function isUnderWay(voyage: VoyageView): voyage is VoyageView & { matchId: string } {
   return voyage.status === "started" && voyage.matchId !== null;
 }
@@ -64,8 +70,8 @@ function entry(voyage: VoyageView): VoyageEntry {
   if (isUnderWay(voyage)) {
     const open = { href: matchPath(voyage.matchId), label: "Open" };
     if (voyage.yourTurn) return { ...base, yourTurn: true, line: `${matchLine(voyage)} Your turn.`, link: open };
-    const waitingOn = voyage.currentSeat === null ? null : voyage.seats.find((s) => s.index === voyage.currentSeat)?.displayName ?? UNNAMED;
-    return { ...base, line: waitingOn === null ? matchLine(voyage) : `${matchLine(voyage)} Waiting on ${waitingOn}.`, link: open };
+    const waitingOn = waitingOnNames(voyage);
+    return { ...base, line: waitingOn.length === 0 ? matchLine(voyage) : `${matchLine(voyage)} Waiting on ${list(waitingOn)}.`, link: open };
   }
   if (voyage.status === "finished") {
     const view = voyage.matchId ? { href: matchPath(voyage.matchId), label: "View" } : lobby;

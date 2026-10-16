@@ -18,6 +18,7 @@ interface VoyageRow {
   current_seat: number | null;
   phase: string | null;
   fight: { stage: VoyageFight["stage"]; attacker_id: string; seamanship_winner: string | null; is_npc_combat: boolean } | null;
+  choosing: number[];
   updated_at: string;
   seats: { seat_index: number; user_id: string; display_name: string | null }[];
 }
@@ -151,6 +152,7 @@ export function createSupabaseOnlineStore(client: () => Promise<ServiceClient>):
           seamanshipWinner: row.fight.seamanship_winner,
           isNPCCombat: row.fight.is_npc_combat,
         },
+        choosing: row.choosing,
         updatedAt: new Date(row.updated_at).toISOString(),
       }));
     },
