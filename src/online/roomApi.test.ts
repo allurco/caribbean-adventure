@@ -78,6 +78,7 @@ describe("the rooms API client", () => {
       [429, "rate_limited", "Too many rooms in an hour. Try again later."],
       [403, "not_host", "Only the host can start the match."],
       [401, "unauthorized", "Sign in first."],
+      [401, "account_deleted", "This account was deleted. Sign out to start afresh."],
       [500, "internal", "Something went wrong (500). Try again."],
       [418, "a_code_from_the_future", "Something went wrong (418). Try again."],
     ];

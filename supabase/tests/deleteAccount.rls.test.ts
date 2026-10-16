@@ -95,8 +95,43 @@ describe.skipIf(!dbTestsEnabled)("deleting an account (local Supabase)", () => {
     expect((await anon.from("profiles").select("display_name").eq("id", anne.id).single()).data).toEqual({ display_name: DELETED_PLAYER_NAME });
     const { data } = await admin.auth.admin.getUserById(anne.id);
     expect(data.user).toBeNull();
-    // The token reaches nothing any more.
-    expect((await api("GET", "/api/me/rooms", anne)).status).toBe(401);
+    // The token reaches nothing any more, and says why: Auth knows the token, not its user.
+    const after = await api("GET", "/api/me/rooms", anne);
+    expect(after.status).toBe(401);
+    expect(await after.json()).toMatchObject({ code: "account_deleted" });
+  });
+
+  it("answers a retry with the deleted account's token as account_deleted, and a forged token as unauthorized", async () => {
+    const anne = await players.create();
+    expect((await deleteAccount(anne)).status).toBe(200);
+    const retry = await deleteAccount(anne);
+    expect(retry.status).toBe(401);
+    expect(await retry.json()).toMatchObject({ code: "account_deleted" });
+    const forged = await deleteAccount({ ...anne, accessToken: "not-a-token" });
+    expect(forged.status).toBe(401);
+    expect(await forged.json()).toMatchObject({ code: "unauthorized" });
+  });
+
+  it("clears when the deleted player's seats were last seen, keeping the others'", async () => {
+    const anne = await players.create();
+    const jack = await players.create();
+    const room = await openRoom(anne);
+    await api("POST", "/api/rooms/join", jack, { inviteCode: room.inviteCode });
+    const started = (await (await api("POST", `/api/rooms/${room.id}/start`, anne)).json()) as { room: { matchId: string } };
+    expect((await api("GET", `/api/matches/${started.room.matchId}`, anne)).status).toBe(200);
+    expect((await api("GET", `/api/matches/${started.room.matchId}`, jack)).status).toBe(200);
+    const lastSeen = async () =>
+      (await admin.from("seats").select("user_id, last_seen_at").eq("room_id", room.id).order("seat_index")).data as {
+        user_id: string;
+        last_seen_at: string | null;
+      }[];
+    expect((await lastSeen()).every((seat) => seat.last_seen_at !== null)).toBe(true);
+
+    expect((await deleteAccount(anne)).status).toBe(200);
+
+    const [annes, jacks] = await lastSeen();
+    expect(annes).toEqual({ user_id: anne.id, last_seen_at: null });
+    expect(jacks.last_seen_at).not.toBeNull();
   });
 
   it("keeps every column of the placeholder known: nothing personal can hide in a new one", async () => {
@@ -297,6 +332,80 @@ describe.skipIf(!dbTestsEnabled)("deleting an account (local Supabase)", () => {
       stale,
     );
     expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ code: "account_deleted" });
+  });
+
+  it("refuses a rate count for an auth user that is gone with the deleted account's own SQLSTATE", async () => {
+    const { error } = await admin.rpc("consume_rate_limit", { p_user: randomUUID(), p_action: "delete_account", p_limit: 5, p_window_seconds: 3600 });
+    expect(error?.code).toBe("28000");
+  });
+
+  describe("a deletion and a start of the same room", () => {
+    async function claimedRoom(host: TestPlayer, guest: TestPlayer): Promise<string> {
+      const room = await openRoom(host);
+      await api("POST", "/api/rooms/join", guest, { inviteCode: room.inviteCode });
+      expect((await admin.rpc("claim_start", { p_room: room.id, p_user: host.id })).data).toBe("claimed");
+      return room.id;
+    }
+
+    const roomRow = async (id: string) =>
+      (await admin.from("rooms").select("status, start_claimed_at, host_id").eq("id", id).maybeSingle()).data as {
+        status: string;
+        start_claimed_at: string | null;
+        host_id: string;
+      } | null;
+    const startMatch = (room: string, user: string) =>
+      admin.rpc("start_match", { p_room: room, p_user: user, p_state: {}, p_state_id: 0, p_phase: "draft" });
+
+    it("calls off a start in progress when the host is deleted: the room reopens without them", async () => {
+      const anne = await players.create();
+      const jack = await players.create();
+      const room = await claimedRoom(anne, jack);
+      expect((await admin.rpc("delete_account", { p_user: anne.id })).error).toBeNull();
+      expect(await roomRow(room)).toEqual({ status: "open", start_claimed_at: null, host_id: jack.id });
+      expect(await seatsOf(room)).toEqual([{ seat_index: 1, user_id: jack.id }]);
+      // The host's start, still building, is refused: their profile is the placeholder.
+      expect((await startMatch(room, anne.id)).error?.code).toBe("28000");
+      expect((await admin.from("matches").select("id").eq("room_id", room)).data).toEqual([]);
+    });
+
+    it("calls off a start in progress when a guest is deleted: the seat is freed and the start finds the room open", async () => {
+      const anne = await players.create();
+      const jack = await players.create();
+      const room = await claimedRoom(anne, jack);
+      expect((await admin.rpc("delete_account", { p_user: jack.id })).error).toBeNull();
+      expect(await roomRow(room)).toEqual({ status: "open", start_claimed_at: null, host_id: anne.id });
+      expect(await seatsOf(room)).toEqual([{ seat_index: 0, user_id: anne.id }]);
+      expect((await startMatch(room, anne.id)).data).toEqual([{ outcome: "not_claimed", match_id: null }]);
+    });
+
+    it("never reopens a room with a deleted player still seated", async () => {
+      const anne = await players.create();
+      const jack = await players.create();
+      const room = await claimedRoom(anne, jack);
+      // The profile alone, as a deletion would have it before it reaches the room.
+      expect((await admin.rpc("anonymise_profile", { p_user: anne.id })).error).toBeNull();
+      expect((await admin.rpc("release_start", { p_room: room })).error).toBeNull();
+      expect(await roomRow(room)).toEqual({ status: "open", start_claimed_at: null, host_id: jack.id });
+      expect(await seatsOf(room)).toEqual([{ seat_index: 1, user_id: jack.id }]);
+    });
+
+    it("lets a deleted profile neither claim a start nor store a match", async () => {
+      const anne = await players.create();
+      const jack = await players.create();
+      const room = await openRoom(anne);
+      await api("POST", "/api/rooms/join", jack, { inviteCode: room.inviteCode });
+      expect((await admin.rpc("anonymise_profile", { p_user: anne.id })).error).toBeNull();
+      expect((await admin.rpc("claim_start", { p_room: room.id, p_user: anne.id })).error?.code).toBe("28000");
+      expect((await roomRow(room.id))?.status).toBe("open");
+
+      const mary = await players.create();
+      const tom = await players.create();
+      const claimed = await claimedRoom(mary, tom);
+      expect((await admin.rpc("anonymise_profile", { p_user: mary.id })).error).toBeNull();
+      expect((await startMatch(claimed, mary.id)).error?.code).toBe("28000");
+      expect((await roomRow(claimed))?.status).toBe("starting");
+    });
   });
 
   it("holds the placeholder whatever writes the row later", async () => {

@@ -329,12 +329,24 @@ describe("deleteAccount (#108)", () => {
     expect(calls.signOuts).toBe(0);
   });
 
-  it("counts a 401 as done: another tab, or a lost answer, deleted the account already", async () => {
+  it("counts the server's account_deleted as done: another tab, or a lost answer, deleted the account already", async () => {
     const { client, calls } = fakeClient();
-    const api = fakeApi(401, { ok: false, code: "unauthorized" });
+    const api = fakeApi(401, { ok: false, code: "account_deleted" });
     expect(await deleteAccount(client, { fetch: api.fetch, accessToken: async () => "tok" })).toEqual({ ok: true });
     expect(api.calls).toHaveLength(1);
     expect(calls.signOutScopes).toEqual(["local"]);
+  });
+
+  it("treats any other 401 as a sign-in problem, not a deletion: an expired token, or the check failing", async () => {
+    const { client, calls } = fakeClient();
+    const api = fakeApi(401, { ok: false, code: "unauthorized" });
+    expect(await deleteAccount(client, { fetch: api.fetch, accessToken: async () => "tok" })).toEqual({
+      ok: false,
+      error: "Your sign-in could not be checked. Sign out, sign in again and try once more.",
+    });
+    const bare = await deleteAccount(client, { fetch: fakeApi(401, {}).fetch, accessToken: async () => "tok" });
+    expect(bare).toMatchObject({ ok: false });
+    expect(calls.signOuts).toBe(0);
   });
 
   it("asks nothing of the server when signed out", async () => {

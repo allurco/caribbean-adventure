@@ -49,9 +49,10 @@ export type StartOutcome = "started" | "not_found" | "not_claimed";
 
 /**
  * Thrown by a store operation acting for a player whose account is deleted
- * (#108): the profile is the "deleted player" placeholder, or the sign-in is
- * gone. A token can outlive either for a moment; `/api` answers 401, as for
- * a token that no longer signs in.
+ * (#108), and by the sign-in check for a sound token whose user is gone: the
+ * profile is the "deleted player" placeholder, or the sign-in is gone. A
+ * token can outlive either for a moment; `/api` answers 401 with the code
+ * `account_deleted`, apart from a token that fails the check.
  */
 export function accountGone(): Error {
   return Object.assign(new Error("the account is deleted"), { code: ACCOUNT_GONE });
@@ -157,7 +158,7 @@ export interface OnlineStore {
    * with its host in seat 0, in one transaction: the room's id, or null when
    * the allowance is used up. A creation that fails costs nothing.
    *
-   * `createRoom`, `joinRoom` and `commitMove` throw `accountGone()` for a
+   * `createRoom`, `joinRoom`, `claimStart`, `startMatch` and `commitMove` throw `accountGone()` for a
    * player whose profile is deleted, checked under a lock on the profile so a
    * deletion cannot interleave; every operation that counts against an
    * allowance throws it once the sign-in is gone.
@@ -174,7 +175,10 @@ export interface OnlineStore {
   claimStart(roomId: string, userId: string): Promise<{ outcome: ClaimOutcome }>;
   /** Stores the match of a claimed start and marks the room started. */
   startMatch(roomId: string, userId: string, match: InitialMatch): Promise<{ outcome: StartOutcome; matchId: string | null }>;
-  /** Gives a claimed start back (building the match failed), so the host can try again. */
+  /**
+   * Gives a claimed start back (building the match failed), so the host can
+   * try again; a deleted player still seated there leaves as `anonymiseAccount` would have it.
+   */
   releaseStart(roomId: string): Promise<void>;
   /**
    * The rooms `userId` holds a seat in, most recently changed first, at most
@@ -206,9 +210,11 @@ export interface OnlineStore {
   /**
    * The first half of deleting an account (#108), in one transaction:
    * anonymises the profile (the "deleted player" placeholder, nothing
-   * personal kept) and leaves every room still open (the seat is freed, a room
-   * they hosted passes to the lowest seat left, a room left empty is closed).
-   * Seats in started and finished matches stay. Idempotent.
+   * personal kept, the seats' last-seen times cleared) and leaves every room
+   * not yet started (a start in progress is called off and the room reopened;
+   * the seat is freed, a room they hosted passes to the lowest seat left, a
+   * room left empty is closed). Seats in started and finished matches stay.
+   * Idempotent.
    */
   anonymiseAccount(userId: string): Promise<void>;
   /**

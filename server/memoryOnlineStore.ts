@@ -93,7 +93,7 @@ export function createMemoryOnlineStore({
   }
 
   function consume(userId: string, action: string, limit: number, windowSeconds: number, commit: boolean): boolean {
-    // As `rate_counters`' foreign key to auth.users, once the sign-in is gone.
+    // As `consume_rate_limit` in SQL, once the sign-in is gone.
     if (deletedSignIns.has(userId)) throw accountGone();
     const key = `${userId}|${action}|${Math.floor(now() / 1000 / windowSeconds)}`;
     const count = (counters.get(key) ?? 0) + 1;
@@ -104,6 +104,20 @@ export function createMemoryOnlineStore({
   /** As `require_live_profile` in SQL: refuses a deleted player's profile. */
   function requireLiveProfile(userId: string): void {
     if (deletedProfiles.has(userId)) throw accountGone();
+  }
+
+  /** As `leave_room` in SQL: frees the player's seat, closes a room left empty, hands a hosted one on. */
+  function leaveRoom(roomId: string, userId: string): void {
+    const room = rooms.get(roomId)!;
+    const taken = seats.get(roomId)!;
+    for (const [index, seated] of taken) if (seated === userId) taken.delete(index);
+    if (taken.size === 0) {
+      rooms.delete(roomId);
+      seats.delete(roomId);
+    } else if (room.hostId === userId) {
+      // The host passes to the lowest seat left.
+      room.hostId = taken.get(Math.min(...taken.keys()))!;
+    }
   }
 
   return {
@@ -143,6 +157,7 @@ export function createMemoryOnlineStore({
     },
 
     async claimStart(roomId, userId): Promise<{ outcome: ClaimOutcome }> {
+      requireLiveProfile(userId);
       const room = rooms.get(roomId);
       if (!room) return { outcome: "not_found" };
       const stale = room.status === "starting" && now() - room.startClaimedAt! >= STALE_START_SECONDS * 1000;
@@ -156,6 +171,7 @@ export function createMemoryOnlineStore({
     },
 
     async startMatch(roomId, userId, match): Promise<{ outcome: StartOutcome; matchId: string | null }> {
+      requireLiveProfile(userId);
       const room = rooms.get(roomId);
       if (!room) return { outcome: "not_found", matchId: null };
       if (room.status !== "starting" || room.hostId !== userId) return { outcome: "not_claimed", matchId: null };
@@ -231,23 +247,23 @@ export function createMemoryOnlineStore({
       if (room?.status === "starting") {
         room.status = "open";
         room.startClaimedAt = null;
+        // As `release_start` in SQL: a deleted player is never left seated in an open room.
+        for (const userId of [...seats.get(roomId)!.values()]) if (deletedProfiles.has(userId)) leaveRoom(roomId, userId);
       }
     },
 
     async anonymiseAccount(userId) {
-      // As `delete_account` in SQL: the profile, then every room still open.
+      // As `delete_account` in SQL: the profile, then every room not yet started.
+      // A start in progress is called off: the room reopens before the seat is freed.
       deletedProfiles.add(userId);
+      // As `anonymise_profile`: when the player's seats were last seen is theirs too.
+      for (const [roomId, taken] of seats) for (const [index, seated] of taken) if (seated === userId) seen.delete(`${roomId}|${index}`);
       for (const [roomId, room] of rooms) {
-        const taken = seats.get(roomId)!;
-        if (room.status !== "open" || ![...taken.values()].includes(userId)) continue;
-        for (const [index, seated] of taken) if (seated === userId) taken.delete(index);
-        if (taken.size === 0) {
-          rooms.delete(roomId);
-          seats.delete(roomId);
-        } else if (room.hostId === userId) {
-          // The host passes to the lowest seat left.
-          room.hostId = taken.get(Math.min(...taken.keys()))!;
-        }
+        if (room.status !== "open" && room.status !== "starting") continue;
+        if (![...seats.get(roomId)!.values()].includes(userId)) continue;
+        room.status = "open";
+        room.startClaimedAt = null;
+        leaveRoom(roomId, userId);
       }
     },
 

@@ -74,6 +74,7 @@ export type Messages = Readonly<Record<string, string>>;
 
 const COMMON: Messages = {
   unauthorized: "Sign in first.",
+  account_deleted: "This account was deleted. Sign out to start afresh.",
   network: "Could not reach the harbour. Check your connection.",
 };
 
