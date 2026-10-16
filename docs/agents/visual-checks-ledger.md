@@ -132,6 +132,15 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-15: the harbour link against the hint band and the port panel (#125, PR #308 second review)
+
+- **Branch and commit:** `fix/125-harbour-link-phone` at `4038e26`.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), 844×390 and 667×375 (phones held sideways: `isMobile`, touch, DPR 2) and 1440×900.
+- **View:** the e2e dev server (`E2E_BACKEND=1`), signed in as a test captain, `?skipLogin=1` (a fresh voyage, random medium map each size), the debug panel hidden (`.`). Steps: the first captain and the Sloop, docked with the port panel open; the hold filled at the market (cargo 2/2); a route selected by clicking open water (the route hint showing); Enter to sail it, undocked with the port panel closed. At each step the bounding rects of the link, Save & leave, the route hint and the port panel, `elementFromPoint` at three points of the link, and Save & leave's scroll size against its box.
+- **Findings:** no overlaps, the link on top at every step, Save & leave never overflows its 112×32 box (208–320 × 48–80), no page errors. 844: the link 328–440 × 48–96 on Save & leave's row, docked and undocked (the port panel from x 540); the route hint 261–583 × 144–174, below the link. 667 docked: the link 236–348 × 88–136 under Save & leave (the port panel from x 363); the route hint 173–494 × 144–174, 8 px below it. 667 undocked: the link back on the row, 328–440 × 48–96. Desktop: the link 102×28 at 1322,70 and the route hint 559–881 × 80–110, both unchanged.
+- **Not checked:** the attack and spyglass prompts (no target in reach) and the mission toast (no mission completed); they take the same top as the route hint (`hudHintTop`, `hudToastTop`). Combat and game over, as in the entry below. The top-right fallback under 660 px with the port panel open (a narrowed desktop window): `accountLinkPlacement.test.ts` only.
+- **For the maintainer:** on phones the port panel already covered the right part of the centred hint at its old top (it runs from y 20 to 355), and still does. The hint's foot (y 174) is now a few pixels above the loaded card's top at 667×375 (about y 178), so a card that grows further would run under it. A click on the ship opens Sloop Details, which the link covers at both phone sizes, as before this PR.
+
 ### 2026-10-15: the harbour link on Save & leave's row (#125, PR #308 review)
 
 - **Branch and commit:** `fix/125-harbour-link-phone` at `5acf503`.
