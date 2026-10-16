@@ -94,22 +94,28 @@ as $$
 $$;
 
 -- The name a provider gives, cleaned as handle_new_user cleans it (#105) to
--- pass the profiles table's check; null when there is none.
+-- pass the profiles table's checks; null when there is none, or when it is
+-- the "Deleted player" name #108 reserves for its placeholder (any case), as
+-- handle_new_user treats it: taking it would fail profiles_display_name_reserved
+-- and undo the whole identity change, the provider ID and avatar with it.
 create function public.provider_display_name(data jsonb)
 returns text
 language sql
 immutable
 set search_path = ''
 as $$
-  select nullif(btrim(left(cleaned, 32)), '')
+  select case when lower(name) <> lower('Deleted player') then name end
   from (
-    select btrim(regexp_replace(regexp_replace(coalesce(
-      data ->> 'full_name',
-      data ->> 'name',
-      data ->> 'user_name',
-      ''
-    ), '[[:space:]]+', ' ', 'g'), '[[:cntrl:]]', '', 'g')) as cleaned
-  ) as provided;
+    select nullif(btrim(left(cleaned, 32)), '') as name
+    from (
+      select btrim(regexp_replace(regexp_replace(coalesce(
+        data ->> 'full_name',
+        data ->> 'name',
+        data ->> 'user_name',
+        ''
+      ), '[[:space:]]+', ' ', 'g'), '[[:cntrl:]]', '', 'g')) as cleaned
+    ) as provided
+  ) as named;
 $$;
 
 -- A Discord or Google identity was added to a user, or refreshed on a later

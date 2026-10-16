@@ -78,6 +78,16 @@ describe.skipIf(!dbTestsEnabled)("profile_identities (local Supabase)", () => {
     expect(await profile(anne.id)).toEqual({ display_name: "Anne Bonny", avatar_url: discordAvatar(discord) });
   });
 
+  it("treats a provider name equal to the reserved placeholder (#108) as no name, and still links", async () => {
+    const anne = await players.create();
+    const placeholder = (await profile(anne.id)).display_name;
+    const discord = providerId();
+    linkIdentity(anne.id, "discord", discord, { full_name: "DELETED Player", avatar_url: discordAvatar(discord) });
+    const { data } = await anne.client.from("profile_identities").select("provider_id");
+    expect(data).toEqual([{ provider_id: discord }]);
+    expect(await profile(anne.id)).toEqual({ display_name: placeholder, avatar_url: discordAvatar(discord) });
+  });
+
   it("keeps a name the player chose, and the avatar the first provider gave", async () => {
     const mary = await players.create();
     await mary.client.from("profiles").update({ display_name: "Mary Read" }).eq("id", mary.id);
