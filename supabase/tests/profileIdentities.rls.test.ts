@@ -10,7 +10,10 @@ import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { dbTestsEnabled, localStack, NO_SESSION, ownerSql, testPlayers, type LocalStack } from "./localStack";
 
-const DISCORD_AVATAR = "https://cdn.discordapp.com/avatars/80351110224678912/a.png";
+/** A Discord avatar as Supabase Auth builds it: the player's Discord user ID, then the picture's hash. */
+function discordAvatar(discordId: string, hash = "a"): string {
+  return `https://cdn.discordapp.com/avatars/${discordId}/${hash}.png`;
+}
 
 /** A provider ID no other test run uses. */
 function providerId(): string {
@@ -61,7 +64,7 @@ describe.skipIf(!dbTestsEnabled)("profile_identities (local Supabase)", () => {
   it("records a Discord ID on the profile of the player it signs in to", async () => {
     const anne = await players.create();
     const discord = providerId();
-    linkIdentity(anne.id, "discord", discord, { full_name: "Anne Bonny", avatar_url: DISCORD_AVATAR });
+    linkIdentity(anne.id, "discord", discord, { full_name: "Anne Bonny", avatar_url: discordAvatar(discord) });
     const { data, error } = await anne.client.from("profile_identities").select("provider, provider_id, profile_id");
     expect(error).toBeNull();
     expect(data).toEqual([{ provider: "discord", provider_id: discord, profile_id: anne.id }]);
@@ -70,22 +73,25 @@ describe.skipIf(!dbTestsEnabled)("profile_identities (local Supabase)", () => {
   it("fills an email player's placeholder name and empty avatar from the provider they link", async () => {
     const anne = await players.create();
     expect((await profile(anne.id)).avatar_url).toBeNull();
-    linkIdentity(anne.id, "discord", providerId(), { full_name: "Anne Bonny", avatar_url: DISCORD_AVATAR });
-    expect(await profile(anne.id)).toEqual({ display_name: "Anne Bonny", avatar_url: DISCORD_AVATAR });
+    const discord = providerId();
+    linkIdentity(anne.id, "discord", discord, { full_name: "Anne Bonny", avatar_url: discordAvatar(discord) });
+    expect(await profile(anne.id)).toEqual({ display_name: "Anne Bonny", avatar_url: discordAvatar(discord) });
   });
 
-  it("keeps a name and an avatar the player chose", async () => {
+  it("keeps a name the player chose, and the avatar the first provider gave", async () => {
     const mary = await players.create();
-    await mary.client.from("profiles").update({ display_name: "Mary Read", avatar_url: "https://lh3.googleusercontent.com/m" }).eq("id", mary.id);
-    linkIdentity(mary.id, "google", providerId(), { full_name: "M R", picture: "https://lh3.googleusercontent.com/other" });
+    await mary.client.from("profiles").update({ display_name: "Mary Read" }).eq("id", mary.id);
+    linkIdentity(mary.id, "google", providerId(), { full_name: "M R", picture: "https://lh3.googleusercontent.com/m" });
+    const discord = providerId();
+    linkIdentity(mary.id, "discord", discord, { full_name: "Other", avatar_url: discordAvatar(discord) });
     expect(await profile(mary.id)).toEqual({ display_name: "Mary Read", avatar_url: "https://lh3.googleusercontent.com/m" });
   });
 
   it("follows the provider's new avatar on a later sign-in", async () => {
     const jack = await players.create();
     const discord = providerId();
-    linkIdentity(jack.id, "discord", discord, { avatar_url: DISCORD_AVATAR });
-    const changed = "https://cdn.discordapp.com/avatars/80351110224678912/b.png";
+    linkIdentity(jack.id, "discord", discord, { avatar_url: discordAvatar(discord) });
+    const changed = discordAvatar(discord, "b");
     refreshIdentity("discord", discord, { avatar_url: changed });
     expect((await profile(jack.id)).avatar_url).toBe(changed);
   });
@@ -132,11 +138,30 @@ describe.skipIf(!dbTestsEnabled)("profile_identities (local Supabase)", () => {
     expect(data).toEqual([]);
   });
 
-  it("keeps the public profile to a name and an avatar", async () => {
+  it("publishes a Discord player's ID only inside their avatar URL, as documented", async () => {
     const anne = await players.create();
     const discord = providerId();
-    linkIdentity(anne.id, "discord", discord, { avatar_url: DISCORD_AVATAR });
+    linkIdentity(anne.id, "discord", discord, { full_name: "Anne Bonny", avatar_url: discordAvatar(discord) });
     const { data } = await anon.from("profiles").select("*").eq("id", anne.id).single();
-    expect(JSON.stringify(data)).not.toContain(discord);
+    const row = data as Record<string, unknown>;
+    expect(Object.keys(row).sort()).toEqual(["avatar_url", "created_at", "display_name", "id", "updated_at"]);
+    // The avatar is public, and Discord's avatar URL carries the user ID (docs/deploy.md, the migration's comment).
+    expect(row.avatar_url).toBe(discordAvatar(discord));
+    const { avatar_url: _avatar, ...rest } = row;
+    expect(JSON.stringify(rest)).not.toContain(discord);
+    // Which provider account signs in to the profile stays private.
+    const byAnon = await anon.from("profile_identities").select("provider_id").eq("profile_id", anne.id);
+    expect(byAnon.data ?? []).toEqual([]);
+  });
+
+  it("lets no player set their own avatar: it comes only from a provider", async () => {
+    const anne = await players.create();
+    const discord = providerId();
+    linkIdentity(anne.id, "discord", discord, { avatar_url: discordAvatar(discord) });
+    const set = await anne.client.from("profiles").update({ avatar_url: "https://lh3.googleusercontent.com/mine" }).eq("id", anne.id);
+    expect(set.error).not.toBeNull();
+    const cleared = await anne.client.from("profiles").update({ avatar_url: null }).eq("id", anne.id);
+    expect(cleared.error).not.toBeNull();
+    expect((await profile(anne.id)).avatar_url).toBe(discordAvatar(discord));
   });
 });

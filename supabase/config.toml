@@ -356,8 +356,11 @@ client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
 secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
 redirect_uri = ""
 url = ""
-# Google's ID token carries a nonce that the local stack cannot check.
-skip_nonce_check = true
+# The nonce check matters only for ID-token sign-in (signInWithIdToken, e.g.
+# One Tap). The game signs in through the redirect flow (signInWithOAuth),
+# where Supabase Auth runs the exchange itself, so the local stack keeps the
+# check on, like the hosted project.
+skip_nonce_check = false
 email_optional = false
 
 # Allow Solana wallet holders to sign in to your project via the Sign in with Solana (SIWS, EIP-4361) standard.

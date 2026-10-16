@@ -15,17 +15,51 @@
 --   profile. A player reads only their own rows; nobody else (anon included)
 --   reads any, so the public profile stays a name and an avatar. The
 --   provider IDs are not secret, but they would tie a captain to their
---   accounts elsewhere.
+--   accounts elsewhere. (This keeps them private where PRD #104 said they
+--   would be public: the maintainer's decision for #106.)
+-- * The avatar stays public, and a Discord avatar URL contains the player's
+--   Discord user ID (https://cdn.discordapp.com/avatars/<user id>/<hash>.png).
+--   So anyone who reads a profile with a Discord avatar can read that ID from
+--   it; only the link to the provider in profile_identities is private.
+--   Google's picture URLs are opaque tokens, not the account ID.
 -- * Clients never write it: rows come only from the trigger on
 --   auth.identities below (or the service role, which bypasses RLS).
+-- * Players can no longer set profiles.avatar_url themselves (the update
+--   grant on that column is revoked below): only the sign-in triggers write
+--   it, so an avatar is always one a provider gave. The display name stays
+--   theirs to choose.
+-- * Triggers on auth.identities are among those Supabase allows on the auth
+--   schema (supabase discussion 34270), like the one on auth.users (#105).
 -- * The trigger never fails a sign-in: a value that does not pass the
 --   checks is skipped, and any other error is only logged.
+
+-- A provider's account ID as profile_identities stores it: Discord's are
+-- numeric snowflakes, Google's numeric too; the class leaves room for others.
+create function public.is_provider_id(id text)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select id ~ '^[A-Za-z0-9_.@-]{1,255}$';
+$$;
+
+-- The name handle_new_user (#105) gives a profile when the provider gives
+-- none; a profile that still has it has never had a name chosen.
+create function public.placeholder_display_name(profile_id uuid)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select 'Captain ' || left(replace(profile_id::text, '-', ''), 6);
+$$;
 
 create table public.profile_identities (
   provider text not null
     constraint profile_identities_provider_check check (provider in ('discord', 'google')),
   provider_id text not null
-    constraint profile_identities_provider_id_check check (provider_id ~ '^[A-Za-z0-9_.@-]{1,255}$'),
+    constraint profile_identities_provider_id_check check (public.is_provider_id(provider_id)),
   profile_id uuid not null references public.profiles (id) on delete cascade,
   linked_at timestamptz not null default now(),
   primary key (provider, provider_id)
@@ -104,7 +138,7 @@ begin
       return new;
     end if;
 
-    if new.provider_id ~ '^[A-Za-z0-9_.@-]{1,255}$' then
+    if public.is_provider_id(new.provider_id) then
       insert into public.profile_identities (provider, provider_id, profile_id)
       values (new.provider, new.provider_id, new.user_id)
       on conflict (provider, provider_id) do update set profile_id = excluded.profile_id
@@ -128,7 +162,7 @@ begin
       update public.profiles
         set display_name = new_name
         where id = new.user_id
-          and display_name = 'Captain ' || left(replace(new.user_id::text, '-', ''), 6);
+          and display_name = public.placeholder_display_name(new.user_id);
     end if;
   exception when others then
     raise warning 'handle_identity_change: % (%)', sqlerrm, sqlstate;
@@ -151,10 +185,18 @@ begin
 end;
 $$;
 
+revoke execute on function public.is_provider_id(text) from public, anon, authenticated;
+-- The table's check calls it, so whoever may write the table needs it.
+grant execute on function public.is_provider_id(text) to service_role;
+revoke execute on function public.placeholder_display_name(uuid) from public, anon, authenticated;
 revoke execute on function public.provider_avatar_url(jsonb) from public, anon, authenticated;
 revoke execute on function public.provider_display_name(jsonb) from public, anon, authenticated;
 revoke execute on function public.handle_identity_change() from public, anon, authenticated;
 revoke execute on function public.handle_identity_removed() from public, anon, authenticated;
+
+-- The avatar is a provider's, never the player's choice: only the security
+-- definer triggers (handle_new_user, handle_identity_change) write it.
+revoke update (avatar_url) on table public.profiles from authenticated;
 
 create trigger on_auth_identity_saved
   after insert or update on auth.identities
@@ -171,7 +213,7 @@ select i.provider, i.provider_id, i.user_id, coalesce(i.created_at, now())
 from auth.identities as i
 join public.profiles as p on p.id = i.user_id
 where i.provider in ('discord', 'google')
-  and i.provider_id ~ '^[A-Za-z0-9_.@-]{1,255}$'
+  and public.is_provider_id(i.provider_id)
 on conflict do nothing;
 
 update public.profiles as p

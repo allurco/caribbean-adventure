@@ -118,8 +118,9 @@ describe.skipIf(!dbTestsEnabled)("profiles row-level security (local Supabase)",
   });
 
   it("accepts only an https avatar URL, at most 2048 characters", async () => {
+    // Players cannot write the avatar (#106: only the sign-in triggers do), so the check is tried as the service role.
     const anne = await newPlayer();
-    const set = (avatar_url: string | null) => anne.client.from("profiles").update({ avatar_url }).eq("id", anne.id);
+    const set = (avatar_url: string | null) => admin.from("profiles").update({ avatar_url }).eq("id", anne.id);
     expect((await set("https://cdn.example/a.png")).error).toBeNull();
     expect((await set(null)).error).toBeNull();
     for (const bad of [
