@@ -8,10 +8,11 @@
  * built from the server's environment (`services.ts`). Without them (no
  * Supabase configured) those routes answer 503 and only health works.
  */
+import { deleteAccount } from "./account";
 import { backendStatus, type BackendStatus } from "./backendStatus";
 import { bearerToken, fail, json } from "./http";
 import type { MatchSignals } from "./matchSignals";
-import type { OnlineStore } from "./onlineStore";
+import { isAccountGone, type OnlineStore } from "./onlineStore";
 import { getMatch, postAction } from "./matches";
 import { createRoom, getRoom, joinRoom, startRoom } from "./rooms";
 import { listVoyages } from "./voyages";
@@ -72,6 +73,7 @@ const pattern = (re: RegExp) => (path: string) => {
 
 const ROUTES: RouteEntry[] = [
   { method: "GET", match: exact("/api/me/rooms"), run: (_req, user, s) => listVoyages(user, s.store) },
+  { method: "POST", match: exact("/api/me/delete"), run: (_req, user, s) => deleteAccount(user, s.store) },
   { method: "POST", match: exact("/api/rooms"), run: (req, user, s) => createRoom(req, user, s) },
   { method: "POST", match: exact("/api/rooms/join"), run: (req, user, s) => joinRoom(req, user, s) },
   { method: "POST", match: pattern(/^\/api\/rooms\/([^/]+)\/start$/), run: (_req, user, s, [id]) => startRoom(id, user, s) },
@@ -107,6 +109,8 @@ export async function handleApiRequest(request: Request, env: ServerEnv, service
     if (!userId) return fail(401, "unauthorized", "sign in first");
     return await route(request, userId, services);
   } catch (error) {
+    // The account was deleted after the token was checked (#108): as a dead token.
+    if (isAccountGone(error)) return fail(401, "unauthorized", "sign in first");
     // The details stay in the function's log, never in the response.
     console.error(error);
     return fail(500, "internal", "something went wrong");
