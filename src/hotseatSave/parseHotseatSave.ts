@@ -38,12 +38,14 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
  * reads as 0: its clock-made ids (`loot-3-1712345678901`) can never be one
  * of the counters' (`loot-1`). Version 3 fights by the rules from before the
  * ambush (#346): a save with no fight on is the same as version 4's, but one
- * made mid-fight stays at version 3, and is set aside.
+ * made mid-fight stays at version 3, and is set aside. Version 4 lacks
+ * `G.seaWear` (#340), which means the sea has worn no ship yet.
  */
 function migrate(value: Record<string, unknown>): Record<string, unknown> {
   let current = value;
   if (current.version === 2) current = { ...current, version: 3 };
   if (current.version === 3 && !midFight(current)) current = { ...current, version: 4 };
+  if (current.version === 4) current = { ...current, version: 5 };
   return current;
 }
 

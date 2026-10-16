@@ -1,19 +1,15 @@
 import { useEffect, useState } from "react";
 import type { MissionReward } from "../game/types";
-import { safeInset } from "./safeArea";
 
 interface MissionCompleteToastProps {
   title: string;
   reward: MissionReward;
-  /** Where the toast sits, in CSS pixels (`hudToastTop`). */
-  top: number;
   onComplete: () => void;
 }
 
 export function MissionCompleteToast({
   title,
   reward,
-  top,
   onComplete,
 }: MissionCompleteToastProps) {
   const [phase, setPhase] = useState<"enter" | "hold" | "exit">("enter");
@@ -30,8 +26,8 @@ export function MissionCompleteToast({
 
   return (
     <div
-      style={{ top: safeInset("top", top) }}
-      className={`fixed left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
+      // In the HUD's toast column (`HudToastStack`), which places it
+      className={`transition-all duration-300 ${
         phase === "enter"
           ? "opacity-0 -translate-y-4"
           : phase === "exit"

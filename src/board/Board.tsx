@@ -8,7 +8,11 @@ import type { CaribbeanState } from "../game/Game";
 import { getMaxMoves, movesLeft } from "../game/turnMoves";
 import type { Hex } from "../game/hex";
 import type { NPCShip, MapCell } from "../game/types";
-import { hexToWorld, hexEquals, wrapWorldWidth } from "../game/hex";
+import { hexToWorld, hexEquals, hexKey, wrapWorldWidth } from "../game/hex";
+import { deepSeaHexes } from "../game/deepSea";
+import { endTurnSeaWarning, freshSeaWears, seaWearNotices, targetSeaWarning } from "./seaWearView";
+import { SeaWearToast } from "./SeaWearToast";
+import { HudToastStack } from "./HudToastStack";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
 import { turnReach, routeTo, reachCost } from "../game/reach";
 import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
@@ -988,6 +992,19 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   const boardActive = seatMayAct(turn) && !locked;
   const shownNpcs = holdsNpcs(handoff) && heldNpcs ? heldNpcs : G.npcs;
 
+  // The open sea (#340): the map's deep sea, found once per map, for the
+  // warnings; and a line for the table when it wears a
+  // ship as its turn ends. Not for a wear already in G on load.
+  const deepSea = useMemo(() => new Set(deepSeaHexes(G.cells, G.wrap).map(hexKey)), [G.cells, G.wrap]);
+  const [seenSeaWear, setSeenSeaWear] = useState(G.seaWear);
+  const [seaWearLines, setSeaWearLines] = useState<string[] | null>(null);
+  const newSeaWears = freshSeaWears(seenSeaWear, G.seaWear);
+  if (newSeaWears.length > 0) {
+    setSeenSeaWear(G.seaWear);
+    setSeaWearLines(seaWearNotices(newSeaWears, { playerID: props.playerID, numPlayers: ctx.numPlayers, ships: G.ships }));
+  }
+  const clearSeaWearLines = useCallback(() => setSeaWearLines(null), []);
+
   // Detect mission completion
   useEffect(() => {
     const prev = prevMissionRef.current;
@@ -1283,6 +1300,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           gold={shownShip?.gold ?? null}
           glory={shownShip?.score ?? null}
           waitingLine={waitingFor(G, turn)}
+          seaWarning={endTurnSeaWarning(G, currentShipState, deepSea)}
           onEndTurn={() => {
             if (boardActive) props.events.endTurn!();
           }}
@@ -1356,7 +1374,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         !sailing &&
         !underway[currentPlayer] &&
         routeSelection?.from === selectionKey(currentPlayer, currentShipState.position) && (
-          <RouteHint top={hudHintTop(hudLayoutKind)} />
+          <RouteHint top={hudHintTop(hudLayoutKind)} warning={targetSeaWarning(G, currentShipState, routeSelection.hex, deepSea)} />
         )}
 
       {/* Attack mode indicator */}
@@ -1425,14 +1443,18 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         />
       )}
 
-      {/* Mission Complete Toast */}
-      {completedMission && (
-        <MissionCompleteToast
-          title={completedMission.title}
-          reward={completedMission.reward}
-          top={hudToastTop(hudLayoutKind)}
-          onComplete={() => setCompletedMission(null)}
-        />
+      {/* The toasts, stacked: a mission completed, then the open sea wearing a ship as its turn ended (#340) */}
+      {(completedMission || seaWearLines) && (
+        <HudToastStack top={hudToastTop(hudLayoutKind)}>
+          {completedMission && (
+            <MissionCompleteToast
+              title={completedMission.title}
+              reward={completedMission.reward}
+              onComplete={() => setCompletedMission(null)}
+            />
+          )}
+          {seaWearLines && <SeaWearToast lines={seaWearLines} onDone={clearSeaWearLines} />}
+        </HudToastStack>
       )}
 
       {/* Turn Change Animation */}
