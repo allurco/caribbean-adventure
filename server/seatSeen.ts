@@ -35,3 +35,29 @@ export function seatsOnline(seats: readonly SeatSeen[], caller: number, now: num
     .sort((a, b) => a - b)
     .map(String);
 }
+
+/** Logged once per instance while the database lacks the column (its migration not yet pushed). */
+export const MISSING_LAST_SEEN_COLUMN = "seats.last_seen_at missing: push migration 20261022000000";
+
+/** Postgres's undefined_column. */
+const UNDEFINED_COLUMN = "42703";
+
+const isMissingColumn = (error: unknown) =>
+  typeof error === "object" && error !== null && (error as { code?: unknown }).code === UNDEFINED_COLUMN;
+
+/**
+ * Logs a failure to read or write when a seat was last seen; neither fails
+ * the request, as the online dot is only a hint. A missing column is named,
+ * with the migration to push, once per reporter (one per instance in
+ * `matches.ts`) rather than on every read; any other failure is logged as
+ * the error it is, each time.
+ */
+export function seenFailureReporter(log: (...args: unknown[]) => void): (what: string, error: unknown) => void {
+  let missingColumnReported = false;
+  return (what, error) => {
+    if (!isMissingColumn(error)) return log(what, error);
+    if (missingColumnReported) return;
+    missingColumnReported = true;
+    log(MISSING_LAST_SEEN_COLUMN);
+  };
+}

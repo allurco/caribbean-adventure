@@ -3,7 +3,7 @@
  * loaded with a dynamic import, so supabase-js is its own chunk and a build
  * with no backend configured never fetches it.
  */
-import type { AccountClient } from "./accountClient";
+import type { AccountClient, IdentityRow } from "./accountClient";
 import { MATCH_CHANGED_EVENT } from "./matchChannel";
 import type { ChannelStatus, OpenMatchChannel } from "./matchLive";
 import { readSupabaseConfig, type SupabaseConfig } from "./supabaseConfig";
@@ -49,6 +49,12 @@ export function getAccountClient(config: SupabaseConfig): Promise<AccountClient>
               maybeSingle: () => supabase.from(table).update(values).eq(column, value).select(columns).maybeSingle(),
             }),
           }),
+        }),
+      }),
+      identities: () => ({
+        select: (columns) => ({
+          eq: (column, value) =>
+            supabase.from("profile_identities").select(columns).eq(column, value).overrideTypes<IdentityRow[], { merge: false }>(),
         }),
       }),
     };

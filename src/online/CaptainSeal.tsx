@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { safeAvatarUrl } from "./avatarUrl";
 import { sealFor } from "./seal";
 
@@ -19,12 +20,15 @@ interface CaptainSealProps {
 export function CaptainSeal({ id, displayName, avatarUrl = null, size = "md" }: CaptainSealProps) {
   // Checked again where it is rendered: an <img> takes nothing but https.
   const src = safeAvatarUrl(avatarUrl);
-  if (src) {
+  // A picture that fails to load (changed or removed at the provider) falls back to the seal.
+  const [failed, setFailed] = useState<string | null>(null);
+  if (src && failed !== src) {
     return (
       <img
         src={src}
         alt=""
         referrerPolicy="no-referrer"
+        onError={() => setFailed(src)}
         className={`${SIZES[size]} shrink-0 rounded-full object-cover ring-2 ring-black/30`}
       />
     );

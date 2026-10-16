@@ -6,7 +6,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { dbTestsEnabled, localStack, NO_SESSION, testPlayers, type LocalStack } from "./localStack";
+import { dbTestsEnabled, localStack, NO_SESSION, oauthSignUp, testPlayers, type LocalStack } from "./localStack";
 import { randomUUID } from "node:crypto";
 
 describe.skipIf(!dbTestsEnabled)("profiles row-level security (local Supabase)", () => {
@@ -27,8 +27,17 @@ describe.skipIf(!dbTestsEnabled)("profiles row-level security (local Supabase)",
     anon = createClient(stack.url, stack.anonKey, NO_SESSION);
   });
 
+  /** Users made by `oauthSignUp`, deleted with the players. */
+  const oauthUsers: string[] = [];
+  function oauthPlayer(provider: "discord" | "google", userMetadata: Record<string, string>): string {
+    const id = oauthSignUp(provider, userMetadata);
+    oauthUsers.push(id);
+    return id;
+  }
+
   afterAll(async () => {
     await players.deleteAll();
+    for (const id of oauthUsers) await admin.auth.admin.deleteUser(id);
   });
 
   it("creates a profile when a player signs up, with a placeholder name and no email in it", async () => {
@@ -40,18 +49,27 @@ describe.skipIf(!dbTestsEnabled)("profiles row-level security (local Supabase)",
     expect(data.display_name).not.toContain("@");
   });
 
-  it("takes the name and avatar from the sign-in provider's metadata", async () => {
-    const mary = await newPlayer({ full_name: "Mary Read", avatar_url: "https://cdn.example/m.png", provider_id: "1234" });
-    const { data } = await admin.from("profiles").select("*").eq("id", mary.id).single();
-    expect(data).toMatchObject({ display_name: "Mary Read", avatar_url: "https://cdn.example/m.png" });
+  it("takes the name and avatar from a Discord or Google sign-up's metadata", async () => {
+    const avatar = "https://cdn.discordapp.com/avatars/1234/m.png";
+    const mary = oauthPlayer("discord", { full_name: "Mary Read", avatar_url: avatar, provider_id: "1234" });
+    const { data } = await admin.from("profiles").select("*").eq("id", mary).single();
+    expect(data).toMatchObject({ display_name: "Mary Read", avatar_url: avatar });
+  });
+
+  it("gives an email sign-up no avatar, whatever avatar_url its metadata carries (#106)", async () => {
+    // Anyone can sign up through Auth's /otp with any `data`; the user is then created with provider "email",
+    // as the admin API creates it here.
+    const eve = await newPlayer({ full_name: "Eve", avatar_url: "https://cdn.discordapp.com/attachments/1/2/chosen.png" });
+    const { data } = await admin.from("profiles").select("*").eq("id", eve.id).single();
+    expect(data).toMatchObject({ display_name: "Eve", avatar_url: null });
   });
 
   it("cleans hostile sign-up metadata instead of storing it or failing the sign-up", async () => {
-    const eve = await newPlayer({ full_name: "  Eve\u0007\n  the\tPirate  ", avatar_url: "javascript:alert(1)" });
-    const { data } = await admin.from("profiles").select("*").eq("id", eve.id).single();
+    const eve = oauthPlayer("discord", { full_name: "  Eve\u0007\n  the\tPirate  ", avatar_url: "javascript:alert(1)" });
+    const { data } = await admin.from("profiles").select("*").eq("id", eve).single();
     expect(data).toMatchObject({ display_name: "Eve the Pirate", avatar_url: null });
-    const http = await newPlayer({ avatar_url: "http://cdn.example/a.png" });
-    expect((await admin.from("profiles").select("avatar_url").eq("id", http.id).single()).data?.avatar_url).toBeNull();
+    const http = oauthPlayer("google", { avatar_url: "http://cdn.example/a.png" });
+    expect((await admin.from("profiles").select("avatar_url").eq("id", http).single()).data?.avatar_url).toBeNull();
   });
 
   it("exposes only public columns: nothing from auth.users but the id", async () => {
@@ -118,8 +136,9 @@ describe.skipIf(!dbTestsEnabled)("profiles row-level security (local Supabase)",
   });
 
   it("accepts only an https avatar URL, at most 2048 characters", async () => {
+    // Players cannot write the avatar (#106: only the sign-in triggers do), so the check is tried as the service role.
     const anne = await newPlayer();
-    const set = (avatar_url: string | null) => anne.client.from("profiles").update({ avatar_url }).eq("id", anne.id);
+    const set = (avatar_url: string | null) => admin.from("profiles").update({ avatar_url }).eq("id", anne.id);
     expect((await set("https://cdn.example/a.png")).error).toBeNull();
     expect((await set(null)).error).toBeNull();
     for (const bad of [

@@ -3,7 +3,7 @@
 The online backend (PRD #104, first slice #105) runs on Vercel and Supabase:
 
 - **Vercel** builds the Vite app (`npm run build`, output `dist/`) and serves it as a single-page app. Every `/api/*` request goes to the one Vercel Function, `api/index.ts`, which routes it in `server/handleApiRequest.ts`. `vercel.json` holds the build settings, both rewrites, and the `includeFiles` that ships the bundled server with the function: `npm run build` ends with `npm run build:api`, which bundles the server and the game code into `api/_server.mjs` (git-ignored; ADR 0008).
-- **Supabase**, added from the Vercel Marketplace, provides Postgres, Auth (email magic links for now) and, later, Realtime. The schema is the SQL under `supabase/migrations/`.
+- **Supabase**, added from the Vercel Marketplace, provides Postgres, Auth (email magic links, Discord and Google) and, later, Realtime. The schema is the SQL under `supabase/migrations/`.
 
 With no Supabase settings the app is the local hotseat game, exactly as before: no sign-in link and no backend calls. CI runs that way.
 
@@ -17,6 +17,7 @@ The repo is public. Keys and URLs of the real project live only in Vercel's and 
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | The Supabase Marketplace integration | The browser (the app) |
 | `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | The Supabase Marketplace integration | `/api` only: the online routes (rooms, #112) act with this service-role key after checking the caller's access token. `SUPABASE_SERVICE_ROLE_KEY` is read when there is no `SUPABASE_SECRET_KEY`. Without them the online routes answer 503. |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (or `VITE_SUPABASE_PUBLISHABLE_KEY`) | You, in `.env.local` for local development | The browser (the app) |
+| `SUPABASE_AUTH_EXTERNAL_DISCORD_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_DISCORD_SECRET`, `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID`, `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` | You, for the local Supabase only (exported in the shell, or in a git-ignored `supabase/.env`) | `supabase/config.toml` (#106). The hosted project keeps its own copies in the Supabase dashboard (*Discord and Google sign-in* below), not in Vercel. |
 
 The integration also injects `POSTGRES_*` and other variables; nothing reads them yet.
 
@@ -43,6 +44,34 @@ The app reads either naming: `vite.config.ts` exposes the `VITE_` and `NEXT_PUBL
 6. **Realtime (#114).** In the Supabase dashboard, open **Realtime → Settings** and turn **off** "Allow public access", so clients can use private channels only and the policies of `20261022000000_match_realtime.sql` decide who joins a match's channel. Nothing in the app uses a public channel, and clients only listen on the private one: they send nothing, presence included. The server sends each match's `changed` signal with the secret key it already has; no new variable is needed. Without Realtime (or before the migration is applied) online boards keep polling every 4 seconds; before the migration they also show no other seat as online, as `seats.last_seen_at` does not exist yet, but matches play on. Preview branches need the same setting, branch by branch (see [Preview branches](#preview-branches-107)).
 7. **Redeploy** the production deployment so the build picks up the new variables (Vercel bakes the browser variables in at build time).
 
+### Discord and Google sign-in (#106)
+
+The sign-in screen offers **Continue with Discord** and **Continue with Google** next to the email link. Each needs an OAuth app at the provider, whose only redirect URI is the Supabase project's callback, `https://<project-ref>.supabase.co/auth/v1/callback` (shown on the provider's page in the Supabase dashboard). After the provider, Supabase sends the player back to the page they left, which must match one of the **Redirect URLs** in step 4; OAuth adds nothing to that list. Those URLs never go into the provider's settings.
+
+1. **Discord:** at <https://discord.com/developers/applications>, **New Application** (named after the game), then **OAuth2**: copy the **Client ID**, reset and copy the **Client Secret**, and under **Redirects** add the callback URL above. Supabase asks for the `identify` and `email` scopes itself.
+2. **Google:** in the Google Cloud console, create (or pick) a project; under **Google Auth Platform → Branding** (the OAuth consent screen) give the app's name, support email and the production domain, with **Audience** set to **External** and published to production; then **Clients → Create client**, type **Web application**, with **Authorised JavaScript origins** the production URL and **Authorised redirect URIs** the callback URL above. Copy the client ID and secret. The scopes Supabase asks for (`openid`, `email`, `profile`) need no Google review.
+3. **Supabase:** in **Authentication → Sign In / Providers**, open **Discord**, switch it on and paste its client ID and secret; the same for **Google**. Keep **Allow users without an email** off for both: a profile is linked by its email (see *Same captain* below).
+4. **Apply the migration** `20261024000000_profile_identities.sql` with a plain `npx supabase db push` (step 3): it sorts after every migration before it (#108's `20261020000000`, #107's `20261021000000`, #114's `20261022000000`), and the push applies whichever of them production still lacks, in order. Only if a migration dated after it had been pushed first would the CLI refuse it with a plain push; then, and only then, use `npx supabase db push --include-all`. It does not redefine `handle_new_user`: #108's version, already applied, takes a sign-up's avatar only from Discord or Google and never gives the reserved "Deleted player" name. Without the migration sign-in still works (`handle_new_user` fills the name and avatar of a new Discord or Google player), but the provider IDs are not recorded, an existing player's avatar is not filled from a provider they link, players can still set their own avatar, and **Profile** does not say which providers sign in to it; identities made before it runs are backfilled.
+
+The secrets live only there (and in your shell for the local stack); never in Vercel, a `VITE_`/`NEXT_PUBLIC_` variable or a tracked file.
+
+**Production only.** OAuth sign-in is not supported on Vercel preview deployments ([Preview branches](#preview-branches-107), set-up step 7). Production's redirect list holds exact hosts only (step 4): a wildcard host is an open redirect for sign-in tokens, and OAuth makes it one click ([Sign-in on previews](#sign-in-on-previews)).
+
+**What is public.** A profile stays a name and an avatar, readable by anyone. The provider IDs (which Discord and Google accounts sign in to a profile) live in `profile_identities`, which only the player reads. But a Discord avatar is a URL of the form `https://cdn.discordapp.com/avatars/<Discord user ID>/<hash>.png`, so anyone who sees a Discord avatar on a profile can read that player's Discord user ID from it. Players cannot set the avatar themselves: only the sign-in triggers write it.
+
+#### Same captain, whichever way they sign in
+
+Supabase Auth keeps one user per player and one *identity* per way they sign in. When a player signs in with Discord or Google and the provider vouches for their email (Google always does; Discord only for an email the player verified with Discord), Supabase links that identity to the existing user with the same email, so they reach the same profile (`profiles` is keyed by the user). A magic link also signs in to the user with that email, whichever way it was created. The trigger on `auth.identities` (`20261024000000_profile_identities.sql`) then records the provider's ID in `profile_identities` and, while the profile still has the placeholder name or no avatar, fills them from the provider.
+
+The edge cases, none of which merge two captains by themselves:
+
+- **A Discord email the player never verified:** Supabase does not link it; it asks Discord's email to be confirmed and comes back with an error, which the sign-in screen shows. Once confirmed, it is a separate user unless it matches an existing one.
+- **No email at all** (a Discord account without one): refused, since **Allow users without an email** stays off.
+- **A different email** at the provider than the player's magic-link email (or a second Discord account): a second, separate captain.
+- **Changing the email at the provider** later: the identity stays linked by the provider's ID, not the email.
+
+Joining two such captains by hand needs Supabase's manual linking (`enable_manual_linking`, `linkIdentity`) and a "Link Discord / Google" button on the profile, which is not built (a follow-up issue).
+
 ### Check it
 
 After a pull request that adds a migration is merged, run `npx supabase db push` (step 3) before playing online: the rooms (#112) need `supabase/migrations/20261015000000_rooms.sql`, online turns (#113) `20261016000000_moves.sql`, and the list of a player's voyages (`GET /api/me/rooms`) `20261017000000_voyages.sql` and `20261018000000_voyages_fight.sql` (who may act in a fight), and the live board (#114) `20261022000000_match_realtime.sql` (who may join a match's realtime channel, and when each seat was last seen; until it is applied matches still play, polling, and only the online dots are missing). Deleting an account (#108) needs `20261020000000_delete_account.sql`, and it must be pushed **before** the code that uses it deploys: the profile pages read its `deleted_at` column, and the migration is safe under the code before it.
@@ -50,6 +79,7 @@ After a pull request that adds a migration is merged, run `npx supabase db push`
 - `https://<project>.vercel.app/api/health` answers `{"ok":true,"version":"<commit>","environment":"production","supabase":{"configured":true}}`.
 - The root URL opens the online shell (#125): its sign-in screen asks for an email and sends a link; opening it signs you in and lands you on Play. **Profile** (`/?view=account`) shows your captain, whose display name you can change. **Your public profile** opens `/?view=profile&id=<your id>`, which anyone can read, signed in or not. **Delete account**, on your own profile only, asks you to type `DELETE`, then signs you out; your public profile then reads "Deleted player", and signing in with the same email starts a new captain.
 - **Play on this device** (`/?skipLogin=1`, or the root URL with a dev URL parameter such as `?seed=`) opens the local game. Its corner link reads **The harbour** when signed in, or **Sign in** when not, and goes back to the shell. Other query parameters on the root URL (a link tracker's `?fbclid=`, `?utm_source=`) are ignored: it still opens the shell.
+- **Continue with Discord** or **Continue with Google** goes to the provider and back, signed in, to the page it left. A new player's profile takes the provider's name and avatar; **Profile** says which providers sign in to it. Turning the provider's consent down comes back to the sign-in screen saying the sign-in was cancelled.
 - **Open a private room** (`/?view=rooms`) creates a room and opens its lobby (`/?view=room&id=…`) with the invite link (`/?view=join&invite=…`). A second account that opens the link, signed in, takes a seat; the host's **Start match** then creates the match, and **Board your ship** (`/?view=match&id=…`) opens each seat's own board, which shows the other captains' moves as they are made (#114) and marks on its glory list which captains are online; without the live channel it checks for them every few seconds. `POST https://<project>.vercel.app/api/rooms` without a token answers 401 (503 means the server's Supabase variables are missing).
 
 ## Preview branches (#107)
@@ -143,7 +173,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:5173/?view=account` and ask for a link. Local Supabase sends no real email: the link appears in Mailpit at `http://127.0.0.1:54324`. `supabase/config.toml` allows redirects back to the Vite dev server on `localhost` and `127.0.0.1`.
+Open `http://localhost:5173/?view=account` and ask for a link. To try Discord or Google locally, make a second OAuth app at each provider (or add a redirect to the same one) with the redirect URI `http://127.0.0.1:54321/auth/v1/callback`, put its client ID and secret in the four `SUPABASE_AUTH_EXTERNAL_*` variables (exported, or in `supabase/.env`), and restart the stack (`npx supabase stop && npx supabase start`). Without them the stack starts all the same; only those two buttons fail. Local Supabase sends no real email: the link appears in Mailpit at `http://127.0.0.1:54324`. `supabase/config.toml` allows redirects back to the Vite dev server on `localhost` and `127.0.0.1`.
 
 `npx supabase db reset` rebuilds the local database from the migrations; `npx supabase stop` shuts the stack down. A new migration: `npx supabase migration new <name>`, then write its SQL.
 
@@ -153,4 +183,4 @@ To try the `/api` function locally, use `npx vercel dev` (this needs `vercel lin
 
 - `npm test`: the unit tests, the account code against a fake client included. The database tests are skipped.
 - `npm run test:e2e`: two browsers play an online match (Playwright), against a dev-only backend (`e2e/e2eBackend.ts`: the real `/api` router over the in-memory store and fixed test tokens). Needs no Docker; it is only ever loaded by `e2e/vite.e2e.config.ts`, applies to the dev server only, and starts only with `E2E_BACKEND=1` (set by the Playwright config), never on Vercel or with `NODE_ENV=production`.
-- `npm run test:db`: the row-level security tests in `supabase/tests/` (profiles; rooms, seats and matches, including the `/api` routes run against the real database), against the local Supabase from `npx supabase start`. They read the URL and keys from `npx supabase status`, or from `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY` and `SUPABASE_TEST_SERVICE_ROLE_KEY` when those are set. They create throwaway users and delete them afterwards.
+- `npm run test:db`: the row-level security tests in `supabase/tests/` (profiles and their Discord and Google identities; rooms, seats and matches, including the `/api` routes run against the real database), against the local Supabase from `npx supabase start`. They read the URL and keys from `npx supabase status`, or from `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY` and `SUPABASE_TEST_SERVICE_ROLE_KEY` when those are set. They create throwaway users and delete them afterwards. The identity tests insert Discord and Google identities with `psql` (from the stack's DB URL, or `SUPABASE_TEST_DB_URL`), so they need `psql` on the path.
