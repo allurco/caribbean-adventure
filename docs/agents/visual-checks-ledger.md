@@ -58,6 +58,14 @@ Reports still being chased. Move an entry to "Investigated, not a bug" or close 
 
 One entry per report. Newest first.
 
+### 2026-10-16: phones in landscape, the rotate gate and the safe areas (#123)
+
+- **Branch and commit:** `feat/123-landscape-phones` at its first commit (on main at `05fd37e`); main at `a93aa4e` for the desktop comparison.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), Playwright 1.59. Phone emulation: `isMobile` and `hasTouch`, DPR 2, so `(pointer: coarse)` matches; a desktop context without them for the narrow window. Safe areas through the DevTools protocol's `Emulation.setSafeAreaInsetsOverride` (left and right 47 px, bottom 21 px, as an iPhone held sideways). No real iPhone or Android phone.
+- **View:** `?size=small&seed=1` on a dev server with no Supabase variables (the game, with boardgame.io's debug panel), and the bare root URL on a dev server with dummy Supabase variables (the shell's sign-in screen). Captain and ship picked through the draft screen in landscape, then the viewport turned to 390×844 and back.
+- **Findings, all as intended:** at 390×844 the gate covers the game and the shell: `elementFromPoint` at the corners, the centre and the debug panel's tab all land on the gate; the app's wrapper is `inert`. Turned back to 844×390 the gate goes, the canvas is the same element and the page's text matches what it was before turning (draft done, the same captain on the HUD). The phone glyph animates, and has no animation with reduced motion emulated. "Turn it for me" shows in headless Chromium, which has both APIs (not tapped: the lock needs a real phone). With the insets the captain card's left edge moves from 16 to 63 px, the glory panel from 20 to 67, End Turn's right edge from 824 to 777; at 1440×900 without touch, no gate, and the glory panel, the card and End Turn sit at the same pixels as on main. A 390×844 desktop window shows no gate. The manifest is served as `application/manifest+json` by the dev server and `vite preview`.
+- **For the maintainer:** at 844×390 and 667×375 the open port panel covers End Turn and the turn bar's purse (#311, not this PR).
+
 ### 2026-10-15: the hotseat save (#300, PRs #304 and #305)
 
 - **Branch and commit:** `fix/304-review-followups` at `e115dc2` (on main at `475cb37`, after #304 merged).
