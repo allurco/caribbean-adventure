@@ -9,11 +9,14 @@ export interface HudStackCtx {
 }
 
 /**
- * Whether the HUD's top-left stack (the sound control, Save & leave, the
- * glory panel) is on the board: not while a captain is picked (the draft, or
- * a new captain for a lost ship, #265), not in a fight, not once the match is
- * over, and only while the current seat has a ship. The harbour link sits
- * beside the stack on a phone while it shows (#125). Pure, no React.
+ * Whether the harbour link of the online shell may sit beside the HUD's
+ * top-left stack (the sound control, Save & leave, the glory panel) on a
+ * phone (#125): only while the board is in plain play. Not while a captain
+ * is picked (the draft, or a new captain for a lost ship, #265), not in a
+ * fight, not once the match is over, and only while the current seat has a
+ * ship. Parts of the stack may still be drawn then (in a fight the sound
+ * control and Save & leave stay); the link takes the empty top-right corner
+ * instead. Pure, no React.
  */
 export function hudStackShows(G: Pick<CaribbeanState, "ships" | "lostShips" | "combat">, ctx: HudStackCtx): boolean {
   const inCombat = ctx.phase === "combat" && Boolean(G.combat);

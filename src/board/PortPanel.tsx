@@ -6,6 +6,7 @@ import { ShipwrightPanel } from "./ShipwrightPanel";
 import { ShipyardPanel } from "./ShipyardPanel";
 import { TavernPanel } from "./TavernPanel";
 import { NationFlag } from "./NationFlag";
+import { HUD_PORT_PANEL_INSET, HUD_PORT_PANEL_WIDTH } from "./hudLayout";
 
 interface PortPanelProps {
   ship: ShipState;
@@ -64,7 +65,10 @@ export function PortPanel({
   const isPiratePort = portNation === "Pirate";
 
   return (
-    <div className="absolute right-4 top-1/2 -translate-y-1/2 rounded-xl overflow-hidden border border-amber-800/30 bg-gradient-to-br from-stone-900/92 via-amber-950/88 to-stone-950/92 shadow-2xl shadow-black/50 backdrop-blur-md text-white p-4 text-sm w-72">
+    <div
+      className="absolute top-1/2 -translate-y-1/2 rounded-xl overflow-hidden border border-amber-800/30 bg-gradient-to-br from-stone-900/92 via-amber-950/88 to-stone-950/92 shadow-2xl shadow-black/50 backdrop-blur-md text-white p-4 text-sm"
+      style={{ right: HUD_PORT_PANEL_INSET, width: HUD_PORT_PANEL_WIDTH }}
+    >
       {/* Port Header with name and nation */}
       <div className="mb-3 pb-2 border-b border-amber-800/20">
         <div className="flex items-center gap-2">

@@ -51,9 +51,14 @@ export interface AccountLinkPlacement {
   width?: number;
 }
 
-/** What is under the link: whether the board's HUD stack shows (`hudStackShows`), and the window's width. */
+/**
+ * What is under the link: whether the link may sit beside the board's HUD
+ * stack (`hudStackShows`), whether the port panel is open, and the window's
+ * width.
+ */
 export interface AccountLinkScene {
   hudStack: boolean;
+  portPanel: boolean;
   viewportWidth: number;
 }
 
@@ -61,18 +66,23 @@ export interface AccountLinkScene {
  * Where the corner link over the local game sits (#125). On desktop, the top
  * right corner under the turn bar. On a compact screen (a phone held
  * sideways) it is a full 48 px tap target. While the HUD stack shows it sits
- * on Save & leave's row, right of it: the highest spot left of the port
- * panel, so the captain and ship card, which grows upward as the ship takes
- * on cargo, upgrades, damage and bounties, would cover the glory panel before
- * it reached the link. Where that row meets the port panel's column (a phone
- * under about 750 px wide) it goes under Save & leave, right of the glory
- * panel instead. With the stack down (a captain picked, a fight, game over)
- * it takes the empty top-right corner. Pure, no React.
+ * on Save & leave's row, right of it: the highest spot on that side, so the
+ * captain and ship card, which grows upward as the ship takes on cargo,
+ * upgrades, damage and bounties, would cover the glory panel before it
+ * reached the link. Only the port panel, open while docked, can block that
+ * row: where the row meets the panel's column (a phone under 752 px wide) the
+ * link goes under Save & leave, right of the glory panel; where that meets
+ * it too (under 660 px, a narrowed desktop window), the top-right corner
+ * under the turn bar. With the stack down (a captain picked, a fight, game
+ * over) it takes the empty top-right corner. Pure, no React.
  */
 export function accountLinkPlacement(layout: ShellLayout, scene: AccountLinkScene): AccountLinkPlacement {
   if (layout === "desktop") return { top: TOP, right: EDGE };
   const size = { minHeight: MIN_TAP_TARGET, width: ACCOUNT_LINK_COMPACT_WIDTH };
   if (!scene.hudStack) return { top: EDGE, right: EDGE, ...size };
-  const rowFits = ROW_LEFT + ACCOUNT_LINK_COMPACT_WIDTH + GAP <= scene.viewportWidth - PORT_COLUMN;
-  return rowFits ? { top: HUD_STACK_TOP, left: ROW_LEFT, ...size } : { top: UNDER_TOP, left: UNDER_LEFT, ...size };
+  const clearOfPanel = (left: number) =>
+    !scene.portPanel || left + ACCOUNT_LINK_COMPACT_WIDTH + GAP <= scene.viewportWidth - PORT_COLUMN;
+  if (clearOfPanel(ROW_LEFT)) return { top: HUD_STACK_TOP, left: ROW_LEFT, ...size };
+  if (clearOfPanel(UNDER_LEFT)) return { top: UNDER_TOP, left: UNDER_LEFT, ...size };
+  return { top: TOP, right: EDGE, ...size };
 }
