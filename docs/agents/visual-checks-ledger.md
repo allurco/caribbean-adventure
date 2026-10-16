@@ -58,6 +58,24 @@ Reports still being chased. Move an entry to "Investigated, not a bug" or close 
 
 One entry per report. Newest first.
 
+### 2026-10-16: the open sea wears coasters (#340, PR #359)
+
+- **Branch and commit:** `feat/340-deep-sea-wear` at `277cbcf`, served from a clean export of that commit. Uncommitted review fixes were landing in the branch's worktree during the check (an HMR error, `freshSeaWear` missing, and a reload, came from those edits, not from the PR). They were not checked.
+- **Renderer:** Playwright MCP's Chromium on a real GPU (ANGLE Metal), 1440×900, DPR 1.
+- **View:** `?size=small&seed=37` solo, and `?size=small&seed=37&players=2` hotseat. Captains and Sloops picked through the draft screen. The first run sailed for real: the port to the deep hex (18,2), 4 moves, through the reach with click and Enter. Later cases were staged by dispatching an `UPDATE` with an edited `G` to the client's store (position, `movesUsed`, hull, and a Frigate's stats from `constants.ts`). Hexes were found through `deepSeaHexes` and projected with the R3F camera.
+- **Findings, all as intended:**
+  - The route hint on a deep target reads "Open ocean: end your turn there and your Sloop loses 1 hull".
+  - On deep sea with moves left, "Open ocean: your Sloop will lose 1 hull" shows beside End Turn, and as its title.
+  - Ending the turn there shows "The open sea strains your hull: −1 hull" under the turn bar, gone after about 4 s. The card shows Hull 1/2 and "Damaged Hull −1".
+  - A turn that ends by itself when the moves run out wears the ship too. Then only the route hint had warned.
+  - On 1 hull: no warning, no wear.
+  - A route through deep water (17,2)→(18,2)→(19,2) ending on shallow water, then End Turn: no warning, no wear.
+  - A Frigate on deep water: no wash meshes, no warning, no wear.
+  - Hotseat: each seat is warned, and each is worn on its own turn's end. The line names the captain ("The open sea strains Blackbeard’s hull: −1 hull").
+  - No console errors from the build under test.
+- **The wash:** three meshes (the wrap copies) of about 54 to 108 triangles each. The frame rate held 120 fps, with the frame time at a median of 8.3 ms and p95 9.8 ms, whether it was shown or hidden. With the wash on, the deep hex's mean colour drops about 9% (RGB 26/57/96 to 20/49/87). It can be seen side by side, but is easy to miss on the dark open sea. A forced magenta run found the expected hex.
+- **For the maintainer:** the End Turn warning is small text (11 px) in pale red and loses contrast where it falls over sand or the sun's glare (top right).
+
 ### 2026-10-16: the rotate gate's review follow-ups (#123, PR #312)
 
 - **Branch and commit:** `feat/123-landscape-phones` at `83c11b5` (on main at `05fd37e`).
