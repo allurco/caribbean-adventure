@@ -147,8 +147,8 @@ describe.skipIf(!dbTestsEnabled)("profile_identities (local Supabase)", () => {
     expect(Object.keys(row).sort()).toEqual(["avatar_url", "created_at", "display_name", "id", "updated_at"]);
     // The avatar is public, and Discord's avatar URL carries the user ID (docs/deploy.md, the migration's comment).
     expect(row.avatar_url).toBe(discordAvatar(discord));
-    const { avatar_url: _avatar, ...rest } = row;
-    expect(JSON.stringify(rest)).not.toContain(discord);
+    const elsewhere = Object.entries(row).filter(([column]) => column !== "avatar_url");
+    expect(JSON.stringify(elsewhere)).not.toContain(discord);
     // Which provider account signs in to the profile stays private.
     const byAnon = await anon.from("profile_identities").select("provider_id").eq("profile_id", anne.id);
     expect(byAnon.data ?? []).toEqual([]);
