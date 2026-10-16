@@ -210,6 +210,16 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-16: the event deck, Calm seas and Merchant convoy (#246, PR #370)
+
+- **Branch and commit:** `feat/246-event-deck` at `b039468` (clean worktree, dev server).
+- **Renderer:** Playwright MCP's Chromium on a real GPU (ANGLE Metal), 1280×800 at DPR 1; a phone context at 844×390, `isMobile`, touch, DPR 3.
+- **View:** `?size=small&seed=7&skipLogin=1` solo, `&players=2`, `&players=4` (phone), and `?seats=1&players=2`; camera at each seat's default.
+- **How it was staged:** captains through `moves.pickCaptain(0, "Sloop")`. `merchantConvoy` pushed onto `G.eventDeck.drawPile` (top card last) by store `UPDATE`; in `?seats=1` written to the master's storage, then `requestSync()`, and the other seat's turn ended with `master.onUpdate({type:"GAME_EVENT",payload:{type:"endTurn",playerID}})`. A flotilla made by copying a merchant with `role: "FLOTILLA"`. A fight against a convoy merchant moved next to the ship with `stats.hull.current = 1`. Timings from an in-page rAF loop.
+- **Findings:** the log grows every turn; merchants sail once a round and flotillas every turn; a fight draws once, when it resolves; both seats get the same log and card. **Bug:** the card never renders (`!handoff` while the hand-off rests at `idle`; it shows with `!locked`). **Bug:** the log row appears in the frame G changes, about 1.2 s before the held NPCs are let go. **Bug:** at 844×390 with 4 seats the event log is behind the captain card.
+- Fixed in `da9e344`: the card gated on controlsLocked, the log released with the NPCs, the phone layout lists no event log on the compact (phone held sideways) layout (`eventLogLength`), the card still showing there.
+- **Not checked:** an online match; Storm and other cards (not in this slice); the merchants on screen during the hand-off (camera elsewhere; timing only).
+
 ### 2026-10-16: both captains roll the draw, ties to the defender (#347, PR #360)
 
 - **Branch and commit:** `feat/347-both-roll` at `7ee6a68`.
