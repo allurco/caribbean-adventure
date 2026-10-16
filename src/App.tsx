@@ -56,7 +56,8 @@ function gameClient(): Promise<GameClient> {
   return gameClientPromise;
 }
 // The saved hotseat game (#300) starts from its own start screen, so only a
-// match a dev URL pins (size, seed, seats), which never touches the save, starts here.
+// match a dev URL pins (size, seed, the seats on one page), which never
+// touches the save, starts here.
 const savesHotseat = usesHotseatSave(devParams);
 if (showsGame && !loginGate && !savesHotseat) void gameClient();
 
@@ -115,7 +116,8 @@ export default function App() {
 /**
  * The local game (solo, or hotseat with dev `?players=`), with the account
  * link when a backend is configured. Saved in the browser unless a dev URL
- * pins the match (`usesHotseatSave`).
+ * pins the map or is the seats on one page (`usesHotseatSave`); with
+ * `?players=` a save is continued only when it has those seats.
  */
 function Game() {
   const viewProps = {
@@ -131,7 +133,7 @@ function Game() {
   return (
     <>
       {savesHotseat ? (
-        <HotseatGame {...viewProps} debugPanel={showsDebugPanel(devParams)} seats={seatCount(devParams)} />
+        <HotseatGame {...viewProps} debugPanel={showsDebugPanel(devParams)} seats={seatCount(devParams)} request={{ players: devParams.players, setupData: devParams.setupData }} />
       ) : devParams.localSeats ? (
         <LocalSeats {...viewProps} client={gameClient()} seats={seatCount(devParams)} />
       ) : (

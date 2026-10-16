@@ -4,7 +4,7 @@ import { Caribbean, withGeneratedMap, withHotseatView } from "../game/Game";
 import type { CaribbeanState } from "../game/Game";
 import { generateMapFor } from "../game/mapRequest";
 import { STARTER_SHIP_CLASSES } from "../game/types";
-import { saveHotseat } from "./hotseatSave";
+import { saveHotseat, type HotseatSave } from "./hotseatSave";
 import { describeHotseatSave, savedAgo } from "./describeHotseatSave";
 
 const request = { mapSize: "medium", mapSeed: 7 } as const;
@@ -40,6 +40,14 @@ describe("the saved voyage's summary", () => {
     expect(summary.turn).toBe("Drafting captains");
     expect(summary.seats).toBe("Solo");
     expect(summary.captains).toEqual([]);
+  });
+
+  it("never throws, even on a save whose G lacks what it reads", () => {
+    const save = saveHotseat(match(2).store.getState(), map, 0);
+    const odd = (G: unknown) => ({ ...save, state: { ...save.state, G } }) as unknown as HotseatSave;
+    for (const G of [{}, { ships: null }, { ships: { 0: { captain: { name: { first: "Anne" } } } }, lostShips: 4 }]) {
+      expect(describeHotseatSave(odd(G), 0).captains).toEqual([]);
+    }
   });
 
   it("says how long ago, in the largest unit that fits", () => {

@@ -1,130 +1,89 @@
-import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { GameClientLoader } from "./GameClientLoader";
-import { loadGameClient, type GameClient } from "./loadGameClient";
+import { useCallback, useState } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { HotseatStartScreen } from "./board/HotseatStartScreen";
-import { MapLoadingScreen } from "./board/MapLoadingScreen";
+import { HotseatVoyage, type VoyageViewProps } from "./HotseatVoyage";
 import { describeHotseatSave } from "./hotseatSave/describeHotseatSave";
-import type { HotseatSave } from "./hotseatSave/hotseatSave";
-import { startHotseatSession, type HotseatSession } from "./hotseatSave/hotseatSession";
-import type { HotseatSaveRead } from "./hotseatSave/parseHotseatSave";
-import { browserSaveStorage, clearHotseatSave, readHotseatSave } from "./hotseatSave/saveStorage";
+import { afterRestoreFailed, afterStartScreenFailed, continueVoyage, newGameOverwrites, newVoyage, openingScreen, type HotseatScreen, type VoyageRequest } from "./hotseatSave/hotseatScreens";
+import { browserSaveStorage, clearHotseatSave, readHotseatSave, setAsideHotseatSave } from "./hotseatSave/saveStorage";
 
-/** How long the match must rest before it is autosaved, in ms: a burst of moves is one write. */
-const AUTOSAVE_DELAY_MS = 1_000;
-
-/** The board's view props (camera and render pins), as `GameClientLoader` passes them on. */
-type LoaderProps = Omit<ComponentProps<typeof GameClientLoader>, "client" | "playerID">;
-
-interface HotseatGameProps extends LoaderProps {
+interface HotseatGameProps extends VoyageViewProps {
   debugPanel: boolean;
   /** The seats of a new game. */
   seats: number;
+  /** What the URL asks of the game (`?players=`): a save is continued only when it matches. */
+  request: VoyageRequest;
 }
-
-/** The start screen (a save to continue, or one that could not be read), or a voyage under way. */
-type Screen =
-  | { kind: "start"; read: Exclude<HotseatSaveRead, { kind: "none" }>; shownAt: number }
-  | { kind: "voyage"; restore?: HotseatSave; id: number };
 
 /**
  * The local hotseat game, saved as it is played (#300). With a save in the
  * browser it opens on the start screen (Continue voyage, or New game);
- * without one, straight into a new game. Save & leave comes back here.
+ * without one, straight into a new game. Save & leave comes back here. The
+ * screens and their transitions are `hotseatScreens.ts`.
  */
-export function HotseatGame({ debugPanel, seats, ...loaderProps }: HotseatGameProps) {
+export function HotseatGame({ debugPanel, seats, request, ...viewProps }: HotseatGameProps) {
   const [storage] = useState(browserSaveStorage);
-  const [screen, setScreen] = useState<Screen>(() => startScreen(readHotseatSave(storage), Date.now()));
-  const restoreFailed = useCallback(() => setScreen({ kind: "start", read: { kind: "unreadable", reason: "corrupt" }, shownAt: Date.now() }), []);
+  const [screen, setScreen] = useState<HotseatScreen>(() => openingScreen(readHotseatSave(storage), request, Date.now()));
+  const voyageFailed = useCallback(() => {
+    // Set aside, so a save that cannot be played is not offered again
+    setAsideHotseatSave(storage);
+    setScreen(afterRestoreFailed(Date.now()));
+  }, [storage]);
+
+  // A save the start screen throws on (one parseHotseatSave let through)
+  // must not blank the page on every load: set it aside, say it could not
+  // be read, and offer New game.
+  const startScreenFailed = useCallback(
+    (error: unknown) => {
+      console.error("The saved voyage could not be shown.", error);
+      setAsideHotseatSave(storage);
+      setScreen(afterStartScreenFailed(Date.now()));
+    },
+    [storage]
+  );
 
   if (screen.kind === "start") {
-    const { read } = screen;
-    const newGame = () => {
-      clearHotseatSave(storage);
-      setScreen({ kind: "voyage", id: Date.now() });
-    };
     return (
-      <HotseatStartScreen
-        summary={read.kind === "saved" ? describeHotseatSave(read.save, screen.shownAt) : null}
-        unreadable={read.kind === "unreadable" ? read.reason : undefined}
-        onContinue={() => read.kind === "saved" && setScreen({ kind: "voyage", restore: read.save, id: Date.now() })}
-        onNewGame={newGame}
-      />
+      <ErrorBoundary fallback={null} onError={startScreenFailed} resetKeys={[screen]}>
+        <SavedVoyageStart
+          screen={screen}
+          onContinue={() => setScreen(continueVoyage(screen, Date.now()))}
+          onNewGame={() => {
+            clearHotseatSave(storage);
+            setScreen(newVoyage(Date.now()));
+          }}
+        />
+      </ErrorBoundary>
     );
   }
   return (
     <HotseatVoyage
       key={screen.id}
-      {...loaderProps}
+      {...viewProps}
       debugPanel={debugPanel}
       seats={seats}
       restore={screen.restore}
-      onLeave={() => setScreen(startScreen(readHotseatSave(storage), Date.now()))}
-      onRestoreFailed={restoreFailed}
+      onLeave={() => setScreen(openingScreen(readHotseatSave(storage), request, Date.now()))}
+      onFailed={voyageFailed}
     />
   );
 }
 
-/** The start screen for what storage holds, at `now`; straight into a new voyage when it holds nothing. */
-function startScreen(read: HotseatSaveRead, now: number): Screen {
-  return read.kind === "none" ? { kind: "voyage", id: now } : { kind: "start", read, shownAt: now };
+interface SavedVoyageStartProps {
+  screen: Extract<HotseatScreen, { kind: "start" }>;
+  onContinue: () => void;
+  onNewGame: () => void;
 }
 
-interface HotseatVoyageProps extends HotseatGameProps {
-  restore?: HotseatSave;
-  onLeave: () => void;
-  onRestoreFailed: () => void;
-}
-
-/** One voyage: its client, autosaved, flushed when the page is hidden or left. */
-function HotseatVoyage({ debugPanel, seats, restore, onLeave, onRestoreFailed, ...loaderProps }: HotseatVoyageProps) {
-  const [GameClientView, setGameClientView] = useState<GameClient>();
-  const [saveFailure, setSaveFailure] = useState<"quota" | "unavailable" | null>(null);
-  const session = useRef<HotseatSession | null>(null);
-  useEffect(() => {
-    const current = startHotseatSession({
-      storage: browserSaveStorage(),
-      now: Date.now,
-      delayMs: AUTOSAVE_DELAY_MS,
-      onSaveResult: (result) => setSaveFailure(result.ok ? null : result.reason),
-    });
-    session.current = current;
-    const flush = () => void current.flush();
-    const flushWhenHidden = () => document.visibilityState === "hidden" && flush();
-    window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", flushWhenHidden);
-    let live = true;
-    loadGameClient(undefined, debugPanel, seats, current.persistence(restore)).then(
-      // A component is a function, so set it through an updater.
-      (ready) => live && setGameClientView(() => ready),
-      (error: unknown) => {
-        console.error("The saved voyage could not be restored.", error);
-        if (live) onRestoreFailed();
-      }
-    );
-    return () => {
-      live = false;
-      window.removeEventListener("pagehide", flush);
-      document.removeEventListener("visibilitychange", flushWhenHidden);
-      current.flush();
-      current.stop();
-    };
-  }, [debugPanel, seats, restore, onRestoreFailed]);
-
-  const saveAndLeave = () => {
-    const result = session.current?.flush() ?? { ok: true };
-    if (!result.ok && !window.confirm("Your voyage could not be saved: browser storage is full or blocked. Leave anyway and lose it?")) return;
-    onLeave();
-  };
-
-  if (!GameClientView) return <MapLoadingScreen />;
+/** The start screen for `screen`, its save summarised while it renders, so the error boundary around it catches a summary that throws. */
+function SavedVoyageStart({ screen, onContinue, onNewGame }: SavedVoyageStartProps) {
   return (
-    <>
-      <GameClientView {...loaderProps} onSaveAndLeave={saveAndLeave} />
-      {saveFailure && (
-        <p role="status" className="font-body pointer-events-none absolute bottom-24 left-1/2 -translate-x-1/2 rounded-lg border border-red-700/50 bg-black/60 px-3 py-1.5 text-xs text-red-200">
-          {saveFailure === "quota" ? "Autosave failed: browser storage is full." : "Autosave is off: browser storage is blocked."}
-        </p>
-      )}
-    </>
+    <HotseatStartScreen
+      summary={screen.save && describeHotseatSave(screen.save, screen.shownAt)}
+      canContinue={screen.continuable}
+      notice={screen.notice}
+      confirmsNewGame={newGameOverwrites(screen)}
+      onContinue={onContinue}
+      onNewGame={onNewGame}
+    />
   );
 }
