@@ -9,7 +9,7 @@
  * appears only where open water runs five or more hexes across.
  */
 import { applyDamage } from "./combat";
-import { wrappedDistance, wrappedEquals, type Hex, type MapWrap } from "./hex";
+import { hexKey, wrappedDistance, wrappedEquals, wrappedNeighbors, type Hex, type MapWrap } from "./hex";
 import type { CaribbeanState, MapCell, ShipState } from "./types";
 
 /** How far from the nearest island or reef a water hex must lie to be deep sea. */
@@ -20,6 +20,30 @@ export function isDeepSea(cells: readonly MapCell[], coord: Hex, wrap: MapWrap):
   const cell = cells.find((c) => wrappedEquals(c.hex, coord, wrap));
   if (!cell || cell.terrain !== "water") return false;
   return !cells.some((c) => c.terrain !== "water" && wrappedDistance(c.hex, coord, wrap) < DEEP_SEA_DISTANCE);
+}
+
+/**
+ * Every deep sea hex of the map, for the board's cue: the same hexes as
+ * `isDeepSea`, found in one pass outwards from every island and reef.
+ */
+export function deepSeaHexes(cells: readonly MapCell[], wrap: MapWrap): Hex[] {
+  const byKey = new Map(cells.map((c) => [hexKey(c.hex), c]));
+  const distance = new Map<string, number>();
+  let frontier = cells.filter((c) => c.terrain !== "water").map((c) => c.hex);
+  for (const h of frontier) distance.set(hexKey(h), 0);
+  for (let d = 1; d < DEEP_SEA_DISTANCE && frontier.length > 0; d++) {
+    const next: Hex[] = [];
+    for (const h of frontier) {
+      for (const n of wrappedNeighbors(h, wrap)) {
+        const key = hexKey(n);
+        if (distance.has(key) || !byKey.has(key)) continue;
+        distance.set(key, d);
+        next.push(n);
+      }
+    }
+    frontier = next;
+  }
+  return cells.filter((c) => c.terrain === "water" && !distance.has(hexKey(c.hex))).map((c) => c.hex);
 }
 
 /** What the sea needs to know of the game: the map, its wrap, and whether a fight is on. */

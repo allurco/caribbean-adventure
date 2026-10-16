@@ -3,7 +3,8 @@ import { createWrap, hexRect, offsetToHex, type MapWrap } from "./hex";
 import type { CaribbeanState, MapCell, ShipClass, ShipState } from "./types";
 import { createShipState } from "./economy";
 import type { Terrain } from "./terrain";
-import { DEEP_SEA_DISTANCE, isDeepSea, seaWillWear } from "./deepSea";
+import { DEEP_SEA_DISTANCE, deepSeaHexes, isDeepSea, seaWillWear } from "./deepSea";
+import { hexKey } from "./hex";
 
 /**
  * A map `columns` wide and `rows` tall whose columns listed in `land` are
@@ -90,5 +91,27 @@ describe("whether the sea will wear a ship as its turn ends (#340)", () => {
 
   it("leaves a ship in a fight alone", () => {
     expect(seaWillWear(sea(true), shipAt(3, "Sloop"))).toBe(false);
+  });
+});
+
+describe("every deep sea hex of a map at once (#340)", () => {
+  const brute = (cells: MapCell[], wrap: MapWrap) =>
+    cells.filter((c) => isDeepSea(cells, c.hex, wrap)).map((c) => hexKey(c.hex)).sort();
+  const fast = (cells: MapCell[], wrap: MapWrap) => deepSeaHexes(cells, wrap).map(hexKey).sort();
+
+  it("are the hexes isDeepSea calls deep, on a plain map", () => {
+    // Islands scattered over a 12 by 10 map: a fixed pattern, no randomness
+    const cells = hexRect(12, 10).map((h): MapCell => {
+      const land = (h.q * 7 + h.r * 3) % 17 === 0;
+      return { hex: h, terrain: land ? "island" : "water", hasPort: false, elevation: land ? 1 : 0 };
+    });
+    expect(fast(cells, null)).toEqual(brute(cells, null));
+    expect(fast(cells, null).length).toBeGreaterThan(0);
+  });
+
+  it("are the hexes isDeepSea calls deep, round the seam", () => {
+    const wrap = createWrap(10);
+    const cells = strip(10, [1]);
+    expect(fast(cells, wrap)).toEqual(brute(cells, wrap));
   });
 });
