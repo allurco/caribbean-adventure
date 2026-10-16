@@ -23,8 +23,17 @@ describe("combatActor: the seat that presses a fight's step", () => {
     }
   });
 
-  it("the attacker rolls the draw", () => {
+  it("from round 2 each captain rolls its own die of the draw (#347): the attacker first, then the defender", () => {
     expect(combatActor(fight("seamanship", null))).toBe("0");
+    expect(combatActor(fight("defenderSeamanship", null))).toBe("1");
+    expect(combatActor(fight("defenderSeamanship", null, { attackerId: "2", defenderId: "0" }))).toBe("0");
+  });
+
+  it("against an NPC the attacker rolls the draw, the NPC's die with its own (#347)", () => {
+    expect(combatActor(fight("seamanship", null, { defenderId: "npc-1", isNPCCombat: true }))).toBe("0");
+    // A fight never waits on an NPC's die; were one to, the attacker would press it
+    expect(combatActor(fight("defenderSeamanship", null, { defenderId: "npc-1", isNPCCombat: true }))).toBe("0");
+    expect(combatActor(fight("defenderSeamanship", null, { defenderId: null, isNPCCombat: true }))).toBe("0");
   });
 
   it("the draw's winner chooses, and presses its own flight and an exchange of fire", () => {

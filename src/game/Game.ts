@@ -21,6 +21,7 @@ import {
   atCombatStage,
   canChooseCombatAction,
   applyRollSeamanship,
+  applyRollDefenderSeamanship,
   applyCombatAction,
   applyFleeAttempt,
   applyCannons,
@@ -590,6 +591,11 @@ export const Caribbean: Game<CaribbeanState> = {
         rollSeamanship: ({ G, random }) => {
           if (!atCombatStage(G, "seamanship")) return INVALID_MOVE;
           applyRollSeamanship(G, () => random.D6());
+        },
+
+        rollDefenderSeamanship: ({ G, random }) => {
+          if (!atCombatStage(G, "defenderSeamanship")) return INVALID_MOVE;
+          applyRollDefenderSeamanship(G, () => random.D6());
         },
 
         chooseCombatAction: ({ G, ctx, events }, action: CombatAction) => {

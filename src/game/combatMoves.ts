@@ -87,52 +87,55 @@ export function canChooseCombatAction(G: CaribbeanState, action: unknown): actio
   return true;
 }
 
+/** A ship in the fight's manoeuvrability, as the draw and the flight add it to a die. */
+function maneuverabilityOf(ship: ShipState | NPCShip): number {
+  return ship.stats?.maneuverability ?? 0;
+}
+
 /**
- * The draw: one die each, plus each ship's manoeuvrability. An NPC that
- * wins it picks its own action (flee or fire); otherwise the winner chooses.
+ * The draw from round 2 (#347), the attacker's die: d6 from the game's
+ * shared dice, recorded as it is rolled. The defender rolls its own next
+ * (`applyRollDefenderSeamanship`), but an NPC's die is rolled at once, with
+ * the attacker's, so a fight against an NPC never waits on it.
  */
 export function applyRollSeamanship(G: CaribbeanState, d6: RollD6): void {
   const combat = fightOf(G);
+  combat.seamanshipRolls[combat.attackerId] = d6();
+  if (combat.isNPCCombat) {
+    applyRollDefenderSeamanship(G, d6);
+    return;
+  }
+  combat.stage = "defenderSeamanship";
+}
 
+/**
+ * The draw's second die, the defender's (#347), and the draw decided: each
+ * die plus its ship's manoeuvrability, a tie to the defender. An NPC that
+ * wins it picks its own action (flee or fire); otherwise the winner chooses.
+ */
+export function applyRollDefenderSeamanship(G: CaribbeanState, d6: RollD6): void {
+  const combat = fightOf(G);
   const attacker = G.ships[combat.attackerId];
-  const isNPC = combat.isNPCCombat;
-  const defender = isNPC
-    ? G.npcs[combat.defenderId]
-    : G.ships[combat.defenderId];
-
-  const attackerRoll = d6();
+  const defender = combatantOf(G, combat, combat.defenderId);
   const defenderRoll = d6();
-
-  combat.seamanshipRolls[combat.attackerId] = attackerRoll;
   combat.seamanshipRolls[combat.defenderId] = defenderRoll;
 
-  const attackerManeuv = attacker.stats?.maneuverability ?? 0;
-  const defenderManeuv = defender.stats?.maneuverability ?? 0;
-
   const winner = resolveSeamanship(
-    attackerManeuv,
-    attackerRoll,
-    defenderManeuv,
-    defenderRoll
+    maneuverabilityOf(attacker),
+    combat.seamanshipRolls[combat.attackerId],
+    maneuverabilityOf(defender),
+    defenderRoll,
   );
-
-  combat.seamanshipWinner =
-    winner === "attacker" ? combat.attackerId : combat.defenderId;
+  combat.seamanshipWinner = winner === "attacker" ? combat.attackerId : combat.defenderId;
 
   // If NPC won seamanship in NPC combat, auto-choose their action
-  if (isNPC && combat.seamanshipWinner === combat.defenderId) {
+  if (combat.isNPCCombat && combat.seamanshipWinner === combat.defenderId) {
     const npc = G.npcs[combat.defenderId];
-    const npcHull = npc.stats.hull.current;
-    // Use effective cannons (limited by current crew)
-    const npcCannons = getEffectiveCannons(npc);
-    const enemyCannons = getEffectiveCannons(attacker);
-
-    // NPC decides to flee if hull < 2 OR outgunned
-    if (shouldNPCFlee(npcHull, npcCannons, enemyCannons)) {
+    // NPC decides to flee if hull < 2 OR outgunned (cannons limited by current crew)
+    if (shouldNPCFlee(npc.stats.hull.current, getEffectiveCannons(npc), getEffectiveCannons(attacker))) {
       combat.actionChosen = "flee";
       combat.stage = "fleeAttempt";
     } else {
-      // NPC chooses to fire
       combat.actionChosen = "fire";
       combat.stage = "cannons";
     }

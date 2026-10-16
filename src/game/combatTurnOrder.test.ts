@@ -112,6 +112,7 @@ const current = (client: TestClient) => stateOf(client).ctx.currentPlayer;
 function boardOnce(client: TestClient): void {
   fireTheAmbush(client);
   client.moves.rollSeamanship();
+  client.moves.rollDefenderSeamanship();
   client.moves.chooseCombatAction("board");
   expect(stateOf(client).G.combat).toBeUndefined();
   expect(stateOf(client).ctx.phase).toBe("main");

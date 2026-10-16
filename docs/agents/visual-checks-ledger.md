@@ -210,6 +210,16 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-16: both captains roll the draw, ties to the defender (#347, PR #360)
+
+- **Branch and commit:** `feat/347-both-roll` at `7ee6a68`.
+- **Renderer:** a real GPU (ANGLE Metal) in the Playwright MCP browser, 1280×800.
+- **View:** `?players=2&size=small&seed=1`, `?size=small&seed=1` and `?seats=1&players=2&size=small&seed=1` (each with `skipLogin=1`), the camera where the fight puts it.
+- **How the fights were staged:** the boardgame.io client found by walking the React fiber tree from `#root` to a component whose `stateNode.client` has a `store`. Captains drafted with `client.moves.pickCaptain(0, "Sloop")` (only the Sloop and the Flute are starter classes). Then `G` deep-copied and edited: in hotseat and solo dispatched to `client.store` as `{ type: "UPDATE", state: { ...state, G }, deltalog: [] }`; in `?seats=1` written into the local master (`client.transport.master.storageAPI.setState(matchID, ...)`) then `client.transport.requestSync()`. Ship 1, or a staged Spanish Flute merchant (`role: "MERCHANT"`, hull 20, 4 guns), put on a water hex beside ship 0, hulls set to 20 so no one sinks. The fight opened with `attackShip` / `attackNPC`, then played with the panel's buttons. In `?seats=1` each switch of seat remounts the board behind the loading screen; wait for `client.playerID` to change and the progress bar to go.
+- **Ties staged:** re-staging the same step after a roll gave the same dice again in the local game (the restored state replays the PRNG), so a tie was made by setting the other side's die (hotseat: attacker's roll 4 against the defender's 4, both Sloops) or its manoeuvrability (solo: the NPC's set to 3, 4+4 against 5+3). Both went to the defender; the NPC then chose to fire by itself.
+- **Findings:** round 1 is the ambush everywhere (Fire Cannons!, no draw). From round 2 the panel reads "Player 1 rolls first, then Player 2. Ties go to the defender."; after the attacker's roll, "Player 1 rolled 1 + 4 manoeuvrability = 5. Player 2, roll for seamanship: a total of 5 or more wins, as ties go to the defender." In `?seats=1` the waiting line reads "Waiting for <attacker captain> to roll for seamanship", then "Waiting for <defender captain> to roll for seamanship", with the other seat's Roll Seamanship greyed out; a roll sent from the wrong seat at either step is an invalid move. The winner's seat gets Fire!/Board/Flee, the other "Waiting for <winner> to choose", buttons greyed. Against an NPC one press rolls both dice (the stage went straight from `seamanship` to `chooseAction` or `cannons`, never `defenderSeamanship`) and the panel says ties go to the defender. Console: only the invalid moves sent on purpose.
+- **For the maintainer:** the panel's draw lines name seats ("Player 1") while the waiting lines name captains; "manoeuvrability" in the line against "Maneuverability:" in the stat boxes. In hotseat `ctx.currentPlayer` stays the attacker during the defender's roll, so the captain card still shows P1 there. When the NPC wins the draw the panel goes straight to "Roll cannons" without showing the dice.
+
 ### 2026-10-16: the round-1 ambush and per-volley damage (#346, PR #355)
 
 - **Branch and commit:** `main` at `c277fa5` (PR #355 merged).

@@ -26,8 +26,12 @@ export type MatchState = State<CaribbeanState>;
  * - 5: the open sea wears coasters as their turn ends, the last time kept in
  *   `G.seaWear`, by seat (#340). A version 4 save lacks it, which means the sea has
  *   worn no ship yet, so it migrates as it is.
+ * - 6: from round 2 each captain rolls its own die of the draw (#347): a new
+ *   combat stage, `defenderSeamanship`, waits on the defender's. A version 5
+ *   save migrates as it is, mid-fight too: its `seamanship` stage waits on
+ *   the attacker's roll, as version 6's does.
  */
-export const HOTSEAT_SAVE_VERSION = 5;
+export const HOTSEAT_SAVE_VERSION = 6;
 
 /** G without the map, which is generated again from its size and seed. */
 export type SavedG = Omit<CaribbeanState, "cells" | "regions">;

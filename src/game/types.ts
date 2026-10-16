@@ -40,7 +40,7 @@ export const DAMAGE_CATEGORIES = ["hull", "crew", "masts"] as const;
 
 export const COMBAT_ACTIONS = ["fire", "board", "flee"] as const;
 
-export const COMBAT_STAGES = ["seamanship", "chooseAction", "fleeAttempt", "cannons", "resolution"] as const;
+export const COMBAT_STAGES = ["seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt", "cannons", "resolution"] as const;
 
 export interface ShipStats {
   maneuverability: number;

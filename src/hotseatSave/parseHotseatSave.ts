@@ -39,13 +39,17 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
  * of the counters' (`loot-1`). Version 3 fights by the rules from before the
  * ambush (#346): a save with no fight on is the same as version 4's, but one
  * made mid-fight stays at version 3, and is set aside. Version 4 lacks
- * `G.seaWear` (#340), which means the sea has worn no ship yet.
+ * `G.seaWear` (#340), which means the sea has worn no ship yet. Version 5
+ * rolled both dice of the draw at once; version 6 waits on each captain's
+ * (#347), but a version 5 fight at the draw waits on the attacker's die
+ * either way, so every version 5 save is version 6's.
  */
 function migrate(value: Record<string, unknown>): Record<string, unknown> {
   let current = value;
   if (current.version === 2) current = { ...current, version: 3 };
   if (current.version === 3 && !midFight(current)) current = { ...current, version: 4 };
   if (current.version === 4) current = { ...current, version: 5 };
+  if (current.version === 5) current = { ...current, version: 6 };
   return current;
 }
 

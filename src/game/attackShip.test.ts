@@ -242,9 +242,10 @@ describe("combat phase - seamanship", () => {
     return client;
   }
 
-  it("rollSeamanship records rolls", () => {
+  it("each captain's roll records its own die (#347)", () => {
     const client = setupInCombat();
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     const { G } = client.getState()!;
     expect(G.combat!.seamanshipRolls["0"]).toBeGreaterThanOrEqual(1);
     expect(G.combat!.seamanshipRolls["0"]).toBeLessThanOrEqual(6);
@@ -252,9 +253,10 @@ describe("combat phase - seamanship", () => {
     expect(G.combat!.seamanshipRolls["1"]).toBeLessThanOrEqual(6);
   });
 
-  it("rollSeamanship determines winner", () => {
+  it("the defender's roll decides the winner", () => {
     const client = setupInCombat();
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     const { G } = client.getState()!;
     expect(["0", "1"]).toContain(G.combat!.seamanshipWinner);
   });
@@ -262,6 +264,7 @@ describe("combat phase - seamanship", () => {
   it("transitions to chooseAction after seamanship", () => {
     const client = setupInCombat();
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     const { G } = client.getState()!;
     expect(G.combat!.stage).toBe("chooseAction");
   });
@@ -276,6 +279,7 @@ describe("combat phase - chooseAction", () => {
     client.moves.attackShip("1");
     pastTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     return client;
   }
 
@@ -353,6 +357,7 @@ describe("combat phase - chooseAction", () => {
     client.moves.attackShip("1");
     pastTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
 
     const { G: beforeG } = client.getState()!;
     const winner = beforeG.combat!.seamanshipWinner;
@@ -392,6 +397,7 @@ describe("combat phase - cannons", () => {
     client.moves.attackShip("1");
     pastTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
 
     const { G: beforeG } = client.getState()!;
     const winner = beforeG.combat!.seamanshipWinner;
@@ -426,6 +432,7 @@ describe("combat phase - cannons", () => {
     client.moves.attackShip("1");
     pastTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
 
     const { G: beforeG } = client.getState()!;
     const winner = beforeG.combat!.seamanshipWinner;
@@ -456,6 +463,7 @@ describe("combat phase - resolution", () => {
     client.moves.attackShip("1");
     pastTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
 
     const { G: beforeG } = client.getState()!;
     const winner = beforeG.combat!.seamanshipWinner;
@@ -564,6 +572,7 @@ describe("combat phase - resolution", () => {
     client.moves.attackShip("1");
     pastTheAmbush(client);
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
 
     const { G: beforeG } = client.getState()!;
     const winner = beforeG.combat!.seamanshipWinner;

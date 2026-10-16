@@ -1,5 +1,6 @@
 import type { CombatState, ShipState, CombatAction, NPCShip } from "../game/types";
 import { npcKind } from "./npcName";
+import { defenderRollLine, drawIntro } from "./seamanshipText";
 import { HUD_EDGE } from "./hudLayout";
 import { safeInset } from "./safeArea";
 
@@ -8,6 +9,8 @@ interface CombatPanelProps {
   ships: Record<string, ShipState>;
   npcs: Record<string, NPCShip>;
   onRollSeamanship: () => void;
+  /** The defender's die of the draw (#347), rolled after the attacker's. */
+  onRollDefenderSeamanship: () => void;
   onChooseAction: (action: CombatAction) => void;
   onRollFleeAttempt: () => void;
   onRollCannons: () => void;
@@ -98,6 +101,7 @@ export function CombatPanel({
   ships,
   npcs,
   onRollSeamanship,
+  onRollDefenderSeamanship,
   onChooseAction,
   onRollFleeAttempt,
   onRollCannons,
@@ -149,11 +153,25 @@ export function CombatPanel({
       {combat.stage === "seamanship" && (
         <div className="text-center space-y-2">
           <div className="text-amber-100/80 text-xs mb-2">
-            Roll for seamanship to determine who acts first
+            {drawIntro({ ships }, combat)}
           </div>
           <ActionButton
             label="Roll Seamanship"
             onClick={onRollSeamanship}
+            disabled={!mayAct}
+            primary
+          />
+        </div>
+      )}
+
+      {combat.stage === "defenderSeamanship" && (
+        <div className="text-center space-y-2">
+          <div className="text-amber-100/80 text-xs mb-2">
+            {defenderRollLine({ ships }, combat)}
+          </div>
+          <ActionButton
+            label="Roll Seamanship"
+            onClick={onRollDefenderSeamanship}
             disabled={!mayAct}
             primary
           />

@@ -145,7 +145,9 @@ function combatEvents(before: CombatState | undefined, after: CombatState | unde
   const events: SoundEvent[] = [];
   const nextStage = after?.stage;
 
-  if (before.stage === "seamanship" && after && nextStage !== "seamanship") {
+  // Each captain's die of the draw is its own roll (#347): the attacker's, then the defender's.
+  const rolling = before.stage === "seamanship" || before.stage === "defenderSeamanship";
+  if (rolling && after && nextStage !== before.stage) {
     events.push({ type: "seamanshipRolled" });
   }
   if (before.stage === "cannons" && nextStage === "resolution" && after) {

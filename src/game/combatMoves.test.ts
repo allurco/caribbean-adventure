@@ -6,7 +6,7 @@ import type { MapCell } from "./mapGenerator";
 import type { Captain, CaribbeanState, CombatStage, Mission, NPCRole, NPCShip, ShipState } from "./types";
 import { COMBAT_STAGES } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
-import { applyCannons, applyCombatResolution, canChooseCombatAction, openFight } from "./combatMoves";
+import { applyCannons, applyCombatResolution, applyRollDefenderSeamanship, applyRollSeamanship, canChooseCombatAction, openFight } from "./combatMoves";
 import { createShipState } from "./economy";
 import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
 
@@ -243,6 +243,7 @@ describe("the missions a fight settles (#345)", () => {
 /** Each step's move, by the stage it presses. */
 const STEP_MOVES = {
   seamanship: (c: TestClient) => c.moves.rollSeamanship(),
+  defenderSeamanship: (c: TestClient) => c.moves.rollDefenderSeamanship(),
   chooseAction: (c: TestClient) => c.moves.chooseCombatAction("fire"),
   fleeAttempt: (c: TestClient) => c.moves.rollFleeAttempt(),
   cannons: (c: TestClient) => c.moves.rollCannons(),
@@ -253,7 +254,7 @@ const STEP_MOVES = {
 function fightAt(stage: CombatStage): TestClient {
   const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }), "1": ship(1, 0) });
   client.moves.attackShip("1");
-  const path: CombatStage[] = ["cannons", "resolution", "seamanship", "chooseAction", "fleeAttempt"];
+  const path: CombatStage[] = ["cannons", "resolution", "seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt"];
   for (const step of path) {
     if (step === stage) break;
     if (step === "chooseAction") client.moves.chooseCombatAction("flee");
@@ -349,6 +350,7 @@ describe("round 1 is the ambush (#346)", () => {
     expect(G(client).combat).toMatchObject({ round: 2, stage: "seamanship", volleys: [] });
 
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     client.moves.chooseCombatAction("flee");
     expect(G(client).combat).toMatchObject({ stage: "fleeAttempt" });
   });
@@ -384,6 +386,7 @@ describe("from round 2, damage lands per volley (#346)", () => {
     expect(G(client).combat).toMatchObject({ round: 2, stage: "seamanship" });
 
     client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
     expect(G(client).combat!.seamanshipWinner).toBe("1");
     client.moves.chooseCombatAction("fire");
     client.moves.rollCannons();
@@ -396,6 +399,54 @@ describe("from round 2, damage lands per volley (#346)", () => {
     expect(G(client).combat!).toMatchObject({ defenderHits: first.hits, attackerHits: answer.hits });
   });
 
+});
+
+describe("from round 2, both captains roll (#347)", () => {
+  it("the attacker rolls first, and the fight waits on the defender's roll before anyone has won", () => {
+    const client = startGame({ "0": ship(0, 0, { maneuverability: 2 }), "1": ship(1, 0, { maneuverability: 3 }) });
+    client.moves.attackShip("1");
+    pastTheAmbush(client);
+
+    client.moves.rollSeamanship();
+    const waiting = G(client).combat!;
+    expect(waiting).toMatchObject({ round: 2, stage: "defenderSeamanship", seamanshipWinner: null });
+    expect(Object.keys(waiting.seamanshipRolls)).toEqual(["0"]);
+    expect(waiting.seamanshipRolls["0"]).toBeGreaterThanOrEqual(1);
+    expect(waiting.seamanshipRolls["0"]).toBeLessThanOrEqual(6);
+
+    client.moves.rollDefenderSeamanship();
+    const drawn = G(client).combat!;
+    expect(drawn.stage).toBe("chooseAction");
+    expect(drawn.seamanshipRolls["0"]).toBe(waiting.seamanshipRolls["0"]);
+    expect(drawn.seamanshipRolls["1"]).toBeGreaterThanOrEqual(1);
+    expect(drawn.seamanshipRolls["1"]).toBeLessThanOrEqual(6);
+    const attackerAhead = 2 + drawn.seamanshipRolls["0"] > 3 + drawn.seamanshipRolls["1"];
+    expect(drawn.seamanshipWinner).toBe(attackerAhead ? "0" : "1");
+  });
+
+  it("a tie goes to the defender", () => {
+    const G0 = {
+      ships: { "0": ship(0, 0, { maneuverability: 2 }), "1": ship(1, 0, { maneuverability: 2 }) },
+      npcs: {},
+      floatingLoot: [],
+      combat: { ...openFight("0", "1", 1, false), round: 2, stage: "seamanship", actionChosen: null },
+    } as unknown as CaribbeanState;
+    applyRollSeamanship(G0, () => 4);
+    expect(G0.combat).toMatchObject({ stage: "defenderSeamanship", seamanshipWinner: null });
+    applyRollDefenderSeamanship(G0, () => 4);
+    expect(G0.combat).toMatchObject({ stage: "chooseAction", seamanshipWinner: "1", seamanshipRolls: { "0": 4, "1": 4 } });
+  });
+
+  it("against an NPC, one press rolls both dice", () => {
+    const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }) }, { foe: npc("FLOTILLA") });
+    client.moves.attackNPC("foe");
+    pastTheAmbush(client);
+
+    client.moves.rollSeamanship();
+    const combat = G(client).combat!;
+    expect(combat).toMatchObject({ stage: "chooseAction", seamanshipWinner: "0" });
+    expect(Object.keys(combat.seamanshipRolls).sort()).toEqual(["0", "foe"]);
+  });
 });
 
 describe("a fight from before #346, mid-round when the change deploys", () => {

@@ -524,6 +524,15 @@ describe("a fight between two seats (#113 review)", () => {
     res = await act(matchId, tokenOf(attacker), move(state._stateID, "rollSeamanship"));
     expect(res.status).toBe(200);
     state = ((await res.json()) as MatchBody).state;
+    // Each captain rolls its own die (#347): the defender's is next, and only the defender may roll it.
+    expect(state.G.combat?.stage).toBe("defenderSeamanship");
+    clock += 1000;
+    expect((await act(matchId, tokenOf(attacker), move(state._stateID, "rollDefenderSeamanship"))).status).toBe(403);
+    clock += 1000;
+    res = await act(matchId, tokenOf(defender), move(state._stateID, "rollDefenderSeamanship"));
+    expect(res.status).toBe(200);
+    state = ((await res.json()) as MatchBody).state;
+    expect(Object.keys(state.G.combat?.seamanshipRolls ?? {}).sort()).toEqual([attacker, defender].sort());
     // Let the draw fall to the side under test.
     const combat = ((await store.peekMatch(matchId))!.state as View).G.combat!;
     combat.seamanshipWinner = winner === "0" ? attacker : defender;
