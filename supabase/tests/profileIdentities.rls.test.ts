@@ -144,7 +144,8 @@ describe.skipIf(!dbTestsEnabled)("profile_identities (local Supabase)", () => {
     linkIdentity(anne.id, "discord", discord, { full_name: "Anne Bonny", avatar_url: discordAvatar(discord) });
     const { data } = await anon.from("profiles").select("*").eq("id", anne.id).single();
     const row = data as Record<string, unknown>;
-    expect(Object.keys(row).sort()).toEqual(["avatar_url", "created_at", "display_name", "id", "updated_at"]);
+    // No column names a provider ID; other public columns (such as #108's deleted_at) may come and go.
+    expect(Object.keys(row).filter((column) => /provider|identit|discord|google/i.test(column))).toEqual([]);
     // The avatar is public, and Discord's avatar URL carries the user ID (docs/deploy.md, the migration's comment).
     expect(row.avatar_url).toBe(discordAvatar(discord));
     const elsewhere = Object.entries(row).filter(([column]) => column !== "avatar_url");

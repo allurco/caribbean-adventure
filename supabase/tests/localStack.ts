@@ -69,6 +69,19 @@ export function testPlayers(stack: () => LocalStack, admin: () => SupabaseClient
   };
 }
 
+/** `supabase status` takes seconds, so its DB URL is read once per test process. */
+let statusDbUrl: string | undefined;
+
+/** The local stack's database URL: SUPABASE_TEST_DB_URL when set, else `supabase status`'s. */
+function ownerDbUrl(): string {
+  const override = process.env.SUPABASE_TEST_DB_URL;
+  if (override) return override;
+  statusDbUrl ??= (JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], { encoding: "utf8" })) as { DB_URL?: string })
+    .DB_URL;
+  if (!statusDbUrl) throw new Error("`supabase status` gave no DB URL: is `npx supabase start` running?");
+  return statusDbUrl;
+}
+
 /**
  * Runs SQL as the database owner against the local stack, for what no API
  * can do: the Discord and Google identities of #106 come only from a real
@@ -76,9 +89,6 @@ export function testPlayers(stack: () => LocalStack, admin: () => SupabaseClient
  * Needs `psql`; the URL comes from SUPABASE_TEST_DB_URL, else `supabase status`.
  */
 export function ownerSql(query: string): string {
-  const url =
-    process.env.SUPABASE_TEST_DB_URL ??
-    (JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], { encoding: "utf8" })) as { DB_URL?: string }).DB_URL;
-  if (!url) throw new Error("`supabase status` gave no DB URL: is `npx supabase start` running?");
+  const url = ownerDbUrl();
   return execFileSync("psql", [url, "-v", "ON_ERROR_STOP=1", "-At", "-c", query], { encoding: "utf8" }).trim();
 }
