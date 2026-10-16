@@ -43,6 +43,7 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 - `mapRequest.ts` — `resolveMapRequest` (picks the map size and seed: pinned, else random) and `generateMapFor` (runs the generator for that request). Shared by `setup()` and the map worker.
 - `moves.ts` — Movement helpers (`validMoveTargets`, `findAccessiblePort`).
 - `combat.ts` — Ship-vs-ship combat resolution (seamanship, cannons, boarding, flee, damage/loot).
+- `combatMoves.ts` — The combat phase's moves as pure helpers over `G` (#345): `atCombatStage` / `canChooseCombatAction` gate each step, and `applyRollSeamanship`, `applyCombatAction`, `applyFleeAttempt`, `applyCannons` and `applyCombatResolution` play it, taking the dice (`d6`) and the turn as arguments and answering `"ended"` when the fight is over (the phase then returns to main). Who may press each step stays `combatActor.ts`'s rule, applied by `seatedCombat.ts`.
 - `economy.ts` — Buy/sell goods, upgrades, repair, buying ships, jury-rig.
 - `captains.ts` — Captain deck, drafting, home ports.
 - `npcManager.ts` / `npcAI` — NPC merchants/flotillas: spawning and movement.

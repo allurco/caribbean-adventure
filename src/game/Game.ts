@@ -13,25 +13,19 @@ import type {
   DamageCategory,
   CombatAction,
 } from "./types";
-import { COMBAT_ACTIONS, SHIP_CLASSES } from "./types";
+import { SHIP_CLASSES } from "./types";
 import { playerViewFor } from "./playerView";
 import { MAX_SEATS, MIN_SEATS, isValidSeatCount } from "./seats";
+import { canAttack, canAttackNPC } from "./combat";
 import {
-  canAttack,
-  canAttackNPC,
-  canReturnFire,
-  resolveSeamanship,
-  resolveFleeAttempt,
-  shouldNPCFlee,
-  countCannonHits,
-  calculateDamage,
-  applyDamage,
-  isSunk,
-  isDerelict,
-  createLootFromShip,
-  createLootFromNPC,
-  getEffectiveCannons,
-} from "./combat";
+  atCombatStage,
+  canChooseCombatAction,
+  applyRollSeamanship,
+  applyCombatAction,
+  applyFleeAttempt,
+  applyCannons,
+  applyCombatResolution,
+} from "./combatMoves";
 import { movesLeft, spendMove, turnRunsOut } from "./turnMoves";
 import {
   createShipState,
@@ -47,24 +41,22 @@ import {
   applyJuryRig,
 } from "./economy";
 import { createCaptainDeck, dealHands, isCaptainPick, takeCommand } from "./captains";
-import { isOneOf, isOwnKey, isWhole } from "./moveArgs";
+import { isOwnKey, isWhole } from "./moveArgs";
 import { draftOver, nextToPick } from "./draftOrder";
-import { dealReplacementHand, isEliminated, loseShip, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
+import { dealReplacementHand, isEliminated, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
 import { spawnFlotillaForPlayer } from "./npcManager";
 import { npcTurnEndStep } from "./npcTurnStep";
-import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./reputation";
-import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
+import { applyMerchantAction, shouldSpawnFlotilla } from "./reputation";
+import { canStashGold, applyStashGold, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
 import { findAccessiblePort } from "./moves";
-import { nextLootId, nextMissionId } from "./ids";
+import { nextMissionId } from "./ids";
 import {
   generateMission,
   canAffordTavern,
   getTavernCost,
   checkDeliveryMission,
   checkEscortMission,
-  checkAssassinationMission,
-  failEscortMission,
   completeMission,
 } from "./missions";
 
@@ -617,358 +609,28 @@ export const Caribbean: Game<CaribbeanState> = {
       },
       moves: {
         rollSeamanship: ({ G, random }) => {
-          if (!G.combat || G.combat.stage !== "seamanship") return INVALID_MOVE;
-
-          const attacker = G.ships[G.combat.attackerId];
-          const isNPC = G.combat.isNPCCombat;
-          const defender = isNPC
-            ? G.npcs[G.combat.defenderId]
-            : G.ships[G.combat.defenderId];
-
-          const attackerRoll = random.D6();
-          const defenderRoll = random.D6();
-
-          G.combat.seamanshipRolls[G.combat.attackerId] = attackerRoll;
-          G.combat.seamanshipRolls[G.combat.defenderId] = defenderRoll;
-
-          const attackerManeuv = attacker.stats?.maneuverability ?? 0;
-          const defenderManeuv = defender.stats?.maneuverability ?? 0;
-
-          const winner = resolveSeamanship(
-            attackerManeuv,
-            attackerRoll,
-            defenderManeuv,
-            defenderRoll
-          );
-
-          G.combat.seamanshipWinner =
-            winner === "attacker" ? G.combat.attackerId : G.combat.defenderId;
-
-          // If NPC won seamanship in NPC combat, auto-choose their action
-          if (isNPC && G.combat.seamanshipWinner === G.combat.defenderId) {
-            const npc = G.npcs[G.combat.defenderId];
-            const npcHull = npc.stats.hull.current;
-            // Use effective cannons (limited by current crew)
-            const npcCannons = getEffectiveCannons(npc);
-            const enemyCannons = getEffectiveCannons(attacker);
-
-            // NPC decides to flee if hull < 2 OR outgunned
-            if (shouldNPCFlee(npcHull, npcCannons, enemyCannons)) {
-              G.combat.actionChosen = "flee";
-              G.combat.stage = "fleeAttempt";
-            } else {
-              // NPC chooses to fire
-              G.combat.actionChosen = "fire";
-              G.combat.stage = "cannons";
-            }
-          } else {
-            // Player chooses action
-            G.combat.stage = "chooseAction";
-          }
+          if (!atCombatStage(G, "seamanship")) return INVALID_MOVE;
+          applyRollSeamanship(G, () => random.D6());
         },
 
         chooseCombatAction: ({ G, ctx, events }, action: CombatAction) => {
-          if (!G.combat || G.combat.stage !== "chooseAction") return INVALID_MOVE;
-          if (!isOneOf(COMBAT_ACTIONS, action)) return INVALID_MOVE;
-          // In hotseat mode, we trust the UI to show who should choose
-          // In NPC combat, player always chooses (NPC auto-fires if it won)
-
-          if (action === "board" && G.combat.distance > 1) {
-            return INVALID_MOVE;
-          }
-
-          // In NPC combat, boarding captures the NPC's cargo
-          if (action === "board" && G.combat.isNPCCombat) {
-            const attacker = G.ships[G.combat.attackerId];
-            const npc = G.npcs[G.combat.defenderId];
-
-            // Add bounty for boarding a merchant (not flotillas)
-            if (npc.role === "MERCHANT") {
-              applyMerchantAction(G, G.combat.attackerId, "board_merchant", npc.nation, npc.bounty, ctx.turn);
-
-              // Check if flotilla should spawn
-              if (shouldSpawnFlotilla(attacker.bounties, npc.nation)) {
-                spawnFlotillaForPlayer(G, npc.nation, G.combat.attackerId);
-              }
-            }
-
-            // Transfer cargo and gold to player (simplified boarding)
-            for (const [good, amount] of Object.entries(npc.cargo)) {
-              attacker.cargo[good as keyof typeof attacker.cargo] += amount;
-            }
-            attacker.gold += npc.gold;
-            // Remove the NPC
-            delete G.npcs[G.combat.defenderId];
-            G.combat = undefined;
-            events.setPhase("main");
-            return;
-          }
-
-          G.combat.actionChosen = action;
-
-          if (action === "flee") {
-            // Transition to flee attempt stage
-            G.combat.stage = "fleeAttempt";
-            return;
-          }
-
-          if (action === "board") {
-            // Boarding ends combat (simplified - winner captures ship)
-            G.combat = undefined;
-            events.setPhase("main");
-            return;
-          }
-
-          // action === "fire"
-          G.combat.stage = "cannons";
+          if (!canChooseCombatAction(G, action)) return INVALID_MOVE;
+          if (applyCombatAction(G, action, ctx.turn) === "ended") events.setPhase("main");
         },
 
         rollFleeAttempt: ({ G, random, events }) => {
-          if (!G.combat || G.combat.stage !== "fleeAttempt") return INVALID_MOVE;
-
-          const isNPC = G.combat.isNPCCombat;
-
-          // Determine who is fleeing (the seamanship winner chose to flee)
-          const fleeingId = G.combat.seamanshipWinner!;
-          const pursuerId = fleeingId === G.combat.attackerId
-            ? G.combat.defenderId
-            : G.combat.attackerId;
-
-          // Get ships/NPCs
-          const fleeerShip = isNPC && fleeingId === G.combat.defenderId
-            ? G.npcs[fleeingId]
-            : G.ships[fleeingId];
-          const pursuerShip = isNPC && pursuerId === G.combat.defenderId
-            ? G.npcs[pursuerId]
-            : G.ships[pursuerId];
-
-          // Roll seamanship for flee attempt
-          const pursuerRoll = random.D6();
-          const fleeerRoll = random.D6();
-
-          G.combat.fleeRolls = { pursuer: pursuerRoll, fleeer: fleeerRoll };
-
-          const pursuerManeuv = pursuerShip.stats?.maneuverability ?? 0;
-          const fleeerManeuv = fleeerShip.stats?.maneuverability ?? 0;
-
-          const outcome = resolveFleeAttempt(
-            pursuerManeuv,
-            pursuerRoll,
-            fleeerManeuv,
-            fleeerRoll
-          );
-
-          G.combat.fleeOutcome = outcome;
-
-          if (outcome === "escaped") {
-            // Clean escape - combat ends, fleeer could move 1 hex away
-            // (For now, just end combat - movement would require more logic)
-            G.combat = undefined;
-            events.setPhase("main");
-            return;
-          }
-
-          // Caught - pursuer gets a free parting shot (defender can't return fire)
-          // Go to cannons stage, but only pursuer fires
-          G.combat.stage = "cannons";
+          if (!atCombatStage(G, "fleeAttempt")) return INVALID_MOVE;
+          if (applyFleeAttempt(G, () => random.D6()) === "ended") events.setPhase("main");
         },
 
         rollCannons: ({ G, random }) => {
-          if (!G.combat || G.combat.stage !== "cannons") return INVALID_MOVE;
-
-          const isNPC = G.combat.isNPCCombat;
-          const attacker = G.ships[G.combat.attackerId];
-          const defender = isNPC
-            ? G.npcs[G.combat.defenderId]
-            : G.ships[G.combat.defenderId];
-
-          // Check if this is a parting shot from failed flee
-          const isPartingShot = G.combat.fleeOutcome === "caught";
-
-          if (isPartingShot) {
-            // Only the pursuer fires, fleeer cannot return fire
-            const fleeingId = G.combat.seamanshipWinner!;
-            const pursuerId = fleeingId === G.combat.attackerId
-              ? G.combat.defenderId
-              : G.combat.attackerId;
-
-            const pursuerShip = isNPC && pursuerId === G.combat.defenderId
-              ? G.npcs[pursuerId]
-              : G.ships[pursuerId];
-
-            // Use effective cannons (limited by current crew)
-            const pursuerCannons = getEffectiveCannons(pursuerShip);
-            const pursuerRolls: number[] = [];
-            for (let i = 0; i < pursuerCannons; i++) {
-              pursuerRolls.push(random.D6());
-            }
-            const pursuerHits = countCannonHits(pursuerRolls);
-
-            // Assign hits based on who is the pursuer
-            if (pursuerId === G.combat.attackerId) {
-              G.combat.attackerHits = pursuerHits;
-              G.combat.defenderHits = 0; // Fleeer can't return fire
-            } else {
-              G.combat.attackerHits = 0; // Fleeer can't return fire
-              G.combat.defenderHits = pursuerHits;
-            }
-          } else {
-            // Normal combat - both sides fire
-
-            // Attacker fires - use effective cannons (limited by current crew)
-            const attackerCannons = getEffectiveCannons(attacker);
-            const attackerRolls: number[] = [];
-            for (let i = 0; i < attackerCannons; i++) {
-              attackerRolls.push(random.D6());
-            }
-            G.combat.attackerHits = countCannonHits(attackerRolls);
-
-            // Defender fires back if in range
-            if (canReturnFire(defender, G.combat.distance)) {
-              // Use effective cannons (limited by current crew)
-              const defenderCannons = getEffectiveCannons(defender);
-              const defenderRolls: number[] = [];
-              for (let i = 0; i < defenderCannons; i++) {
-                defenderRolls.push(random.D6());
-              }
-              G.combat.defenderHits = countCannonHits(defenderRolls);
-            } else {
-              G.combat.defenderHits = 0;
-            }
-          }
-
-          G.combat.stage = "resolution";
+          if (!atCombatStage(G, "cannons")) return INVALID_MOVE;
+          applyCannons(G, () => random.D6());
         },
 
         applyResolution: ({ G, ctx, events }) => {
-          if (!G.combat || G.combat.stage !== "resolution") return INVALID_MOVE;
-
-          const attacker = G.ships[G.combat.attackerId];
-          const isNPC = G.combat.isNPCCombat;
-          const defender = isNPC
-            ? G.npcs[G.combat.defenderId]
-            : G.ships[G.combat.defenderId];
-
-          // Apply damage to defender from attacker's hits
-          if (G.combat.attackerHits > 0) {
-            const damage = calculateDamage(G.combat.attackerHits, attacker.upgrades);
-            applyDamage(defender, damage);
-          }
-
-          // Apply damage to attacker from defender's hits
-          if (G.combat.defenderHits > 0) {
-            // NPCs don't have upgrades array
-            const defenderUpgrades = isNPC ? [] : (defender as typeof attacker).upgrades;
-            const damage = calculateDamage(G.combat.defenderHits, defenderUpgrades);
-            applyDamage(attacker, damage);
-
-            // Fail escort mission if attacker took damage
-            if (attacker.activeMission) {
-              failEscortMission(attacker.activeMission);
-            }
-          }
-
-          // Check for sunk/derelict
-          let combatEnded = false;
-          // Player ships sunk this exchange: lost once both sides' glory and bounties are settled
-          const sunk: string[] = [];
-
-          // Check if NPC defender is sunk
-          if (isNPC) {
-            const npc = G.npcs[G.combat.defenderId];
-            if (npc.stats.hull.current <= 0) {
-              // Add bounty for sinking a merchant (not flotillas)
-              if (npc.role === "MERCHANT") {
-                applyMerchantAction(G, G.combat.attackerId, "sink_merchant", npc.nation, npc.bounty, ctx.turn);
-
-                // Check if flotilla should spawn
-                if (shouldSpawnFlotilla(attacker.bounties, npc.nation)) {
-                  spawnFlotillaForPlayer(G, npc.nation, G.combat.attackerId);
-                }
-              }
-
-              // Award combat glory for sinking worthy targets (flotillas)
-              awardCombatGlory(attacker, npc);
-
-              // Check assassination mission completion
-              if (attacker.activeMission &&
-                  checkAssassinationMission(attacker.activeMission, G.combat.defenderId, npc)) {
-                attacker.gold += attacker.activeMission.reward.gold;
-                attacker.score += attacker.activeMission.reward.glory;
-                completeMission(attacker.activeMission);
-                attacker.activeMission = undefined;
-              }
-
-              const loot = createLootFromNPC(npc, nextLootId(G));
-              G.floatingLoot.push(loot);
-              delete G.npcs[G.combat.defenderId];
-              combatEnded = true;
-            } else if (npc.stats.crew.current <= 0) {
-              npc.isDerelict = true;
-              combatEnded = true;
-            }
-          } else {
-            const defenderShip = defender as typeof attacker;
-            if (isSunk(defenderShip)) {
-              // Award combat glory to attacker for sinking player ship
-              awardCombatGlory(attacker, defenderShip);
-              // Sinking a pirate pays the attacker their own nation's bounty
-              // on them (#201), before the sunk ship's record goes.
-              applyPirateBounty(G, G.combat.attackerId, G.combat.defenderId, ctx.turn);
-
-              const loot = createLootFromShip(defenderShip, nextLootId(G));
-              G.floatingLoot.push(loot);
-              sunk.push(G.combat.defenderId);
-              combatEnded = true;
-            } else if (isDerelict(defenderShip)) {
-              defenderShip.isDerelict = true;
-              combatEnded = true;
-            }
-          }
-
-          if (isSunk(attacker)) {
-            // Award combat glory to defender for sinking attacker (if player vs player)
-            if (!isNPC) {
-              const defenderShip = defender as typeof attacker;
-              awardCombatGlory(defenderShip, attacker);
-              // The defender collects their nation's bounty on a pirate
-              // attacker (#201); a flotilla that sinks one pays nobody.
-              applyPirateBounty(G, G.combat.defenderId, G.combat.attackerId, ctx.turn);
-            }
-
-            const loot = createLootFromShip(attacker, nextLootId(G));
-            G.floatingLoot.push(loot);
-            sunk.push(G.combat.attackerId);
-            combatEnded = true;
-          } else if (isDerelict(attacker)) {
-            attacker.isDerelict = true;
-            combatEnded = true;
-          }
-
-          // The sunk ships leave G.ships here, and their captains die with them (#265)
-          for (const id of sunk) loseShip(G, id, "sunk");
-
-          // After a failed flee attempt, combat ends after the parting shot
-          if (G.combat.fleeOutcome === "caught") {
-            combatEnded = true;
-          }
-
-          if (combatEnded) {
-            G.combat = undefined;
-            events.setPhase("main");
-            return;
-          }
-
-          // Combat continues - new round
-          G.combat.round++;
-          G.combat.stage = "seamanship";
-          G.combat.fleeOutcome = null;
-          G.combat.fleeRolls = null;
-          G.combat.seamanshipWinner = null;
-          G.combat.seamanshipRolls = {};
-          G.combat.actionChosen = null;
-          G.combat.attackerHits = 0;
-          G.combat.defenderHits = 0;
+          if (!atCombatStage(G, "resolution")) return INVALID_MOVE;
+          if (applyCombatResolution(G, ctx.turn) === "ended") events.setPhase("main");
         },
       },
       next: "main",

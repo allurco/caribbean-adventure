@@ -62,7 +62,7 @@ function npc(role: NPCRole, rig: Rig = {}): NPCShip {
     },
     damage: { hull: 0, crew: 0, masts: 0 },
     nation: "Spain",
-    aiBehavior: role === "MERCHANT" ? "MERCHANT_ROUTE" : "HUNT_PLAYER",
+    aiBehavior: role === "MERCHANT" ? "MERCHANT_ROUTE" : "HUNTER",
     destinationPortHex: hex(-5, 0),
     spawnPortHex: hex(5, 0),
     isIdentified: false,
