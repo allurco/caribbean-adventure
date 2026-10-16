@@ -164,8 +164,9 @@ describe("a saved hotseat game", () => {
     const original = newMatch(1);
     original.moves.pickCaptain(0, STARTER_SHIP_CLASSES[0]);
     const state: MatchState = original.store.getState();
-    const { idCounter: _idCounter, ...olderG } = state.G;
-    void _idCounter;
+    const { missionIdCounter: _missions, lootIdCounter: _loot, ...olderG } = state.G;
+    void _missions;
+    void _loot;
     const oldLoot = { id: "loot-1-1712345678901", hex: state.G.ships["0"].position, cargo: { Wood: 0, Sugar: 0, Rum: 0, Spice: 0 }, gold: 0 };
     const older = { ...state, G: { ...olderG, floatingLoot: [oldLoot] } };
 

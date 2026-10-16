@@ -57,6 +57,19 @@ describe("playerViewFor: missions", () => {
   });
 });
 
+describe("playerViewFor: the mission count (#320)", () => {
+  it("no seat and no spectator sees how many missions the taverns have handed out", () => {
+    const G = { ...table(), missionIdCounter: 4, lootIdCounter: 2 };
+    for (const seat of ["0", "1", null, undefined]) {
+      const view = playerViewFor(G, seat);
+      expect(view).not.toHaveProperty("missionIdCounter");
+      // Floating loot lies on the board for all to see, so its count stays
+      expect(view.lootIdCounter).toBe(2);
+    }
+    expect(G.missionIdCounter).toBe(4);
+  });
+});
+
 describe("playerViewFor: the captain deck", () => {
   it("no seat sees the undealt captains or their order", () => {
     expect(playerViewFor(table(), "0").captainDeck).toEqual([]);

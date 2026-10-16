@@ -95,7 +95,7 @@ describe("generateMission", () => {
   it("generates a delivery mission", () => {
     const G = createTestState();
     // Force delivery mission with low rng
-    const mission = generateMission("Port Royal", G, () => 0.1, "mission-1");
+    const mission = generateMission("Port Royal", G, () => 0.1);
 
     expect(mission).not.toBeNull();
     expect(mission!.type).toBe("DELIVERY");
@@ -111,7 +111,7 @@ describe("generateMission", () => {
     G.npcs["npc-1"] = createTestNPC("npc-1");
 
     // Force assassination mission with mid rng
-    const mission = generateMission("Port Royal", G, () => 0.5, "mission-1");
+    const mission = generateMission("Port Royal", G, () => 0.5);
 
     expect(mission).not.toBeNull();
     expect(mission!.type).toBe("ASSASSINATION");
@@ -123,7 +123,7 @@ describe("generateMission", () => {
   it("generates an escort mission", () => {
     const G = createTestState();
     // Force escort mission with high rng
-    const mission = generateMission("Port Royal", G, () => 0.8, "mission-1");
+    const mission = generateMission("Port Royal", G, () => 0.8);
 
     expect(mission).not.toBeNull();
     expect(mission!.type).toBe("ESCORT");
@@ -138,7 +138,7 @@ describe("generateMission", () => {
     const G = createTestState();
     // No NPCs in state
 
-    const mission = generateMission("Port Royal", G, () => 0.5, "mission-1");
+    const mission = generateMission("Port Royal", G, () => 0.5);
 
     expect(mission).not.toBeNull();
     expect(mission!.type).toBe("ASSASSINATION");
@@ -166,13 +166,13 @@ describe("mission distances on a map that wraps east–west", () => {
   };
 
   it("does not count a port just across the seam as distant", () => {
-    const mission = generateMission("Port Royal", wrappedState(true), rolls(), "mission-1");
+    const mission = generateMission("Port Royal", wrappedState(true), rolls());
     expect(mission?.type).toBe("DELIVERY");
     expect(mission?.targetPortName).toBe("Nassau");
   });
 
   it("counts the same port as distant when the map does not wrap", () => {
-    const mission = generateMission("Port Royal", wrappedState(false), rolls(), "mission-1");
+    const mission = generateMission("Port Royal", wrappedState(false), rolls());
     expect(mission?.targetPortName).toBe("Havana");
   });
 });

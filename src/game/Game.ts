@@ -147,7 +147,8 @@ function createInitialState(
     draftHands: hands,
     floatingLoot: [],
     npcIdCounter: 0,
-    idCounter: 0,
+    missionIdCounter: 0,
+    lootIdCounter: 0,
     pirates: {},
     bountyClaims: [],
     movesUsed: 0,
@@ -503,9 +504,10 @@ export const Caribbean: Game<CaribbeanState> = {
           ship.gold -= getTavernCost();
 
           // Generate and assign a mission
-          const mission = generateMission(port.portName, G, random.Number, nextId(G, "mission"));
+          const mission = generateMission(port.portName, G, random.Number);
+          // Numbered only once there is one, so the count is of missions given
           if (mission) {
-            ship.activeMission = mission;
+            ship.activeMission = { ...mission, id: nextId(G, "mission") };
           }
         },
 

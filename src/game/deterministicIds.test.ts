@@ -86,7 +86,8 @@ function startGame(extra: Partial<CaribbeanState> = {}) {
       floatingLoot: [],
       npcs: { "npc-1": merchant(hex(-3, 1)) },
       npcIdCounter: 1,
-      idCounter: 0,
+      missionIdCounter: 0,
+      lootIdCounter: 0,
       wrap: null,
       pirates: {},
       bountyClaims: [],
@@ -144,6 +145,12 @@ describe("mission and loot ids (#320)", () => {
     expect(JSON.stringify(second)).toBe(JSON.stringify(first));
   });
 
+  it("count missions and loot apart, so a public loot id says nothing of who visited a tavern", () => {
+    const G = play(startGame());
+    expect(G.floatingLoot.map((loot) => loot.id)).toEqual(["loot-1", "loot-2"]);
+    expect(G.ships["0"].activeMission?.id).toBe("mission-1");
+  });
+
   it("never repeat within a match", () => {
     const G = play(startGame());
     const ids = [...G.floatingLoot.map((loot) => loot.id), ...Object.values(G.ships).flatMap((s) => (s.activeMission ? [s.activeMission.id] : []))];
@@ -152,7 +159,8 @@ describe("mission and loot ids (#320)", () => {
 
   it("start after a match stored before the counter existed, and cannot clash with its clock-made ids", () => {
     const client = startGame({
-      idCounter: undefined,
+      missionIdCounter: undefined,
+      lootIdCounter: undefined,
       floatingLoot: [{ id: "loot-1-1712345678901", hex: hex(2, 2), cargo: { Wood: 0, Sugar: 0, Rum: 0, Spice: 0 }, gold: 0 }],
     });
     const G = play(client);

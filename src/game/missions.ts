@@ -32,6 +32,9 @@ const ESCORT_TITLES = [
   "Ghost Ship",
 ];
 
+/** A mission as the tavern offers it, before the game numbers it (`nextId(G, "mission")`, #320). */
+export type UnnamedMission = Omit<Mission, "id">;
+
 function pickRandom<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)];
 }
@@ -57,28 +60,26 @@ function getDistantPorts(
 }
 
 function generateDeliveryMission(
-  id: string,
   currentPortName: string,
   cells: MapCell[],
   wrap: MapWrap,
   rng: () => number
-): Mission | null {
+): UnnamedMission | null {
   const distantPorts = getDistantPorts(currentPortName, cells, MIN_DELIVERY_DISTANCE, wrap);
   if (distantPorts.length === 0) {
     // Fall back to any other port
     const anyOtherPort = getPortCells(cells).filter((p) => p.portName !== currentPortName);
     if (anyOtherPort.length === 0) return null;
     const targetPort = pickRandom(anyOtherPort, rng);
-    return createDeliveryMission(id, targetPort.portName!, rng);
+    return createDeliveryMission(targetPort.portName!, rng);
   }
 
   const targetPort = pickRandom(distantPorts, rng);
-  return createDeliveryMission(id, targetPort.portName!, rng);
+  return createDeliveryMission(targetPort.portName!, rng);
 }
 
-function createDeliveryMission(id: string, targetPortName: string, rng: () => number): Mission {
+function createDeliveryMission(targetPortName: string, rng: () => number): UnnamedMission {
   return {
-    id,
     title: pickRandom(DELIVERY_TITLES, rng),
     description: `Deliver a sealed package to ${targetPortName}. The contents are confidential - do not ask questions.`,
     type: "DELIVERY",
@@ -89,10 +90,9 @@ function createDeliveryMission(id: string, targetPortName: string, rng: () => nu
 }
 
 function generateAssassinationMission(
-  id: string,
   npcs: Record<string, NPCShip>,
   rng: () => number
-): Mission | null {
+): UnnamedMission | null {
   // Find merchant NPCs (not flotillas)
   const merchants = Object.values(npcs).filter(
     (npc) => npc.role === "MERCHANT" && !npc.isDerelict
@@ -101,7 +101,6 @@ function generateAssassinationMission(
   if (merchants.length === 0) {
     // No active merchants - create a generic bounty mission
     return {
-      id,
       title: pickRandom(ASSASSINATION_TITLES, rng),
       description: "Hunt down and sink the next merchant ship you encounter. Any nation's merchant will do.",
       type: "ASSASSINATION",
@@ -113,7 +112,6 @@ function generateAssassinationMission(
 
   const targetNpc = pickRandom(merchants, rng);
   return {
-    id,
     title: pickRandom(ASSASSINATION_TITLES, rng),
     description: `A ${targetNpc.nation} merchant ship has been marked for destruction. Sink it and claim your reward.`,
     type: "ASSASSINATION",
@@ -124,27 +122,25 @@ function generateAssassinationMission(
 }
 
 function generateEscortMission(
-  id: string,
   currentPortName: string,
   cells: MapCell[],
   wrap: MapWrap,
   rng: () => number
-): Mission | null {
+): UnnamedMission | null {
   const distantPorts = getDistantPorts(currentPortName, cells, MIN_DELIVERY_DISTANCE, wrap);
   if (distantPorts.length === 0) {
     const anyOtherPort = getPortCells(cells).filter((p) => p.portName !== currentPortName);
     if (anyOtherPort.length === 0) return null;
     const targetPort = pickRandom(anyOtherPort, rng);
-    return createEscortMission(id, targetPort.portName!, rng);
+    return createEscortMission(targetPort.portName!, rng);
   }
 
   const targetPort = pickRandom(distantPorts, rng);
-  return createEscortMission(id, targetPort.portName!, rng);
+  return createEscortMission(targetPort.portName!, rng);
 }
 
-function createEscortMission(id: string, targetPortName: string, rng: () => number): Mission {
+function createEscortMission(targetPortName: string, rng: () => number): UnnamedMission {
   return {
-    id,
     title: pickRandom(ESCORT_TITLES, rng),
     description: `Travel to ${targetPortName} without taking any damage. A pristine arrival is required.`,
     type: "ESCORT",
@@ -156,15 +152,14 @@ function createEscortMission(id: string, targetPortName: string, rng: () => numb
 }
 
 /**
- * A mission offered at `currentPortName`'s tavern, named `id`
- * (`nextId(G, "mission")`, #320), or null when there is nowhere to send it.
+ * A mission offered at `currentPortName`'s tavern, or null when there is
+ * nowhere to send it. Unnamed: the move numbers it once there is one.
  */
 export function generateMission(
   currentPortName: string,
   G: CaribbeanState,
-  rng: () => number,
-  id: string
-): Mission | null {
+  rng: () => number
+): UnnamedMission | null {
   // Randomly pick mission type with weights
   const roll = rng();
   let missionType: MissionType;
@@ -179,11 +174,11 @@ export function generateMission(
 
   switch (missionType) {
     case "DELIVERY":
-      return generateDeliveryMission(id, currentPortName, G.cells, G.wrap, rng);
+      return generateDeliveryMission(currentPortName, G.cells, G.wrap, rng);
     case "ASSASSINATION":
-      return generateAssassinationMission(id, G.npcs, rng);
+      return generateAssassinationMission(G.npcs, rng);
     case "ESCORT":
-      return generateEscortMission(id, currentPortName, G.cells, G.wrap, rng);
+      return generateEscortMission(currentPortName, G.cells, G.wrap, rng);
     default:
       return null;
   }

@@ -28,8 +28,9 @@ describe("reading a saved game back", () => {
   });
 
   it("reads a version 2 save, from before G counted its mission and loot ids (#320), as this version's", () => {
-    const { idCounter: _idCounter, ...olderG } = save.state.G;
-    void _idCounter;
+    const { missionIdCounter: _missions, lootIdCounter: _loot, ...olderG } = save.state.G;
+    void _missions;
+    void _loot;
     const older = { ...save, version: 2, state: { ...save.state, G: olderG } };
     // The game reads the missing counter as 0 (`nextId`), so the save needs nothing more than its new version
     expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: 3 })) });
