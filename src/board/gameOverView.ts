@@ -1,21 +1,32 @@
 import type { GameOverResult } from "../game/gameOver";
+import { listNames } from "../game/listNames";
 import { seatLabel } from "./seat";
 
 /**
  * What the game-over screen shows (#289): a victory for the captain who won
  * on glory, or, when every seat is out of the game, what happened, naming
- * the player (never their dead captain) and the glory they end with.
+ * the players (never their dead captains) and the glory they end with.
  */
 export type GameOverView =
   | { kind: "victory"; captainName: string; score: number }
   | { kind: "allOut"; title: string; message: string; score: number };
 
-/** The screen for `result` in a game of `seats` seats. A result with no reason (before #289) was a win on glory. */
-export function gameOverView(result: GameOverResult, seats: number): GameOverView {
+/**
+ * The screen for `result` in a game of `seats` seats, on the board of
+ * `viewer`'s seat (its `playerID`; null on the hotseat screen every seat
+ * shares, which names every seat "Player n"). A result with no reason
+ * (before #289) was a win on glory.
+ */
+export function gameOverView(result: GameOverResult, seats: number, viewer: string | null): GameOverView {
   if (result.reason !== "allOut") return { kind: "victory", captainName: result.captainName, score: result.score };
-  const message =
-    seats === 1
-      ? `Your last captain is lost. You end with ${result.score} glory.`
-      : `Every captain is lost. ${seatLabel(result.winner)} ends with the most glory (${result.score}).`;
-  return { kind: "allOut", title: "All Hands Lost", message, score: result.score };
+  return { kind: "allOut", title: "All Hands Lost", message: allOutMessage(result, seats, viewer), score: result.score };
+}
+
+function allOutMessage(result: Extract<GameOverResult, { reason: "allOut" }>, seats: number, viewer: string | null): string {
+  if (seats === 1) return `Your last captain is lost. You end with ${result.score} glory.`;
+  const leaders = result.leaders ?? [result.winner];
+  const you = viewer !== null && leaders.includes(viewer);
+  const names = [...(you ? ["You"] : []), ...leaders.filter((seat) => seat !== viewer).map(seatLabel)];
+  const verb = names.length === 1 && !you ? "ends" : "end";
+  return `Every captain is lost. ${listNames(names)} ${verb} with the most glory (${result.score}).`;
 }

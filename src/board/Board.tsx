@@ -1483,7 +1483,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {/* Game Over Screen */}
       {ctx.gameover && (
         <GameOverScreen
-          view={gameOverView(ctx.gameover, ctx.numPlayers)}
+          view={gameOverView(ctx.gameover, ctx.numPlayers, props.playerID ?? null)}
           onPlayAgain={() => window.location.reload()}
         />
       )}

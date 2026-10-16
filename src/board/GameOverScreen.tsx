@@ -6,7 +6,6 @@ interface GameOverScreenProps {
 }
 
 export function GameOverScreen({ view, onPlayAgain }: GameOverScreenProps) {
-  const { score } = view;
   return (
     <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-gradient-to-br from-stone-900 via-amber-950 to-stone-900
@@ -49,7 +48,7 @@ export function GameOverScreen({ view, onPlayAgain }: GameOverScreenProps) {
             Final Glory
           </div>
           <div className="text-4xl font-bold text-amber-200">
-            {score}
+            {view.score}
           </div>
         </div>
 

@@ -30,12 +30,23 @@ describe("gameOverResult", () => {
 
   it("is the all-out ending when every seat is out, with the most glory and no captain", () => {
     const G: Table = { ships: {}, lostShips: { "0": out(2), "1": out(4) } };
-    expect(gameOverResult(G, ["0", "1"])).toEqual({ reason: "allOut", winner: "1", score: 4 });
+    expect(gameOverResult(G, ["0", "1"])).toEqual({ reason: "allOut", winner: "1", leaders: ["1"], score: 4 });
   });
 
   it("is the all-out ending for a solo seat out of captains", () => {
     const G: Table = { ships: {}, lostShips: { "0": out(3) } };
-    expect(gameOverResult(G, ["0"])).toEqual({ reason: "allOut", winner: "0", score: 3 });
+    expect(gameOverResult(G, ["0"])).toEqual({ reason: "allOut", winner: "0", leaders: ["0"], score: 3 });
+  });
+
+  it("on a tie for the most glory, names every seat tied for it, the first as the winner", () => {
+    const G: Table = { ships: {}, lostShips: { "0": out(4), "1": out(2), "2": out(4) } };
+    expect(gameOverResult(G, ["0", "1", "2"])).toEqual({ reason: "allOut", winner: "0", leaders: ["0", "2"], score: 4 });
+  });
+
+  it("names a seat with no captain by its number on a glory win", () => {
+    const winner = atSea(WIN_SCORE);
+    winner.captain = undefined;
+    expect(gameOverResult({ ships: { "2": winner } }, ["0", "1", "2"])).toMatchObject({ captainName: "Player 3" });
   });
 
   it("is nothing while the game goes on", () => {
