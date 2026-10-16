@@ -5,10 +5,32 @@
  * `error`, `error_code` and `error_description` in the query or the hash on
  * failure, which supabase-js only logs. These read and clean that URL. Pure,
  * no React.
+ *
+ * Anyone can craft such a link, so the page never shows its text: known
+ * codes get our own sentences, anything else one generic sentence.
  */
 
 const ERROR_PARAMS = ["error", "error_code", "error_description"] as const;
-const DESCRIPTION_MAX = 180;
+
+const GENERIC = "Sign-in did not finish. Please try again.";
+
+/**
+ * Our sentence for each `error_code` Supabase Auth sends back
+ * (supabase/auth, internal/api/apierrors/errorcode.go).
+ */
+const MESSAGES_BY_CODE: Readonly<Record<string, string>> = {
+  otp_expired: "That sign-in link has expired or was already used. Ask for a new one.",
+  provider_email_needs_verification:
+    "Your email is not verified with that provider yet. Verify it there (look for a confirmation email), then sign in again.",
+  signup_disabled: "New captains cannot sign up just now. Please try again later.",
+};
+
+/** A sign-in error as the URL carries it: for the console only, never the page. */
+export interface SignInErrorParams {
+  error: string;
+  code: string;
+  description: string;
+}
 
 /**
  * Where a sign-in should bring the player back: the page they are on, on
@@ -17,33 +39,31 @@ const DESCRIPTION_MAX = 180;
  * matches the project's redirect URLs (docs/deploy.md).
  */
 export function signInRedirectUrl(href: string): string {
-  const url = new URL(href);
-  for (const name of ERROR_PARAMS) url.searchParams.delete(name);
+  const url = withoutErrorQuery(href);
   url.hash = "";
   return url.toString();
 }
 
 /** The sentence to show when the URL is a failed or cancelled sign-in's return, else null. */
 export function signInReturnError(href: string): string | null {
-  const params = errorParams(href);
+  const params = signInErrorParams(href);
   if (!params) return null;
-  const { error, code, description } = params;
-  if (code === "otp_expired") return "That sign-in link has expired or was already used. Ask for a new one.";
+  const { error, code } = params;
+  if (Object.hasOwn(MESSAGES_BY_CODE, code)) return MESSAGES_BY_CODE[code];
   if (error === "access_denied" && !code) return "Sign-in was cancelled. Choose a way to sign in to try again.";
-  const detail = oneLine(description);
-  return detail ? `Sign-in did not finish: ${detail}` : "Sign-in did not finish. Please try again.";
+  return GENERIC;
 }
 
 /** The URL without a sign-in error in its query or hash, to replace it with; null when there is none. */
 export function withoutSignInError(href: string): string | null {
-  if (!errorParams(href)) return null;
-  const url = new URL(href);
-  for (const name of ERROR_PARAMS) url.searchParams.delete(name);
+  if (!signInErrorParams(href)) return null;
+  const url = withoutErrorQuery(href);
   if (hasError(new URLSearchParams(url.hash.slice(1)))) url.hash = "";
   return url.toString();
 }
 
-function errorParams(href: string): { error: string; code: string; description: string } | null {
+/** The raw error a sign-in came back with, from the hash or else the query; null when there is none. */
+export function signInErrorParams(href: string): SignInErrorParams | null {
   const url = new URL(href);
   for (const params of [new URLSearchParams(url.hash.slice(1)), url.searchParams]) {
     if (hasError(params)) {
@@ -57,13 +77,12 @@ function errorParams(href: string): { error: string; code: string; description: 
   return null;
 }
 
-function hasError(params: URLSearchParams): boolean {
-  return ERROR_PARAMS.some((name) => params.has(name));
+function withoutErrorQuery(href: string): URL {
+  const url = new URL(href);
+  for (const name of ERROR_PARAMS) url.searchParams.delete(name);
+  return url;
 }
 
-/** Anyone can put a description in a link: it is shown as one short line of plain text. */
-function oneLine(text: string): string {
-  // eslint-disable-next-line no-control-regex
-  const flat = text.replace(/[\s\u0000-\u001f\u007f-\u009f]+/g, " ").trim();
-  return flat.length > DESCRIPTION_MAX ? `${flat.slice(0, DESCRIPTION_MAX - 1)}…` : flat;
+function hasError(params: URLSearchParams): boolean {
+  return ERROR_PARAMS.some((name) => params.has(name));
 }

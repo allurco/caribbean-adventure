@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { signInRedirectUrl, signInReturnError, withoutSignInError } from "./signInReturn";
 
+const GENERIC = "Sign-in did not finish. Please try again.";
+
 describe("signInRedirectUrl", () => {
   it("returns the player to the page they signed in from, on any host", () => {
     expect(signInRedirectUrl("http://localhost:5173/?view=account")).toBe("http://localhost:5173/?view=account");
@@ -44,24 +46,41 @@ describe("signInReturnError", () => {
     expect(message).not.toMatch(/cancelled/i);
   });
 
-  it("passes any other failure on with the backend's description, as plain text", () => {
+  it("says a provider email still to be verified needs verifying, in our own words", () => {
+    // Supabase Auth's code for an unverified Discord or Google email (provider_email_needs_verification).
     const message = signInReturnError(
-      "https://game.example/?error=server_error&error_description=Unverified+email+with+discord.+A+confirmation+email+has+been+sent+to+your+discord+email",
+      "https://game.example/?error=access_denied&error_code=provider_email_needs_verification&error_description=Unverified+email+with+discord.+A+confirmation+email+has+been+sent+to+your+discord+email",
     );
-    expect(message).toBe(
-      "Sign-in did not finish: Unverified email with discord. A confirmation email has been sent to your discord email",
-    );
+    expect(message).toMatch(/verif/i);
+    expect(message).not.toMatch(/cancelled/i);
+    expect(message).not.toContain("Unverified email with discord");
   });
 
-  it("still says something when the backend gave no description", () => {
-    expect(signInReturnError("https://game.example/?error=server_error")).toBe("Sign-in did not finish. Please try again.");
+  it("says new sign-ups are closed when Supabase refuses them", () => {
+    const message = signInReturnError("https://game.example/#error=access_denied&error_code=signup_disabled&error_description=Signups+not+allowed");
+    expect(message).toMatch(/sign-ups|new captains/i);
+    expect(message).not.toMatch(/cancelled/i);
   });
 
-  it("keeps a crafted description short and on one line", () => {
-    const long = "x".repeat(500);
-    const message = signInReturnError(`https://game.example/?error=e&error_description=${long}%0A%0Aevil`) ?? "";
-    expect(message.length).toBeLessThanOrEqual(220);
-    expect(message).not.toMatch(/[\n\r]/);
+  it("gives one sentence of our own for any other failure, never the link's description", () => {
+    expect(signInReturnError("https://game.example/?error=server_error&error_description=Database+error+saving+new+user")).toBe(
+      GENERIC,
+    );
+    expect(signInReturnError("https://game.example/?error=server_error")).toBe(GENERIC);
+    expect(signInReturnError("https://game.example/?error=access_denied&error_code=user_banned")).toBe(GENERIC);
+  });
+
+  it("shows none of a crafted link's text, whatever its error or code", () => {
+    const attack = encodeURIComponent("Your account is locked. Call +1 555 0100 or visit https://evil.example/recover");
+    for (const href of [
+      `https://game.example/?error=server_error&error_description=${attack}`,
+      `https://game.example/?error=access_denied&error_code=otp_expired&error_description=${attack}`,
+      `https://game.example/#error=access_denied&error_description=${attack}`,
+      `https://game.example/?error=${attack}&error_code=${attack}`,
+    ]) {
+      const message = signInReturnError(href) ?? "";
+      expect(message, href).not.toMatch(/locked|555|evil/);
+    }
   });
 });
 
