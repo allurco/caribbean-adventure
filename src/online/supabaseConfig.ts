@@ -11,8 +11,11 @@
  *
  * A preview build handed production's URL gets no backend at all
  * (`previewGuard.ts`, #107): it must talk to its own Supabase branch or none.
+ * The deploy environment is `VERCEL_ENV`, which `vite.config.ts` bakes in from
+ * the build's own environment, or else `VITE_VERCEL_ENV` (Vercel's exposed
+ * system variable, or one set by hand).
  */
-import { PRODUCTION_URL_NAME, previewUsesProduction } from "./previewGuard";
+import { PRODUCTION_URL_NAME, previewGuard, type PreviewGuard } from "./previewGuard";
 
 export interface SupabaseConfig {
   url: string;
@@ -29,14 +32,37 @@ const KEY_NAMES = [
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
 ] as const;
 
-export function readSupabaseConfig(env: EnvLike): SupabaseConfig | null {
+/** Defined by `vite.config.ts` from the build's `process.env.VERCEL_ENV`; empty outside Vercel. */
+export const BUILD_VERCEL_ENV_NAME = "VERCEL_ENV";
+/** The fallback: Vercel's system variable when exposed to the build, or set by hand. */
+export const VITE_VERCEL_ENV_NAME = "VITE_VERCEL_ENV";
+
+/**
+ * The backend this build may use: none configured, refused (a preview handed
+ * production's URL), or a config, with what the preview guard made of it.
+ */
+export type SupabaseBackend =
+  | { status: "none" }
+  | { status: "refused" }
+  | { status: "ok"; config: SupabaseConfig; guard: PreviewGuard };
+
+export function readSupabaseBackend(env: EnvLike): SupabaseBackend {
   const url = firstSet(env, URL_NAMES);
   const key = firstSet(env, KEY_NAMES);
-  if (url === undefined || key === undefined) return null;
-  const deployEnv = firstSet(env, ["VITE_VERCEL_ENV"]);
-  const productionUrl = firstSet(env, [PRODUCTION_URL_NAME]);
-  if (previewUsesProduction({ deployEnv, supabaseUrl: url, productionUrl })) return null;
-  return { url: url.replace(/\/+$/, ""), key };
+  if (url === undefined || key === undefined) return { status: "none" };
+  const guard = previewGuard({ deployEnv: deployEnvOf(env), supabaseUrl: url, productionUrl: firstSet(env, [PRODUCTION_URL_NAME]) });
+  if (guard === "refused") return { status: "refused" };
+  return { status: "ok", config: { url: url.replace(/\/+$/, ""), key }, guard };
+}
+
+export function readSupabaseConfig(env: EnvLike): SupabaseConfig | null {
+  const backend = readSupabaseBackend(env);
+  return backend.status === "ok" ? backend.config : null;
+}
+
+/** Vercel's environment for this build (`preview`, `production`, …), if any. */
+export function deployEnvOf(env: EnvLike): string | undefined {
+  return firstSet(env, [BUILD_VERCEL_ENV_NAME, VITE_VERCEL_ENV_NAME]);
 }
 
 function firstSet(env: EnvLike, names: readonly string[]): string | undefined {

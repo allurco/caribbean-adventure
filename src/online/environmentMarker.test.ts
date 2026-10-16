@@ -26,4 +26,17 @@ describe("environmentMarker (#107)", () => {
   it("says a preview with no database at all is offline", () => {
     expect(environmentMarker({ VITE_VERCEL_ENV: "preview" })).toBe("Preview · online play off: no database");
   });
+
+  it("says when a preview's guard is not configured, naming the database it still uses", () => {
+    expect(
+      environmentMarker({ VITE_VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_URL: "https://some-ref.supabase.co", NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "pub" }),
+    ).toBe("Preview · guard not configured · database some-ref");
+  });
+
+  it("reads VERCEL_ENV as vite.config.ts defines it", () => {
+    expect(environmentMarker({ ...preview, VITE_VERCEL_ENV: undefined, VERCEL_ENV: "preview", NEXT_PUBLIC_SUPABASE_URL: production })).toBe(
+      "Preview · online play off: this build was given production's database",
+    );
+    expect(environmentMarker({ ...preview, VITE_VERCEL_ENV: undefined, VERCEL_ENV: "production", NEXT_PUBLIC_SUPABASE_URL: production })).toBeNull();
+  });
 });

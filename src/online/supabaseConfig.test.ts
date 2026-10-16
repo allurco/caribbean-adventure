@@ -87,3 +87,27 @@ describe("readSupabaseConfig on a preview deployment (#107)", () => {
     ).toEqual({ url: production, key: "pub" });
   });
 });
+
+describe("readSupabaseConfig: where the deploy environment comes from (#107)", () => {
+  const production = "https://prod-ref.supabase.co";
+  const handedProduction = {
+    NEXT_PUBLIC_SUPABASE_PRODUCTION_URL: production,
+    NEXT_PUBLIC_SUPABASE_URL: production,
+    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "pub",
+  };
+
+  it("reads VERCEL_ENV, which vite.config.ts bakes in from the build's own environment", () => {
+    expect(readSupabaseConfig({ ...handedProduction, VERCEL_ENV: "preview" })).toBeNull();
+  });
+
+  it("falls back to VITE_VERCEL_ENV when VERCEL_ENV is empty (a build outside Vercel)", () => {
+    expect(readSupabaseConfig({ ...handedProduction, VERCEL_ENV: "", VITE_VERCEL_ENV: "preview" })).toBeNull();
+  });
+
+  it("prefers VERCEL_ENV over VITE_VERCEL_ENV", () => {
+    expect(readSupabaseConfig({ ...handedProduction, VERCEL_ENV: "production", VITE_VERCEL_ENV: "preview" })).toEqual({
+      url: production,
+      key: "pub",
+    });
+  });
+});

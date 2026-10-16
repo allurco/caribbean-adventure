@@ -4,17 +4,23 @@
  * request's preview reads its own branch database and not production's.
  * Production, local development and builds outside Vercel show nothing.
  */
-import { readSupabaseConfig, type EnvLike } from "./supabaseConfig";
+import { deployEnvOf, readSupabaseBackend, type EnvLike } from "./supabaseConfig";
 
 export function environmentMarker(env: EnvLike): string | null {
-  if (env.VITE_VERCEL_ENV !== "preview") return null;
-  const config = readSupabaseConfig(env);
-  if (config) return `Preview · database ${projectName(config.url)}`;
-  // Configured, yet refused: previewGuard.ts kept it off production.
-  const refused = readSupabaseConfig({ ...env, VITE_VERCEL_ENV: undefined }) !== null;
-  return refused
-    ? "Preview · online play off: this build was given production's database"
-    : "Preview · online play off: no database";
+  if (deployEnvOf(env)?.toLowerCase() !== "preview") return null;
+  const backend = readSupabaseBackend(env);
+  switch (backend.status) {
+    case "none":
+      return "Preview · online play off: no database";
+    case "refused":
+      // previewGuard.ts kept it off production.
+      return "Preview · online play off: this build was given production's database";
+    case "ok": {
+      const database = `database ${projectName(backend.config.url)}`;
+      // NEXT_PUBLIC_SUPABASE_PRODUCTION_URL unset: nothing was compared, so say so.
+      return backend.guard === "unset" ? `Preview · guard not configured · ${database}` : `Preview · ${database}`;
+    }
+  }
 }
 
 /** `https://<ref>.supabase.co` → `<ref>`; any other URL → its host. */

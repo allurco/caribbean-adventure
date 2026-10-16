@@ -42,6 +42,11 @@ describe("GET /api/health", () => {
     expect(((await ownBranch.json()) as { supabase: unknown }).supabase).toEqual({ configured: true });
   });
 
+  it("says when a preview's guard is not configured, still serving the backend (#107)", async () => {
+    const res = await get("/api/health", { VERCEL_ENV: "preview", SUPABASE_URL: "https://branch-ref.supabase.co", SUPABASE_SECRET_KEY: "sk" });
+    expect(((await res.json()) as { supabase: unknown }).supabase).toEqual({ configured: true, guard: "unset" });
+  });
+
   it("is also served with a trailing slash", async () => {
     expect((await get("/api/health/")).status).toBe(200);
   });
