@@ -260,6 +260,12 @@ export interface CaribbeanState {
   floatingLoot: FloatingLoot[];
   npcIdCounter: number;
   /**
+   * The last number given to a mission or a floating loot's id (`nextId`,
+   * #320). Always set by `setup()`; optional because matches stored before it
+   * existed lack it, and read as 0 then.
+   */
+  idCounter?: number;
+  /**
    * The players who have turned pirate, by player id (#201). Kept on the
    * player rather than the ship, so it outlives a sunk ship; an entry is
    * removed only when the player's captain is replaced (#265: the new

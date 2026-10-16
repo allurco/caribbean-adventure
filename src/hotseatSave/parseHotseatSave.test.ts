@@ -24,6 +24,15 @@ describe("reading a saved game back", () => {
   it("calls a save of another schema version unreadable, as from another version of the game", () => {
     expect(parseHotseatSave(JSON.stringify({ ...save, version: 0 }))).toEqual({ kind: "unreadable", reason: "version" });
     expect(parseHotseatSave(JSON.stringify({ ...save, version: 1 }))).toEqual({ kind: "unreadable", reason: "version" });
+    expect(parseHotseatSave(JSON.stringify({ ...save, version: 99 }))).toEqual({ kind: "unreadable", reason: "version" });
+  });
+
+  it("reads a version 2 save, from before G counted its mission and loot ids (#320), as this version's", () => {
+    const { idCounter: _idCounter, ...olderG } = save.state.G;
+    void _idCounter;
+    const older = { ...save, version: 2, state: { ...save.state, G: olderG } };
+    // The game reads the missing counter as 0 (`nextId`), so the save needs nothing more than its new version
+    expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: 3 })) });
   });
 
   it("calls anything else corrupt, without throwing", () => {

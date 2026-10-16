@@ -32,13 +32,6 @@ const ESCORT_TITLES = [
   "Ghost Ship",
 ];
 
-let missionIdCounter = 0;
-
-function generateMissionId(): string {
-  missionIdCounter++;
-  return `mission-${missionIdCounter}-${Date.now()}`;
-}
-
 function pickRandom<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)];
 }
@@ -64,6 +57,7 @@ function getDistantPorts(
 }
 
 function generateDeliveryMission(
+  id: string,
   currentPortName: string,
   cells: MapCell[],
   wrap: MapWrap,
@@ -75,16 +69,16 @@ function generateDeliveryMission(
     const anyOtherPort = getPortCells(cells).filter((p) => p.portName !== currentPortName);
     if (anyOtherPort.length === 0) return null;
     const targetPort = pickRandom(anyOtherPort, rng);
-    return createDeliveryMission(targetPort.portName!, rng);
+    return createDeliveryMission(id, targetPort.portName!, rng);
   }
 
   const targetPort = pickRandom(distantPorts, rng);
-  return createDeliveryMission(targetPort.portName!, rng);
+  return createDeliveryMission(id, targetPort.portName!, rng);
 }
 
-function createDeliveryMission(targetPortName: string, rng: () => number): Mission {
+function createDeliveryMission(id: string, targetPortName: string, rng: () => number): Mission {
   return {
-    id: generateMissionId(),
+    id,
     title: pickRandom(DELIVERY_TITLES, rng),
     description: `Deliver a sealed package to ${targetPortName}. The contents are confidential - do not ask questions.`,
     type: "DELIVERY",
@@ -95,6 +89,7 @@ function createDeliveryMission(targetPortName: string, rng: () => number): Missi
 }
 
 function generateAssassinationMission(
+  id: string,
   npcs: Record<string, NPCShip>,
   rng: () => number
 ): Mission | null {
@@ -106,7 +101,7 @@ function generateAssassinationMission(
   if (merchants.length === 0) {
     // No active merchants - create a generic bounty mission
     return {
-      id: generateMissionId(),
+      id,
       title: pickRandom(ASSASSINATION_TITLES, rng),
       description: "Hunt down and sink the next merchant ship you encounter. Any nation's merchant will do.",
       type: "ASSASSINATION",
@@ -118,7 +113,7 @@ function generateAssassinationMission(
 
   const targetNpc = pickRandom(merchants, rng);
   return {
-    id: generateMissionId(),
+    id,
     title: pickRandom(ASSASSINATION_TITLES, rng),
     description: `A ${targetNpc.nation} merchant ship has been marked for destruction. Sink it and claim your reward.`,
     type: "ASSASSINATION",
@@ -129,6 +124,7 @@ function generateAssassinationMission(
 }
 
 function generateEscortMission(
+  id: string,
   currentPortName: string,
   cells: MapCell[],
   wrap: MapWrap,
@@ -139,16 +135,16 @@ function generateEscortMission(
     const anyOtherPort = getPortCells(cells).filter((p) => p.portName !== currentPortName);
     if (anyOtherPort.length === 0) return null;
     const targetPort = pickRandom(anyOtherPort, rng);
-    return createEscortMission(targetPort.portName!, rng);
+    return createEscortMission(id, targetPort.portName!, rng);
   }
 
   const targetPort = pickRandom(distantPorts, rng);
-  return createEscortMission(targetPort.portName!, rng);
+  return createEscortMission(id, targetPort.portName!, rng);
 }
 
-function createEscortMission(targetPortName: string, rng: () => number): Mission {
+function createEscortMission(id: string, targetPortName: string, rng: () => number): Mission {
   return {
-    id: generateMissionId(),
+    id,
     title: pickRandom(ESCORT_TITLES, rng),
     description: `Travel to ${targetPortName} without taking any damage. A pristine arrival is required.`,
     type: "ESCORT",
@@ -159,10 +155,15 @@ function createEscortMission(targetPortName: string, rng: () => number): Mission
   };
 }
 
+/**
+ * A mission offered at `currentPortName`'s tavern, named `id`
+ * (`nextId(G, "mission")`, #320), or null when there is nowhere to send it.
+ */
 export function generateMission(
   currentPortName: string,
   G: CaribbeanState,
-  rng: () => number
+  rng: () => number,
+  id: string
 ): Mission | null {
   // Randomly pick mission type with weights
   const roll = rng();
@@ -178,11 +179,11 @@ export function generateMission(
 
   switch (missionType) {
     case "DELIVERY":
-      return generateDeliveryMission(currentPortName, G.cells, G.wrap, rng);
+      return generateDeliveryMission(id, currentPortName, G.cells, G.wrap, rng);
     case "ASSASSINATION":
-      return generateAssassinationMission(G.npcs, rng);
+      return generateAssassinationMission(id, G.npcs, rng);
     case "ESCORT":
-      return generateEscortMission(currentPortName, G.cells, G.wrap, rng);
+      return generateEscortMission(id, currentPortName, G.cells, G.wrap, rng);
     default:
       return null;
   }

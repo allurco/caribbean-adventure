@@ -13,9 +13,9 @@ const MAP_SIZES: readonly unknown[] = ["small", "medium", "large"];
 
 /**
  * The save in `raw`, the stored JSON (null when nothing is stored). Never
- * throws: anything that is not a save of this schema version is unreadable.
- * Checks the shape a restore and the start screen rely on, not every field
- * of G.
+ * throws: anything that is not a save of this schema version, or of an older
+ * one it migrates (`migrate`), is unreadable. Checks the shape a restore and
+ * the start screen rely on, not every field of G.
  */
 export function parseHotseatSave(raw: string | null): HotseatSaveRead {
   if (raw === null) return { kind: "none" };
@@ -26,8 +26,18 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
     return { kind: "unreadable", reason: "corrupt" };
   }
   if (!isRecord(value)) return { kind: "unreadable", reason: "corrupt" };
-  if (typeof value.version === "number" && value.version !== HOTSEAT_SAVE_VERSION) return { kind: "unreadable", reason: "version" };
-  return isHotseatSave(value) ? { kind: "saved", save: value } : { kind: "unreadable", reason: "corrupt" };
+  const current = migrate(value);
+  if (typeof current.version === "number" && current.version !== HOTSEAT_SAVE_VERSION) return { kind: "unreadable", reason: "version" };
+  return isHotseatSave(current) ? { kind: "saved", save: current } : { kind: "unreadable", reason: "corrupt" };
+}
+
+/**
+ * An older save brought up to this version, or `value` as it is. Version 2
+ * lacks `G.idCounter` (#320), which the game reads as 0: its clock-made ids
+ * (`loot-3-1712345678901`) can never be one of the counter's (`loot-1`).
+ */
+function migrate(value: Record<string, unknown>): Record<string, unknown> {
+  return value.version === 2 ? { ...value, version: 3 } : value;
 }
 
 function isHotseatSave(value: Record<string, unknown>): value is Record<string, unknown> & HotseatSave {
