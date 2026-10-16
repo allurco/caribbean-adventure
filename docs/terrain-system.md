@@ -993,7 +993,7 @@ as `thinned` and freeing its footprint for the clutter. With the kit a
 port then stands 20 to 30 buildings (26 on average, 92–100 % of the ports
 in that band over 200 seeds of each size, never more than 29; a port on a
 narrow islet holds fewer), its houses 0.079 of a hex across on average,
-pinned in `villagePlacement.test.ts`. Six kinds of our own
+pinned in the village placement sweep (`villagePlacementSweep.ts`). Six kinds of our own
 (`villageBuildingGeometry.ts`: cottage, stone house, merchant's house,
 three-storey town house, lean-to, warehouse) in the aged kit's register,
 under steep roofs (55° and more on the houses, 45° on the warehouse), each
@@ -1034,7 +1034,7 @@ Trees, rocks, stones, shrubs and boulders are dropped inside a town's plan
 Everything is merged into one vertex-coloured mesh per map
 (`villageGeometry.ts`, about 195k triangles on the small map) and drawn
 once per world copy (`PortVillage.tsx`), casting and receiving shadows: a
-draw and a shadow draw per copy. `villagePlacement.test.ts` holds the
+draw and a shadow draw per copy. The village placement sweep (`villagePlacementSweep.ts`, run in blocks by the `villagePlacement.*.test.ts` files) holds the
 placement over 200 seeds of every map size, the kit's buildings off the
 risers, the streets, the lanes and their kerbs, and every kerb and edge
 stone out of every building's walls.

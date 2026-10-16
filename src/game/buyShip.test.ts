@@ -8,6 +8,10 @@ import { SHIP_SPECS } from "./constants";
 import type { MapCell, PortMarket } from "./types";
 import { hex } from "./hex";
 import type { MapSizeId } from "./mapConfig";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 const TEST_MARKET: PortMarket = {
   inDemandGood: null, prices: {

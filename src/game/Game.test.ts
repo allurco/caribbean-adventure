@@ -11,6 +11,10 @@ import type { MapSizeId } from "./mapConfig";
 import { getMapPreset } from "./mapConfig";
 import { createShipState } from "./economy";
 import { SHIP_SPECS } from "./constants";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 /** An all-water hexagon of `radius` around the origin, so navigation tests aren't blocked by islands. */
 function waterGrid(radius: number): MapCell[] {

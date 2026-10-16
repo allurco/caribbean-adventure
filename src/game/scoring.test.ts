@@ -15,6 +15,10 @@ import {
   findWinner,
 } from "./scoring";
 import { createShipState } from "./economy";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 describe("scoring utility functions", () => {
   describe("isAtHomePort", () => {

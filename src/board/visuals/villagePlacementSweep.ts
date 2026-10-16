@@ -7,6 +7,10 @@
  * buildings a port (the village's standing houses and the kit), never more
  * than 30, houses about 0.08 of a hex across, and every pier reaching out
  * over the water.
+ *
+ * The sweep is shared by the `villagePlacement.<size>.<seeds>.test.ts` files:
+ * each runs one block of seeds, so the files run on separate workers rather
+ * than as one ~2.5 minute file holding up the whole suite.
  */
 import { beforeEach, describe, it, expect } from "vitest";
 import { generateMap } from "../../game/mapGenerator";
@@ -48,7 +52,8 @@ import {
   type PlanRect,
 } from "./villageLayout";
 
-const SEEDS = 200;
+/** Seeds per map size, over all the files: 1 to SEEDS. */
+export const SEEDS = 200;
 /**
  * Seeds per test. The sweep takes ~2 minutes on a runner; run as one block it
  * starves the worker's event loop past vitest's 60 s RPC timeout, so it runs in
@@ -200,13 +205,14 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
   return tally;
 }
 
-describe("village placement over 200 seeds per map size (#87)", () => {
-  // Tests in a file chain on microtasks, so without this the worker never reaches
-  // its message queue between them and vitest's onTaskUpdate RPC times out.
-  beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-  for (const size of ["small", "medium", "large"] as const) {
-    for (let first = 1; first <= SEEDS; first += SEEDS_PER_TEST) {
-      const last = Math.min(SEEDS, first + SEEDS_PER_TEST - 1);
+/** The village placement tests on `size` maps, seeds `firstSeed` to `lastSeed`, in blocks of SEEDS_PER_TEST. */
+export function describeVillagePlacement(size: MapSizeId, firstSeed: number, lastSeed: number): void {
+  describe(`village placement on ${size} maps, seeds ${firstSeed} to ${lastSeed} of ${SEEDS} (#87)`, () => {
+    // Tests in a file chain on microtasks, so without this the worker never reaches
+    // its message queue between them and vitest's onTaskUpdate RPC times out.
+    beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+    for (let first = firstSeed; first <= lastSeed; first += SEEDS_PER_TEST) {
+      const last = Math.min(lastSeed, first + SEEDS_PER_TEST - 1);
       it(`holds on every ${size} map, seeds ${first} to ${last}`, () => {
         const started = performance.now();
         const tally = sweep(size, first, last);
@@ -234,5 +240,5 @@ describe("village placement over 200 seeds per map size (#87)", () => {
         expect(tally.stones / tally.ports).toBeGreaterThan(50);
       }, 120000);
     }
-  }
-});
+  });
+}

@@ -4,6 +4,9 @@
  * ships on one hex centre draw as one tangle of hulls. A full table of six
  * players drafts through the real `pickCaptain` move, and no two ships may
  * share a hex, nor sit anywhere but on water.
+ *
+ * Shared by the `draftPlacement.<size>.test.ts` files, one per map size, so
+ * the sizes run on separate workers.
  */
 import { beforeEach, describe, it, expect } from "vitest";
 import { Client } from "boardgame.io/client";
@@ -19,7 +22,6 @@ import { STARTER_SHIP_CLASSES } from "./types";
 
 const SEEDS = 200;
 const PLAYERS = 6;
-const SIZES: readonly MapSizeId[] = ["small", "medium", "large"];
 
 /** A small seeded generator for the deck's shuffle, so every run deals the same hands. */
 function mulberry32(seed: number): () => number {
@@ -66,15 +68,16 @@ function draftedShips(mapSize: MapSizeId, mapSeed: number) {
 /**
  * Seeds per test: a whole size in one block runs long enough on a CI runner to
  * starve the worker past vitest's 60 s RPC timeout, so it runs in short tests
- * with a macrotask yield before each (as villagePlacement.test.ts does).
+ * with a macrotask yield before each (as villagePlacementSweep.ts does).
  */
 const SEEDS_PER_TEST = 20;
 
-describe(`the draft's ship placement over ${SEEDS} seeds per map size (#166, #239)`, () => {
-  // Tests in a file chain on microtasks, so without this the worker never reaches
-  // its message queue between them and vitest's onTaskUpdate RPC times out.
-  beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-  for (const mapSize of SIZES) {
+/** The draft placement tests on `mapSize` maps, seeds 1 to SEEDS, in blocks of SEEDS_PER_TEST. */
+export function describeDraftPlacement(mapSize: MapSizeId): void {
+  describe(`the draft's ship placement on ${mapSize} maps over ${SEEDS} seeds (#166, #239)`, () => {
+    // Tests in a file chain on microtasks, so without this the worker never reaches
+    // its message queue between them and vitest's onTaskUpdate RPC times out.
+    beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
     for (let first = 1; first <= SEEDS; first += SEEDS_PER_TEST) {
       const last = Math.min(SEEDS, first + SEEDS_PER_TEST - 1);
       it(`never draws two ships on one hex centre, and starts every captain at a home port in their nation's region, on ${mapSize} maps, seeds ${first} to ${last}`, () => {
@@ -100,5 +103,5 @@ describe(`the draft's ship placement over ${SEEDS} seeds per map size (#166, #23
         }
       }, 120_000);
     }
-  }
-});
+  });
+}

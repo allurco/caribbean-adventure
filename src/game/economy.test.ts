@@ -30,6 +30,10 @@ import { GOOD_TYPES } from "./types";
 import type { ShipState, PortMarket, MapCell } from "./types";
 import { hex } from "./hex";
 import type { MapSizeId } from "./mapConfig";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 function makeShip(overrides: Partial<ShipState> = {}): ShipState {
   return {

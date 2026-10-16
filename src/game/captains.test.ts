@@ -15,6 +15,10 @@ import { hex, hexEquals } from "./hex";
 import type { Hex } from "./hex";
 import { createShipState } from "./economy";
 import type { MapSizeId } from "./mapConfig";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 // ---------------------------------------------------------------------------
 // Pure function tests
