@@ -71,7 +71,7 @@ describe("one source of light (#169)", () => {
     const mounts = filesMatching(
       /<(directionalLight|ambientLight|hemisphereLight|pointLight|spotLight)\b|<fog\b|attach="background"|<EffectComposer\b|<Bloom\b|<Vignette\b|toneMappingExposure\s*=/
     );
-    expect(mounts).toEqual(["Board.tsx", "PropViewer.tsx", "visuals/FillLight.tsx", "visuals/PostEffects.tsx", "visuals/SunLight.tsx"]);
+    expect(mounts).toEqual(["Board.tsx", "PropViewer.tsx", "harbour/HarbourScene.tsx", "visuals/FillLight.tsx", "visuals/PostEffects.tsx", "visuals/SunLight.tsx"]);
     for (const file of mounts) expect(source(file), file).toMatch(/Lighting\b|\bSCENE_LIGHTING\b/);
   });
 
@@ -80,6 +80,7 @@ describe("one source of light (#169)", () => {
       "Board.tsx",
       "PropViewer.tsx",
       "combatFx/PuffLayer.tsx",
+      "harbour/HarbourScene.tsx",
       "useRegionBorders.ts",
       "useWaterGridLines.ts",
       "visuals/ShoreBoulderMeshes.tsx",

@@ -27,6 +27,8 @@ export interface DevUrlParams {
   regionBorder?: RegionBorderMode;
   /** `?stats=1`: a corner readout of fps, draw calls and triangles (#162), in dev builds only. */
   renderStats?: true;
+  /** `?view=harbour`: the harbour backdrop's live scene alone, to capture its still from (#122), in dev builds only. */
+  harbourCapture?: true;
   /** `?seedGallery=1`: the 12-seed contact sheet instead of the game (#161), in dev builds only. */
   seedGallery?: true;
   /** `?snapshot=1`: one gallery shot (#161): the draft picks itself and the board posts its picture to the gallery, in dev builds only. */
@@ -146,6 +148,7 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   // Dev-only routes (#161): the DEV guard drops even their names from production builds.
   if (import.meta.env.DEV) {
     if (params.get("seedGallery") === "1") out.seedGallery = true;
+    if (params.get("view") === "harbour") out.harbourCapture = true;
     if (params.get("snapshot") === "1") out.gallerySnapshot = true;
     if (params.get("seats") === "1") out.localSeats = true;
     const players = integer(params.get("players"));

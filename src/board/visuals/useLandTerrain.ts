@@ -60,8 +60,8 @@ export interface LandTerrainResources {
   seabedMaterial: MeshStandardMaterial;
 }
 
-/** The land mesh arrays, built once per map, wrap and world seed (`perMapCache`). */
-const landMeshOf = perMapCache((cells, wrap, worldSeed) =>
+/** The land mesh arrays, built once per map, wrap and world seed (`perMapCache`). Exported so the harbour backdrop (#122) can build it ahead, in a task of its own. */
+export const landMeshOf = perMapCache((cells, wrap, worldSeed) =>
   buildLandMesh(sharedTerrainField(cells, wrap, worldSeed), {
     colors: LAND_COLORS,
     sampleReef: createReefMask(cells, wrap),

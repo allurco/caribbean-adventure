@@ -66,6 +66,11 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?view=sounds")).toEqual({});
   });
 
+  it("opens the harbour backdrop's capture view, in dev builds (#122)", () => {
+    expect(parseDevUrlParams("?view=harbour")).toEqual({ harbourCapture: true });
+    expect(parseDevUrlParams("?view=harbours")).toEqual({});
+  });
+
   it("floats the sea surface buoys", () => {
     expect(parseDevUrlParams("?buoys=1")).toEqual({ seaBuoys: true });
     expect(parseDevUrlParams("?buoys=0")).toEqual({});

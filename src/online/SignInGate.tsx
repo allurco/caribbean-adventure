@@ -20,10 +20,11 @@ export function SignInGate({ config, children }: SignInGateProps) {
   const client = useAccountClient(config);
   const session = useAccountSession(client);
   if (client && session.status === "signedIn") return children(client, session.session);
+  const signingIn = client !== undefined && session.status === "signedOut";
   return (
     <div className="absolute inset-0 overflow-hidden bg-shell-harbour">
-      <HarbourBackdrop />
-      {client && session.status === "signedOut" ? <ShellSignIn client={client} /> : <ShellStatus />}
+      <HarbourBackdrop interactive={signingIn} />
+      {signingIn ? <ShellSignIn client={client} /> : <ShellStatus />}
     </div>
   );
 }

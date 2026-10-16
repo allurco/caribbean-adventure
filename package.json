@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "SUPABASE_DB_TESTS=1 vitest run supabase/tests",
-    "test:e2e": "playwright test -c e2e/playwright.config.ts"
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "capture:harbour": "node scripts/capture-harbour-still.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

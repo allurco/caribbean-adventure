@@ -34,7 +34,8 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
   return (
     // Clicks on links bubble here so the shell can move between its pages in place.
     <div onClick={onClick} className="absolute inset-0 overflow-hidden bg-shell-harbour font-garamond">
-      <HarbourBackdrop />
+      {/* Mounts the live harbour only once the shell can be used */}
+      <HarbourBackdrop interactive={ready} />
       {!ready ? (
         <ShellStatus />
       ) : signedIn || publicPage ? (
