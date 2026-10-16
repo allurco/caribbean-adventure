@@ -29,7 +29,7 @@ export function HudTurnBar({
   return (
     <div className="absolute top-0 left-0 right-0 pointer-events-none" style={{ paddingTop: safeInset("top", 0) }}>
       <div
-        className="flex items-center justify-between px-5 py-2.5 bg-gradient-to-b from-black/60 via-black/30 to-transparent"
+        className="flex items-center justify-between py-2.5 bg-gradient-to-b from-black/60 via-black/30 to-transparent"
         // Padded clear of a notch (#123); the gradient still runs edge to edge
         style={{ height: HUD_TOP_BAR_HEIGHT, paddingLeft: safeInset("left", HUD_SIDE_INSET), paddingRight: safeInset("right", HUD_SIDE_INSET) }}
       >

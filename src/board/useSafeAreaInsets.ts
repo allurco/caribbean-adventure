@@ -1,24 +1,32 @@
 import { useSyncExternalStore } from "react";
+import { onViewportChange } from "./onViewportChange";
 import { NO_INSETS, type SafeAreaEdge, type SafeAreaInsets } from "./safeArea";
 
 const EDGES: readonly SafeAreaEdge[] = ["top", "right", "bottom", "left"];
 
+/**
+ * A hidden element padded by the four insets: script cannot read `env()`
+ * directly, but it can read a computed padding. It goes into the page when
+ * the first reader subscribes, never during a render, and out when the last
+ * one leaves.
+ */
 let probe: HTMLDivElement | null = null;
+let readers = 0;
 let last: SafeAreaInsets = NO_INSETS;
 
-/** A hidden element padded by the four insets: script cannot read `env()` directly, but it can read a computed padding. */
-function probeElement(): HTMLDivElement {
-  if (probe) return probe;
-  probe = document.createElement("div");
-  probe.setAttribute("aria-hidden", "true");
-  probe.style.cssText = "position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;";
-  for (const edge of EDGES) probe.style.setProperty(`padding-${edge}`, `env(safe-area-inset-${edge}, 0px)`);
-  document.body.appendChild(probe);
-  return probe;
+function addProbe(): HTMLDivElement {
+  const element = document.createElement("div");
+  element.setAttribute("aria-hidden", "true");
+  element.style.cssText = "position:fixed;top:0;left:0;visibility:hidden;pointer-events:none;";
+  for (const edge of EDGES) element.style.setProperty(`padding-${edge}`, `env(safe-area-inset-${edge}, 0px)`);
+  document.body.appendChild(element);
+  return element;
 }
 
+/** The insets the probe shows, or the last ones read while there is no probe (before the first subscriber). */
 function read(): SafeAreaInsets {
-  const style = getComputedStyle(probeElement());
+  if (!probe) return last;
+  const style = getComputedStyle(probe);
   const next = {
     top: parseFloat(style.paddingTop) || 0,
     right: parseFloat(style.paddingRight) || 0,
@@ -31,11 +39,18 @@ function read(): SafeAreaInsets {
 }
 
 function subscribe(onChange: () => void): () => void {
-  window.addEventListener("resize", onChange);
-  window.addEventListener("orientationchange", onChange);
+  readers += 1;
+  probe ??= addProbe();
+  const stop = onViewportChange(onChange);
+  // The probe is new: the insets may differ from what the render read
+  onChange();
   return () => {
-    window.removeEventListener("resize", onChange);
-    window.removeEventListener("orientationchange", onChange);
+    stop();
+    readers -= 1;
+    if (readers === 0) {
+      probe?.remove();
+      probe = null;
+    }
   };
 }
 

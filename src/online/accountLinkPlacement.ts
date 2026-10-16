@@ -1,4 +1,5 @@
 import {
+  HUD_EDGE,
   HUD_GLORY_BOARD_LEFT,
   HUD_GLORY_BOARD_WIDTH,
   HUD_PORT_PANEL_INSET,
@@ -28,7 +29,6 @@ export const ACCOUNT_LINK_Z = 58;
 
 /** Under the HUD's turn bar, with a gap. */
 const TOP = HUD_TOP_BAR_HEIGHT + 12;
-const EDGE = 16;
 const GAP = 8;
 
 /** The compact link's width, fixed so it can be placed beside the HUD: "The harbour" with its padding is about 102 px. */
@@ -83,10 +83,10 @@ export interface AccountLinkScene {
  */
 export function accountLinkPlacement(layout: ShellLayout, scene: AccountLinkScene): AccountLinkPlacement {
   const insets = scene.insets ?? NO_INSETS;
-  const corner = (top: number) => ({ top: top + insets.top, right: EDGE + insets.right });
+  const corner = (top: number) => ({ top: top + insets.top, right: HUD_EDGE + insets.right });
   if (layout === "desktop") return corner(TOP);
   const size = { minHeight: MIN_TAP_TARGET, width: ACCOUNT_LINK_COMPACT_WIDTH };
-  if (!scene.hudStack) return { ...corner(EDGE), ...size };
+  if (!scene.hudStack) return { ...corner(HUD_EDGE), ...size };
   const clearOfPanel = (left: number) =>
     !scene.portPanel ||
     insets.left + left + ACCOUNT_LINK_COMPACT_WIDTH + GAP <= scene.viewportWidth - insets.right - PORT_COLUMN;
