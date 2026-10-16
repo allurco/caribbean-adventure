@@ -7,6 +7,7 @@ const view = (stateID: number): SeatView => ({ _stateID: stateID, G: { n: stateI
 function fakeApi() {
   const calls: string[] = [];
   let resolveSend: ((value: MatchSendResult) => void) | null = null;
+  let rejectSend: ((reason: unknown) => void) | null = null;
   const api: MatchSyncApi & { nextGet: (since?: number) => MatchGetResult } = {
     getMatch: vi.fn(async (_id: string, since?: number) => {
       calls.push(`get since=${since ?? "-"}`);
@@ -14,11 +15,20 @@ function fakeApi() {
     }),
     sendAction: vi.fn((_id: string, stateID: number, action: { payload: { type: string } }) => {
       calls.push(`send ${action.payload.type} at ${stateID}`);
-      return new Promise<MatchSendResult>((resolve) => (resolveSend = resolve));
+      return new Promise<MatchSendResult>((resolve, reject) => {
+        resolveSend = resolve;
+        rejectSend = reject;
+      });
     }),
     nextGet: (since?: number) => ({ ok: true as const, changed: true as const, seat: "0", state: view((since ?? 0) + 1) }),
   };
-  return { api, calls, answer: (value: Awaited<ReturnType<MatchSyncApi["sendAction"]>>) => resolveSend!(value) };
+  return {
+    api,
+    calls,
+    answer: (value: Awaited<ReturnType<MatchSyncApi["sendAction"]>>) => resolveSend!(value),
+    /** The send never got an answer (the connection dropped). */
+    lose: () => rejectSend!(new TypeError("Failed to fetch")),
+  };
 }
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -109,7 +119,7 @@ describe("the online match sync (#113)", () => {
     expect(views).toEqual([7]);
   });
 
-  it("holds back a whole view fetched while actions are queued (a refusal's refetch, or one asked for), showing the last answer instead", async () => {
+  it("holds back a whole view fetched while actions are queued (one asked for, or a refusal's refetch), showing only the one that answers the last of them", async () => {
     const { api, calls, answer } = fakeApi();
     const views: number[] = [];
     const errors: string[] = [];
@@ -121,18 +131,20 @@ describe("the online match sync (#113)", () => {
     api.nextGet = () => ({ ok: true, changed: true, seat: "0", state: view(4) });
     sync.refresh();
     await flush();
-    // The first is refused (a 429): its refetch sees the server still at 4, behind the board
+    answer({ ok: true, state: view(5) });
+    await flush();
+    // The second is refused (a 429): its refetch sees the server at 5, behind the board
+    api.nextGet = () => ({ ok: true, changed: true, seat: "0", state: view(5) });
     answer({ ok: false, status: 429, code: "rate_limited", error: "Slow down." });
     await flush();
     await flush();
-    // The others land, the last bringing the whole view
-    answer({ ok: true, state: view(5) });
+    // The third was made against 6, which the server never reached: refused, its refetch is the last word
+    answer({ ok: false, status: 409, code: "stale_state", error: "Someone moved first." });
     await flush();
-    answer({ ok: true, state: view(6) });
     await flush();
-    expect(calls).toEqual(["get since=-", "send moveShip at 4", "get since=-", "send moveShip at 5", "send moveShip at 6"]);
-    expect(errors).toEqual(["Slow down."]);
-    expect(views).toEqual([6]);
+    expect(calls).toEqual(["get since=-", "send moveShip at 4", "send moveShip at 5", "get since=-", "send moveShip at 6", "get since=-"]);
+    expect(errors).toEqual(["Slow down.", "Someone moved first."]);
+    expect(views).toEqual([5]);
   });
 
   it("still shows the whole view when a later queued action is refused after an earlier answer was held back", async () => {
@@ -229,6 +241,57 @@ describe("the online match sync (#113)", () => {
     release();
     await flush();
     expect(views).toEqual([6]);
+  });
+
+  it("never leaves the board stale when a whole view fetched during the last action is newer than that action's answer", async () => {
+    const { api, calls, answer } = fakeApi();
+    const views: number[] = [];
+    let release: (() => void) | undefined;
+    // The server takes the action (8), then another seat moves (9); the board's first GET is served after both
+    api.getMatch = vi.fn((_id: string, since?: number) => {
+      calls.push(`get since=${since ?? "-"}`);
+      if (since === undefined && release === undefined) {
+        return new Promise<MatchGetResult>((resolve) => {
+          release = () => resolve({ ok: true, changed: true, seat: "0", state: view(9) });
+        });
+      }
+      const result: MatchGetResult = since === 9 ? { ok: true, changed: false, seat: "0", stateID: 9 } : { ok: true, changed: true, seat: "0", state: view(9) };
+      return Promise.resolve(result);
+    });
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 7, onView: (v) => views.push(v._stateID), onError: () => {} });
+    sync.start();
+    sync.refresh();
+    sync.send(7, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 0] } });
+    await flush();
+    release!();
+    await flush();
+    answer({ ok: true, state: view(8) });
+    await flush();
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    expect(views.at(-1)).toBe(9);
+    sync.stop();
+  });
+
+  it("asks only whether the match changed again once the last answer is shown, after a whole view was held back", async () => {
+    const { api, calls, answer, lose } = fakeApi();
+    const views: number[] = [];
+    const sync = createMatchSync({ api, matchId: MATCH, initialStateID: 4, onView: (v) => views.push(v._stateID), onError: () => {} });
+    sync.start();
+    sync.send(4, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [1, 0] } });
+    sync.send(5, { type: "MAKE_MOVE", payload: { type: "moveShip", args: [2, 0] } });
+    await flush();
+    // The first arrived, but its answer was lost: the refetch (held back, the second is queued) sees 5
+    api.nextGet = () => ({ ok: true, changed: true, seat: "0", state: view(5) });
+    lose();
+    await flush();
+    await flush();
+    answer({ ok: true, state: view(6) });
+    await flush();
+    api.nextGet = (since) => (since === undefined ? { ok: true, changed: true, seat: "0", state: view(6) } : { ok: true, changed: false, seat: "0", stateID: 6 });
+    await vi.advanceTimersByTimeAsync(MATCH_POLL_MS);
+    expect(calls).toEqual(["send moveShip at 4", "get since=-", "send moveShip at 5", "get since=6"]);
+    expect(views).toEqual([6]);
+    sync.stop();
   });
 
   it("keeps asking for the whole view after a refusal whose refetch came back refused too (429, 5xx)", async () => {
