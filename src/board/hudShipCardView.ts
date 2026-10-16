@@ -3,7 +3,7 @@
  * damage and bounty lines, the stat grid, the hold and the contract taken at a
  * tavern. Pure, no React, so `HudShipCard` only lays it out.
  */
-import type { GoodType, Nation, ShipState } from "../game/types";
+import type { GoodType, Mission, Nation, ShipState } from "../game/types";
 import { GOOD_TYPES } from "../game/types";
 import { UPGRADES } from "../game/constants";
 import { totalCargo } from "../game/economy";
@@ -25,8 +25,11 @@ export interface ShipCardView {
   stats: { label: string; value: string }[];
   cargo: { good: GoodType; amount: number }[];
   upgrades: string[];
-  /** The title of the contract the captain took at a tavern, or null. */
-  contract: string | null;
+  /**
+   * The contract the captain took at a tavern, or null. `failed` is an escort
+   * whose ship took damage: it stays on the ship until a tavern clears it.
+   */
+  contract: { title: string; failed: boolean } | null;
 }
 
 /** Filled share of a `current / max` bar, 0–100; an empty bar when `max` is not positive. */
@@ -41,6 +44,10 @@ const meter = (label: string, current: number, max: number): ShipMeter => ({
   max,
   percent: meterPercent(current, max),
 });
+
+/** The tavern's own test for a failed contract (`TavernPanel`), set by `failEscortMission`. */
+const contractFailed = (mission: Mission): boolean =>
+  mission.type === "ESCORT" && mission.noDamageTaken === false;
 
 export function shipCardView(ship: ShipState): ShipCardView {
   const { stats } = ship;
@@ -64,6 +71,8 @@ export function shipCardView(ship: ShipState): ShipCardView {
       : [],
     cargo: GOOD_TYPES.filter((good) => ship.cargo[good] > 0).map((good) => ({ good, amount: ship.cargo[good] })),
     upgrades: ship.upgrades.map((id) => UPGRADES[id]?.name ?? id),
-    contract: ship.activeMission?.title ?? null,
+    contract: ship.activeMission
+      ? { title: ship.activeMission.title, failed: contractFailed(ship.activeMission) }
+      : null,
   };
 }

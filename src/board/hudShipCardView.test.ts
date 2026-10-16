@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CaribbeanState, ShipState } from "../game/types";
+import type { CaribbeanState, Mission, ShipState } from "../game/types";
 import { playerViewFor } from "../game/playerView";
 import { meterPercent, shipCardView } from "./hudShipCardView";
 
@@ -26,6 +26,26 @@ const ship = (over: Partial<ShipState> = {}): ShipState => ({
   scoutedShips: [],
   ...over,
 });
+
+const assassination: Mission = {
+  id: "m1",
+  title: "The Pirate Menace",
+  description: "Sink a merchant.",
+  type: "ASSASSINATION",
+  reward: { gold: 30, glory: 1 },
+  status: "ACTIVE",
+};
+
+const escort: Mission = {
+  id: "m2",
+  title: "Safe Passage",
+  description: "Reach Nassau unharmed.",
+  type: "ESCORT",
+  targetPortName: "Nassau",
+  reward: { gold: 40, glory: 1 },
+  status: "ACTIVE",
+  noDamageTaken: true,
+};
 
 describe("meterPercent", () => {
   it("is the filled share of the bar", () => {
@@ -100,19 +120,32 @@ describe("shipCardView over a stripped view (#109)", () => {
     expect(shipCardView(seen).cargo).toEqual([]);
     expect(shipCardView(seen).stats).toEqual(shipCardView(ship()).stats);
   });
+
+  it("names no contract on a rival's ship: its mission is the rival's own", () => {
+    const rival = ship({ activeMission: { ...assassination } });
+    const G = { ships: { "0": ship(), "1": rival }, npcs: {}, draftHands: {}, captainDeck: [] } as unknown as CaribbeanState;
+    expect(shipCardView(rival).contract).not.toBeNull();
+    expect(shipCardView(playerViewFor(G, "0").ships["1"]).contract).toBeNull();
+  });
 });
 
 describe("the ship card's contract line", () => {
   it("names the contract the captain took at a tavern, wherever the ship is", () => {
-    const mission = {
-      id: "m1",
+    expect(shipCardView(ship({ activeMission: assassination })).contract).toEqual({
       title: "The Pirate Menace",
-      description: "Sink a merchant.",
-      type: "ASSASSINATION" as const,
-      reward: { gold: 30, glory: 1 },
-      status: "ACTIVE" as const,
-    };
-    expect(shipCardView(ship({ activeMission: mission })).contract).toBe("The Pirate Menace");
+      failed: false,
+    });
+  });
+
+  it("marks an escort failed once the ship has taken damage, until a tavern clears it", () => {
+    expect(shipCardView(ship({ activeMission: { ...escort, noDamageTaken: false } })).contract).toEqual({
+      title: "Safe Passage",
+      failed: true,
+    });
+  });
+
+  it("keeps an escort live while the ship is unharmed", () => {
+    expect(shipCardView(ship({ activeMission: escort })).contract).toEqual({ title: "Safe Passage", failed: false });
   });
 
   it("is absent with no contract", () => {
