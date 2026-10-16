@@ -8,6 +8,10 @@ import type { Hex } from "./hex";
 import type { CaribbeanState, MapCell, PortMarket, ShipClass, ShipState } from "./types";
 import type { MapSizeId } from "./mapConfig";
 import { movesLeft } from "./turnMoves";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 const MARKET: PortMarket = {
   prices: {

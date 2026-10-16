@@ -8,6 +8,10 @@ import { Caribbean, withGeneratedMap, withHotseatView } from "./Game";
 import { findHomeStart } from "./captains";
 import { generateMapFor } from "./mapRequest";
 import { createShipState } from "./economy";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 /**
  * A ship lost in combat, played through a real Caribbean client (#265): the

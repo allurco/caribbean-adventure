@@ -50,7 +50,7 @@ The game currently runs as a single local client, solo by default: you draft you
 | `npm run dev` | Start the dev server |
 | `npm run build` | Type-check and build for production |
 | `npm run preview` | Preview the production build |
-| `npm test` | Run the test suite once |
+| `npm test` | Run the test suite once, in parallel: a dot per test, then any failures in full |
 | `npm run test:watch` | Run tests in watch mode |
 | `npm run lint` | Lint with ESLint |
 | `npm run test:db` | Row-level security tests against a local Supabase (`npx supabase start`, needs Docker) |

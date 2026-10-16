@@ -7,28 +7,32 @@
  * buildings a port (the village's standing houses and the kit), never more
  * than 30, houses about 0.08 of a hex across, and every pier reaching out
  * over the water.
+ *
+ * The sweep is shared by the `src/board/visuals/villagePlacement.<size>.<first>-<last>.test.ts`
+ * files, one per range in `VILLAGE_SWEEP_RANGES`, so the files run on separate
+ * workers rather than as one ~2.5 minute file holding up the whole suite.
  */
-import { beforeEach, describe, it, expect } from "vitest";
-import { generateMap } from "../../game/mapGenerator";
-import { getMapPreset, type MapSizeId } from "../../game/mapConfig";
-import { createWrap, hexToWorld } from "../../game/hex";
-import type { MapCell } from "../../game/types";
-import { createTerrainHeightField } from "./terrainHeightField";
-import { landSurface } from "./landMesh";
-import { PIER_END_DEPTH, PIER_MAX_REACH, pierOrigin, pierStretch } from "./pierPlacement";
-import { portBuildings, planFootprint, type PlanFootprint } from "./portSettlement";
-import { portQuays } from "./quayPlacement";
-import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH } from "./townPlateau";
-import { pieceClearRadius, streetEdgeStones, townClutter } from "./townDetailLayout";
-import { AGED_BUILDING_PLAN } from "./agedBuildingGeometry";
-import { BUILDING_FOOTING } from "./buildingGeometry";
-import { BUILDING_SCALE, TOWN_PIECE_SCALE } from "./worldScale";
-import { PIER_LENGTH } from "./pierGeometry";
-import { SEA_LEVEL } from "./terrainHeightField";
-import { VILLAGE_PLAN } from "./villageBuildingGeometry";
-import { VILLAGE_EAVE } from "./villageBuildingGeometry";
-import { townCellsRule } from "./townBound";
-import { townCellsBound } from "./townCells";
+import { describe, it, expect } from "vitest";
+import { generateMap } from "../game/mapGenerator";
+import { getMapPreset, type MapSizeId } from "../game/mapConfig";
+import { createWrap, hexToWorld } from "../game/hex";
+import type { MapCell } from "../game/types";
+import { createTerrainHeightField } from "../board/visuals/terrainHeightField";
+import { landSurface } from "../board/visuals/landMesh";
+import { PIER_END_DEPTH, PIER_MAX_REACH, pierOrigin, pierStretch } from "../board/visuals/pierPlacement";
+import { portBuildings, planFootprint, type PlanFootprint } from "../board/visuals/portSettlement";
+import { portQuays } from "../board/visuals/quayPlacement";
+import { crossesRiser, footprintOnStreet, KERB_WIDTH, RETAINING_WALL_DEPTH } from "../board/visuals/townPlateau";
+import { pieceClearRadius, streetEdgeStones, townClutter } from "../board/visuals/townDetailLayout";
+import { AGED_BUILDING_PLAN } from "../board/visuals/agedBuildingGeometry";
+import { BUILDING_FOOTING } from "../board/visuals/buildingGeometry";
+import { BUILDING_SCALE, TOWN_PIECE_SCALE } from "../board/visuals/worldScale";
+import { PIER_LENGTH } from "../board/visuals/pierGeometry";
+import { SEA_LEVEL } from "../board/visuals/terrainHeightField";
+import { VILLAGE_PLAN } from "../board/visuals/villageBuildingGeometry";
+import { VILLAGE_EAVE } from "../board/visuals/villageBuildingGeometry";
+import { townCellsRule } from "../board/visuals/townBound";
+import { townCellsBound } from "../board/visuals/townCells";
 import {
   overlaps,
   pierRect,
@@ -46,14 +50,21 @@ import {
   VILLAGE_MAX_BURY,
   VILLAGE_MAX_FOOTING_SHOWN,
   type PlanRect,
-} from "./villageLayout";
+} from "../board/visuals/villageLayout";
+import { describeSeedBlocks, type SeedRange } from "./seedBlocks";
 
-const SEEDS = 200;
+/** Seeds per map size, over all the files: 1 to VILLAGE_SEEDS. */
+export const VILLAGE_SEEDS = 200;
 /**
- * Seeds per test. The sweep takes ~2 minutes on a runner; run as one block it
- * starves the worker's event loop past vitest's 60 s RPC timeout, so it runs in
- * short tests with a macrotask yield before each (see the `beforeEach` below).
+ * Each test file's range of seeds, per map size: together they sweep 1 to
+ * VILLAGE_SEEDS exactly once (`sweepCoverage.test.ts` holds them, and the files, to it).
  */
+export const VILLAGE_SWEEP_RANGES: Readonly<Record<MapSizeId, readonly SeedRange[]>> = {
+  small: [[1, 100], [101, 200]],
+  medium: [[1, 100], [101, 200]],
+  large: [[1, 100], [101, 200]],
+};
+/** Seeds per test (see `describeSeedBlocks`). */
 const SEEDS_PER_TEST = 20;
 /** Slack for probes between the placement's own, world units (about 13 cm at 65 m per unit). */
 const SLACK = 0.002;
@@ -200,14 +211,16 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
   return tally;
 }
 
-describe("village placement over 200 seeds per map size (#87)", () => {
-  // Tests in a file chain on microtasks, so without this the worker never reaches
-  // its message queue between them and vitest's onTaskUpdate RPC times out.
-  beforeEach(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-  for (const size of ["small", "medium", "large"] as const) {
-    for (let first = 1; first <= SEEDS; first += SEEDS_PER_TEST) {
-      const last = Math.min(SEEDS, first + SEEDS_PER_TEST - 1);
+/** The village placement tests on `size` maps, seeds `firstSeed` to `lastSeed` (one of VILLAGE_SWEEP_RANGES), in blocks of SEEDS_PER_TEST. */
+export function describeVillagePlacement(size: MapSizeId, firstSeed: number, lastSeed: number): void {
+  if (!VILLAGE_SWEEP_RANGES[size].some(([first, last]) => first === firstSeed && last === lastSeed)) {
+    throw new Error(`village placement: seeds ${firstSeed} to ${lastSeed} on ${size} maps are not one of VILLAGE_SWEEP_RANGES`);
+  }
+  describe(`village placement on ${size} maps, seeds ${firstSeed} to ${lastSeed} of ${VILLAGE_SEEDS} (#87)`, () => {
+    describeSeedBlocks(firstSeed, lastSeed, SEEDS_PER_TEST, (first, last) => {
       it(`holds on every ${size} map, seeds ${first} to ${last}`, () => {
+        // The tallies below print only when the test fails (silent: "passed-only");
+        // run with --silent=false to see them on a passing run.
         const started = performance.now();
         const tally = sweep(size, first, last);
         console.log(
@@ -233,6 +246,6 @@ describe("village placement over 200 seeds per map size (#87)", () => {
         expect(tally.kit / tally.ports).toBeGreaterThan(2.5);
         expect(tally.stones / tally.ports).toBeGreaterThan(50);
       }, 120000);
-    }
-  }
-});
+    });
+  });
+}

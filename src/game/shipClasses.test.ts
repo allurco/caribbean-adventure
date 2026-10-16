@@ -7,6 +7,10 @@ import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
 import { hex, hexEquals } from "./hex";
 import type { MapSizeId } from "./mapConfig";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 // ---------------------------------------------------------------------------
 // SHIP_SPECS data tests

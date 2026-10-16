@@ -26,5 +26,13 @@ export default defineConfig({
     // Agent worktrees live under .claude/; their copies of the suite are not ours to run.
     // e2e/ holds the Playwright browser tests (npm run test:e2e), not Vitest's.
     exclude: [...configDefaults.exclude, ".claude/**", "e2e/**"],
+    // Each test file in its own child process (vitest's default, kept explicit):
+    // worker threads measured slower on this suite and timed out under load.
+    pool: "forks",
+    // Three quarters of the cores: the suite is CPU-bound, so this keeps most of
+    // the speed while leaving room for the dev server and whatever else is running.
+    maxWorkers: "75%",
+    // Console output only from failing tests; a passing test's logs are dropped.
+    silent: "passed-only",
   },
 });

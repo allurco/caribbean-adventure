@@ -13,7 +13,7 @@ npm run dev              # Start dev server (Vite)
 npm run build            # Type-check + production build (tsc -b && vite build)
 npm run lint             # ESLint (flat config, v9)
 npm run preview          # Preview production build
-npm test                 # Run all tests once (vitest run)
+npm test                 # Run all tests once: dots, then failures in full (vitest run --reporter=dot)
 npm run test:watch       # Vitest in watch mode
 npm run test:db          # Row-level security tests against local Supabase (needs `npx supabase start`, Docker)
 npm run test:e2e         # Playwright: two browsers play an online match against the e2e backend (no Docker; ~4 min)
@@ -23,7 +23,7 @@ npx vitest run src/game/combat.test.ts        # Run a single test file
 npx vitest run -t "flee attempt"              # Run tests matching a name
 ```
 
-Tests use **Vitest** and live next to their source as `*.test.ts`. Game logic is thoroughly unit-tested (~25 suites under `src/game/`); prefer writing tests **before** implementation (TDD). Under `src/board/` the pure modules (the terrain field, meshes, placement, wave and water maths in `visuals/`, grid and camera helpers) are tested the same way; React components and shaders are not, so keep logic out of them.
+Tests use **Vitest** and live next to their source as `*.test.ts`. They run in parallel, one forked process per file on up to 75% of the cores (`vite.config.ts`), and print console output only from failing tests (`silent: "passed-only"`); a test that sends invalid moves on purpose calls `silenceInvalidMoveLogs()` (`src/testSupport/`) to drop boardgame.io's `ERROR: invalid move` log. A long sweep over many seeds is split across files (`villagePlacement.*.test.ts`, `draftPlacement.*.test.ts`, over a shared sweep in `src/testSupport/`, with `seedBlocks.ts` and `sweepCoverage.test.ts` checking that the files cover every seed once) so it does not hold up the run. Game logic is thoroughly unit-tested (~25 suites under `src/game/`); prefer writing tests **before** implementation (TDD). Under `src/board/` the pure modules (the terrain field, meshes, placement, wave and water maths in `visuals/`, grid and camera helpers) are tested the same way; React components and shaders are not, so keep logic out of them.
 
 ## Architecture
 

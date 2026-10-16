@@ -7,6 +7,10 @@ import type { Captain, CaribbeanState, ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
 import { REPAIR_COST_PER_POINT } from "./constants";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 /**
  * Every move argument is untrusted: online, the `/api` reducer runs on

@@ -8,6 +8,10 @@ import { hex } from "./hex";
 import { createShipState } from "./economy";
 import { SHIP_SPECS, UPGRADES, REPAIR_COST_PER_POINT } from "./constants";
 import type { MapSizeId } from "./mapConfig";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 const TEST_MARKET = {
   inDemandGood: null, prices: {

@@ -4,6 +4,10 @@ import { handleApiRequest, type ApiServices } from "./handleApiRequest";
 import { createMemoryOnlineStore, type MemoryOnlineStore } from "./memoryOnlineStore";
 import type { CaribbeanState } from "../src/game/types";
 import { wrappedNeighbors } from "../src/game/hex";
+import { silenceInvalidMoveLogs } from "../src/testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 // The move API (#113) through handleApiRequest, with the in-memory store and
 // a token table: two captains in a started match.

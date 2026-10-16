@@ -34,4 +34,5 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npm test
+        # npm test prints dots; the github-actions reporter keeps the failure annotations vitest adds by default.
+        run: npm test -- --reporter=github-actions

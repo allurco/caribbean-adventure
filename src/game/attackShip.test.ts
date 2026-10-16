@@ -7,6 +7,10 @@ import type { MapSizeId } from "./mapConfig";
 import type { CaribbeanState, ShipState } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
 import { createShipState } from "./economy";
+import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+
+// These tests send refused moves on purpose; boardgame.io logs each one.
+silenceInvalidMoveLogs();
 
 /** An all-water hexagon of `radius` around the origin, so combat tests aren't blocked by islands. */
 function waterGrid(radius: number): MapCell[] {
