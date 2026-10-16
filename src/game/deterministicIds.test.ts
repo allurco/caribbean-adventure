@@ -86,7 +86,7 @@ function startGame(extra: Partial<CaribbeanState> = {}) {
       floatingLoot: [],
       npcs: { "npc-1": merchant(hex(-3, 1)) },
       npcIdCounter: 1,
-      missionIdCounter: 0,
+      missionIdCounters: {},
       lootIdCounter: 0,
       wrap: null,
       pirates: {},
@@ -148,7 +148,21 @@ describe("mission and loot ids (#320)", () => {
   it("count missions and loot apart, so a public loot id says nothing of who visited a tavern", () => {
     const G = play(startGame());
     expect(G.floatingLoot.map((loot) => loot.id)).toEqual(["loot-1", "loot-2"]);
-    expect(G.ships["0"].activeMission?.id).toBe("mission-1");
+    expect(G.ships["0"].activeMission?.id).toBe("mission-0-1");
+  });
+
+  it("number each seat's missions apart, so a seat's own id says nothing of the other seats' draws", () => {
+    // Both captains docked, at Port Royal and at Kingston
+    const client = startGame({ ships: { "0": ship(DOCK, "blackbeard", true), "1": ship(hex(3, 0), "surcouf", true) } });
+    for (let i = 0; i < 3; i++) {
+      client.moves.listenForRumors();
+      client.moves.abandonMission();
+    }
+    client.moves.listenForRumors();
+    expect(client.getState()!.G.ships["0"].activeMission?.id).toBe("mission-0-4");
+    client.events.endTurn!();
+    client.moves.listenForRumors();
+    expect(client.getState()!.G.ships["1"].activeMission?.id).toBe("mission-1-1");
   });
 
   it("never repeat within a match", () => {
@@ -159,7 +173,7 @@ describe("mission and loot ids (#320)", () => {
 
   it("start after a match stored before the counter existed, and cannot clash with its clock-made ids", () => {
     const client = startGame({
-      missionIdCounter: undefined,
+      missionIdCounters: undefined,
       lootIdCounter: undefined,
       floatingLoot: [{ id: "loot-1-1712345678901", hex: hex(2, 2), cargo: { Wood: 0, Sugar: 0, Rum: 0, Spice: 0 }, gold: 0 }],
     });

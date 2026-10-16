@@ -212,7 +212,7 @@ export function isDerelict(ship: ShipState): boolean {
   return ship.stats.crew.current <= 0 && ship.stats.hull.current > 0;
 }
 
-/** The loot a sunk player ship leaves, named `id` (`nextId(G, "loot")`). */
+/** The loot a sunk player ship leaves, named `id` (`nextLootId(G)`). */
 export function createLootFromShip(ship: ShipState, id: string): FloatingLoot {
   return {
     id,
@@ -301,7 +301,7 @@ export function getValidNPCAttackTargets(
   return targets;
 }
 
-/** The loot a sunk NPC leaves, named `id` (`nextId(G, "loot")`). */
+/** The loot a sunk NPC leaves, named `id` (`nextLootId(G)`). */
 export function createLootFromNPC(npc: NPCShip, id: string): FloatingLoot {
   return {
     id,

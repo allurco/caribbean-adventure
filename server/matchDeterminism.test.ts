@@ -34,8 +34,8 @@ describe("a match on the server (#320)", () => {
     vi.setSystemTime(new Date("2027-06-15T12:34:56Z"));
     const second = playMatch();
 
-    expect(first.G.ships["0"].activeMission?.id).toBe("mission-1");
-    expect(second.G.ships["0"].activeMission?.id).toBe("mission-1");
+    expect(first.G.ships["0"].activeMission?.id).toBe("mission-0-1");
+    expect(second.G.ships["0"].activeMission?.id).toBe("mission-0-1");
     expect(JSON.stringify(second)).toBe(JSON.stringify(first));
   });
 });

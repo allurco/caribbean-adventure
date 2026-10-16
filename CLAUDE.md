@@ -50,7 +50,7 @@ Logic is split into focused modules; `Game.ts` is the boardgame.io wiring that c
 - `missions.ts` — Mission generation and completion checks (delivery/escort/assassination).
 - `scoring.ts` — Gold stashing, combat glory, win condition.
 - `scouting.ts` — Scout targeting.
-- `ids.ts` — `nextId(G, kind)`: mission and loot ids from their own counters in G (`missionIdCounter`, hidden by `playerViewFor`, and `lootIdCounter`; #320), never the clock or module state; `determinismSource.node.test.ts` keeps the clock, `Math.random`, `crypto` and module-level state out of `src/game/`.
+- `ids.ts` — `nextLootId(G)` and `nextMissionId(G, seat)`: loot and mission ids from counters in G (`lootIdCounter`, public; `missionIdCounters`, one per seat, each seat shown only its own by `playerViewFor`; #320), never the clock or module state; `determinismSource.node.test.ts` keeps the clock, `Math.random`, `crypto` and module-level state out of `src/game/`.
 - `wind.ts` — The one wind (#204, #264): `windFor(weather)` and the fixed `TRADE_WIND`, a world angle in `hexToWorld`'s frame. Not in `G` yet; rules take it as an argument.
 - `weatherGauge.ts` — `holdsGauge(a, b, wind, wrap?)`: which ship is upwind (holds the weather gauge), or null when square to the wind.
 - `terrain.ts` — Terrain/elevation logic used by generation.

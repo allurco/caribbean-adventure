@@ -33,8 +33,8 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
 
 /**
  * An older save brought up to this version, or `value` as it is. Version 2
- * lacks `G.missionIdCounter` and `G.lootIdCounter` (#320), which the game
- * reads as 0: its clock-made ids (`loot-3-1712345678901`) can never be one of
+ * lacks `G.missionIdCounters` and `G.lootIdCounter` (#320), whose counts the
+ * game reads as 0: its clock-made ids (`loot-3-1712345678901`) can never be one of
  * the counters' (`loot-1`).
  *
  * The next bump must chain the steps, 2 → 3 then 3 → 4, so a version 2 save

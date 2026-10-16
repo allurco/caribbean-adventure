@@ -17,8 +17,8 @@ export type MatchState = State<CaribbeanState>;
  * this, then update the pinned shape. When an older save can be brought up
  * to date, `parseHotseatSave` migrates it rather than setting it aside.
  *
- * - 3: G counts its mission and loot ids, `G.missionIdCounter` and
- *   `G.lootIdCounter` (#320). A version 2 save lacks them, which the game
+ * - 3: G counts its mission and loot ids, `G.missionIdCounters` (by seat)
+ *   and `G.lootIdCounter` (#320). A version 2 save lacks them, which the game
  *   reads as 0, so it migrates as it is.
  */
 export const HOTSEAT_SAVE_VERSION = 3;

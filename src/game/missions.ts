@@ -32,7 +32,7 @@ const ESCORT_TITLES = [
   "Ghost Ship",
 ];
 
-/** A mission as the tavern offers it, before the game numbers it (`nextId(G, "mission")`, #320). */
+/** A mission as the tavern offers it, before the game numbers it (`nextMissionId(G, seat)`, #320). */
 export type UnnamedMission = Omit<Mission, "id">;
 
 function pickRandom<T>(arr: T[], rng: () => number): T {

@@ -4,7 +4,7 @@
  * a replay must reach the same G. So nothing under `src/game/` reads the
  * clock, draws from `Math.random` or `crypto` (game randomness is
  * boardgame.io's `random`), or keeps state in a module, which restarts with
- * every process. Counters live in G (`npcIdCounter`, `missionIdCounter`,
+ * every process. Counters live in G (`npcIdCounter`, `missionIdCounters`,
  * `lootIdCounter`). Read from the sources' syntax trees, since the rule is
  * about what the code may use at all; comments and strings do not count.
  */

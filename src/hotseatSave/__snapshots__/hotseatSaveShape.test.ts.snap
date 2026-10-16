@@ -28,7 +28,7 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
       "lootIdCounter": "number",
       "mapSeed": "number",
       "mapSize": "string",
-      "missionIdCounter": "number",
+      "missionIdCounters": {},
       "movesUsed": "number",
       "npcIdCounter": "number",
       "npcs": {

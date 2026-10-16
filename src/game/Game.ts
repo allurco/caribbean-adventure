@@ -55,7 +55,7 @@ import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./r
 import { canStashGold, applyStashGold, awardCombatGlory, findWinner } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
 import { findAccessiblePort } from "./moves";
-import { nextId } from "./ids";
+import { nextLootId, nextMissionId } from "./ids";
 import {
   generateMission,
   canAffordTavern,
@@ -147,7 +147,7 @@ function createInitialState(
     draftHands: hands,
     floatingLoot: [],
     npcIdCounter: 0,
-    missionIdCounter: 0,
+    missionIdCounters: {},
     lootIdCounter: 0,
     pirates: {},
     bountyClaims: [],
@@ -507,7 +507,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const mission = generateMission(port.portName, G, random.Number);
           // Numbered only once there is one, so the count is of missions given
           if (mission) {
-            ship.activeMission = { ...mission, id: nextId(G, "mission") };
+            ship.activeMission = { ...mission, id: nextMissionId(G, ctx.currentPlayer) };
           }
         },
 
@@ -892,7 +892,7 @@ export const Caribbean: Game<CaribbeanState> = {
                 attacker.activeMission = undefined;
               }
 
-              const loot = createLootFromNPC(npc, nextId(G, "loot"));
+              const loot = createLootFromNPC(npc, nextLootId(G));
               G.floatingLoot.push(loot);
               delete G.npcs[G.combat.defenderId];
               combatEnded = true;
@@ -909,7 +909,7 @@ export const Caribbean: Game<CaribbeanState> = {
               // on them (#201), before the sunk ship's record goes.
               applyPirateBounty(G, G.combat.attackerId, G.combat.defenderId, ctx.turn);
 
-              const loot = createLootFromShip(defenderShip, nextId(G, "loot"));
+              const loot = createLootFromShip(defenderShip, nextLootId(G));
               G.floatingLoot.push(loot);
               sunk.push(G.combat.defenderId);
               combatEnded = true;
@@ -929,7 +929,7 @@ export const Caribbean: Game<CaribbeanState> = {
               applyPirateBounty(G, G.combat.defenderId, G.combat.attackerId, ctx.turn);
             }
 
-            const loot = createLootFromShip(attacker, nextId(G, "loot"));
+            const loot = createLootFromShip(attacker, nextLootId(G));
             G.floatingLoot.push(loot);
             sunk.push(G.combat.attackerId);
             combatEnded = true;
