@@ -13,7 +13,9 @@ import {
   resolveSeamanship,
   countCannonHits,
   aimedDamage,
+  shotBonus,
   MAST_FLEE_PENALTY,
+  MAX_MAST_DAMAGE,
   applyDamage,
   isSunk,
   isDerelict,
@@ -209,7 +211,7 @@ describe("aimedDamage", () => {
   });
 
   it("chain shot adds one hit only when aimed at the masts", () => {
-    expect(aimedDamage(2, "masts", ["chain_shot"])).toEqual({ hull: 0, crew: 0, masts: 3 });
+    expect(aimedDamage(1, "masts", ["chain_shot"])).toEqual({ hull: 0, crew: 0, masts: 2 });
     expect(aimedDamage(2, "hull", ["chain_shot"])).toEqual({ hull: 2, crew: 0, masts: 0 });
     expect(aimedDamage(2, "crew", ["chain_shot"])).toEqual({ hull: 0, crew: 2, masts: 0 });
   });
@@ -226,18 +228,45 @@ describe("aimedDamage", () => {
     }
   });
 
-  it("over every volley a broadside can roll, damages only what it was aimed at", () => {
+  it("masts take at most MAX_MAST_DAMAGE (2): a hit aimed at the masts past that goes to the hull, as #257 had it", () => {
+    expect(MAX_MAST_DAMAGE).toBe(2);
+    expect(aimedDamage(3, "masts", [], 0)).toEqual({ hull: 1, crew: 0, masts: 2 });
+    expect(aimedDamage(3, "masts", [], 1)).toEqual({ hull: 2, crew: 0, masts: 1 });
+    expect(aimedDamage(2, "masts", [], 2)).toEqual({ hull: 2, crew: 0, masts: 0 });
+    // Chain shot's hit is aimed at the masts too, and spills over the same way
+    expect(aimedDamage(1, "masts", ["chain_shot"], 0)).toEqual({ hull: 0, crew: 0, masts: 2 });
+    expect(aimedDamage(2, "masts", ["chain_shot"], 1)).toEqual({ hull: 2, crew: 0, masts: 1 });
+    // A ship already past the cap (mast damage from before #348's cap) takes every mast hit on the hull
+    expect(aimedDamage(2, "masts", [], 5)).toEqual({ hull: 2, crew: 0, masts: 0 });
+  });
+
+  it("over every volley a broadside can roll, damages only what it was aimed at, past the mast cap the hull", () => {
     const loadouts = [[], ["chain_shot"], ["grape_shot"], ["chain_shot", "grape_shot"], ["long_guns"]];
     for (let hits = 0; hits <= 20; hits++) {
       for (const aim of VOLLEY_AIMS) {
         for (const upgrades of loadouts) {
-          const damage = aimedDamage(hits, aim, upgrades);
-          for (const other of VOLLEY_AIMS.filter((a) => a !== aim)) expect(damage[other]).toBe(0);
-          expect(damage[aim]).toBeGreaterThanOrEqual(hits);
-          expect(damage[aim]).toBeLessThanOrEqual(hits === 0 ? 0 : hits + 1);
+          for (let masts = 0; masts <= 3; masts++) {
+            const damage = aimedDamage(hits, aim, upgrades, masts);
+            const total = damage.hull + damage.crew + damage.masts;
+            expect(total).toBeGreaterThanOrEqual(hits);
+            expect(total).toBeLessThanOrEqual(hits === 0 ? 0 : hits + 1);
+            expect(masts + damage.masts).toBeLessThanOrEqual(Math.max(masts, MAX_MAST_DAMAGE));
+            if (aim !== "masts") expect(damage).toEqual({ hull: 0, crew: 0, masts: 0, [aim]: total });
+            if (aim === "masts") expect(damage.crew).toBe(0);
+          }
         }
       }
     }
+  });
+});
+
+describe("shotBonus: the shot that added a hit to a volley (#348)", () => {
+  it("chain shot at the masts, grape shot at the crew, and only to a volley that hits", () => {
+    expect(shotBonus(2, "masts", ["chain_shot", "grape_shot"])).toBe("chain_shot");
+    expect(shotBonus(2, "crew", ["chain_shot", "grape_shot"])).toBe("grape_shot");
+    expect(shotBonus(2, "hull", ["chain_shot", "grape_shot"])).toBeNull();
+    expect(shotBonus(2, "masts", ["grape_shot"])).toBeNull();
+    expect(shotBonus(0, "masts", ["chain_shot"])).toBeNull();
   });
 });
 
@@ -440,6 +469,12 @@ describe("resolveFleeAttempt", () => {
     expect(resolveFleeAttempt(2, 3, 4, 4)).toBe("escaped");
     expect(resolveFleeAttempt(2, 3, 4, 4, 1)).toBe("escaped");
     expect(resolveFleeAttempt(2, 3, 4, 4, 2)).toBe("caught");
+  });
+
+  it("counts no more than MAX_MAST_DAMAGE points against the flight, however much mast damage a ship carries", () => {
+    // Pursuer 0 + 1 = 1; fleeer 3 + 2 = 5, less at most 2: escapes by 2
+    expect(resolveFleeAttempt(0, 1, 3, 2, 2)).toBe("escaped");
+    expect(resolveFleeAttempt(0, 1, 3, 2, 30)).toBe("escaped");
   });
 
   it("returns 'escaped' when fleeer wins by 2+ (clean escape)", () => {

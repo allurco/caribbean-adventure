@@ -1,6 +1,6 @@
-import type { CombatState, ShipState, CombatAction, NPCShip, VolleyAim } from "../game/types";
+import type { CombatState, ShipState, CombatAction, NPCShip, Volley, VolleyAim } from "../game/types";
 import { VOLLEY_AIMS } from "../game/types";
-import { AIM_LABELS, aimedAt, pendingVolley } from "./volleyAim";
+import { AIM_LABELS, answerLine, pendingVolley, pursuitRollsLine, volleyLine, type PendingVolley } from "./volleyAim";
 import { npcKind } from "./npcName";
 import { defenderRollLine, drawIntro } from "./seamanshipText";
 import { HUD_EDGE } from "./hudLayout";
@@ -103,6 +103,31 @@ function ActionButton({
   );
 }
 
+/** The round's volleys in the order they were fired, each one's damage landed (#346), and where each was aimed (#348). */
+function VolleyLines({
+  volleys,
+  shooterLabel,
+  upgradesOf,
+}: {
+  volleys: Volley[];
+  shooterLabel: (id: string) => string;
+  upgradesOf: (id: string) => readonly string[];
+}) {
+  return (
+    <>
+      {volleys.map((volley, i) => {
+        const line = volleyLine(volley, upgradesOf(volley.shooterId));
+        return (
+          <div key={i} className="text-xs text-amber-100/80">
+            <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> {line.fired}:{" "}
+            <span className="font-heading text-red-400">{line.hits}</span>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 /**
  * The aim of the volley the fight waits on (#348): one button per aim for a
  * seat's volley, each firing it there; one for an NPC's, which the engine aims.
@@ -112,16 +137,20 @@ function AimButtons({
   shooter,
   fireLabel,
   onFire,
+  onEngineFire,
   mayAct,
 }: {
-  pending: ReturnType<typeof pendingVolley>;
+  pending: PendingVolley | null;
   shooter: string;
   fireLabel: string;
-  onFire: (aim?: VolleyAim) => void;
+  /** Fires a seat's volley, aimed. */
+  onFire: (aim: VolleyAim) => void;
+  /** Fires an NPC's volley, which the engine aims; only at the cannons, as an NPC answers on its own. */
+  onEngineFire?: () => void;
   mayAct: boolean;
 }) {
-  if (pending?.aimedBy === "engine") {
-    return <ActionButton label={`${shooter} fires`} onClick={() => onFire()} disabled={!mayAct} primary />;
+  if (pending?.aimedBy === "engine" && onEngineFire) {
+    return <ActionButton label={`${shooter} fires`} onClick={onEngineFire} disabled={!mayAct} primary />;
   }
   return (
     <div className="space-y-1">
@@ -163,6 +192,10 @@ export function CombatPanel({
   const volleys = combat.volleys ?? [];
   const shooterLabel = (id: string) => (isNPC && id === combat.defenderId ? npcLabel : `Player ${seatLabel(id)}`);
   const pending = pendingVolley(combat);
+  // A ship's upgrades, read for the hit its shot added; NPCs carry none
+  const upgradesOf = (id: string): readonly string[] => ships[id]?.upgrades ?? [];
+  // The ship that fled, whose shot-away masts slowed it (#348)
+  const fleeing = combat.seamanshipWinner === null ? undefined : ships[combat.seamanshipWinner] ?? npcs[combat.seamanshipWinner];
 
   return (
     <div style={{ top: safeInset("top", HUD_EDGE) }} className="absolute left-1/2 -translate-x-1/2 rounded-xl overflow-hidden border border-red-800/50 bg-gradient-to-br from-stone-900/95 via-red-950/90 to-stone-950/95 shadow-2xl shadow-black/50 backdrop-blur-md text-white p-4 text-sm w-96">
@@ -303,7 +336,7 @@ export function CombatPanel({
               </div>
               {combat.fleeRolls && (
                 <div className="text-[10px] text-amber-400/60 mb-2">
-                  Pursuit rolls: Pursuer {combat.fleeRolls.pursuer} | Fleeer {combat.fleeRolls.fleeer}
+                  {pursuitRollsLine(combat.fleeRolls, fleeing?.damage.masts ?? 0)}
                 </div>
               )}
             </>
@@ -321,6 +354,7 @@ export function CombatPanel({
             shooter={pending ? shooterLabel(pending.shooterId) : ""}
             fireLabel={combat.fleeOutcome === "caught" ? "Fire Parting Shot" : "Fire"}
             onFire={onRollCannons}
+            onEngineFire={() => onRollCannons()}
             mayAct={mayAct}
           />
         </div>
@@ -328,18 +362,11 @@ export function CombatPanel({
 
       {combat.stage === "returnFire" && (
         <div className="text-center space-y-2">
-          {volleys.map((volley, i) => (
-            <div key={i} className="text-xs text-amber-100/80">
-              <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> fired {aimedAt(volley.aim)}:{" "}
-              <span className="font-heading text-red-400">
-                {volley.hits} hit{volley.hits === 1 ? "" : "s"}
-              </span>
-            </div>
-          ))}
+          <VolleyLines volleys={volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
           <div className="text-amber-100/80 text-xs mb-2">
-            {pending ? `${shooterLabel(pending.shooterId)} answers with the ship it has left` : ""}
+            {pending ? answerLine(shooterLabel(pending.shooterId)) : ""}
           </div>
-          <AimButtons pending={pending} shooter={pending ? shooterLabel(pending.shooterId) : ""} fireLabel="Answer" onFire={(aim) => aim && onReturnFire(aim)} mayAct={mayAct} />
+          <AimButtons pending={pending} shooter={pending ? shooterLabel(pending.shooterId) : ""} fireLabel="Answer" onFire={onReturnFire} mayAct={mayAct} />
         </div>
       )}
 
@@ -347,15 +374,7 @@ export function CombatPanel({
         <div className="space-y-3">
           {/* The round's volleys in the order they were fired; each one's damage has landed (#346) */}
           <div className="space-y-1 text-center">
-            {volleys.map((volley, i) => (
-              <div key={i} className="text-xs text-amber-100/80">
-                <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> fired {volley.guns} gun
-                {volley.guns === 1 ? "" : "s"} {aimedAt(volley.aim)}:{" "}
-                <span className="font-heading text-red-400">
-                  {volley.hits} hit{volley.hits === 1 ? "" : "s"}
-                </span>
-              </div>
-            ))}
+            <VolleyLines volleys={volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
             {volleys.length === 1 && combat.fleeOutcome !== "caught" && (
               <div className="text-[10px] text-amber-400/60">No answer: the other ship could not fire back</div>
             )}

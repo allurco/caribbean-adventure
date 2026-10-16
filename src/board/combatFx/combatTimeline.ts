@@ -13,6 +13,7 @@
  */
 import type { CaribbeanState, CombatState, NPCShip, ShipState, Volley as FiredVolley } from "../../game/types";
 import { hexToWorld, nearestImage, type Hex } from "../../game/hex";
+import { isVolleyStage, volleysFired } from "../../game/combatMoves";
 import { SEED_FEATURES } from "../visuals/seedFeatures";
 import { stream, subSeed, worldSeedOf } from "../visuals/subSeed";
 import { BEATS, pacedSeconds } from "./beatTiming";
@@ -190,9 +191,9 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
   }
 
   // Each volley plays as it is fired (#348): the first as the answer waits on its aim, then the answer
-  if ((before?.stage === "cannons" || before?.stage === "returnFire") && after && after.stage !== before.stage) {
+  if (before && isVolleyStage(before.stage) && after) {
     const firedBefore = before.stage === "returnFire" ? (before.volleys ?? []).length : 0;
-    const volley = volleyBeat(next, after, (after.volleys ?? []).slice(firedBefore), firedBefore);
+    const volley = volleyBeat(next, after, volleysFired(before, after), firedBefore);
     if (volley) beats.push(volley);
   }
 

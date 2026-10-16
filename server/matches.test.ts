@@ -582,6 +582,7 @@ describe("the parting shot after a caught flight", () => {
       const res = await act(matchId, tokenOf(attacker), move(main._stateID, "attackShip", defender));
       const { state } = (await res.json()) as MatchBody;
       // Set-up: the faster ship fled and was caught, written straight into the store.
+      // Round 2: a flight is never chosen in round 1 (the ambush), so the parting shot's firer is only defined from round 2.
       const fleeing = fled === "attacker" ? attacker : defender;
       const pursuer = fleeing === attacker ? defender : attacker;
       const combat = ((await store.peekMatch(matchId))!.state as View).G.combat!;

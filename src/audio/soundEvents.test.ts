@@ -186,20 +186,24 @@ describe("soundEventsFrom", () => {
     expect(soundEventsFrom(attackerRolled, drawn)).toEqual([{ type: "seamanshipRolled" }]);
   });
 
-  it("emits cannon fire with both sides' hits when the cannons are rolled", () => {
+  const volley = (shooterId: string, hits: number) => ({ shooterId, guns: 4, aim: "hull" as const, hits });
+
+  it("emits cannon fire with both sides' hits when both volleys are fired at once", () => {
     const prev = makeState({ combat: makeCombat({ stage: "cannons", actionChosen: "fire" }) });
     const next = makeState({
-      combat: makeCombat({ stage: "resolution", actionChosen: "fire", attackerHits: 2, defenderHits: 1 }),
+      combat: makeCombat({ stage: "resolution", actionChosen: "fire", attackerHits: 2, defenderHits: 1, volleys: [volley("0", 2), volley("1", 1)] }),
     });
     expect(soundEventsFrom(prev, next)).toEqual([{ type: "cannonsFired", attackerHits: 2, defenderHits: 1 }]);
   });
 
-  it("emits cannon fire for each volley as it is fired: the first, then the answer aimed on its own step (#348)", () => {
+  it("emits cannon fire for each volley as it is fired, with that volley's hits only: the first, then the answer aimed on its own step (#348)", () => {
     const prev = makeState({ combat: makeCombat({ stage: "cannons", actionChosen: "fire" }) });
-    const waiting = makeState({ combat: makeCombat({ stage: "returnFire", actionChosen: "fire", attackerHits: 2 }) });
+    const waiting = makeState({ combat: makeCombat({ stage: "returnFire", actionChosen: "fire", attackerHits: 2, volleys: [volley("0", 2)] }) });
     expect(soundEventsFrom(prev, waiting)).toEqual([{ type: "cannonsFired", attackerHits: 2, defenderHits: 0 }]);
-    const answered = makeState({ combat: makeCombat({ stage: "resolution", actionChosen: "fire", attackerHits: 2, defenderHits: 1 }) });
-    expect(soundEventsFrom(waiting, answered)).toEqual([{ type: "cannonsFired", attackerHits: 2, defenderHits: 1 }]);
+    const answered = makeState({
+      combat: makeCombat({ stage: "resolution", actionChosen: "fire", attackerHits: 2, defenderHits: 1, volleys: [volley("0", 2), volley("1", 1)] }),
+    });
+    expect(soundEventsFrom(waiting, answered)).toEqual([{ type: "cannonsFired", attackerHits: 0, defenderHits: 1 }]);
   });
 
   it("emits a boarding when the action choice ends the combat", () => {

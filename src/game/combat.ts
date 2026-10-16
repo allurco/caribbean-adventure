@@ -8,6 +8,13 @@ export const CANNON_HIT_MIN = 5;
 export const MOUNTAIN_ELEVATION = 3; // Elevation that blocks LOS
 /** What each point of mast damage takes off a fleeing ship's roll (#348). */
 export const MAST_FLEE_PENALTY = 1;
+/**
+ * The most mast damage a ship takes (#348, as #257 had it): a hit aimed at
+ * the masts past it goes to the hull. So the flee penalty is at most
+ * `MAX_MAST_DAMAGE × MAST_FLEE_PENALTY`, and the moves a turn at most this
+ * many fewer (`getMaxMoves`, never under 1).
+ */
+export const MAX_MAST_DAMAGE = 2;
 
 /**
  * Linear interpolation between two numbers.
@@ -177,14 +184,32 @@ export function countCannonHits(rolls: number[]): number {
 /**
  * A volley's damage (#348): every hit goes where it was aimed. Chain shot
  * adds a hit aimed at the masts, grape shot one aimed at the crew, each only
- * to a volley that hits at all.
+ * to a volley that hits at all. The masts take hits only up to
+ * `MAX_MAST_DAMAGE` (the target has `targetMastDamage` already); the rest
+ * go to the hull.
  */
-export function aimedDamage(hits: number, aim: VolleyAim, shooterUpgrades: readonly string[]): DamageState {
+export function aimedDamage(hits: number, aim: VolleyAim, shooterUpgrades: readonly string[], targetMastDamage = 0): DamageState {
   const damage: DamageState = { hull: 0, crew: 0, masts: 0 };
   if (hits === 0) return damage;
-  const shot = SHOT_FOR_AIM[aim];
-  damage[aim] = hits + (shot && shooterUpgrades.includes(shot) ? 1 : 0);
+  const landed = hits + (shotBonus(hits, aim, shooterUpgrades) ? 1 : 0);
+  if (aim !== "masts") {
+    damage[aim] = landed;
+    return damage;
+  }
+  damage.masts = Math.min(landed, Math.max(0, MAX_MAST_DAMAGE - targetMastDamage));
+  damage.hull = landed - damage.masts;
   return damage;
+}
+
+/** The shot that added a hit to a volley (#348): chain shot at the masts, grape shot at the crew, only when it hits; else null. */
+export function shotBonus(hits: number, aim: VolleyAim, shooterUpgrades: readonly string[]): "chain_shot" | "grape_shot" | null {
+  const shot = SHOT_FOR_AIM[aim];
+  return hits > 0 && shot && shooterUpgrades.includes(shot) ? shot : null;
+}
+
+/** What a fleeing ship's mast damage takes off its roll (#348): `MAST_FLEE_PENALTY` a point, up to `MAX_MAST_DAMAGE` points. */
+export function fleePenalty(mastDamage: number): number {
+  return Math.min(mastDamage, MAX_MAST_DAMAGE) * MAST_FLEE_PENALTY;
 }
 
 /**
@@ -196,7 +221,7 @@ export function npcAim(): VolleyAim {
 }
 
 /** The shot that adds a hit to a volley with this aim. */
-const SHOT_FOR_AIM: Record<VolleyAim, string | null> = { hull: null, masts: "chain_shot", crew: "grape_shot" };
+const SHOT_FOR_AIM: Record<VolleyAim, "chain_shot" | "grape_shot" | null> = { hull: null, masts: "chain_shot", crew: "grape_shot" };
 
 export function applyDamage(ship: ShipState | NPCShip, damage: DamageState): void {
   ship.damage.hull += damage.hull;
@@ -334,7 +359,8 @@ export function resolveFleeAttempt(
   fleeerMastDamage = 0
 ): "escaped" | "caught" {
   const pursuerTotal = pursuerManeuv + pursuerRoll;
-  const fleeerTotal = fleeerManeuv + fleeerRoll - fleeerMastDamage * MAST_FLEE_PENALTY;
+  // Mast damage from before the cap (#348) counts only up to it
+  const fleeerTotal = fleeerManeuv + fleeerRoll - fleePenalty(fleeerMastDamage);
   const difference = fleeerTotal - pursuerTotal;
 
   // Clean escape requires winning by 2 or more

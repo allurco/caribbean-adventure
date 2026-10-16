@@ -2,6 +2,7 @@ import type { CaribbeanState, CombatState, GoodType, Nation, PirateCause, ShipCl
 import { GOOD_TYPES } from "../game/types";
 import { hexEquals } from "../game/hex";
 import { findAccessiblePort } from "../game/moves";
+import { isVolleyStage, volleysFired } from "../game/combatMoves";
 
 /**
  * Something audible that happened between two game states (#73). Derived
@@ -150,10 +151,11 @@ function combatEvents(before: CombatState | undefined, after: CombatState | unde
   if (rolling && after && nextStage !== before.stage) {
     events.push({ type: "seamanshipRolled" });
   }
-  // Each volley is fired on its own step (#348): the first, then the answer
-  const firing = before.stage === "cannons" || before.stage === "returnFire";
-  if (firing && after && nextStage !== before.stage) {
-    events.push({ type: "cannonsFired", attackerHits: after.attackerHits, defenderHits: after.defenderHits });
+  // Each volley is fired on its own step (#348): the first, then the answer, each with its own hits
+  if (isVolleyStage(before.stage) && after && nextStage !== before.stage) {
+    const fired = volleysFired(before, after);
+    const hitsBy = (id: string) => fired.filter((v) => v.shooterId === id).reduce((sum, v) => sum + v.hits, 0);
+    events.push({ type: "cannonsFired", attackerHits: hitsBy(after.attackerId), defenderHits: hitsBy(after.defenderId) });
   }
   // Choosing an action ends the combat only by boarding (flee and fire move on).
   if (before.stage === "chooseAction" && !after) {
