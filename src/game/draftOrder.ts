@@ -35,14 +35,14 @@ export function nextToPick(G: Pick<CaribbeanState, "ships">, playOrder: readonly
 
 /**
  * The draft ends once every seat has picked and its turns have reached the
- * last seat (`nextToPick`). A table set up with its captains already in
- * command, no hands dealt (as tests set one), skips the draft at once.
+ * last seat (`nextToPick`). A game that starts with its captains already in
+ * command starts in the main phase, not here (`withMainPhase` in tests).
  */
 export function draftOver(
-  G: Pick<CaribbeanState, "ships" | "draftHands">,
+  G: Pick<CaribbeanState, "ships">,
   playOrder: readonly string[],
   playOrderPos: number,
 ): boolean {
   if (!everySeatPicked(G)) return false;
-  return playOrderPos === playOrder.length - 1 || Object.keys(G.draftHands).length === 0;
+  return playOrderPos === playOrder.length - 1;
 }
