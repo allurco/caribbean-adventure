@@ -22,6 +22,7 @@ export const SCENE_FONTS: readonly string[] = [
 /** Files under public/ the board never loads, and why. */
 export const NOT_BOARD_ASSETS: Readonly<Record<string, string>> = {
   "vite.svg": "the page's favicon, loaded by the browser",
+  "harbour/harbour-still.webp": "the online shell's harbour still (#122), a CSS background behind the shell, never the board",
   "waternormals.jpg": "not loaded anywhere: the sea's normals come from the wave cascades",
 };
 

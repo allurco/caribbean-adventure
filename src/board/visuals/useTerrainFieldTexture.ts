@@ -21,8 +21,8 @@ export interface TerrainFieldTexture {
   wrap: MapWrap;
 }
 
-/** The bake (CPU side), once per map, wrap and world seed. */
-const bakedFieldOf = perMapCache((cells, wrap, worldSeed) => {
+/** The bake (CPU side), once per map, wrap and world seed. Exported so the harbour backdrop (#122) can bake it ahead, in a task of its own. */
+export const bakedFieldOf = perMapCache((cells, wrap, worldSeed) => {
   const outward = createReefOutward(cells, wrap);
   return bakeTerrainField(sharedTerrainField(cells, wrap, worldSeed), {
     sampleReef: createReefMask(cells, wrap),

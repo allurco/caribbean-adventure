@@ -27,9 +27,12 @@ export function surfTimeRate(reducedMotion: boolean): number {
   return reducedMotion ? SURF_REDUCED_MOTION_RATE : 1;
 }
 
-/** The surf clock after a frame of `deltaSeconds`, wrapped to [0, SURF_LOOP_SECONDS). */
-export function advanceSurfTime(current: number, deltaSeconds: number, reducedMotion: boolean): number {
-  if (!Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return current;
+/**
+ * The surf clock after a frame of `deltaSeconds`, wrapped to [0, SURF_LOOP_SECONDS).
+ * While `held` (motionHold.ts: the harbour backdrop before its fade, #122) it stands still.
+ */
+export function advanceSurfTime(current: number, deltaSeconds: number, reducedMotion: boolean, held = false): number {
+  if (held || !Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return current;
   const step = Math.min(deltaSeconds, SURF_MAX_FRAME_STEP) * surfTimeRate(reducedMotion);
   const next = (current + step) % SURF_LOOP_SECONDS;
   return next < 0 ? next + SURF_LOOP_SECONDS : next;

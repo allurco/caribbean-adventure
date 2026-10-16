@@ -69,6 +69,15 @@ describe("surfMotion", () => {
       expect(advanceSurfTime(1, 30, false)).toBeCloseTo(1 + SURF_MAX_FRAME_STEP, 9);
     });
 
+    it("stands still while the motion is held, whatever the motion setting (#122)", () => {
+      expect(advanceSurfTime(5, 0.05, false, true)).toBe(5);
+      expect(advanceSurfTime(5, 0.05, true, true)).toBe(5);
+    });
+
+    it("runs as before when the motion is not held", () => {
+      expect(advanceSurfTime(5, 0.05, false, false)).toBeCloseTo(5.05, 10);
+    });
+
     it("ignores negative or non-finite deltas", () => {
       expect(advanceSurfTime(2, -1, false)).toBe(2);
       expect(advanceSurfTime(2, Number.NaN, false)).toBe(2);

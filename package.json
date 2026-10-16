@@ -13,7 +13,8 @@
     "test": "vitest run --reporter=dot",
     "test:watch": "vitest",
     "test:db": "SUPABASE_DB_TESTS=1 vitest run supabase/tests",
-    "test:e2e": "playwright test -c e2e/playwright.config.ts"
+    "test:e2e": "playwright test -c e2e/playwright.config.ts",
+    "capture:harbour": "node scripts/capture-harbour-still.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
@@ -41,6 +42,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "jsdom": "^26.1.0",
     "supabase": "^2.121.0",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",

@@ -10,6 +10,7 @@ import { LocalSeats } from "./LocalSeats";
 import { parseOnlineRoute } from "./online/onlineRoute";
 import { parseShellPage } from "./online/shellRoute";
 import { supabaseConfig } from "./online/supabaseClient";
+import { HarbourBackdrop } from "./online/HarbourBackdrop";
 
 // The online shell (#125), the match board (#113) and the corner link over
 // the local game exist only when a backend is configured
@@ -29,7 +30,10 @@ const isLab = window.location.hash === "#lab";
 // The seed gallery (#161) is dev only: the DEV guard drops it, and its chunk, from production builds.
 const SeedGallery = import.meta.env.DEV ? lazy(() => import("./lab/SeedGallery")) : null;
 const showSeedGallery = SeedGallery !== null && devParams.seedGallery === true;
-const devView = isLab || devParams.propViewer || devParams.soundLab || showSeedGallery;
+// The harbour backdrop's capture view (#122), dev only like the seed gallery.
+const HarbourCapture = import.meta.env.DEV ? lazy(() => import("./board/harbour/HarbourCapture")) : null;
+const showHarbourCapture = HarbourCapture !== null && devParams.harbourCapture === true;
+const devView = isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || showHarbourCapture;
 
 // Only with a backend: the online shell (#125) at the root URL and its pages
 // (Play, the account pages, the rooms), and a started match's board (#113).
@@ -70,8 +74,12 @@ export default function App() {
     return <ShaderLab />;
   }
   if (supabaseConfig && shellPage) {
+    // The harbour still is the very first paint (#122), before the shell's chunk is in.
+    // A separate instance from the shell's own: `interactive={false}` keeps it the
+    // still alone (it never mounts the live scene), and it goes when the shell's
+    // backdrop takes its place, which paints the same still on its first frame.
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<HarbourBackdrop interactive={false} />}>
         <OnlineShell config={supabaseConfig} initialPage={shellPage} />
       </Suspense>
     );
@@ -85,6 +93,13 @@ export default function App() {
   }
   if (devParams.propViewer) {
     return <PropViewer focus={devParams.propViewer.focus} />;
+  }
+  if (HarbourCapture && showHarbourCapture) {
+    return (
+      <Suspense fallback={null}>
+        <HarbourCapture />
+      </Suspense>
+    );
   }
   if (SeedGallery && showSeedGallery) {
     return (
