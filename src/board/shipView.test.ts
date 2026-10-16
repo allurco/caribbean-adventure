@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { openingView, turnChangeView, hexesFramed, SHIP_VIEW_DISTANCE, SHIP_VIEW_OFFSET_X } from "./shipView";
+import { newCaptainView, openingView, turnChangeView, hexesFramed, SHIP_VIEW_DISTANCE, SHIP_VIEW_OFFSET_X } from "./shipView";
 import { CAMERA_FOV, CAMERA_PITCH } from "./cameraBounds";
 import { HUD_PORT_PANEL_INSET, HUD_PORT_PANEL_WIDTH } from "./hudLayout";
 import { hullFootprintRadius, shipHullBox } from "./shipHull";
@@ -98,5 +98,26 @@ describe("the ship view at diorama scale (ADR 0006)", () => {
       expect((-SHIP_VIEW_OFFSET_X + reach) / halfWidth).toBeLessThan(panelEdge);
       expect((-SHIP_VIEW_OFFSET_X - reach) / halfWidth).toBeGreaterThan(-1);
     }
+  });
+});
+
+describe("newCaptainView: the camera to a new captain's ship after the pick (#286)", () => {
+  it("flies to the new ship in hotseat play", () => {
+    expect(newCaptainView({ ships, currentPlayer: "1", playerID: null })).toEqual({
+      target: [SHIP_VIEW_OFFSET_X, 0, 2 * SQRT3],
+      distance: SHIP_VIEW_DISTANCE,
+    });
+  });
+
+  it("flies the seat that picked to its own new ship in networked play", () => {
+    expect(newCaptainView({ ships, currentPlayer: "1", playerID: "1" })).toEqual({
+      target: [SHIP_VIEW_OFFSET_X, 0, 2 * SQRT3],
+      distance: SHIP_VIEW_DISTANCE,
+    });
+  });
+
+  it("leaves every other seat's camera where it is, and stays put with no ship", () => {
+    expect(newCaptainView({ ships, currentPlayer: "1", playerID: "0" })).toBeNull();
+    expect(newCaptainView({ ships, currentPlayer: "4", playerID: null })).toBeNull();
   });
 });

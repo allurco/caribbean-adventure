@@ -62,7 +62,8 @@ import {
   seamAwareStart,
   wrapCopyRange,
 } from "./wrapView";
-import { openingView, turnChangeView, type CameraView } from "./shipView";
+import { newCaptainView, openingView, turnChangeView, type CameraView } from "./shipView";
+import { captainPicked, helmOf, turnEndedBannerShows, turnOpensOnArrival, type Helm } from "./captainPickTurn";
 import { flightStep, flightStyle, type FlightStyle } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
@@ -955,17 +956,31 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // The hand-off between turns (#216): the outgoing ship arrives, a "turn
   // ends" beat, the NPCs sail, and only then the next turn is announced
   const shipsRef = useRef(G.ships);
+  const lostShipsRef = useRef(G.lostShips);
   const inFightRef = useRef(G.combat !== undefined);
+  // A seat that picked a new captain before the hand-off announced its turn: the camera goes to the new ship then (#286)
+  const [pickedBeforeAnnounce, setPickedBeforeAnnounce] = useState<string | null>(null);
+  const pickedBeforeAnnounceRef = useRef(pickedBeforeAnnounce);
+  useEffect(() => {
+    pickedBeforeAnnounceRef.current = pickedBeforeAnnounce;
+  }, [pickedBeforeAnnounce]);
   useEffect(() => {
     shipsRef.current = G.ships;
+    lostShipsRef.current = G.lostShips;
     inFightRef.current = G.combat !== undefined;
-  }, [G.ships, G.combat]);
+  }, [G.ships, G.lostShips, G.combat]);
   const announceTurn = useCallback(
     (player: string) => {
+      // A seat still to pick a new captain has no ship yet: its turn opens after the pick (#286)
+      if (!turnOpensOnArrival({ lostShips: lostShipsRef.current }, player)) return;
       setShowTurnChange(true);
-      // Hotseat: fly to the new player's ship (networked clients stay put);
-      // in a fight the camera stays on the two ships the fight framed (#263)
-      const view = inFightRef.current || combatDirector.holding() ? null : turnChangeView({ ships: shipsRef.current, currentPlayer: player, playerID: props.playerID });
+      const newCaptain = pickedBeforeAnnounceRef.current === player;
+      if (pickedBeforeAnnounceRef.current !== null) setPickedBeforeAnnounce(null);
+      // Hotseat: fly to the new player's ship (networked clients stay put, but
+      // for a seat's own new captain); in a fight the camera stays on the two
+      // ships the fight framed (#263)
+      const shipViewFor = newCaptain ? newCaptainView : turnChangeView;
+      const view = inFightRef.current || combatDirector.holding() ? null : shipViewFor({ ships: shipsRef.current, currentPlayer: player, playerID: props.playerID });
       if (view) {
         setCameraFocusView(view);
         setCameraFocusCut(false);
@@ -987,6 +1002,23 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     setShowTurnChange(false);
     markTurnShown();
   }, [markTurnShown]);
+  // A new captain's turn opens after the pick (#286): the "Your turn" banner, and the camera to the new ship
+  // Adjusted while rendering, as the hand-off is, so it reads the hand-off of this very render
+  const helm = helmOf(G, ctx.phase, currentPlayer, ctx.turn);
+  const [lastHelm, setLastHelm] = useState<Helm | null>(null);
+  if (lastHelm?.player !== helm.player || lastHelm.turn !== helm.turn || lastHelm.choosing !== helm.choosing) {
+    setLastHelm(helm);
+    const pick = captainPicked(lastHelm, helm, handoff);
+    if (pick === "atHandoff") setPickedBeforeAnnounce(helm.player);
+    if (pick === "opensNow") {
+      setShowTurnChange(true);
+      const view = newCaptainView({ ships: G.ships, currentPlayer, playerID: props.playerID });
+      if (view) {
+        setCameraFocusView(view);
+        setCameraFocusCut(false);
+      }
+    }
+  }
   const locked = controlsLocked(handoff);
   // The board takes this client's moves now: its seat's turn (#110), and no hand-off under way (#216)
   const boardActive = seatMayAct(turn) && !locked;
@@ -1399,7 +1431,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* The outgoing captain's turn ends (#216) */}
-      {handoff?.phase === "turnEnded" && G.ships[handoff.from] && (
+      {handoff && turnEndedBannerShows(handoff, G.ships, choosingCaptain(G, ctx.phase, ctx.currentPlayer)) && (
         <TurnEndedBanner
           captainName={G.ships[handoff.from].captain?.name ?? `Player ${Number(handoff.from) + 1}`}
           reducedMotion={handoff.reducedMotion}
