@@ -69,7 +69,7 @@ export function seatName(G: Pick<CaribbeanState, "ships">, seat: string): string
 }
 
 /** A seat by its number, "Player n": how the draft names the other seats, whose captains stay hidden until it ends (#111). */
-function seatLabel(seat: string): string {
+export function seatLabel(seat: string): string {
   return `Player ${Number(seat) + 1}`;
 }
 

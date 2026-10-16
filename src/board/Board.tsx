@@ -122,6 +122,7 @@ import { CombatPanel } from "./CombatPanel";
 import { gaugeLine } from "./combatGauge";
 import { SCENE_WIND } from "./visuals/sceneWind";
 import { GameOverScreen } from "./GameOverScreen";
+import { gameOverView } from "./gameOverView";
 import { DockingAnimation } from "./DockingAnimation";
 import { TurnChangeAnimation } from "./TurnChangeAnimation";
 import { MissionCompleteToast } from "./MissionCompleteToast";
@@ -1482,9 +1483,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {/* Game Over Screen */}
       {ctx.gameover && (
         <GameOverScreen
-          winner={ctx.gameover.winner}
-          captainName={ctx.gameover.captainName}
-          score={ctx.gameover.score}
+          view={gameOverView(ctx.gameover, ctx.numPlayers)}
           onPlayAgain={() => window.location.reload()}
         />
       )}
