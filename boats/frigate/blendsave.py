@@ -62,17 +62,19 @@ def save_clean(path: str, home_dir: str | None = None) -> str:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     blend_dir = os.path.abspath(home_dir or os.path.dirname(os.path.abspath(path)))
     undo = []
-    for img in bpy.data.images:
-        if img.filepath_raw:
-            undo.append((img, "filepath_raw", img.filepath_raw))
-            _overwrite(img, "filepath_raw", _relative_to(blend_dir, img.filepath_raw))
-    for scene in bpy.data.scenes:
-        undo.append((scene.render, "filepath", scene.render.filepath))
-        _overwrite(scene.render, "filepath", "//")
-    for params in _file_browsers():
-        undo.append((params, "directory", params.directory))
-        _overwrite(params, "directory", b"")
     try:
+        # Each value is noted before it is touched, so a fault part-way puts
+        # back whatever was scrubbed so far.
+        for img in bpy.data.images:
+            if img.filepath_raw:
+                undo.append((img, "filepath_raw", img.filepath_raw))
+                _overwrite(img, "filepath_raw", _relative_to(blend_dir, img.filepath_raw))
+        for scene in bpy.data.scenes:
+            undo.append((scene.render, "filepath", scene.render.filepath))
+            _overwrite(scene.render, "filepath", "//")
+        for params in _file_browsers():
+            undo.append((params, "directory", params.directory))
+            _overwrite(params, "directory", b"")
         bpy.ops.wm.save_as_mainfile(filepath=path, copy=True, compress=False,
                                     relative_remap=False)
     finally:
