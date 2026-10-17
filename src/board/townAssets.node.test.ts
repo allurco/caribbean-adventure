@@ -13,7 +13,7 @@ import { glbTriangles, readGlb } from "./glb";
 import { AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./visuals/agedBuildingGeometry";
 import { townModelGeometry } from "./townModelGeometry";
 import { TOWN_MODELS } from "./townModels";
-import { TOWN_ASSET_BUDGET, townAssetProblems, townCatalogueFileProblems } from "./townAssetCheck";
+import { TOWN_ASSET_BUDGET, TOWN_TRIANGLE_GROWTH, townAssetProblems, townCatalogueFileProblems } from "./townAssetCheck";
 
 const TOWN_DIR = new URL("../../public/town/", import.meta.url);
 const SHIPPED = readdirSync(TOWN_DIR).filter((file) => !file.startsWith("."));
@@ -56,6 +56,31 @@ describe("town assets", () => {
       json.scenes![0].nodes!.push(json.nodes!.length - 2, json.nodes!.length - 1);
     });
     expect(townAssetProblems(tavern, overBudget).join("\n")).toMatch(/triangles drawn, over 1800/);
+  });
+
+  it("flags a file grown past the code-built piece's triangles plus the growth the PRD allows, under the flat budget", () => {
+    // #394: at most (1,800 − 910) = 890 more triangles than the code-built tavern draws.
+    const cap = tavern.codeBuiltTriangles + TOWN_TRIANGLE_GROWTH;
+    expect(cap).toBeLessThan(tavern.maxTriangles);
+    // Parts drawn once more, one by one, until the file is past the growth cap but inside the flat budget.
+    const grown = planted((json) => {
+      const parts = json.nodes!.filter((n) => n.mesh !== undefined).sort((a, b) => a.name!.localeCompare(b.name!));
+      const trisOf = (mesh: number) =>
+        json.meshes![mesh].primitives.reduce((sum, p) => sum + json.accessors![p.indices!].count / 3, 0);
+      let triangles = glbTriangles(readGlb(tavernBytes()));
+      for (const part of parts) {
+        if (triangles > cap) break;
+        const extra = trisOf(part.mesh!);
+        if (triangles + extra > tavern.maxTriangles) continue;
+        json.nodes!.push({ name: part.name, mesh: part.mesh });
+        json.scenes![0].nodes!.push(json.nodes!.length - 1);
+        triangles += extra;
+      }
+      expect(triangles).toBeGreaterThan(cap);
+    });
+    const problems = townAssetProblems(tavern, grown).join("\n");
+    expect(problems).toMatch(new RegExp(`more than the code-built ${tavern.kind}'s ${tavern.codeBuiltTriangles}`));
+    expect(problems).not.toMatch(/over 1800/);
   });
 
   it("flags a file over the byte cap", () => {

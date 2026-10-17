@@ -1,7 +1,7 @@
 /**
  * The rules every committed town model under `public/town/` is held to
  * (PRD #392, ADR 0002 amendment (d)): the town's budget (bytes, its kind's
- * triangles, no images), the vertex colour and tint channel every primitive
+ * triangles and their growth over the code-built piece, no images), the vertex colour and tint channel every primitive
  * carries, the anchors its catalogue entry names, and the generator's
  * contract checked against the catalogue: the walls' footprint and the
  * height within 3 %, the origin at the ground contact under the plan
@@ -14,6 +14,14 @@ import type { TownModel, TownPieceKind } from "./townModels";
 
 /** Every town file's budget (PRD #392, G4: the whole kit adds at most 3 MB); the triangles are per kind, in the catalogue. */
 export const TOWN_ASSET_BUDGET = { maxBytes: 250_000 } as const;
+
+/**
+ * How many more triangles a model may draw than the code-built piece it
+ * replaces (#394: the tavern's budget 1,800 less the aged tavern's old
+ * budget of 910), so the village's total grows by at most this per piece
+ * (PRD #392, G3), whatever the flat budget leaves room for.
+ */
+export const TOWN_TRIANGLE_GROWTH = 890;
 
 /** How far a measured dimension may stray from the catalogue's: the ships' figure. */
 export const TOWN_DIMENSION_TOLERANCE = SHIP_DIMENSION_TOLERANCE;
@@ -36,6 +44,10 @@ export function townAssetProblems(model: TownModel, bytes: Uint8Array): string[]
   const glb = readGlb(bytes);
   const triangles = glbTriangles(glb);
   if (triangles > model.maxTriangles) problems.push(`${file}: ${triangles} triangles drawn, over ${model.maxTriangles}`);
+  const growth = triangles - model.codeBuiltTriangles;
+  if (growth > TOWN_TRIANGLE_GROWTH) {
+    problems.push(`${file}: ${triangles} triangles drawn, ${growth} more than the code-built ${model.kind}'s ${model.codeBuiltTriangles}, over the ${TOWN_TRIANGLE_GROWTH} it may grow by`);
+  }
   // Colour is the vertex colour: an image would split the village's one material (amendment (d)).
   if ((glb.json.images ?? []).length > 0) problems.push(`${file}: carries ${(glb.json.images ?? []).length} image(s); a town piece carries none`);
 

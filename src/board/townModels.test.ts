@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./visuals/agedBuildingGeometry";
+import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN, AGED_BUILDING_TRIANGLES } from "./visuals/agedBuildingGeometry";
 import { BUILDING_FOOTING } from "./visuals/buildingGeometry";
-import { familyScaleOf } from "./visuals/portSettlement";
-import { BUILDING_SCALE } from "./visuals/worldScale";
 import { TOWN_MODEL_UNITS_PER_METRE, TOWN_MODELS, townModelFor, townModelUrl } from "./townModels";
 
 const tavern = TOWN_MODELS.tavern;
@@ -23,13 +21,9 @@ describe("the town model catalogue", () => {
     expect(TOWN_MODEL_UNITS_PER_METRE).toBeCloseTo(1 / 65, 10);
   });
 
-  it("draws each piece at its family's factor, the one the layout scales it by (ADR 0006)", () => {
-    expect(tavern.factor).toBe(BUILDING_SCALE);
-    expect(tavern.factor).toBe(familyScaleOf(tavern.kind));
-  });
-
   it("holds the tavern to the PRD's budget and names its anchors", () => {
     expect(tavern.maxTriangles).toBe(1800);
+    expect(tavern.codeBuiltTriangles).toBe(AGED_BUILDING_TRIANGLES.tavern);
     expect(tavern.anchors).toContain("Chimney_00");
     expect(tavern.anchors.filter((a) => a.startsWith("Window_")).length).toBeGreaterThan(0);
   });

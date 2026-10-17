@@ -25,7 +25,7 @@ def test_it_holds_the_kinds_budget_with_room_for_the_old_tavern():
     # The PRD's 1,800, and under 670 + 890 per port: the triangle growth
     # #394 allows over the code-built tavern ((1,800 - 910) a port).
     assert PLAN.triangles() <= board.MAX_TRIS["tavern"]
-    assert PLAN.triangles() <= 670 + (1_800 - 910)
+    assert PLAN.triangles() <= board.CODE_BUILT_TRIS["tavern"] + board.MAX_GROWTH
 
 
 def test_it_states_its_planned_triangles():

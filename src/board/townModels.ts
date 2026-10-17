@@ -10,7 +10,8 @@
  * no images, `COLOR_0` with the occlusion baked in, and the `_TINT` channel.
  */
 import type { BuildingKind } from "./visuals/buildingGeometry";
-import { BUILDING_SCALE, metresToUnits } from "./visuals/worldScale";
+import { AGED_BUILDING_TRIANGLES } from "./visuals/agedBuildingGeometry";
+import { metresToUnits } from "./visuals/worldScale";
 
 /** The pieces that have a model so far: the tavern, the kit's tracer bullet (#394). */
 export type TownPieceKind = Extract<BuildingKind, "tavern">;
@@ -21,8 +22,6 @@ export interface TownModel {
   readonly kind: TownPieceKind;
   /** The file under `public/town/`. */
   readonly file: string;
-  /** The nation style it is dressed in (#392's table). */
-  readonly style: "england";
   /** Half the walls' width across the front (glTF x), in metres: the footprint the layout plans with. */
   readonly halfWidthMetres: number;
   /** Half the walls' depth front to back (glTF z), in metres. */
@@ -37,10 +36,10 @@ export interface TownModel {
   readonly footprintPart: string;
   /** The triangles it may draw (PRD #392's piece table). */
   readonly maxTriangles: number;
+  /** The triangles the code-built piece it replaces draws: the model may draw at most `TOWN_TRIANGLE_GROWTH` more (#394). */
+  readonly codeBuiltTriangles: number;
   /** The anchors it carries, by node name: the chimney's smoke and the windows' light (amendment (b)). */
   readonly anchors: readonly string[];
-  /** The family factor the layout draws it at (ADR 0006): its instances already carry it. */
-  readonly factor: number;
 }
 
 /** Metres to the code-built pieces' local units at scale 1 (65 m a unit, ADR 0003); the layout's instance scale then adds the family factor. */
@@ -51,7 +50,6 @@ const TAVERN_WINDOWS = Array.from({ length: 11 }, (_, i) => `Window_${String(i).
 const TAVERN: TownModel = {
   kind: "tavern",
   file: "tavern.glb",
-  style: "england",
   halfWidthMetres: 7.15,
   halfDepthMetres: 5.85,
   heightMetres: 18.07,
@@ -59,8 +57,8 @@ const TAVERN: TownModel = {
   reachMetres: 12.675,
   footprintPart: "Walls",
   maxTriangles: 1800,
+  codeBuiltTriangles: AGED_BUILDING_TRIANGLES.tavern,
   anchors: ["Chimney_00", ...TAVERN_WINDOWS],
-  factor: BUILDING_SCALE,
 };
 
 /** Every piece's model. */
