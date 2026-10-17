@@ -62,13 +62,17 @@ export const LAND_FOAM_GLSL = `
     float detail = foamDetailFade(footprintMetres, SHORE_FOAM_LACE_METRES);
     vec2 churn = surfChurn(surfTime);
     float closeUp = closeFoamWeight(cameraDistance);
-    float lace = closeLace(coverage, foamBreakupNoise(vFoamWorld.xz, SHORE_FOAM_NOISE_SCALE, churn), closeUp);
+    float bubbleWeight = closeBubbleWeight(closeUp, footprintMetres);
+    float lace = closeLace(coverage, foamBreakupNoise(vFoamWorld.xz, SHORE_FOAM_NOISE_SCALE, churn), bubbleWeight);
     // ... and, like the water's shore bands, as the shelf recedes with
     // camera distance (#77, waterOptics.ts).
     float foam = mix(coverage * FOAM_FAR_SHARE, lace, detail) * waveDetailFade(length(vFoamWorld - cameraPosition))
       * shoreFoamRecedeShare(shelfRecedeWeight(cameraDistance));
-    // Up close, bubbles instead of a flat patch, as on the water (closeFoam.ts, #389).
-    if (closeUp > 0.0 && foam > 0.0) foam = closeUpFoam(foam, foamBubbleCell(vFoamWorld.xz, churn, FOAM_METRES_PER_UNIT), closeUp);
+    // Up close, white bubbles that keep the foam's amount instead of a flat patch, as on the water (closeFoam.ts, #389, #426).
+    if (bubbleWeight > 0.0 && foam > 0.0) {
+      foam = closeUpFoam(foam, foamBubbleCell(vFoamWorld.xz, churn, FOAM_METRES_PER_UNIT), bubbleWeight,
+        foamBubbleCluster(vFoamWorld.xz, churn, FOAM_METRES_PER_UNIT));
+    }
     return foam;
   }
 `;
