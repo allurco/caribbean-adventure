@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { PLACEHOLDER_FRAME, placeholderArt } from "./cardPlaceholders";
+import { PAPER_DARK, PAPER_LIGHT, PLACEHOLDER_FRAME, placeholderArt } from "./cardPlaceholders";
 import type { CardArtSlot } from "./cardArtSlots";
 
 /**
@@ -18,8 +18,8 @@ export function EventCardArtPlaceholder({ slot }: { slot: CardArtSlot }) {
     >
       <defs>
         <radialGradient id={foxing} cx="50%" cy="42%" r="70%">
-          <stop offset="55%" stopColor="#f3e3b6" />
-          <stop offset="100%" stopColor="#d2bb85" />
+          <stop offset="55%" stopColor={PAPER_LIGHT} />
+          <stop offset="100%" stopColor={PAPER_DARK} />
         </radialGradient>
       </defs>
       <rect width={width} height={height} fill={`url(#${foxing})`} />

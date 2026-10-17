@@ -10,6 +10,7 @@
  */
 import type { PortNation } from "../game/types";
 import type { FlagBox } from "./cardArtSlots";
+import { PLACEHOLDER_FRAME } from "./cardPlaceholders";
 import { flagDesign, type FlagShape, type ShipFlag } from "./shipFlags";
 
 /** The flag a card flies for `nation`: a port the Pirates take flies the Jolly Roger. */
@@ -42,9 +43,9 @@ export function flagSvg(flag: ShipFlag): string {
 
 const svgUrl = (svg: string) => `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 
-/** The placeholder's frame in SVG units: 3:4, like the art. */
-const FRAME_W = 300;
-const FRAME_H = 400;
+/** The pennant's mask is drawn in the placeholder's frame, 3:4 like the art. */
+const FRAME_W = PLACEHOLDER_FRAME.width;
+const FRAME_H = PLACEHOLDER_FRAME.height;
 
 /** A full-frame mask with one pennant in `box`, its top and foot waving, for a card with no flag mask of its own. */
 function pennantMask(box: FlagBox): string {

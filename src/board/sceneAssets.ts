@@ -39,8 +39,8 @@ export const NOT_BOARD_ASSETS: Readonly<Record<string, string>> = {
 export const ASSET_LOADER_SITES: Readonly<Record<string, string>> = {
   "src/board/Ship.tsx": "ship models: every model in SHIP_MODELS is a `model:` task, loaded by SceneReadinessProbe",
   "src/board/SceneReadinessProbe.tsx": "loads the ship models through the same useGLTF cache Ship.tsx draws from",
-  "src/board/useSceneReadiness.ts":
-    "the port labels' font (troika preloadFont), a `font:labels` task; and every event card's art (`new Image`), a `card:` task each (#247)",
+  "src/board/useSceneReadiness.ts": "the port labels' font (troika preloadFont), a `font:labels` task",
+  "src/board/cardArtCache.ts": "the event cards' art (#247): every file in CARD_ART is a `card:` task, decoded and kept by useSceneReadiness",
   "src/audio/audioEngine.ts": "sounds: every registry sound is a `sound:` task, prefetched by useSceneReadiness",
   "src/online/roomApi.ts": "no file: calls to /api from the online pages (#112), never the board",
   "src/online/useRoomApi.ts": "no file: the browser fetch the /api clients use (#112), never the board",

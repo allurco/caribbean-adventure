@@ -73,6 +73,8 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?view=cards&card=lostFlag&nation=Pirate")).toEqual({ cardLab: { card: "lostFlag", nation: "Pirate" } });
     expect(parseDevUrlParams("?view=cards&card=kraken&nation=Prussia")).toEqual({ cardLab: {} });
     expect(parseDevUrlParams("?card=storm")).toEqual({});
+    expect(parseDevUrlParams("?view=cards&card=flotillaPatrol&nation=Pirate")).toEqual({ cardLab: { card: "flotillaPatrol" } });
+    expect(parseDevUrlParams("?view=cards&card=storm&nation=Spain")).toEqual({ cardLab: { card: "storm" } });
   });
 
   it("opens the harbour backdrop's capture view, in dev builds (#122)", () => {

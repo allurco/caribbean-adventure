@@ -18,6 +18,7 @@
  * nation's flag over the box, cut to the mask. Until then the placeholder's
  * own flag uses the same layer, cut to a drawn pennant at the same box.
  */
+import { NATIONS, PORT_NATIONS, type PortNation } from "../game/types";
 
 /**
  * Every kind of card the full deck holds (#240), drawn or still to come. The
@@ -40,10 +41,6 @@ export type CardArtSlot = EventArtKind | "back";
 
 export const CARD_ART_SLOTS: readonly CardArtSlot[] = [...EVENT_ART_KINDS, "back"];
 
-/** The art's size in pixels, as the prompts doc asks for it: 3:4. */
-export const CARD_ART_WIDTH = 896;
-export const CARD_ART_HEIGHT = 1200;
-
 /** Where a flag lies in the card's frame, as fractions of its width (`x`, `w`) and height (`y`, `h`), from the top left. */
 export interface FlagBox {
   x: number;
@@ -55,7 +52,10 @@ export interface FlagBox {
 export interface CardArt {
   /** The image under public/, or null while it is not made: the slot then draws its placeholder. */
   file: string | null;
-  /** The flag tinted per nation, on the two cards that fly one; null on the rest. */
+  /**
+   * The flag tinted per nation, on the two cards that fly one; null on the
+   * rest. On Lost flag it is the new flag being hoisted, the taker's.
+   */
   flag: { mask: string | null; box: FlagBox } | null;
 }
 
@@ -77,6 +77,24 @@ export const CARD_ART: Readonly<Record<CardArtSlot, CardArt>> = {
   lostFlag: { file: null, flag: { mask: null, box: LOST_FLAG } },
   back: { file: null, flag: null },
 };
+
+/**
+ * The flag to tint over `art`: the art's own, cut to its mask, or the
+ * placeholder's pennant while there is no art. Null for a card with no flag,
+ * and for painted art still missing its mask, which would otherwise get a
+ * pennant drawn over the painting beside its own red flag.
+ */
+export function flagToTint({ file, flag }: CardArt): { mask: string | null; box: FlagBox } | null {
+  if (!flag || (file && !flag.mask)) return null;
+  return flag;
+}
+
+/** The nations whose flag `slot` may fly: a patrol a crown's; a lost flag a crown's or the Pirates'. */
+export function flagNations(slot: CardArtSlot): readonly PortNation[] {
+  if (slot === "flotillaPatrol") return NATIONS;
+  if (slot === "lostFlag") return PORT_NATIONS;
+  return [];
+}
 
 /** Every file the table names (art and flag masks), as paths under public/. */
 export function eventCardArtFiles(): string[] {

@@ -29,19 +29,21 @@ const TITLES: Readonly<Record<EventCardKind, string>> = {
 
 /** The face of the event `entry`, its region named from the map's `regions`. */
 export function eventCardView(entry: EventLogEntry, regions: readonly Region[] | undefined): EventCardFace {
+  return { ...eventCardText(entry, regions), id: entry.id, art: entry.kind, nation: null };
+}
+
+/** The words on `entry`'s card: its name, region and effect. */
+function eventCardText(entry: EventLogEntry, regions: readonly Region[] | undefined): Pick<EventCardFace, "title" | "region" | "effect"> {
   const title = TITLES[entry.kind];
   switch (entry.kind) {
     case "calmSeas":
-      return { id: entry.id, title, region: null, effect: "The sea lies quiet.", art: entry.kind, nation: null };
+      return { title, region: null, effect: "The sea lies quiet." };
     case "merchantConvoy": {
       const sail = entry.merchants === 1 ? "A merchant sails" : `${entry.merchants} merchants sail`;
       return {
-        id: entry.id,
         title,
         region: (entry.region !== null && regions?.[entry.region]?.name) || null,
         effect: `${sail} from ${entry.port}, bound for ${listed([...new Set(entry.bound)])}.`,
-        art: entry.kind,
-        nation: null,
       };
     }
   }

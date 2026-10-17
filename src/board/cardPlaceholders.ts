@@ -17,8 +17,9 @@ export type PlaceholderShape =
   | { kind: "circle"; cx: number; cy: number; r: number; fill?: string; stroke?: string; width?: number; opacity?: number };
 
 const PAPER = "#e5d4a9";
-const PAPER_LIGHT = "#f3e3b6";
-const PAPER_DARK = "#d2bb85";
+/** The parchment's light and its foxed edge, also the placeholder's ground (`EventCardArtPlaceholder`). */
+export const PAPER_LIGHT = "#f3e3b6";
+export const PAPER_DARK = "#d2bb85";
 const INK = "#2b1d10";
 const INK_SOFT = "#5c4630";
 const BRASS = "#b98b3e";
@@ -105,7 +106,11 @@ function flagStaff(box: FlagBox, foot: number): PlaceholderShape {
 }
 
 /** A flagged card's flag box, from the table (only ever asked of the two that fly one). */
-const boxOf = (slot: CardArtSlot): FlagBox => CARD_ART[slot].flag?.box ?? { x: 0.5, y: 0.3, w: 0.3, h: 0.15 };
+function boxOf(slot: CardArtSlot): FlagBox {
+  const flag = CARD_ART[slot].flag;
+  if (!flag) throw new Error(`${slot} flies no flag`);
+  return flag.box;
+}
 
 const gulls = path("M118 150 q6 -6 12 0 q6 -6 12 0 M158 128 q4 -4 8 0 q4 -4 8 0 M96 176 q5 -5 10 0 q5 -5 10 0", { stroke: INK, width: 1.1 });
 
@@ -217,9 +222,9 @@ function lostFlag(): PlaceholderShape[] {
     { kind: "circle", cx: 218, cy: 214, r: 16, fill: PAPER_LIGHT, stroke: INK_SOFT, width: 0.8, opacity: 0.85 },
     { kind: "circle", cx: 244, cy: 206, r: 12, fill: PAPER_LIGHT, stroke: INK_SOFT, width: 0.8, opacity: 0.85 },
     { kind: "circle", cx: 196, cy: 222, r: 10, fill: PAPER_LIGHT, stroke: INK_SOFT, width: 0.8, opacity: 0.85 },
-    // The old flag, torn, falling from its broken staff
+    // The old flag, faded and torn, falling from its broken staff: the loser's, never named, so never coloured
     path("M80 232 L72 176", { stroke: INK, width: 2 }),
-    path("M72 178 L44 196 L52 202 L40 214 L56 216 L50 226 L78 206 Z", { fill: WAX, stroke: INK, width: 0.9 }),
+    path("M72 178 L44 196 L52 202 L40 214 L56 216 L50 226 L78 206 Z", { fill: PAPER_DARK, stroke: INK_SOFT, width: 0.9 }),
     // The new one rising (its cloth is the tinted layer)
     flagStaff(box, 232),
   ];

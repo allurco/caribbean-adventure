@@ -1,5 +1,5 @@
-import { PORT_NATIONS, type CaribbeanSetupData, type PortNation } from "../game/types";
-import { CARD_ART_SLOTS, type CardArtSlot } from "./cardArtSlots";
+import type { CaribbeanSetupData, PortNation } from "../game/types";
+import { CARD_ART_SLOTS, flagNations, type CardArtSlot } from "./cardArtSlots";
 import type { MapSizeId } from "../game/mapConfig";
 import { isValidMapSeed } from "../game/mapSeed";
 import { DEFAULT_SEATS, isValidSeatCount } from "../game/seats";
@@ -154,7 +154,8 @@ export function parseDevUrlParams(search: string): DevUrlParams {
     if (params.get("view") === "harbour") out.harbourCapture = true;
     if (params.get("view") === "cards") {
       const card = CARD_ART_SLOTS.find((slot) => slot === params.get("card"));
-      const nation = PORT_NATIONS.find((name) => name === params.get("nation"));
+      // Only a nation the card's flag may fly: a patrol never flies the Pirates'
+      const nation = card && flagNations(card).find((name) => name === params.get("nation"));
       out.cardLab = { ...(card && { card }), ...(nation && { nation }) };
     }
     if (params.get("snapshot") === "1") out.gallerySnapshot = true;

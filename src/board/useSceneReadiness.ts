@@ -4,6 +4,7 @@ import { SOUNDS } from "../audio/soundRegistry";
 import { audioEngine } from "../audio/sharedAudioEngine";
 import { SCENE_FONTS, sceneReadinessTasks } from "./sceneAssets";
 import { eventCardArtUrls } from "./cardArtSlots";
+import { preloadCardArt } from "./cardArtCache";
 import {
   READINESS_TIMEOUT_MS,
   completeTask,
@@ -85,13 +86,10 @@ export function useSceneReadiness(labelText: string): SceneReadiness {
     }
   }, [complete, fail]);
 
-  // Every event card's art (#247), decoded, so a card's picture is there when it shows
+  // Every event card's art (#247), decoded and kept (cardArtCache.ts), so a card's picture is there when it shows
   useEffect(() => {
     for (const url of eventCardArtUrls(import.meta.env.BASE_URL)) {
-      const image = new Image();
-      image.src = url;
-      image
-        .decode()
+      preloadCardArt(url)
         .then(() => complete(`card:${url}`))
         .catch((error: unknown) => fail(`card:${url}`, error));
     }

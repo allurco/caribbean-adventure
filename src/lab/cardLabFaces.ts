@@ -3,8 +3,8 @@
  * slot, worded like the HUD's, so each card's art and flag can be checked
  * before its slice of the deck lands. Dev only.
  */
-import { NATIONS, PORT_NATIONS, type PortNation } from "../game/types";
-import { CARD_ART, EVENT_ART_KINDS, type EventArtKind } from "../board/cardArtSlots";
+import type { PortNation } from "../game/types";
+import { CARD_ART, EVENT_ART_KINDS, flagNations, type EventArtKind } from "../board/cardArtSlots";
 import type { EventCardFace } from "../board/eventCardView";
 
 const SAMPLES: Readonly<Record<EventArtKind, { title: string; region: string | null; effect: string }>> = {
@@ -22,17 +22,11 @@ export function labFace(kind: EventArtKind, nation: PortNation | null, id = 1): 
   return { id, ...SAMPLES[kind], art: kind, nation: CARD_ART[kind].flag ? (nation ?? "England") : null };
 }
 
-/** The nations a flagged card can fly: every crown for a patrol; the Pirates too for a lost flag. */
-export function labNations(kind: EventArtKind): readonly PortNation[] {
-  if (!CARD_ART[kind].flag) return [];
-  return kind === "lostFlag" ? PORT_NATIONS : NATIONS;
-}
-
 /** Every face the lab lays out: each kind once, or once per nation when it flies a flag. */
 export function labFaces(): EventCardFace[] {
   let id = 0;
   return EVENT_ART_KINDS.flatMap((kind) => {
-    const nations = labNations(kind);
+    const nations = flagNations(kind);
     return nations.length === 0 ? [labFace(kind, null, ++id)] : nations.map((nation) => labFace(kind, nation, ++id));
   });
 }
