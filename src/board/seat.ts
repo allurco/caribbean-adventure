@@ -3,9 +3,12 @@ import type { Captain, CaribbeanState, CombatStage, ShipState } from "../game/ty
 import { awaitingCaptain, isEliminated } from "../game/captainDeath";
 import { hasPicked } from "../game/draftOrder";
 import { listNames } from "../game/listNames";
+import { seatLabel } from "../game/seats";
 import { npcName } from "./npcName";
 import { combatActor, seatMayActInCombat, type FightSides, type FightStep, type SeatFight } from "../game/combatActor";
 
+/** "Player n", also how the draft names the other seats, whose captains stay hidden until it ends (#111). */
+export { seatLabel };
 export { combatActor, seatMayActInCombat, type FightSides, type FightStep, type SeatFight };
 
 /**
@@ -68,10 +71,6 @@ export function seatName(G: Pick<CaribbeanState, "ships">, seat: string): string
   return G.ships[seat]?.captain?.name ?? seatLabel(seat);
 }
 
-/** A seat by its number, "Player n": how the draft names the other seats, whose captains stay hidden until it ends (#111). */
-function seatLabel(seat: string): string {
-  return `Player ${Number(seat) + 1}`;
-}
 
 /** "Waiting for <captain>", and what for when given ("to draft"): every waiting line on the board. */
 function waitingLine(G: Pick<CaribbeanState, "ships">, seat: string, what?: string): string {

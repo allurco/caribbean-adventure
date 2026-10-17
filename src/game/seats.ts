@@ -26,3 +26,8 @@ export function isValidSeatCount(n: number): boolean {
 export function isSeatId(id: string): boolean {
   return /^[0-9]$/.test(id);
 }
+
+/** A seat by its number, "Player n" (counting from 1): how the game names a seat without a captain to name. */
+export function seatLabel(seat: string): string {
+  return `Player ${Number(seat) + 1}`;
+}

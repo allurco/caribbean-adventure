@@ -218,6 +218,14 @@ That is enough to answer "which PR is this from?" later without guessing.
 - **How it was staged:** captains drafted with `pickCaptain`. Fights staged by editing `G` as in the #347 entry (rival on hull 1 beside seat 0, or a Spanish Flute merchant on hull 1), then the panel's buttons, or `master.onUpdate` as seat 0. Losses without a fight were staged by moving the ship to `lostShips`, then End Turn. Banners were logged from the DOM every 50 ms, and the camera read every 100 ms through a `__THREE_DEVTOOLS__` hook (`scene.__r3f.root.getState().camera`).
 - **Findings:** no turn-ends banner over the captain screen; one "Your turn" banner after the pick; the camera flies once to the new ship (hotseat; the picking seat in `?seats=1`), whether the pick comes at once or after 5 s. During a sinking the camera holds until the fight lets go, about 8.6 s after the fight ends, then flies once; a plain turn after sinking an NPC does the same. The rival seat's camera does not move. No console errors.
 - **For the maintainer:** in `?seats=1` the new ship's spawn triggers "Welcome to <port>" over the turn banners, before the camera arrives (`prevPortRef` per viewer seat); the rival's board says "YOUR TURN <rival>" (#371).
+
+### 2026-10-16: game over when every seat is out (#289, PR #362)
+- **Branch and commit:** `fix/289-all-out` at `f896807`.
+- **Renderer:** Playwright MCP Chromium on the GPU (ANGLE Metal), 1280×800, DPR 1.
+- **View:** solo `?size=small&seed=1`, `?seats=1&players=2&size=small&seed=1` and `?players=2&size=small&seed=1` (each with `skipLogin=1`).
+- **How it was staged:** ships moved to `lostShips` with a set glory and `captainDeck` emptied (an `UPDATE` to the store, or the local master's `setState` plus `requestSync`), then End Turn as an event.
+- **Findings:** solo reads "All Hands Lost / Your last captain is lost. You end with 3 glory." In `?seats=1`, with unequal glory P1 reads "Player 2 ends with the most glory (4).", P2 "You end…"; a tie reads "You and Player 2 / You and Player 1 end…". Hotseat names "Player n" only, ties included. A glory win still shows the Victory card. No console errors.
+- **For the maintainer:** "Final Glory" shows the leader's score on every board.
 - **Not checked:** the online match; 3 or 4 seats.
 
 ### 2026-10-16: aimed volleys, hull, masts or crew (#348, PR #361)
