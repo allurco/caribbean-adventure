@@ -71,10 +71,9 @@ export function hasWon(ship: Pick<ShipState, "score">): boolean {
 }
 
 /**
- * The winner among every seat's glory (a ship's, or a lost ship's record),
- * if any: a tie goes to the first seat, in the record's (seat) order.
+ * Find the winner among all ships, if any
  */
-export function findWinner(ships: Record<string, Pick<ShipState, "score">>): string | null {
+export function findWinner(ships: Record<string, ShipState>): string | null {
   for (const [id, ship] of Object.entries(ships)) {
     if (hasWon(ship)) {
       return id;
