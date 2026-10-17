@@ -73,6 +73,8 @@ function world(cells: readonly MapCell[], worldSeed: number) {
     villageBuildings: layout.village.buildings,
     clutter: layout.village.clutter,
     townPlans: layout.village.ports,
+    furniture: layout.village.furniture,
+    anchors: layout.village.anchors,
     works: Array.from(works.positions),
   };
 }
@@ -91,6 +93,8 @@ const OUTPUTS: readonly Output[] = [
   "villageBuildings",
   "clutter",
   "townPlans",
+  "furniture",
+  "anchors",
   "works",
 ];
 
@@ -121,14 +125,18 @@ const REACH: Readonly<Partial<Record<SeedFeature, readonly Output[]>>> = {
   [SEED_FEATURES.shrubLook]: ["shrubs"],
   [SEED_FEATURES.shoreBoulders]: ["shoreBoulders"],
   [SEED_FEATURES.boulderLook]: ["shoreBoulders"],
-  // The kit, the quay and the village move the town, which every prop keeps out of.
-  [SEED_FEATURES.portBuildings]: ["buildings", "villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
-  [SEED_FEATURES.quay]: ["quays", "buildings", "villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
-  [SEED_FEATURES.village]: ["villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
+  // The kit, the quay and the village move the town, which every prop keeps out of, and the harbour's furniture round it (#181).
+  [SEED_FEATURES.portBuildings]: ["buildings", "villageBuildings", "clutter", "townPlans", "furniture", "anchors", "piers", "works", ...KEEP_OUT],
+  [SEED_FEATURES.quay]: ["quays", "buildings", "villageBuildings", "clutter", "townPlans", "furniture", "anchors", "piers", "works", ...KEEP_OUT],
+  [SEED_FEATURES.village]: ["villageBuildings", "clutter", "townPlans", "furniture", "anchors", "piers", "works", ...KEEP_OUT],
   // Which houses a crowded town thins away (#176): the village, and the clutter and props round the footprints it frees.
-  [SEED_FEATURES.villageThinning]: ["villageBuildings", "clutter", "townPlans", "works", ...KEEP_OUT],
+  [SEED_FEATURES.villageThinning]: ["villageBuildings", "clutter", "townPlans", "furniture", "anchors", "piers", "works", ...KEEP_OUT],
   // The spill moves the town's cells and so the plateau it bounds, and everything in the town (#170).
-  [SEED_FEATURES.townSpill]: ["townPlans", "buildings", "quays", "villageBuildings", "clutter", "works", ...KEEP_OUT],
+  [SEED_FEATURES.townSpill]: ["townPlans", "buildings", "quays", "villageBuildings", "clutter", "furniture", "anchors", "piers", "works", ...KEEP_OUT],
+  // The harbour's furniture (#181) moves itself and what keeps clear of it (the hall keeps off the piers, so its lanterns move with them), never a house (#158 S4).
+  [SEED_FEATURES.piers]: ["piers", "furniture", "anchors", "clutter", "townPlans", "works", ...KEEP_OUT],
+  [SEED_FEATURES.marketHall]: ["furniture", "anchors", "clutter", "townPlans", "works", ...KEEP_OUT],
+  [SEED_FEATURES.cranes]: ["furniture", "clutter", "townPlans", "works", ...KEEP_OUT],
   [SEED_FEATURES.townClutter]: ["clutter", ...KEEP_OUT],
   [SEED_FEATURES.retainingWalls]: ["works"],
   [SEED_FEATURES.kerbs]: ["works"],
@@ -223,6 +231,15 @@ describe("the board's seeded world (ADR 0007, #165)", () => {
         }
       });
     }
+
+    it("the piers', cranes' and market hall's sub-seeds leave every house deep-equal (#181)", () => {
+      for (const feature of [SEED_FEATURES.piers, SEED_FEATURES.cranes, SEED_FEATURES.marketHall]) {
+        const moved = worldShifting(feature, cells, REQUEST.mapSeed);
+        expect(moved.villageBuildings, feature).toEqual(base.villageBuildings);
+        expect(moved.buildings, feature).toEqual(base.buildings);
+        expect(JSON.stringify(moved.furniture), feature).not.toBe(JSON.stringify(base.furniture));
+      }
+    });
 
     it("covers every decoration and town feature", () => {
       const terrain: readonly SeedFeature[] = [SEED_FEATURES.coastNoise, SEED_FEATURES.reliefNoise, SEED_FEATURES.reefNoise, SEED_FEATURES.landBandNoise];

@@ -16,6 +16,8 @@ import { buildNationFlagGeometry } from "./visuals/nationFlagGeometry";
 import type { FacetGeometryData } from "./visuals/facetBuilder";
 import type { PortNation } from "../game/types";
 import { buildQuayGeometry, type QuayColors } from "./visuals/quayGeometry";
+import { buildCrane, buildCraneLoad, buildMarketHall, buildQuayFlag } from "./visuals/harbourPieces";
+import { harbourPieceColors } from "./visuals/villageColors";
 
 /** Any prop builder's output; `colors` is optional (the faceted rock has none and draws white). */
 export interface PropGeometryData {
@@ -86,4 +88,8 @@ export const PROP_ENTRIES: readonly PropEntry[] = [
   { label: "church, aged", build: () => buildAgedBuildingGeometry("church", agedColors("church")), color: 0xffffff, roughness: 0.9 },
   { label: "watchtower, aged (England)", build: towerWithFlag("England"), color: 0xffffff, roughness: 0.9 },
   { label: "quay, notch up", build: () => buildQuayGeometry(QUAY_COLORS), color: 0xffffff, roughness: 0.95 },
+  // The harbour's furniture (#181).
+  { label: "dock crane with its load", build: () => concatGeometry(buildCrane(harbourPieceColors()), buildCraneLoad(harbourPieceColors())), color: 0xffffff, roughness: 0.9 },
+  { label: "market hall, thatched", build: () => buildMarketHall(harbourPieceColors()), color: 0xffffff, roughness: 0.9 },
+  { label: "quay flag (Pirate)", build: () => buildQuayFlag("Pirate", harbourPieceColors()), color: 0xffffff, roughness: 0.8 },
 ];

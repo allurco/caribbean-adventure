@@ -1035,12 +1035,54 @@ Trees, rocks, stones, shrubs and boulders are dropped inside a town's plan
 Everything is merged into one vertex-coloured mesh per map
 (`villageGeometry.ts`, about 195k triangles on the small map) and drawn
 once per world copy (`PortVillage.tsx`), casting and receiving shadows: a
-draw and a shadow draw per copy. The village placement sweep
+draw and a shadow draw per copy (with the cranes' loads, two, #181). The village placement sweep
 (`src/testSupport/villagePlacementSweep.ts`, run in blocks by the
 `villagePlacement.*.test.ts` files) holds the placement over 200 seeds of
 every map size, the kit's buildings off the risers, the streets, the lanes
 and their kerbs, and every kerb and edge stone out of every building's
 walls.
+
+**The harbour's furniture (#181).** After the houses and before the clutter,
+`harbourFurniture.ts` furnishes each port, each feature on its own sub-seed
+(`piers`, `marketHall`, `cranes`), so none moves a house (#158 S4,
+`seededWorld.test.ts`):
+
+- **Piers**: the port's own and one to three more, 2–4 in all. A further
+  pier starts `PIER_LAND_OVERLAP` inland of the drawn shore on the town's
+  cells (rays from each town cell's centre find the shore), runs down the
+  beach's fall at the least stretch (0.5 to 1.2 of the authored deck) that
+  ends it `PIER_END_DEPTH` in the water without crossing land again, and no
+  point of its deck comes nearer a water hex's centre than half a Galleon
+  (`PIER_SHIP_CLEARANCE`), as the port's own pier keeps its docking hex.
+  Piers are the one piece on a spilled cell's shore band. They are drawn
+  with the port's own (`Piers.tsx`, the same instanced draw).
+- **Cranes**: one or two beside a pier's root, on dry ground (the whole foot
+  over `VILLAGE_DRY_HEIGHT`), a hair under its highest ground with the stone
+  foot reaching under its lowest, the jib swung half a radian from the pier's
+  heading out over the water, never through a building.
+- **The market hall**: open-sided and thatched, on the square's edge, along
+  a street or, failing those, anywhere on the town's cells, on the village's
+  rules (off streets, risers and the shore band, dry, near level, clear of
+  every building).
+- **Flags**: the port cell's nation over its watchtower (drawn with the
+  tower) and on a pole at the quay's landward corner (`QUAY_FLAG_SPOT`); the
+  black flag only at a pirate haven. Nothing goes into `G`.
+
+Nothing but a pier stands on the water. `furnishedPlans` adds the furniture
+to the plans' footprints and walls, so the clutter, the island's props and
+the kerbs keep clear of it. The cranes, halls and quay flags join the
+village's soup; the cranes' loads (a rope and a crate under each jib's
+tip) are a second mesh, swung about the tip along the scene's wind in the
+vertex shader on the board's one sway clock (`craneSway.ts`), so they stand
+still under reduced motion: the village layer is `VILLAGE_DRAWS` (2) draws
+per world copy whatever the map. Every piece is at most 400 triangles
+(`harbourPieces.test.ts`: crane 114 and its load 28, hall 214, quay flag 66);
+on the small map's seed 1 the soup grows from about 279k to 282k triangles.
+The layout also exports the towns' anchors (`townAnchors.ts`): each house's
+chimney mouths (for the life slice's smoke), its windows and the lantern by
+its door, and the halls' lanterns (for a later night). The village placement
+sweep holds all of it over 200 seeds of every size: about 3 piers and 1.5
+cranes a port, a hall at 96–99 % of the ports.
 
 **Field texture.** `terrainFieldTexture.ts` bakes the field once per map into
 an RGBA **half-float** texture over `field.bounds` (12 texels per world unit,
@@ -1539,7 +1581,11 @@ both biases 0. Keep it only if nothing leaks under the palms and hulls.
 | `src/board/visuals/townGround.ts` | Which lattice corners are refined round a town, and its setts and earth |
 | `src/board/visuals/villageLayout.ts` | The port village's houses on the plateau (#87) |
 | `src/board/visuals/townDetailLayout.ts` | The town's retaining walls, kerbs and clutter; props kept out of it |
-| `src/board/visuals/villageGeometry.ts` | Every village merged into one mesh per map |
+| `src/board/visuals/villageGeometry.ts` | Every village merged into one mesh per map, and the cranes' loads |
+| `src/board/visuals/harbourFurniture.ts` | The harbours' further piers, cranes, market hall and flags (#181) |
+| `src/board/visuals/harbourPieces.ts` | The dock crane, its load, the thatched market hall and the quay's flag |
+| `src/board/visuals/craneSway.ts` | The cranes' loads swinging in the vertex shader on the sway clock |
+| `src/board/visuals/townAnchors.ts` | The towns' chimney, window and lantern positions |
 | `src/board/visuals/perMapCache.ts` | Once-per-map builds derived from the field (bake, land mesh, decoration layout) |
 | `src/board/visuals/seamStrip.ts` | The one-wrap-wide strip a wrapping map's field and meshes are built over |
 | `src/board/visuals/periodicNoise.ts` | Simplex noise for the coast, relief and reef crest; periodic on a wrapping map |

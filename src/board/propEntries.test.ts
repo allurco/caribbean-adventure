@@ -15,6 +15,8 @@ describe("PROP_ENTRIES", () => {
       if (g.colors) expect(g.colors).toHaveLength(g.vertexCount * 3);
     }
     for (const piece of ["house, aged", "tavern, aged", "warehouse, aged", "watchtower, aged (Spain)", "church, aged"]) expect(labels).toContain(piece);
+    // And the harbour's furniture (#181).
+    for (const piece of ["dock crane with its load", "market hall, thatched", "quay flag (Pirate)"]) expect(labels).toContain(piece);
   });
 
   it("shows the aged church at its recorded triangle count", () => {

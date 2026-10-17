@@ -212,9 +212,11 @@ describe("the village on its town's cells (#170)", () => {
     for (const port of village.ports) {
       thinned += port.dropped.thinned;
       if (port.dropped.thinned > 0) expect(standingBuildings(port.buildings)).toBe(VILLAGE_HOUSES);
-      // Every footprint the plan keeps is the kit's, the quay's, the pier's or a standing building's eaves.
+      // Every footprint the plan keeps is the kit's, the quay's, the pier's, a standing building's eaves or the harbour's furniture (#181).
       const kit = layout.buildings.filter((k) => Math.hypot(k.worldX - port.cx, k.worldZ - port.cz) < 1).length;
-      expect(port.footprints.length).toBe(kit + port.quays.length + 1 + port.buildings.length);
+      const f = village.furniture.find((x) => x.portId === port.portId);
+      const furniture = f ? f.piers.length + f.cranes.length + (f.hall ? 1 : 0) : 0;
+      expect(port.footprints.length).toBe(kit + port.quays.length + 1 + port.buildings.length + furniture);
     }
     expect(thinned).toBeGreaterThan(0);
   });

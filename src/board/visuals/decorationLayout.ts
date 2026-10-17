@@ -25,6 +25,8 @@ import { lerpRange } from "./variationStream";
 import { PROP_DENSITY, PROP_SCALE, TOWN_PIECE_SCALE } from "./worldScale";
 import { planPortTowns, type PortTownPlan, type VillageBuilding } from "./villageLayout";
 import { townClutter, townKeepOut, type PiecePlacement } from "./townDetailLayout";
+import { furnishedPlans, harbourFurniture, type PortFurniture } from "./harbourFurniture";
+import { townAnchors, type TownAnchors } from "./townAnchors";
 import { SHRUB_FOOTPRINT_RADIUS } from "./shrubGeometry";
 
 /** Rock radius at scale 1 (the rock mesh's unit radius). */
@@ -102,7 +104,7 @@ export interface DecorationPlacements {
   stones: DecorationData[];
   /** Derived boulders along the waterline, emergent and submerged (#49). */
   shoreBoulders: ShoreBoulder[];
-  /** Piers, with the origin at the land end where the beach meets the water (#49). */
+  /** Piers, with the origin at the land end where the beach meets the water (#49): each port's own, then the further ones its harbour gained (#181). */
   piers: DecorationData[];
   /** Derived stone quays, one at each pier's root (#59). */
   quays: QuayPlacement[];
@@ -118,7 +120,12 @@ export interface DecorationPlacements {
 export interface VillageLayout {
   buildings: VillageBuilding[];
   clutter: PiecePlacement[];
+  /** Each port's plan, its harbour furniture among what it has taken (`furnishedPlans`). */
   ports: PortTownPlan[];
+  /** Each port's harbour furniture (#181): further piers, cranes, the market hall, flags. */
+  furniture: PortFurniture[];
+  /** Where the towns' smoke and lights will be (#181): chimneys, windows, lanterns. */
+  anchors: TownAnchors;
 }
 
 /** Radii a prop keeps from a town (`townKeepOut`), at scale 1: a tree's crown (so it does not grow through a roof), a rock's body, a shrub's foliage. */
@@ -218,10 +225,14 @@ export function decorationLayout(cells: readonly MapCell[], wrap: MapWrap, world
   const quays = portQuays(cells, drawn, worldSeed);
   // The village gathers round the port kit on its town plateau (#87), and its clutter round both.
   const town = planPortTowns(cells, drawn, { buildings, quays, piers, plateaus }, worldSeed);
-  const clutter = townClutter(town.ports, drawn, TOWN_PIECE_SCALE, worldSeed);
-  const village: VillageLayout = { buildings: town.buildings, clutter, ports: town.ports };
+  // The harbour's furniture round the houses (#181), then the clutter round both.
+  const furniture = harbourFurniture(town.ports, cells, wrap, drawn, buildings, worldSeed);
+  const ports = furnishedPlans(town.ports, furniture);
+  const clutter = townClutter(ports, drawn, TOWN_PIECE_SCALE, worldSeed);
+  const village: VillageLayout = { buildings: town.buildings, clutter, ports, furniture, anchors: townAnchors(town.buildings, furniture) };
+  for (const f of furniture) for (const p of f.piers) piers.push({ type: "pier", worldX: p.worldX, worldY: 0, worldZ: p.worldZ, rotation: p.rotation, scale: p.scale, seed: 0, stretch: p.stretch });
   // Trees, rocks, stones, shrubs and boulders stay out of the town's plan, its buildings and its clutter.
-  const inTown = townKeepOut(town.ports, clutter, field.periodX);
+  const inTown = townKeepOut(ports, clutter, field.periodX);
   const outside = <T extends { worldX: number; worldZ: number; scale: number }>(items: readonly T[], radius: number) =>
     items.filter((d) => !inTown(d.worldX, d.worldZ, radius * d.scale));
   const keptTrees = outside(trees, TREE_TOWN_RADIUS);

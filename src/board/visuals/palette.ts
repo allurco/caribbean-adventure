@@ -83,6 +83,10 @@ export const PALETTE_HEX = {
   bleachedPlank: 0xae9e8f, // Sun-bleached, salt-greyed softwood planking: the warehouse's walls
   churchLime: 0xeee4d0, // The church's whitewash: the lime render a coat fresher, still warm
   bellBronze: 0x7a6238, // The church bells: dark bronze gone brown in the salt air
+  // The harbour's furniture (#181, ADR 0002 amendment (c)): palm and grass
+  // thatch, sun-dried to a dull straw, darker than the sand so a thatched
+  // roof reads against the beach.
+  thatch: 0xa88a58, // Sun-dried palm thatch: the market hall's roof
 } as const;
 
 export type PaletteName = keyof typeof PALETTE_HEX;

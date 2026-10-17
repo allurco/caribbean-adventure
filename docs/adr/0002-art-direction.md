@@ -39,3 +39,10 @@ All of the scene's light derives from one pure input, the time of day: `lighting
 - **V1 and async games are fixed at golden hour** (`GOLDEN_HOUR`) on every client and every seed: a low (~22°), warm (~3200 K) sun ahead and to the right of the camera, faces turned from it kept warm and readable (a warm sand-bounce fill from behind the camera and a warm ambient, near half the light of sunlit ground), turquoise shallows, a warmer grade. Lighting is not a variety axis; a per-seed mood would perturb `lightingFor`'s output, never add a second lighting path.
 - **Day and night come later, for live games only**: the time then comes from the shared game clock, never a local one, and only the input changes, not the consumers. Night needs lit windows, port lights and ship lanterns (emissive and bloom), so village and ship pieces export window and lantern positions from the start.
 - The sun now sits ahead-right, not ahead-left: its glare lies over the upper-right sea and the shadows fall towards the lower left. The light stays physically based, as decided above; only its time of day is chosen.
+
+### (c) Thatch joins the materials (#158, #181)
+
+The ports' materials are weathered stone, timber and terracotta, and now **thatch**: sun-dried palm and grass thatch, a dull straw (`thatch` in `palette.ts`) darker than the sand, so a thatched roof reads against the beach. The first is the harbour's open-sided market hall (`harbourPieces.ts`); the pirate havens' patched roofs may follow.
+
+- **Vertex colours only**, like every other material: no texture, no PBR maps. The straw reads through the geometry: thick courses laid in steps, each a tone of the colour, a darker underside and drip edge, a bound ridge roll.
+- It stays in the village's one material and draw (`PortVillage.tsx`); a thatched piece costs no draw of its own.
