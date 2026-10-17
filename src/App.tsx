@@ -34,7 +34,10 @@ const showSeedGallery = SeedGallery !== null && devParams.seedGallery === true;
 // The harbour backdrop's capture view (#122), dev only like the seed gallery.
 const HarbourCapture = import.meta.env.DEV ? lazy(() => import("./board/harbour/HarbourCapture")) : null;
 const showHarbourCapture = HarbourCapture !== null && devParams.harbourCapture === true;
-const devView = isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || showHarbourCapture;
+// The event card lab (#247), dev only like the seed gallery.
+const CardLab = import.meta.env.DEV ? lazy(() => import("./lab/CardLab")) : null;
+const showCardLab = CardLab !== null && devParams.cardLab !== undefined;
+const devView = isLab || devParams.propViewer || devParams.soundLab || showSeedGallery || showHarbourCapture || showCardLab;
 
 // Only with a backend: the online shell (#125) at the root URL and its pages
 // (Play, the account pages, the rooms), and a started match's board (#113).
@@ -80,8 +83,9 @@ export default function App() {
 function AppView() {
   // Visit http://localhost:5173/#lab for the shader sandbox,
   // http://localhost:5173/?view=props for the prop viewer (#59),
-  // http://localhost:5173/?view=sound for the sound lab (#73) and
-  // http://localhost:5173/?seedGallery=1 for the seed gallery (#161);
+  // http://localhost:5173/?view=sound for the sound lab (#73),
+  // http://localhost:5173/?seedGallery=1 for the seed gallery (#161) and
+  // http://localhost:5173/?view=cards for the event card lab (#247);
   // anything else loads the normal game. All stay fully isolated from game code.
   if (isLab) {
     return <ShaderLab />;
@@ -111,6 +115,13 @@ function AppView() {
     return (
       <Suspense fallback={null}>
         <HarbourCapture />
+      </Suspense>
+    );
+  }
+  if (CardLab && showCardLab) {
+    return (
+      <Suspense fallback={null}>
+        <CardLab card={devParams.cardLab?.card} nation={devParams.cardLab?.nation} />
       </Suspense>
     );
   }

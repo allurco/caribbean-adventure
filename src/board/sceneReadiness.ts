@@ -7,14 +7,15 @@
  */
 
 /** The loading stages, in the order the loading screen walks them. */
-export type ReadinessStage = "models" | "fonts" | "sounds" | "world" | "sky" | "shaders" | "frames";
+export type ReadinessStage = "models" | "fonts" | "sounds" | "cards" | "world" | "sky" | "shaders" | "frames";
 
-const STAGE_ORDER: readonly ReadinessStage[] = ["models", "fonts", "sounds", "world", "sky", "shaders", "frames"];
+const STAGE_ORDER: readonly ReadinessStage[] = ["models", "fonts", "sounds", "cards", "world", "sky", "shaders", "frames"];
 
 const STAGE_LABELS: Readonly<Record<ReadinessStage, string>> = {
   models: "Rigging the ships",
   fonts: "Inking the charts",
   sounds: "Tuning the sea",
+  cards: "Painting the cards",
   world: "Raising the islands",
   sky: "Lighting the sky",
   shaders: "Mixing the paints",

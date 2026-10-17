@@ -1,4 +1,5 @@
-import type { CaribbeanSetupData } from "../game/types";
+import { PORT_NATIONS, type CaribbeanSetupData, type PortNation } from "../game/types";
+import { CARD_ART_SLOTS, type CardArtSlot } from "./cardArtSlots";
 import type { MapSizeId } from "../game/mapConfig";
 import { isValidMapSeed } from "../game/mapSeed";
 import { DEFAULT_SEATS, isValidSeatCount } from "../game/seats";
@@ -27,6 +28,8 @@ export interface DevUrlParams {
   regionBorder?: RegionBorderMode;
   /** `?stats=1`: a corner readout of fps, draw calls and triangles (#162), in dev builds only. */
   renderStats?: true;
+  /** `?view=cards`: the event card lab (#247), every card and its placeholder art; with `&card=<kind|back>` (and `&nation=` for a flag) one card staged where the HUD shows it, in dev builds only. */
+  cardLab?: { card?: CardArtSlot; nation?: PortNation };
   /** `?view=harbour`: the harbour backdrop's live scene alone, to capture its still from (#122), in dev builds only. */
   harbourCapture?: true;
   /** `?seedGallery=1`: the 12-seed contact sheet instead of the game (#161), in dev builds only. */
@@ -149,6 +152,11 @@ export function parseDevUrlParams(search: string): DevUrlParams {
   if (import.meta.env.DEV) {
     if (params.get("seedGallery") === "1") out.seedGallery = true;
     if (params.get("view") === "harbour") out.harbourCapture = true;
+    if (params.get("view") === "cards") {
+      const card = CARD_ART_SLOTS.find((slot) => slot === params.get("card"));
+      const nation = PORT_NATIONS.find((name) => name === params.get("nation"));
+      out.cardLab = { ...(card && { card }), ...(nation && { nation }) };
+    }
     if (params.get("snapshot") === "1") out.gallerySnapshot = true;
     if (params.get("seats") === "1") out.localSeats = true;
     const players = integer(params.get("players"));

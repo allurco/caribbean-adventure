@@ -3,7 +3,8 @@
  * ends (`EventCard`) and the short event log (`HudEventLog`). Reads only the
  * log in G, which carries public facts alone. Pure.
  */
-import type { EventCardKind, EventLogEntry, Region } from "../game/types";
+import type { EventCardKind, EventLogEntry, PortNation, Region } from "../game/types";
+import type { EventArtKind } from "./cardArtSlots";
 import type { ShellLayout } from "../online/shellLayout";
 import { controlsLocked, type Handoff } from "./turnHandoff";
 
@@ -13,6 +14,10 @@ export interface EventCardFace {
   title: string;
   region: string | null;
   effect: string;
+  /** Its art's slot (cardArtSlots.ts, #247). */
+  art: EventArtKind;
+  /** The nation whose flag its art flies (Flotilla patrol, Lost flag), else null. */
+  nation: PortNation | null;
   /** In the log: the captain whose turn it came on, when the board names them. */
   after?: string | null;
 }
@@ -27,7 +32,7 @@ export function eventCardView(entry: EventLogEntry, regions: readonly Region[] |
   const title = TITLES[entry.kind];
   switch (entry.kind) {
     case "calmSeas":
-      return { id: entry.id, title, region: null, effect: "The sea lies quiet." };
+      return { id: entry.id, title, region: null, effect: "The sea lies quiet.", art: entry.kind, nation: null };
     case "merchantConvoy": {
       const sail = entry.merchants === 1 ? "A merchant sails" : `${entry.merchants} merchants sail`;
       return {
@@ -35,6 +40,8 @@ export function eventCardView(entry: EventLogEntry, regions: readonly Region[] |
         title,
         region: (entry.region !== null && regions?.[entry.region]?.name) || null,
         effect: `${sail} from ${entry.port}, bound for ${listed([...new Set(entry.bound)])}.`,
+        art: entry.kind,
+        nation: null,
       };
     }
   }

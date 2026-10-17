@@ -66,6 +66,15 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?view=sounds")).toEqual({});
   });
 
+  it("opens the event card lab, with a card and a nation to stage one at its HUD place, in dev builds (#247)", () => {
+    expect(parseDevUrlParams("?view=cards")).toEqual({ cardLab: {} });
+    expect(parseDevUrlParams("?view=cards&card=flotillaPatrol&nation=Spain")).toEqual({ cardLab: { card: "flotillaPatrol", nation: "Spain" } });
+    expect(parseDevUrlParams("?view=cards&card=back")).toEqual({ cardLab: { card: "back" } });
+    expect(parseDevUrlParams("?view=cards&card=lostFlag&nation=Pirate")).toEqual({ cardLab: { card: "lostFlag", nation: "Pirate" } });
+    expect(parseDevUrlParams("?view=cards&card=kraken&nation=Prussia")).toEqual({ cardLab: {} });
+    expect(parseDevUrlParams("?card=storm")).toEqual({});
+  });
+
   it("opens the harbour backdrop's capture view, in dev builds (#122)", () => {
     expect(parseDevUrlParams("?view=harbour")).toEqual({ harbourCapture: true });
     expect(parseDevUrlParams("?view=harbours")).toEqual({});

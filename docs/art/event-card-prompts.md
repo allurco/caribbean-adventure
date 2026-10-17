@@ -10,6 +10,10 @@ Prompts for the illustrations on the event deck's cards (#240). The images are g
 - **The register is ADR 0002's:** bold, stylised shapes under realistic golden-hour light and water.
 - **Origin.** The images are AI-generated. Record that in `NOTICE` when they are added.
 
+## Landing the art
+
+The HUD already has a slot for every card and the back (`src/board/cardArtSlots.ts`), each drawing a placeholder engraving until its image exists (#247). To land one: convert it to WebP at the size the HUD needs, put it under `public/cards/` and name it as the slot's `file`; the table's test and the board's loading gate pick it up. Crop the card back's dark margin first: the corners are rounded in CSS. For Flotilla patrol and Lost flag, also add a mask the size of the art (`<name>.flag.webp`, opaque over the flag's cloth, transparent elsewhere) as the slot's `flag.mask`, and set `flag.box` to the flag's bounding box in the frame: the HUD lays the card's nation's flag over the box, cut to the mask (`src/board/cardFlag.ts`). Check each card at `?view=cards` on the dev server.
+
 ## Style block
 
 Paste this at the start of every prompt.
