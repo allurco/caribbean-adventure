@@ -36,3 +36,20 @@ jobs:
       - name: Test
         # npm test prints dots; the github-actions reporter keeps the failure annotations vitest adds by default.
         run: npm test -- --reporter=github-actions
+
+  boats:
+    # The ship and town generators' tests are pure Python: no Blender, no bpy.
+    # They include the scan that keeps local paths out of the committed .blends.
+    name: Boats generator tests
+    # macOS, not Ubuntu: the frozen-ship tests pin bit-exact float digests
+    # taken on macOS, and glibc's libm rounds some sin/cos results differently.
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Test
+        working-directory: boats
+        run: uv run --isolated --no-project --python 3.12 --with pytest pytest tests/ -q

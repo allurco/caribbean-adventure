@@ -25,7 +25,7 @@ import os
 
 import bpy
 
-from . import bake, board, checks, colours, env, gltf, palette, texbudget
+from . import bake, blendsave, blendscan, board, checks, colours, env, gltf, palette, texbudget
 from .params import FrigateParams
 
 BUILD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -291,9 +291,23 @@ def _write(path: str) -> None:
 
 
 def write_blend(p, path: str | None = None) -> str:
+    """Save the scene's `.blend`, clean, and keep it only if the scan passes.
+
+    The file is public: `blendsave.save_clean` writes relative texture paths
+    and no remembered directory. It is staged in the git-ignored `staging/`
+    beside the tracked file and read back through `blendscan.blend_faults`;
+    a file that names a local path raises and never replaces the tracked one.
+    """
     path = path or blend_path(p)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=path, copy=True)
+    home = os.path.dirname(os.path.abspath(path))
+    staged = os.path.join(home, "staging", "staging_" + os.path.basename(path))
+    blendsave.save_clean(staged, home_dir=home)
+    with open(staged, "rb") as handle:
+        faults = blendscan.blend_faults(handle.read())
+    if faults:
+        os.remove(staged)
+        raise RuntimeError("the .blend is not fit to commit: " + "; ".join(faults))
+    os.replace(staged, path)
     return path
 
 

@@ -1,12 +1,14 @@
 """A failing export never leaves a bad file in the tree.
 
 `publish.publish_piece` writes the `.glb` and the `.blend` to staging paths
-under `build/`, checks both, and only then moves them where the game and
+under `build/staging/`, checks both, and only then moves them where the game and
 the repo keep them. The writers and checks are injected, so the order is
 tested here without Blender.
 """
 
 import os
+import shutil
+import subprocess
 
 import pytest
 
@@ -96,3 +98,18 @@ def test_a_blend_that_carries_a_local_path_touches_neither_file(tmp_path):
 def test_the_blend_check_reads_the_written_bytes(tmp_path):
     _, _, calls = _run(tmp_path)
     assert ("check_blend", b"new blend") in calls
+
+
+def test_the_staging_folder_is_git_ignored():
+    # `build/*.blend` is tracked, so staging there would leave a committable
+    # file behind a crash; `build/staging/` is ignored whole.
+    git = shutil.which("git")
+    if git is None:
+        pytest.skip("no git")
+    for name in ("staging_town_tavern.blend", "staging_tavern.glb"):
+        staged = os.path.join(publish.STAGING_DIR, name)
+        found = subprocess.run([git, "check-ignore", "-q", staged],
+                               cwd=publish.BOATS_DIR, capture_output=True)
+        if found.returncode == 128:  # not inside a git work tree (an export of the repo)
+            pytest.skip("not in a git work tree")
+        assert found.returncode == 0, f"{name} under build/staging/ is not git-ignored"
