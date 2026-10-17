@@ -10,9 +10,10 @@ import { Caribbean } from "./game/Game";
 import { saveHotseat } from "./hotseatSave/hotseatSave";
 // Imported with the file, not inside a test: the module pulls in the board's
 // whole graph, which takes seconds to transform on a busy machine, and
-// collecting a file has no time limit where a test does (#335). The mocks
-// below are hoisted above it, as App's import is all that runs before the
-// models start loading.
+// collecting a file has no time limit where a test does (#335). vi.mock is
+// hoisted above this import, so the drei mock is in place when Ship.tsx
+// preloads; and importing the module is all App does before the models start
+// loading.
 import { loadGameClient, loadSeatClient } from "./loadGameClient";
 
 /** Presses the defender's choice as seat 0, the attacker, in a fight seat 1 is to choose in. */

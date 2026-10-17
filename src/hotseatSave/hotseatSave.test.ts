@@ -69,6 +69,8 @@ describe("a saved hotseat game", () => {
 
     // Sixteen turns are enough for merchants to come out, sail and leave the
     // map; each round's NPC moves are the costly part, so no more (#335).
+    // The event deck's reshuffle after a restore is not reached here (the
+    // 40-card pile lasts longer); eventDeck.test.ts covers the reshuffle.
     endTurns(original, 16);
     endTurns(restored, 16);
     expect(playable(restored)).toEqual(playable(original));
