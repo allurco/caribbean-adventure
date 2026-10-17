@@ -64,6 +64,17 @@ describe("reading a saved game back", () => {
     }
   });
 
+  it("reads a version 6 save, from before every volley was aimed (#348), as this version's, mid-fight too", () => {
+    expect(HOTSEAT_SAVE_VERSION).toBe(7);
+    // Version 6's fights wait on steps version 7 still has; a volley it fired, unaimed, went to the hull
+    const atCannons = { attackerId: "0", defenderId: "1", round: 2, stage: "cannons" };
+    const atResolution = { ...atCannons, stage: "resolution", volleys: [{ shooterId: "0", guns: 2, hits: 1 }] };
+    for (const G of [save.state.G, { ...save.state.G, combat: atCannons }, { ...save.state.G, combat: atResolution }]) {
+      const older = { ...save, version: 6, state: { ...save.state, G } };
+      expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+    }
+  });
+
   it("reads a version 4 save made mid-fight at the draw through version 5 to this version's", () => {
     const combat = { attackerId: "0", defenderId: "1", round: 2, stage: "seamanship" };
     const older = { ...save, version: 4, state: { ...save.state, G: { ...save.state.G, combat } } };

@@ -40,7 +40,8 @@ function fightOneRound(client: Match) {
     if (stage === "seamanship") client.moves.rollSeamanship();
     else if (stage === "chooseAction") client.moves.chooseCombatAction("fire");
     else if (stage === "fleeAttempt") client.moves.rollFleeAttempt();
-    else if (stage === "cannons") client.moves.rollCannons();
+    else if (stage === "cannons") client.moves.rollCannons("hull");
+    else if (stage === "returnFire") client.moves.returnFire("hull");
     else if (stage === "resolution") client.moves.applyResolution();
   }
 }
@@ -128,7 +129,7 @@ describe("a saved hotseat game", () => {
   it("records when it was saved, and the save's schema version", () => {
     const save = saveHotseat(newMatch(1).store.getState(), map, 1_234);
     expect(save.savedAt).toBe(1_234);
-    expect(save.version).toBe(6);
+    expect(save.version).toBe(7);
   });
 
   it("refuses a map that is not the save's", () => {
