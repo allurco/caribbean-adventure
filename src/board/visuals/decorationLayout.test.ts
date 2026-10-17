@@ -29,6 +29,8 @@ const near = (a: { x: number; z: number }, b: { worldX: number; worldZ: number }
 describe("decorationLayout", () => {
   // The sample maps, their layouts and their terrain fields, built once outside
   // any test's time limit: generating eight real maps is the expensive part.
+  // About 2 s on an idle machine, so the hook gets its own limit (below) rather
+  // than the default 10 s, which a busy machine can run past (#335).
   let sampled: {
     cells: MapCell[];
     seed: number;
@@ -43,7 +45,7 @@ describe("decorationLayout", () => {
       const cells = generateMap(preset, seed, wrap);
       return { cells, seed, wrap, layout: decorationLayout(cells, wrap, seed), field: sharedTerrainField(cells, wrap, seed) };
     });
-  });
+  }, 60_000);
 
   it("starts every drawn pier where its quay and the settlement's pier-root reserve expect it: on the drawn land surface (#59)", () => {
     let ports = 0;
@@ -69,10 +71,8 @@ describe("decorationLayout", () => {
   });
 
   it("keeps every pier at water level with its decoration's rotation and scale", () => {
-    const preset = getMapPreset("small");
-    const wrap = createWrap(preset.columns);
-    const cells = generateMap(preset, 1, wrap);
-    const layout = decorationLayout(cells, wrap, 1);
+    // The first sample, small seed 1: no map of its own to generate.
+    const { cells, layout } = sampled[0];
     const pierCells = cells.filter((c) => pierRotation(c) !== undefined);
     expect(layout.piers).toHaveLength(pierCells.length);
     for (const pier of layout.piers) {

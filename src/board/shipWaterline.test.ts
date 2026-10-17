@@ -114,8 +114,10 @@ describe("a modelled hull riding the swell (#150)", () => {
     it(`keeps the ${shipClass}'s lower hull under the drawn sea (swell and chop) as it heaves, pitches and rolls`, () => {
       const hull = shipHullBox(shipClass);
       let highest = -Infinity;
-      for (const at of SPOTS) {
-        for (const t of TIMES) {
+      // Time outside, spots inside: the sea's FFT grids are kept for the moment
+      // last asked, so each moment's are built once, not once per spot (#335).
+      for (const t of TIMES) {
+        for (const at of SPOTS) {
           const eye = [at.x, 0.1, at.z] as const;
           const swellAt = (x: number, z: number) => swell.heightAt(x, z, t, eye);
           const seaAt = (x: number, z: number) => swellAt(x, z) + chop.heightAt(x, z, t, eye);

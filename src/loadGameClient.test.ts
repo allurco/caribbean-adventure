@@ -7,6 +7,14 @@ import { parseDevUrlParams, showsDebugPanel } from "./board/devUrlParams";
 import { INVALID_MOVE } from "boardgame.io/core";
 import type { Move } from "boardgame.io";
 import { Caribbean } from "./game/Game";
+import { saveHotseat } from "./hotseatSave/hotseatSave";
+// Imported with the file, not inside a test: the module pulls in the board's
+// whole graph, which takes seconds to transform on a busy machine, and
+// collecting a file has no time limit where a test does (#335). vi.mock is
+// hoisted above this import, so the drei mock is in place when Ship.tsx
+// preloads; and importing the module is all App does before the models start
+// loading.
+import { loadGameClient, loadSeatClient } from "./loadGameClient";
 
 /** Presses the defender's choice as seat 0, the attacker, in a fight seat 1 is to choose in. */
 function attackerChoosesForDefender(game: Game<CaribbeanState>): unknown {
@@ -31,15 +39,13 @@ vi.mock("./mapWorker/generateMapOffThread", () => ({
 
 describe("loading the game client", () => {
   it("starts fetching every ship model before the map is generated (#136)", async () => {
-    // Importing the module is all App does before calling it, so the models load during the map-loading screen.
-    await import("./loadGameClient");
+    // Importing the module (above) is all App does before calling it, so the models load during the map-loading screen.
     const urls = Object.values(SHIP_MODELS).flatMap((model) => (model ? [shipModelUrl(model, import.meta.env.BASE_URL)] : []));
     expect(urls.length).toBeGreaterThan(0);
     for (const url of urls) expect(preload).toHaveBeenCalledWith(url, false, false);
   });
 
   it("starts solo by default: one seat, one captain hand (#278)", async () => {
-    const { loadGameClient } = await import("./loadGameClient");
     const { game, numPlayers } = (await loadGameClient(undefined)) as unknown as { game: Game<CaribbeanState>; numPlayers: number };
     expect(numPlayers).toBe(1);
     const client = HeadlessClient<CaribbeanState>({ game, numPlayers });
@@ -47,7 +53,6 @@ describe("loading the game client", () => {
   });
 
   it("keeps the hotseat client's view of the whole table: every seat's draft hand (#109)", async () => {
-    const { loadGameClient } = await import("./loadGameClient");
     const { game, numPlayers } = (await loadGameClient(undefined, true, 2)) as unknown as { game: Game<CaribbeanState>; numPlayers: number };
     expect(numPlayers).toBe(2);
     // Like the hotseat client: one shared screen, no seat.
@@ -56,7 +61,6 @@ describe("loading the game client", () => {
   });
 
   it("gives every seat on one page only its own view, through the local transport (#110)", async () => {
-    const { loadSeatClient } = await import("./loadGameClient");
     const { game, multiplayer, numPlayers } = (await loadSeatClient(undefined, false, 3)) as unknown as {
       game: Game<CaribbeanState>;
       multiplayer: unknown;
@@ -70,13 +74,11 @@ describe("loading the game client", () => {
   });
 
   it("hides the dev debug panel for the seats on one page, so its tab does not cover End Turn or the turn bar (#110)", async () => {
-    const { loadSeatClient } = await import("./loadGameClient");
     const { debug } = (await loadSeatClient(undefined, showsDebugPanel(parseDevUrlParams("?seats=1")))) as unknown as { debug: unknown };
     expect(debug).toBe(false);
   });
 
   it("opens the dev debug panel collapsed, so it does not cover the port panel or the tavern; '.' or its toggle opens it", async () => {
-    const { loadGameClient, loadSeatClient } = await import("./loadGameClient");
     const hotseat = (await loadGameClient(undefined, true)) as unknown as { debug: unknown };
     const seats = (await loadSeatClient(undefined, true)) as unknown as { debug: unknown };
     expect(hotseat.debug).toEqual({ collapseOnLoad: true });
@@ -84,7 +86,6 @@ describe("loading the game client", () => {
   });
 
   it("holds each seat on one page to its own combat steps (#113 review); the hotseat table keeps pressing both sides", async () => {
-    const { loadSeatClient, loadGameClient } = await import("./loadGameClient");
     const seated = (await loadSeatClient(undefined, false, 2)) as unknown as { game: Game<CaribbeanState> };
     expect(attackerChoosesForDefender(seated.game)).toBe(INVALID_MOVE);
     const hotseat = (await loadGameClient(undefined, true, 2)) as unknown as { game: Game<CaribbeanState> };
@@ -92,8 +93,6 @@ describe("loading the game client", () => {
   });
 
   it("continues a saved voyage on its seats, saving every state it reaches from there (#300)", async () => {
-    const { loadGameClient } = await import("./loadGameClient");
-    const { saveHotseat } = await import("./hotseatSave/hotseatSave");
     const map = { mapSize: "small", mapSeed: 1, cells: [] } as const;
     // A two-seat match, then saved, on the mocked map
     const before = (await loadGameClient(undefined, true, 2)) as unknown as { game: Game<CaribbeanState> };
