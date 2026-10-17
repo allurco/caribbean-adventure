@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a fight: G.combat and its volleys > fight, save version 9 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a fight: G.combat and its volleys > fight, save version 10 1`] = `
 {
   "actionChosen": "string",
   "attackerHits": "number",
@@ -17,6 +17,11 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
   "stage": "string",
   "volleys": [
     {
+      "dealt": {
+        "crew": "number",
+        "hull": "number",
+        "masts": "number",
+      },
       "guns": "number",
       "hits": "number",
       "locations": {
@@ -25,12 +30,13 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
         "masts": "number",
       },
       "shooterId": "string",
+      "shots": [],
     },
   ],
 }
 `;
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a settled round: G.lastRound and its volleys (#380) > settled round, save version 9 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a settled round: G.lastRound and its volleys (#380) > settled round, save version 10 1`] = `
 {
   "attackerId": "string",
   "defenderId": "string",
@@ -38,9 +44,16 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
   "fleeOutcome": "null",
   "fleeRolls": "null",
   "isNPCCombat": "boolean",
+  "leftDerelict": [],
   "round": "number",
+  "sunk": [],
   "volleys": [
     {
+      "dealt": {
+        "crew": "number",
+        "hull": "number",
+        "masts": "number",
+      },
       "guns": "number",
       "hits": "number",
       "locations": {
@@ -49,12 +62,13 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
         "masts": "number",
       },
       "shooterId": "string",
+      "shots": [],
     },
   ],
 }
 `;
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 9 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 10 1`] = `
 {
   "cellPatches": [],
   "map": {

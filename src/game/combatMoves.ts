@@ -21,7 +21,7 @@ import {
   shouldNPCFlee,
   countCannonHits,
   rollHitLocations,
-  volleyDamage,
+  volleyOutcome,
   applyDamage,
   isSunk,
   isDerelict,
@@ -322,13 +322,15 @@ function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, d
   const guns = getEffectiveCannons(shooter);
   const hits = fireBroadside(guns, d6);
   const locations = rollHitLocations(hits, d6);
-  combat.volleys = [...(combat.volleys ?? []), { shooterId, guns, hits, locations }];
+  // The shots and the damage as fired, so the volley reads the same after the shooter sinks or buys another shot
+  const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
+  const { shots, dealt } = volleyOutcome(locations, upgrades, target.damage.masts);
+  combat.volleys = [...(combat.volleys ?? []), { shooterId, guns, hits, locations, shots, dealt }];
   if (shooterId === combat.attackerId) combat.attackerHits = hits;
   else combat.defenderHits = hits;
   if (hits === 0) return;
 
-  const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
-  applyDamage(target, volleyDamage(locations, upgrades, target.damage.masts));
+  applyDamage(target, dealt);
   // An escort's attacker that takes a hit fails its no-damage condition.
   if (targetId === combat.attackerId) {
     const mission = G.ships[combat.attackerId].activeMission;
@@ -365,7 +367,7 @@ export function isVolleyStage(stage: CombatStage): stage is "cannons" | "returnF
 }
 
 /** The same fight, both sides as they were. */
-function sameFight(a: Pick<CombatState, "attackerId" | "defenderId">, b: Pick<CombatState, "attackerId" | "defenderId">): boolean {
+export function sameFight(a: Pick<CombatState, "attackerId" | "defenderId">, b: Pick<CombatState, "attackerId" | "defenderId">): boolean {
   return a.attackerId === b.attackerId && a.defenderId === b.defenderId;
 }
 
@@ -477,6 +479,10 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
   let combatEnded = false;
   // Player ships sunk this exchange: lost once both sides' glory and bounties are settled
   const sunk: string[] = [];
+  // Ships this round left derelict, never one derelict before it (#380)
+  const leftDerelict: string[] = [];
+  // Every ship the round sank, the NPC too, for the fight's end (#380)
+  const sankThisRound: string[] = [];
 
   // Check if NPC defender is sunk
   if (isNPC) {
@@ -507,8 +513,10 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
       const loot = createLootFromNPC(npc, nextLootId(G));
       G.floatingLoot.push(loot);
       delete G.npcs[combat.defenderId];
+      sankThisRound.push(combat.defenderId);
       combatEnded = true;
     } else if (npc.stats.crew.current <= 0) {
+      if (!npc.isDerelict) leftDerelict.push(combat.defenderId);
       npc.isDerelict = true;
       combatEnded = true;
     }
@@ -526,6 +534,7 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
       sunk.push(combat.defenderId);
       combatEnded = true;
     } else if (isDerelict(defenderShip)) {
+      if (!defenderShip.isDerelict) leftDerelict.push(combat.defenderId);
       defenderShip.isDerelict = true;
       combatEnded = true;
     }
@@ -546,12 +555,14 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
     sunk.push(combat.attackerId);
     combatEnded = true;
   } else if (isDerelict(attacker)) {
+    if (!attacker.isDerelict) leftDerelict.push(combat.attackerId);
     attacker.isDerelict = true;
     combatEnded = true;
   }
 
   // The sunk ships leave G.ships here, and their captains die with them (#265)
   for (const id of sunk) loseShip(G, id, "sunk");
+  sankThisRound.push(...sunk);
 
   // After a failed flee attempt, combat ends after the parting shot
   if (combat.fleeOutcome === "caught") {
@@ -567,6 +578,8 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
     fleeOutcome: combat.fleeOutcome,
     fleeRolls: combat.fleeRolls,
     ended: combatEnded,
+    sunk: sankThisRound,
+    leftDerelict,
   };
 
   if (combatEnded) {

@@ -127,7 +127,7 @@ import { isEliminated } from "../game/captainDeath";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
 import { FightOverPanel } from "./FightOverPanel";
-import { newlyEnded, settledKey } from "./fightOverShown";
+import { closeFightOver, initialFightOver, nextFightOver } from "./fightOverShown";
 import { npcKind } from "./npcName";
 import { gaugeLine } from "./combatGauge";
 import { SCENE_WIND } from "./visuals/sceneWind";
@@ -163,7 +163,7 @@ import { CombatEffects } from "./combatFx/CombatEffects";
 import { CombatBanner } from "./combatFx/CombatBanner";
 import type { CombatDirector } from "./combatFx/combatDirector";
 import type { DepartedShipView } from "./combatFx/useCombatFx";
-import type { Mission, SettledRound } from "../game/types";
+import type { Mission } from "../game/types";
 import { ignoredUnderGate } from "../landscape/rotateGatePresence";
 import { useRotateGateShowing } from "../landscape/useRotateGateShowing";
 
@@ -1142,19 +1142,17 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
 
   const inCombat = ctx.phase === "combat" && G.combat;
   // The fight's end (#380): the round that ended it settled itself, so its volleys stay on the board until closed
-  const [seenRoundKey, setSeenRoundKey] = useState(() => settledKey(G.lastRound));
-  const [fightOver, setFightOver] = useState<SettledRound | null>(null);
-  const roundKey = settledKey(G.lastRound);
-  if (roundKey !== seenRoundKey) {
-    setSeenRoundKey(roundKey);
-    const ended = newlyEnded(seenRoundKey, G.lastRound);
-    if (ended) setFightOver(ended);
-  }
-  if (inCombat && fightOver) setFightOver(null);
-  // What the fight calls its NPC, kept for the fight's end: an NPC sunk is gone from G
-  const [fightNpcLabel, setFightNpcLabel] = useState<string | null>(null);
+  const [fightOverView, setFightOverView] = useState(() => initialFightOver(G.lastRound));
   const npcInFight = G.combat?.isNPCCombat ? G.npcs[G.combat.defenderId] : undefined;
-  if (npcInFight && npcKind(npcInFight) !== fightNpcLabel) setFightNpcLabel(npcKind(npcInFight));
+  const nextFightOverView = nextFightOver(fightOverView, {
+    lastRound: G.lastRound,
+    inCombat: Boolean(inCombat),
+    npcInFight: npcInFight ? npcKind(npcInFight) : null,
+    announced: announced !== null,
+    hotseat: props.playerID == null && ctx.numPlayers > 1,
+  });
+  if (nextFightOverView !== fightOverView) setFightOverView(nextFightOverView);
+  const fightOver = nextFightOverView.shown;
   // Whether the HUD's top-left stack shows, for the harbour link over the board (#125): it sits beside the stack on a phone
   const hudStackUp = hudStackShows(G, ctx);
   useEffect(() => (hudStackUp ? hudStackPresence.show() : undefined), [hudStackUp]);
@@ -1367,7 +1365,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {!inCombat && fightOver && (
-        <FightOverPanel settled={fightOver} G={G} npcLabel={fightNpcLabel} onClose={() => setFightOver(null)} />
+        <FightOverPanel settled={fightOver} npcLabel={nextFightOverView.npcLabel} onClose={() => setFightOverView(closeFightOver)} />
       )}
 
       {/* Top bar - only show in main phase */}

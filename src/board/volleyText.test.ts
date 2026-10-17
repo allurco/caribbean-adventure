@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { answerLine, fightOverLines, pendingVolley, pursuitRollsLine, roundShown, volleyLine } from "./volleyText";
-import type { CaribbeanState, CombatState, SettledRound } from "../game/types";
+import { answerLine, combatantLabel, fightOverLines, noAnswer, pendingVolley, pursuitRollsLine, roundShown, volleyLine } from "./volleyText";
+import type { CombatState, SettledRound } from "../game/types";
 
 const fight = (extra: Partial<CombatState>): CombatState => ({
   attackerId: "0",
@@ -43,21 +43,49 @@ describe("volleyLine: a fired volley, in words (#380)", () => {
   const at = (hull: number, masts: number, crew: number) => ({ hull, masts, crew });
 
   it("names the guns, the hits and where each landed", () => {
-    expect(volleyLine({ shooterId: "0", guns: 6, hits: 4, locations: at(2, 1, 1) }, [])).toEqual({ fired: "fired 6 guns", hits: "4 hits: 2 hull, 1 masts, 1 crew" });
-    expect(volleyLine({ shooterId: "1", guns: 1, hits: 1, locations: at(0, 0, 1) }, [])).toEqual({ fired: "fired 1 gun", hits: "1 hit: 1 crew" });
-    expect(volleyLine({ shooterId: "1", guns: 3, hits: 0, locations: at(0, 0, 0) }, [])).toEqual({ fired: "fired 3 guns", hits: "no hits" });
+    expect(volleyLine({ shooterId: "0", guns: 6, hits: 4, locations: at(2, 1, 1), shots: [], dealt: at(2, 1, 1) })).toEqual({ fired: "fired 6 guns", hits: "4 hits: 2 hull, 1 masts, 1 crew" });
+    expect(volleyLine({ shooterId: "1", guns: 1, hits: 1, locations: at(0, 0, 1) })).toEqual({ fired: "fired 1 gun", hits: "1 hit: 1 crew" });
+    expect(volleyLine({ shooterId: "1", guns: 3, hits: 0, locations: at(0, 0, 0) })).toEqual({ fired: "fired 3 guns", hits: "no hits" });
   });
 
-  it("says when chain or grape shot added to a location a hit landed on, and only then", () => {
-    const both = ["chain_shot", "grape_shot"];
-    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(1, 1, 0) }, both).hits).toBe("2 hits: 1 hull, 1 masts +1 chain shot");
-    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(0, 1, 1) }, both).hits).toBe("2 hits: 1 masts, 1 crew +1 chain shot +1 grape shot");
-    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(2, 0, 0) }, both).hits).toBe("2 hits: 2 hull");
+  it("says what chain or grape shot added, as recorded when fired, whatever the shooter carries now", () => {
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(1, 1, 0), shots: ["chain_shot"], dealt: at(1, 2, 0) }).hits).toBe("2 hits: 1 hull, 1 masts +1 chain shot");
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(0, 1, 1), shots: ["chain_shot", "grape_shot"], dealt: at(0, 2, 2) }).hits).toBe(
+      "2 hits: 1 masts +1 chain shot, 1 crew +1 grape shot",
+    );
+    // Recorded with no shot: none is claimed, though the shooter may have bought one since
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(0, 1, 1), shots: [], dealt: at(0, 1, 1) }).hits).toBe("2 hits: 1 masts, 1 crew");
+  });
+
+  it("says when mast hits went to the hull, past the cap: all of them, or some", () => {
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 3, locations: at(0, 3, 0), shots: [], dealt: at(3, 0, 0) }).hits).toBe("3 hits: 3 masts (to hull, masts gone)");
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 3, locations: at(0, 3, 0), shots: [], dealt: at(2, 1, 0) }).hits).toBe("3 hits: 3 masts (2 to hull, masts gone)");
+    // Chain shot's +1 goes the same way
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 1, locations: at(0, 1, 0), shots: ["chain_shot"], dealt: at(1, 1, 0) }).hits).toBe("1 hit: 1 masts +1 chain shot (1 to hull, masts gone)");
   });
 
   it("reads a volley stored before #380 as every hit on its aim", () => {
-    expect(volleyLine({ shooterId: "0", guns: 3, aim: "masts", hits: 2 }, []).hits).toBe("2 hits: 2 masts");
-    expect(volleyLine({ shooterId: "0", guns: 2, hits: 1 }, []).hits).toBe("1 hit: 1 hull");
+    expect(volleyLine({ shooterId: "0", guns: 3, aim: "masts", hits: 2 }).hits).toBe("2 hits: 2 masts");
+    expect(volleyLine({ shooterId: "0", guns: 2, hits: 1 }).hits).toBe("1 hit: 1 hull");
+  });
+});
+
+describe("noAnswer: a round whose one volley went unanswered", () => {
+  const volley = { shooterId: "0", guns: 2, hits: 1 };
+  it("one volley, not a caught flight's parting shot", () => {
+    expect(noAnswer([volley], null)).toBe(true);
+    expect(noAnswer([volley], "caught")).toBe(false);
+    expect(noAnswer([volley, volley], null)).toBe(false);
+    expect(noAnswer([], null)).toBe(false);
+  });
+});
+
+describe("combatantLabel: who a fight's ship is on its panels", () => {
+  it("the NPC defender by its kind, every seat as Player n", () => {
+    expect(combatantLabel({ defenderId: "foe", isNPCCombat: true }, "foe", "Merchant")).toBe("Merchant");
+    expect(combatantLabel({ defenderId: "foe", isNPCCombat: true }, "foe", null)).toBe("NPC");
+    expect(combatantLabel({ defenderId: "foe", isNPCCombat: true }, "0", "Merchant")).toBe("Player 1");
+    expect(combatantLabel({ defenderId: "1", isNPCCombat: false }, "1", null)).toBe("Player 2");
   });
 });
 
@@ -77,6 +105,8 @@ describe("roundShown: the settled round the panel still shows (#380)", () => {
     fleeOutcome: null,
     fleeRolls: null,
     ended: false,
+    sunk: [],
+    leftDerelict: [],
     ...extra,
   });
 
@@ -105,19 +135,24 @@ describe("fightOverLines: how the fight ended, under its last round (#380)", () 
     fleeOutcome: null,
     fleeRolls: null,
     ended: true,
+    sunk: [],
+    leftDerelict: [],
     ...extra,
   });
-  const afloat = { ships: { "0": {}, "1": {} }, npcs: {} } as unknown as Pick<CaribbeanState, "ships" | "npcs">;
 
-  it("names a ship sunk, and a ship left derelict", () => {
-    expect(fightOverLines({ ships: { "0": {} }, npcs: {} } as unknown as Pick<CaribbeanState, "ships" | "npcs">, end({}), name)).toEqual(["Player 2 is sunk"]);
-    expect(fightOverLines({ ships: { "0": {}, "1": { isDerelict: true } }, npcs: {} } as unknown as Pick<CaribbeanState, "ships" | "npcs">, end({}), name)).toEqual(["Player 2 is left derelict"]);
-    expect(fightOverLines({ ships: { "0": {} }, npcs: {} } as unknown as Pick<CaribbeanState, "ships" | "npcs">, end({ isNPCCombat: true, defenderId: "foe" }), name)).toEqual(["The merchant is sunk"]);
+  it("names a ship the round sank, and a ship it left derelict", () => {
+    expect(fightOverLines(end({ sunk: ["1"] }), name)).toEqual(["Player 2 is sunk"]);
+    expect(fightOverLines(end({ leftDerelict: ["1"] }), name)).toEqual(["Player 2 is left derelict"]);
+    expect(fightOverLines(end({ isNPCCombat: true, defenderId: "foe", sunk: ["foe"] }), name)).toEqual(["The merchant is sunk"]);
+  });
+
+  it("not a ship derelict before the round, which the round did not leave derelict", () => {
+    expect(fightOverLines(end({ fleeOutcome: "caught" }), name)).toEqual(["Caught, but out of the pursuer's range: no parting shot"]);
   });
 
   it("a caught flight: the parting shot ends the chase, or none was fired, out of range", () => {
-    expect(fightOverLines(afloat, end({ fleeOutcome: "caught", volleys: [{ shooterId: "0", guns: 2, hits: 0 }] }), name)).toEqual(["The parting shot ends the chase"]);
-    expect(fightOverLines(afloat, end({ fleeOutcome: "caught" }), name)).toEqual(["Caught, but out of the pursuer's range: no parting shot"]);
+    expect(fightOverLines(end({ fleeOutcome: "caught", volleys: [{ shooterId: "0", guns: 2, hits: 0 }] }), name)).toEqual(["The parting shot ends the chase"]);
+    expect(fightOverLines(end({ fleeOutcome: "caught" }), name)).toEqual(["Caught, but out of the pursuer's range: no parting shot"]);
   });
 });
 

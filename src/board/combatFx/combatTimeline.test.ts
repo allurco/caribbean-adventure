@@ -102,7 +102,7 @@ function settled(fight: Partial<CombatState>, volleys: Volley[], extra: Partial<
   const combat = makeCombat(fight);
   return makeState({
     combat: ended ? undefined : { ...combat, round: combat.round + 1, stage: "seamanship", volleys: [], fleeOutcome: null, fleeRolls: null, seamanshipWinner: null },
-    lastRound: { attackerId: combat.attackerId, defenderId: combat.defenderId, isNPCCombat: combat.isNPCCombat, round: combat.round, volleys, fleeOutcome: combat.fleeOutcome, fleeRolls: combat.fleeRolls, ended },
+    lastRound: { attackerId: combat.attackerId, defenderId: combat.defenderId, isNPCCombat: combat.isNPCCombat, round: combat.round, volleys, fleeOutcome: combat.fleeOutcome, fleeRolls: combat.fleeRolls, ended, sunk: [], leftDerelict: [] },
     ...extra,
   });
 }
