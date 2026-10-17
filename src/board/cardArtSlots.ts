@@ -6,17 +6,17 @@
  * cardArtSlots.test.ts holds the table to public/cards/ both ways, and
  * sceneAssets.ts puts every file here on the board's loading gate. Pure.
  *
- * The art is 3:4 (`CARD_ART_WIDTH` × `CARD_ART_HEIGHT`) and carries no
+ * The art is 3:4, at most `CARD_ART_MAX` (cardArtCheck.ts), and carries no
  * text: the HUD draws the frame, the rounding and the title
  * (docs/art/event-card-prompts.md).
  *
  * **Flags.** Flotilla patrol and Lost flag carry a plain red flag, tinted
- * per nation (cardFlag.ts). When their art lands, add beside it a mask the
- * same size as the art (`<name>.flag.webp`: opaque over the flag's cloth,
- * transparent elsewhere), name it as the slot's `flag.mask`, and set
- * `flag.box` to the flag's bounding box in the frame. The HUD then lays the
- * nation's flag over the box, cut to the mask. Until then the placeholder's
- * own flag uses the same layer, cut to a drawn pennant at the same box.
+ * per nation (cardFlag.ts). Beside each one's art lies a mask the same size
+ * (`<name>.flag.webp`: opaque over the flag's cloth, transparent elsewhere),
+ * named as the slot's `flag.mask`, and `flag.box` is the flag's bounding box
+ * in the frame. The HUD lays the nation's flag over the box, cut to the
+ * mask. A new painting of either card needs its own mask and box; a slot
+ * with no art cuts the placeholder's flag to a drawn pennant at the box.
  */
 import { NATIONS, PORT_NATIONS, type PortNation } from "../game/types";
 
