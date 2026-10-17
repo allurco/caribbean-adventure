@@ -3,7 +3,7 @@
 `export_piece(p)` rebuilds the piece (`build.rebuild`), writes the `.glb`
 the game loads (`public/town/<stem>.glb`) and the `.blend` it came from
 (`boats/build/town_<stem>.blend`), each first to a staging path under
-`build/` (`publish.publish_piece`), and opens the staged file as BYTES
+`build/staging/` (`publish.publish_piece`), and opens the staged file as BYTES
 through the ships' own reader, `frigate.gltf`, which imports no bpy: the
 triangles it draws, its size, its images, each primitive's attributes, the
 tint values, its parts and anchors, and its bounds against the plan's,
@@ -157,7 +157,7 @@ def export_piece(p: TavernParams | None = None) -> dict:
     build.rebuild(p)
     coll = bpy.data.collections[build.collection_name(p)]
     return publish.publish_piece(
-        glb_path(p), blend_path(p), BUILD_DIR,
+        glb_path(p), blend_path(p), publish.STAGING_DIR,
         write_glb=lambda path: _write(path, coll),
         verify=lambda path: verify_piece(p, path),
         write_blend=lambda path: write_blend(p, path),

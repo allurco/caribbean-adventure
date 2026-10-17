@@ -1,16 +1,22 @@
 """The order a town piece's files are written in. Pure -- imports no bpy.
 
-Both files are written to staging paths under `build/` (git-ignored) and
+Both files are written to staging paths under `build/staging/` (`STAGING_DIR`,
+git-ignored, so a crash mid-export leaves nothing that could be committed) and
 checked there: the `.glb` read back as bytes against its contract, the
 `.blend` read back for local paths. Only when both pass are they moved where
 the game (`public/town/`) and the repo (`build/town_*.blend`) keep them, so
 an export that fails leaves the committed files as they were. A staged
-`.glb` that fails stays in `build/` to be looked at.
+`.glb` that fails stays in `build/staging/` to be looked at.
 
 `export.export_piece` injects the bpy writers and the checks.
 """
 
 import os
+
+BOATS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Not `build/` itself: its `*.blend` are tracked (`boats/.gitignore`), so a
+# staged `.blend` left there by a crash would show up to be committed.
+STAGING_DIR = os.path.join(BOATS_DIR, "build", "staging")
 
 
 def publish_piece(glb_path: str, blend_path: str, staging_dir: str,
