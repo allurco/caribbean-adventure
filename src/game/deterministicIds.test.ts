@@ -109,15 +109,19 @@ function fireOnce(client: TestClient): void {
 }
 
 /**
- * Seat 0, docked at Port Royal, sinks the merchant alongside; seat 1 passes;
- * seat 0 then takes a mission at the tavern and sinks seat 1's ship. A
- * mission and two floating loots, all made by moves.
+ * Seat 0 sails out of Port Royal (no fighting in port, #388) and sinks the
+ * merchant alongside; seat 1 passes; seat 0 then docks to take a mission at
+ * the tavern, sails out again and sinks seat 1's ship. A mission and two
+ * floating loots, all made by moves.
  */
 function play(client: TestClient): CaribbeanState {
+  client.moves.moveShip(-4, 1);
   client.moves.attackNPC("npc-1");
   fireOnce(client);
   client.events.endTurn!();
+  client.moves.moveShip(DOCK.q, DOCK.r);
   client.moves.listenForRumors();
+  client.moves.moveShip(-2, -1);
   client.moves.attackShip("1");
   fireOnce(client);
   return client.getState()!.G;

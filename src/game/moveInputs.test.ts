@@ -191,6 +191,8 @@ describe("the main phase's moves refuse malformed arguments", () => {
 
   it("chooseCombatAction: an action outside fire, board and flee", () => {
     const client = mainGame({ unarmed: true });
+    // Out of port first: no fighting in port (#388)
+    client.moves.moveShip(1, -1);
     client.moves.attackShip("1");
     fireTheAmbush(client);
     client.moves.rollSeamanship();

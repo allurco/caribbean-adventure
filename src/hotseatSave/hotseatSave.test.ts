@@ -11,6 +11,7 @@ import { STARTER_SHIP_CLASSES, type ShipState } from "../game/types";
 import { restoreHotseat, saveHotseat, type MatchState } from "./hotseatSave";
 import { hotseatStoreEnhancer } from "./hotseatStoreEnhancer";
 import { parseHotseatSave } from "./parseHotseatSave";
+import { openWaterPair } from "../testSupport/openWaterPair";
 
 const request = { mapSize: "small", mapSeed: 7 } as const;
 const map = { ...request, ...generateMapFor(request) };
@@ -89,10 +90,11 @@ describe("a saved hotseat game", () => {
     const state: MatchState = opened.store.getState();
     const attackerId = state.ctx.currentPlayer;
     const defenderId = attackerId === "0" ? "1" : "0";
-    const { q, r } = state.G.ships[attackerId].position;
+    // Out on open water: no fighting in port (#388)
+    const [at, beside] = openWaterPair(state.G);
     const sturdy = (ship: ShipState): ShipState => ({ ...ship, stats: { ...ship.stats!, hull: { current: 40, max: 40 } } });
-    const attacker = sturdy(state.G.ships[attackerId]);
-    const alongside = { ...sturdy(state.G.ships[defenderId]), position: { q: q + 1, r, s: -q - 1 - r } };
+    const attacker = { ...sturdy(state.G.ships[attackerId]), position: at };
+    const alongside = { ...sturdy(state.G.ships[defenderId]), position: beside };
     const original = newMatch(2, { ...state, G: { ...state.G, ships: { ...state.G.ships, [attackerId]: attacker, [defenderId]: alongside } } });
 
     const restored = newMatch(2, restoreHotseat(throughStorage(original.store.getState()), map));
@@ -112,9 +114,11 @@ describe("a saved hotseat game", () => {
     const state: MatchState = opened.store.getState();
     const attackerId = state.ctx.currentPlayer;
     const defenderId = attackerId === "0" ? "1" : "0";
-    const { q, r } = state.G.ships[attackerId].position;
-    const alongside = { ...state.G.ships[defenderId], position: { q: q + 1, r, s: -q - 1 - r } };
-    const match = newMatch(2, { ...state, G: { ...state.G, ships: { ...state.G.ships, [defenderId]: alongside } } });
+    // Out on open water: no fighting in port (#388)
+    const [at, beside] = openWaterPair(state.G);
+    const attacker = { ...state.G.ships[attackerId], position: at };
+    const alongside = { ...state.G.ships[defenderId], position: beside };
+    const match = newMatch(2, { ...state, G: { ...state.G, ships: { ...state.G.ships, [attackerId]: attacker, [defenderId]: alongside } } });
     match.moves.attackShip(defenderId);
     expect(match.getState()!.ctx.phase).toBe("combat");
 

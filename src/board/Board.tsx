@@ -19,9 +19,8 @@ import { HudEventLog } from "./HudEventLog";
 import { HudLeftColumn } from "./HudLeftColumn";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
 import { turnReach, routeTo, reachCost } from "../game/reach";
-import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
 import { canChooseCombatAction, firstToFireReaches } from "../game/combatMoves";
-import { getValidScoutTargets } from "../game/scouting";
+import { encounterTargets, NO_FIGHTING_IN_PORT } from "./encounterTargets";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
 import { HexGrid } from "./HexGrid";
 import { useHexGrid } from "./useHexGrid";
@@ -1088,16 +1087,14 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   }, [viewerShip?.activeMission, viewer]);
 
 
-  // Calculate potential attack targets (players + NPCs) - must be before early return
-  const attackTargetIds = useMemo(() => {
-    if (!currentShipState) return [];
-    return getValidAttackTargets(currentShipState, G.ships, currentPlayer, G.wrap);
-  }, [currentShipState, G.ships, currentPlayer, G.wrap]);
-
-  const npcAttackTargetIds = useMemo(() => {
-    if (!currentShipState) return [];
-    return getValidNPCAttackTargets(currentShipState, G.npcs, G.wrap);
-  }, [currentShipState, G.npcs, G.wrap]);
+  // Attack and spyglass targets (players + NPCs), none to or from a port (#388) - must be before early return
+  const encounters = useMemo(
+    () => encounterTargets({ cells: G.cells, wrap: G.wrap, ships: G.ships, npcs: G.npcs }, currentPlayer),
+    [G.cells, G.wrap, G.ships, G.npcs, currentPlayer],
+  );
+  const attackTargetIds = encounters.attack.players;
+  const npcAttackTargetIds = encounters.attack.npcs;
+  const spyglassTargets = encounters.scout;
 
   const attackTargetHexes = useMemo(() => {
     const playerHexes = attackTargetIds.map((id) => G.ships[id]?.position).filter(Boolean) as Hex[];
@@ -1106,12 +1103,6 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   }, [attackTargetIds, npcAttackTargetIds, G.ships, G.npcs]);
 
   const hasAttackTargets = attackTargetIds.length > 0 || npcAttackTargetIds.length > 0;
-
-  // Calculate spyglass targets
-  const spyglassTargets = useMemo(() => {
-    if (!currentShipState) return { players: [], npcs: [] };
-    return getValidScoutTargets(currentShipState, currentPlayer, G.ships, G.npcs, G.wrap);
-  }, [currentShipState, currentPlayer, G.ships, G.npcs, G.wrap]);
 
   const spyglassTargetHexes = useMemo(() => {
     const playerHexes = spyglassTargets.players.map((id) => G.ships[id]?.position).filter(Boolean) as Hex[];
@@ -1413,8 +1404,24 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* Action buttons - only in main phase */}
-      {!inCombat && boardActive && currentShipState && (hasAttackTargets || hasSpyglassTargets) && (
-        <div className="absolute flex gap-2" style={{ bottom: safeInset("bottom", HUD_EDGE), right: safeInset("right", HUD_EDGE) }}>
+      {!inCombat && boardActive && currentShipState && (hasAttackTargets || hasSpyglassTargets || encounters.heldInPort) && (
+        <div className="absolute flex gap-2 items-center" style={{ bottom: safeInset("bottom", HUD_EDGE), right: safeInset("right", HUD_EDGE) }}>
+          {/* Docked with a ship in reach (#388): the buttons show, disabled, with the reason */}
+          {encounters.heldInPort && (
+            <>
+              <span className="font-heading text-xs text-amber-100/90 bg-black/50 rounded px-2 py-1">{NO_FIGHTING_IN_PORT}</span>
+              {["Spyglass", "Attack!"].map((label) => (
+                <button
+                  key={label}
+                  disabled
+                  title={NO_FIGHTING_IN_PORT}
+                  className="font-heading py-3 px-6 rounded-lg text-sm font-bold uppercase tracking-wider bg-stone-700/60 text-stone-300/70 border border-stone-600/50 cursor-not-allowed"
+                >
+                  {label}
+                </button>
+              ))}
+            </>
+          )}
           {/* Spyglass button */}
           {hasSpyglassTargets && (
             <button

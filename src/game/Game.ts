@@ -57,6 +57,7 @@ import { applyMerchantAction, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
 import { findAccessiblePort } from "./moves";
+import { harbourKeepsApart } from "./safeHarbour";
 import { nextMissionId } from "./ids";
 import {
   generateMission,
@@ -486,12 +487,14 @@ export const Caribbean: Game<CaribbeanState> = {
           if (isNPC) {
             if (!isOwnKey(G.npcs, targetId)) return INVALID_MOVE;
             const npc = G.npcs[targetId];
+            if (harbourKeepsApart(G, ship.position, npc.position)) return INVALID_MOVE;
             if (!canScoutNPC(ship, npc, G.wrap)) return INVALID_MOVE;
             // Mark NPC as identified
             npc.isIdentified = true;
           } else {
             if (!isOwnKey(G.ships, targetId)) return INVALID_MOVE;
             const target = G.ships[targetId];
+            if (harbourKeepsApart(G, ship.position, target.position)) return INVALID_MOVE;
             if (!canScoutPlayer(ship, target, targetId, G.wrap)) return INVALID_MOVE;
             // Add to scouted ships list
             if (!ship.scoutedShips.includes(targetId)) {
@@ -539,6 +542,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const attacker = G.ships[ctx.currentPlayer];
           if (!isOwnKey(G.ships, targetId) || targetId === ctx.currentPlayer) return INVALID_MOVE;
           const defender = G.ships[targetId];
+          if (harbourKeepsApart(G, attacker.position, defender.position)) return INVALID_MOVE;
 
           const distance = wrappedDistance(attacker.position, defender.position, G.wrap);
           if (!canAttack(attacker, defender, distance)) return INVALID_MOVE;
@@ -553,6 +557,7 @@ export const Caribbean: Game<CaribbeanState> = {
           const attacker = G.ships[ctx.currentPlayer];
           if (!isOwnKey(G.npcs, npcId)) return INVALID_MOVE;
           const npc = G.npcs[npcId];
+          if (harbourKeepsApart(G, attacker.position, npc.position)) return INVALID_MOVE;
 
           const distance = wrappedDistance(attacker.position, npc.position, G.wrap);
           if (!canAttackNPC(attacker, npc, distance)) return INVALID_MOVE;
