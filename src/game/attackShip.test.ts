@@ -776,6 +776,8 @@ describe("bounty and flotilla system", () => {
 
     const ship0 = createShipWithFullStats(0, 0);
     ship0.bounties = { England: 0, France: 0, Spain: 0, Netherlands: 0 };
+    // Crew enough that the merchant's answer to the ambush leaves the 2 it takes to board (#350)
+    ship0.stats!.crew = { current: 4, max: 4 };
     const ship1 = createShipWithFullStats(5, 5);
     ship1.bounties = { England: 0, France: 0, Spain: 0, Netherlands: 0 };
 
