@@ -37,14 +37,14 @@ describe("the HUD's attack and spyglass targets (#388)", () => {
     const targets = encounterTargets(table(FURTHER_OUT, OFF_DOCK, hex(-1, 0)), "0");
     expect(targets.attack).toEqual({ players: ["1"], npcs: ["npc-0"] });
     expect(targets.scout).toEqual({ players: ["1"], npcs: ["npc-0"] });
-    expect(targets.heldInPort).toBe(false);
+    expect(targets.held).toEqual({ attack: false, scout: false });
   });
 
   it("leaves out a rival and an NPC docked at a port", () => {
     const docked = encounterTargets(table(OFF_DOCK, DOCK), "0");
     expect(docked.attack.players).toEqual([]);
     expect(docked.scout.players).toEqual([]);
-    expect(docked.heldInPort).toBe(false);
+    expect(docked.held).toEqual({ attack: false, scout: false });
 
     const npcDocked = encounterTargets(table(OFF_DOCK, hex(-4, 0), DOCK), "0");
     expect(npcDocked.attack.npcs).toEqual([]);
@@ -55,10 +55,16 @@ describe("the HUD's attack and spyglass targets (#388)", () => {
     const docked = encounterTargets(table(DOCK, OFF_DOCK, hex(1, -1)), "0");
     expect(docked.attack).toEqual({ players: [], npcs: [] });
     expect(docked.scout).toEqual({ players: [], npcs: [] });
-    expect(docked.heldInPort).toBe(true);
+    expect(docked.held).toEqual({ attack: true, scout: true });
   });
 
   it("is not held in port when docked with nobody in reach", () => {
-    expect(encounterTargets(table(DOCK, hex(-4, 0)), "0").heldInPort).toBe(false);
+    expect(encounterTargets(table(DOCK, hex(-4, 0)), "0").held).toEqual({ attack: false, scout: false });
+  });
+
+  it("holds only the spyglass when a ship is in scouting reach but out of gun range", () => {
+    // A Frigate scouts 3 hexes and fires 1: a rival two hexes off is a scout target only
+    const docked = encounterTargets(table(DOCK, FURTHER_OUT), "0");
+    expect(docked.held).toEqual({ attack: false, scout: true });
   });
 });

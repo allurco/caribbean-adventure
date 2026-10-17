@@ -6,8 +6,6 @@ import { MOVE_LIMITS, READ_LIMIT } from "./matches";
 import { ONLINE_WINDOW_SECONDS, SEEN_REFRESH_SECONDS } from "./seatSeen";
 import { MATCH_POLL_MS } from "../src/online/matchSync";
 import type { CaribbeanState } from "../src/game/types";
-import { wrappedEquals, wrappedNeighbors } from "../src/game/hex";
-import { atPort } from "../src/game/safeHarbour";
 import { openWaterPair } from "../src/testSupport/openWaterPair";
 import { silenceInvalidMoveLogs } from "../src/testSupport/silenceInvalidMoveLogs";
 
@@ -962,13 +960,17 @@ describe("ports are safe harbours online (#388)", () => {
     // Set-up: the attacker docked at a port, the defender alongside on open water.
     const dock = stored.G.cells.find((c) => c.hasPort && c.dockingHex)!.dockingHex!;
     stored.G.ships[attacker].position = dock;
-    stored.G.ships[defender].position = wrappedNeighbors(dock, stored.G.wrap).find(
-      (h) => stored.G.cells.some((c) => c.terrain === "water" && wrappedEquals(c.hex, h, stored.G.wrap)) && !atPort(stored.G, h),
-    )!;
+    const [, beside] = openWaterPair(stored.G, [], dock);
+    stored.G.ships[defender].position = beside;
+    const before = (await store.peekMatch(matchId))!.stateId;
+    const movesBefore = (await store.peekMoves(matchId)).length;
 
     clock += 1000;
     const res = await act(matchId, attacker === "0" ? "anne" : "jack", move(main._stateID, "attackShip", defender));
     expect(res.status).toBe(400);
-    expect(((await store.peekMatch(matchId))!.state as View).G.combat).toBeUndefined();
+    const after = (await store.peekMatch(matchId))!;
+    expect(after.stateId).toBe(before);
+    expect(await store.peekMoves(matchId)).toHaveLength(movesBefore);
+    expect((after.state as View).G.combat).toBeUndefined();
   });
 });

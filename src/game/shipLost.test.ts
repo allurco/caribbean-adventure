@@ -335,12 +335,14 @@ describe("a real solo match out of captains (#265, #278)", () => {
       const { G } = stateOf(client);
       const from = G.ships["0"].position;
       const flotillaAt = G.npcs.flotilla.position;
+      // One hex off the dock that is open water beside the flotilla too (moveShip sails one hex)
       const alongside = neighbors(from).find(
         (h) =>
           neighbors(flotillaAt).some((n) => hexEquals(n, h)) &&
           G.cells.some((c) => hexEquals(c.hex, h) && c.terrain === "water") &&
           !atPort(G, h),
-      )!;
+      );
+      if (!alongside) throw new Error("no open water both off the dock and beside the flotilla");
       client.moves.moveShip(alongside.q, alongside.r);
       client.moves.attackNPC("flotilla");
       expect(stateOf(client).G.combat).toBeDefined();

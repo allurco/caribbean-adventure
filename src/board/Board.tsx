@@ -167,6 +167,9 @@ import type { Mission } from "../game/types";
 import { ignoredUnderGate } from "../landscape/rotateGatePresence";
 import { useRotateGateShowing } from "../landscape/useRotateGateShowing";
 
+/** An Attack or Spyglass button held at port (#388): shown, disabled. */
+const HELD_BUTTON = "bg-stone-700/60 text-stone-300/70 border border-stone-600/50 disabled:cursor-not-allowed";
+
 
 /**
  * World units past the edge of the view that copies of a wrapping world still
@@ -1404,33 +1407,25 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* Action buttons - only in main phase */}
-      {!inCombat && boardActive && currentShipState && (hasAttackTargets || hasSpyglassTargets || encounters.heldInPort) && (
+      {!inCombat && boardActive && currentShipState && (hasAttackTargets || hasSpyglassTargets || encounters.held.attack || encounters.held.scout) && (
         <div className="absolute flex gap-2 items-center" style={{ bottom: safeInset("bottom", HUD_EDGE), right: safeInset("right", HUD_EDGE) }}>
-          {/* Docked with a ship in reach (#388): the buttons show, disabled, with the reason */}
-          {encounters.heldInPort && (
-            <>
-              <span className="font-heading text-xs text-amber-100/90 bg-black/50 rounded px-2 py-1">{NO_FIGHTING_IN_PORT}</span>
-              {["Spyglass", "Attack!"].map((label) => (
-                <button
-                  key={label}
-                  disabled
-                  title={NO_FIGHTING_IN_PORT}
-                  className="font-heading py-3 px-6 rounded-lg text-sm font-bold uppercase tracking-wider bg-stone-700/60 text-stone-300/70 border border-stone-600/50 cursor-not-allowed"
-                >
-                  {label}
-                </button>
-              ))}
-            </>
+          {/* Docked with a ship in reach (#388): the held buttons show, disabled, with the reason */}
+          {(encounters.held.attack || encounters.held.scout) && (
+            <span className="font-heading text-xs text-amber-100/90 bg-black/50 rounded px-2 py-1">{NO_FIGHTING_IN_PORT}</span>
           )}
           {/* Spyglass button */}
-          {hasSpyglassTargets && (
+          {(hasSpyglassTargets || encounters.held.scout) && (
             <button
+              disabled={encounters.held.scout}
+              title={encounters.held.scout ? NO_FIGHTING_IN_PORT : undefined}
               onClick={() => {
                 setSpyglassMode(!spyglassMode);
                 if (!spyglassMode) setAttackMode(false);
               }}
               className={`font-heading py-3 px-6 rounded-lg text-sm font-bold cursor-pointer transition-colors uppercase tracking-wider ${
-                spyglassMode
+                encounters.held.scout
+                  ? HELD_BUTTON
+                  : spyglassMode
                   ? "bg-cyan-600 hover:bg-cyan-500 text-white border-2 border-cyan-400"
                   : "bg-cyan-800/70 hover:bg-cyan-700/70 text-cyan-100 border border-cyan-700/50"
               }`}
@@ -1439,14 +1434,18 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
             </button>
           )}
           {/* Attack button */}
-          {hasAttackTargets && (
+          {(hasAttackTargets || encounters.held.attack) && (
             <button
+              disabled={encounters.held.attack}
+              title={encounters.held.attack ? NO_FIGHTING_IN_PORT : undefined}
               onClick={() => {
                 setAttackMode(!attackMode);
                 if (!attackMode) setSpyglassMode(false);
               }}
               className={`font-heading py-3 px-6 rounded-lg text-sm font-bold cursor-pointer transition-colors uppercase tracking-wider ${
-                attackMode
+                encounters.held.attack
+                  ? HELD_BUTTON
+                  : attackMode
                   ? "bg-red-600 hover:bg-red-500 text-white border-2 border-red-400"
                   : "bg-red-800/70 hover:bg-red-700/70 text-red-100 border border-red-700/50"
               }`}
