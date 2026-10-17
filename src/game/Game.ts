@@ -48,13 +48,14 @@ import {
 import { createCaptainDeck, dealHands, isCaptainPick, takeCommand } from "./captains";
 import { isOwnKey, isWhole } from "./moveArgs";
 import { draftOver, nextToPick } from "./draftOrder";
-import { dealReplacementHand, isEliminated, replaceCaptain, seatStillIn, winnerWhenAllOut } from "./captainDeath";
+import { dealReplacementHand, isEliminated, replaceCaptain, seatStillIn } from "./captainDeath";
+import { gameOverResult } from "./gameOver";
 import { spawnFlotillaForPlayer } from "./npcManager";
 import { endsRound, npcTurnEndStep, type TurnEnded } from "./npcTurnStep";
 import { newEventDeck } from "./eventDeck";
 import { applySeaWear } from "./deepSea";
 import { applyMerchantAction, shouldSpawnFlotilla } from "./reputation";
-import { canStashGold, applyStashGold, findWinner } from "./scoring";
+import { canStashGold, applyStashGold } from "./scoring";
 import { canScoutNPC, canScoutPlayer } from "./scouting";
 import { findAccessiblePort } from "./moves";
 import { nextMissionId } from "./ids";
@@ -209,27 +210,8 @@ export const Caribbean: Game<CaribbeanState> = {
   // Each seat sees only its own hidden information; a client with no seat is a spectator (#109).
   playerView: ({ G, ctx, playerID }) => playerViewFor(G, playerID, ctx.phase),
 
-  endIf: ({ G, ctx }) => {
-    const winner = findWinner(G.ships);
-    if (winner !== null) {
-      const ship = G.ships[winner];
-      return {
-        winner,
-        captainName: ship.captain?.name ?? `Player ${Number(winner) + 1}`,
-        score: ship.score,
-      };
-    }
-    // Every player out of the game (#265): the most glory wins
-    const lastOut = winnerWhenAllOut(G, ctx.playOrder);
-    if (lastOut !== null) {
-      const lost = G.lostShips![lastOut];
-      return {
-        winner: lastOut,
-        captainName: lost.captain?.name ?? `Player ${Number(lastOut) + 1}`,
-        score: lost.score,
-      };
-    }
-  },
+  // Won on glory, or every seat out of the game (#265, #289)
+  endIf: ({ G, ctx }) => gameOverResult(G, ctx.playOrder),
 
   setup: ({ ctx, random }, setupData?: CaribbeanSetupData) => {
     // The provided size and seed, else random ones (see resolveMapRequest).

@@ -278,7 +278,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     const client = startGame(seats);
     client.moves.attackShip("1");
     fireToTheEnd(client);
-    expect(stateOf(client).ctx.gameover).toMatchObject({ winner: "0" });
+    expect(stateOf(client).ctx.gameover).toMatchObject({ reason: "glory", winner: "0" });
     expect(npcSteps(client)).toBe(0);
   });
 

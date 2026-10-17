@@ -1,0 +1,62 @@
+import { describe, it, expect } from "vitest";
+import { createShipState } from "./economy";
+import { hex } from "./hex";
+import { WIN_SCORE, type CaribbeanState, type LostShip } from "./types";
+import { gameOverResult } from "./gameOver";
+
+/**
+ * How the game ends (#289): a captain wins on glory, or every seat is out
+ * of the game (#265) and the one with the most glory ends on top. The result
+ * says which, so the game-over screen never calls running out of captains a
+ * victory.
+ */
+
+const out = (score: number): LostShip => ({ cause: "sunk", captain: { id: "dead", name: "Blackbeard", nation: "England", ability: "" }, score, stashedGold: 0, eliminated: true });
+
+function atSea(score: number) {
+  const ship = createShipState(hex(0, 0), "Sloop");
+  ship.captain = { id: "drake", name: "Drake", nation: "England", ability: "" };
+  ship.score = score;
+  return ship;
+}
+
+type Table = Pick<CaribbeanState, "ships" | "lostShips">;
+
+describe("gameOverResult", () => {
+  it("is a win on glory when a captain reaches the winning glory, naming that captain", () => {
+    const G: Table = { ships: { "0": atSea(1), "1": atSea(WIN_SCORE) } };
+    expect(gameOverResult(G, ["0", "1"])).toEqual({ reason: "glory", winner: "1", captainName: "Drake", score: WIN_SCORE });
+  });
+
+  it("is the all-out ending when every seat is out, with the most glory and no captain", () => {
+    const G: Table = { ships: {}, lostShips: { "0": out(2), "1": out(4) } };
+    expect(gameOverResult(G, ["0", "1"])).toEqual({ reason: "allOut", winner: "1", leaders: ["1"], score: 4 });
+  });
+
+  it("is the all-out ending for a solo seat out of captains", () => {
+    const G: Table = { ships: {}, lostShips: { "0": out(3) } };
+    expect(gameOverResult(G, ["0"])).toEqual({ reason: "allOut", winner: "0", leaders: ["0"], score: 3 });
+  });
+
+  it("on a tie for the most glory, names every seat tied for it, the first as the winner", () => {
+    const G: Table = { ships: {}, lostShips: { "0": out(4), "1": out(2), "2": out(4) } };
+    expect(gameOverResult(G, ["0", "1", "2"])).toEqual({ reason: "allOut", winner: "0", leaders: ["0", "2"], score: 4 });
+  });
+
+  it("names a seat with no captain by its number on a glory win", () => {
+    const winner = atSea(WIN_SCORE);
+    winner.captain = undefined;
+    expect(gameOverResult({ ships: { "2": winner } }, ["0", "1", "2"])).toMatchObject({ captainName: "Player 3" });
+  });
+
+  it("is nothing while the game goes on", () => {
+    const G: Table = { ships: { "1": atSea(2) }, lostShips: { "0": out(4) } };
+    expect(gameOverResult(G, ["0", "1"])).toBeUndefined();
+  });
+
+  it("stays JSON, as boardgame.io's ctx.gameover must", () => {
+    const G: Table = { ships: {}, lostShips: { "0": out(3) } };
+    const result = gameOverResult(G, ["0"]);
+    expect(JSON.parse(JSON.stringify(result))).toEqual(result);
+  });
+});
