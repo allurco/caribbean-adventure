@@ -104,8 +104,9 @@ export function fightOverLines(settled: SettledRound, nameOf: (id: string) => st
  * is left out.
  */
 export function drawRollsLine(sides: readonly { label: string; die: number | undefined; maneuverability: number }[]): string {
-  const rolled = sides.filter((side) => side.die !== undefined);
-  return `Rolls: ${rolled.map(({ label, die, maneuverability }) => `${label}: ${die} + ${maneuverability} = ${die! + maneuverability}`).join(" | ")}`;
+  type Rolled = { label: string; die: number; maneuverability: number };
+  const rolled = sides.filter((side): side is Rolled => side.die !== undefined);
+  return `Rolls: ${rolled.map(({ label, die, maneuverability }) => `${label}: ${die} + ${maneuverability} = ${die + maneuverability}`).join(" | ")}`;
 }
 
 /** The flight's dice (#348): the fleeing ship's die less what its masts cost it, when they cost it anything. */

@@ -128,7 +128,8 @@ import { isEliminated } from "../game/captainDeath";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
 import { FightOverPanel } from "./FightOverPanel";
-import { closeFightOver, initialFightOver, nextFightOver, settledKey } from "./fightOverShown";
+import { closeFightOver, initialFightOver, nextFightOver } from "./fightOverShown";
+import { useWhenFightPlayed } from "./combatFx/useWhenFightPlayed";
 import { npcKind } from "./npcName";
 import { gaugeLine } from "./combatGauge";
 import { SCENE_WIND } from "./visuals/sceneWind";
@@ -1012,19 +1013,16 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   useEffect(() => {
     inFightRef.current = G.combat !== undefined;
   }, [G.combat]);
-  useEffect(() => {
-    if (!pendingFlight) return;
-    let frame = requestAnimationFrame(function tick() {
-      if (inFightRef.current || combatDirector.holding()) {
-        frame = requestAnimationFrame(tick);
-        return;
-      }
-      setCameraFocusView(pendingFlight);
+  useWhenFightPlayed(
+    pendingFlight,
+    () => inFightRef.current || combatDirector.holding(),
+    Infinity,
+    (view) => {
+      setCameraFocusView(view);
       setCameraFocusCut(false);
       setPendingFlight(null);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [pendingFlight, combatDirector]);
+    },
+  );
   const locked = controlsLocked(handoff);
   // The board takes this client's moves now: its seat's turn (#110), and no hand-off under way (#216)
   const boardActive = seatMayAct(turn) && !locked;
@@ -1157,20 +1155,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   });
   if (nextFightOverView !== fightOverView) setFightOverView(nextFightOverView);
   const fightOver = nextFightOverView.shown;
-  const fightOverWaitingKey = nextFightOverView.waiting ? settledKey(nextFightOverView.waiting) : "";
-  // Watch the effects frame by frame from the frame after the round arrived (the director takes its beats in an effect), as the hand-off does
-  useEffect(() => {
-    if (!fightOverWaitingKey) return;
-    const since = performance.now();
-    let frame = requestAnimationFrame(function tick(now) {
-      if (combatDirector.holding() && now - since < HANDOFF_TIMING.fightMax) {
-        frame = requestAnimationFrame(tick);
-        return;
-      }
-      setFightPlayedKey(fightOverWaitingKey);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [fightOverWaitingKey, combatDirector]);
+  // Opens once the board has played the round out (its volleys, the sinking), as the hand-off waits
+  useWhenFightPlayed(nextFightOverView.waitKey || null, combatDirector.holding, HANDOFF_TIMING.fightMax, setFightPlayedKey);
   // Whether the HUD's top-left stack shows, for the harbour link over the board (#125): it sits beside the stack on a phone
   const hudStackUp = hudStackShows(G, ctx);
   useEffect(() => (hudStackUp ? hudStackPresence.show() : undefined), [hudStackUp]);
