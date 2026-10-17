@@ -66,14 +66,15 @@ export function awardCombatGlory(winner: ShipState, target: ShipState | NPCShip)
 /**
  * Check if a player has won
  */
-export function hasWon(ship: ShipState): boolean {
+export function hasWon(ship: Pick<ShipState, "score">): boolean {
   return ship.score >= WIN_SCORE;
 }
 
 /**
- * Find the winner among all ships, if any
+ * The winner among every seat's glory (a ship's, or a lost ship's record),
+ * if any: a tie goes to the first seat, in the record's (seat) order.
  */
-export function findWinner(ships: Record<string, ShipState>): string | null {
+export function findWinner(ships: Record<string, Pick<ShipState, "score">>): string | null {
   for (const [id, ship] of Object.entries(ships)) {
     if (hasWon(ship)) {
       return id;

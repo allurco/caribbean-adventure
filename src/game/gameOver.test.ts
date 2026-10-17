@@ -28,6 +28,18 @@ describe("gameOverResult", () => {
     expect(gameOverResult(G, ["0", "1"])).toEqual({ reason: "glory", winner: "1", captainName: "Drake", score: WIN_SCORE });
   });
 
+  it("counts the glory of a seat whose captain fell winning it (#369): a win on glory, the fallen captain named", () => {
+    const fallen: LostShip = { cause: "sunk", captain: { id: "dead", name: "Blackbeard", nation: "England", ability: "" }, score: WIN_SCORE, stashedGold: 0 };
+    const G: Table = { ships: { "1": atSea(4) }, lostShips: { "0": fallen } };
+    expect(gameOverResult(G, ["0", "1"])).toEqual({ reason: "glory", winner: "0", captainName: "Blackbeard", score: WIN_SCORE, fallen: true });
+  });
+
+  it("two seats on the winning glory, one afloat and one fallen: the first seat wins, as findWinner breaks a tie", () => {
+    const fallen: LostShip = { cause: "sunk", captain: { id: "dead", name: "Blackbeard", nation: "England", ability: "" }, score: WIN_SCORE, stashedGold: 0 };
+    expect(gameOverResult({ ships: { "1": atSea(WIN_SCORE) }, lostShips: { "0": fallen } }, ["0", "1"])).toMatchObject({ winner: "0", fallen: true });
+    expect(gameOverResult({ ships: { "0": atSea(WIN_SCORE) }, lostShips: { "1": fallen } }, ["0", "1"])).toEqual({ reason: "glory", winner: "0", captainName: "Drake", score: WIN_SCORE });
+  });
+
   it("is the all-out ending when every seat is out, with the most glory and no captain", () => {
     const G: Table = { ships: {}, lostShips: { "0": out(2), "1": out(4) } };
     expect(gameOverResult(G, ["0", "1"])).toEqual({ reason: "allOut", winner: "1", leaders: ["1"], score: 4 });
