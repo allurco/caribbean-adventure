@@ -68,21 +68,16 @@ describe("the event log's rows (#246)", () => {
 describe("when the card may show (#246)", () => {
   const idle = { phase: "idle" as const, from: "0", to: "1", startedAt: 0, phaseStartedAt: 0, reducedMotion: false };
   it("once the turn's hand-off has come to rest, or before any", () => {
-    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: false, captainTurnToOpen: false })).toBe(true);
-    expect(eventCardShows({ handoff: null, turnChangeShowing: false, gameOver: false, captainTurnToOpen: false })).toBe(true);
+    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: false, captainTurnPending: false })).toBe(true);
+    expect(eventCardShows({ handoff: null, turnChangeShowing: false, gameOver: false, captainTurnPending: false })).toBe(true);
   });
   it("not while the hand-off plays, the turn change shows, or the game is over", () => {
-    expect(eventCardShows({ handoff: { ...idle, phase: "turnEnded" }, turnChangeShowing: false, gameOver: false, captainTurnToOpen: false })).toBe(false);
-    expect(eventCardShows({ handoff: idle, turnChangeShowing: true, gameOver: false, captainTurnToOpen: false })).toBe(false);
-    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: true, captainTurnToOpen: false })).toBe(false);
+    expect(eventCardShows({ handoff: { ...idle, phase: "turnEnded" }, turnChangeShowing: false, gameOver: false, captainTurnPending: false })).toBe(false);
+    expect(eventCardShows({ handoff: idle, turnChangeShowing: true, gameOver: false, captainTurnPending: false })).toBe(false);
+    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: true, captainTurnPending: false })).toBe(false);
   });
-  it("not while the seat at the helm chooses a new captain, nor until that captain's turn has opened (#372)", () => {
-    // The hand-off to a seat whose ship is gone comes to rest on the captain screen
-    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: false, captainTurnToOpen: true })).toBe(false);
-    // Picked: the new captain's "Your turn" banner shows, and the card waits behind it
-    expect(eventCardShows({ handoff: idle, turnChangeShowing: true, gameOver: false, captainTurnToOpen: false })).toBe(false);
-    // The banner gone, the card shows
-    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: false, captainTurnToOpen: false })).toBe(true);
+  it("not while a new captain's turn is pending, though the hand-off has come to rest (#372; the render-by-render walk is in captainPickTurn.test.ts)", () => {
+    expect(eventCardShows({ handoff: idle, turnChangeShowing: false, gameOver: false, captainTurnPending: true })).toBe(false);
   });
 });
 

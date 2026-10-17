@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { captainPicked, captainTurnToOpen, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows } from "./captainPickTurn";
+import {
+  captainPicked,
+  captainTurnToOpen,
+  helmChanged,
+  helmOf,
+  nextOpening,
+  openingTurnView,
+  turnEndedBannerShows,
+  type Helm,
+  type TurnOf,
+} from "./captainPickTurn";
+import { eventCardShows } from "./eventCardView";
 import { turnChangeView } from "./shipView";
 import { startHandoff, type Handoff, type HandoffPhase } from "./turnHandoff";
 
@@ -141,5 +152,151 @@ describe("captainTurnToOpen: a new captain's turn still to open (#372)", () => {
   it("once picked, until the new captain's turn has opened", () => {
     expect(captainTurnToOpen(helm(false), { player: "1", turn: 7 })).toBe(true);
     expect(captainTurnToOpen(helm(false), null)).toBe(false);
+  });
+  it("while choosing, with a pick of an earlier turn not yet dropped", () => {
+    expect(captainTurnToOpen(helm(true), { player: "1", turn: 5 })).toBe(true);
+  });
+});
+
+/**
+ * The board's turn opening, render by render, as Board.tsx runs it: each
+ * render reads the helm and queues its update (`helmChanged`, and on a pick
+ * `captainPicked`), then takes the next opening step (`nextOpening`) on the
+ * state the render began with, queuing that too. The queued updates apply in
+ * order and the board renders again while any were queued, as React does
+ * for state set during render. The settled render then shows the card or not
+ * (`eventCardShows`, with `captainTurnToOpen`). The pending-pick half of
+ * `captainTurnToOpen` is never what holds the card back in a settled render
+ * here (the hand-off or the banner already does); its unit test above covers it.
+ */
+describe("the event card through a new captain's pick, render by render (#372)", () => {
+  interface BoardState {
+    lastHelm: Helm | null;
+    newCaptainTurn: TurnOf | null;
+    announced: string | null;
+    bannerShowing: boolean;
+    /** Each turn opened so far: as a new captain's (its camera to the new ship) or a plain one. */
+    opened: ("newCaptain" | "plain")[];
+  }
+  interface Frame {
+    /** Seat 1 lost its ship and has not yet picked. */
+    choosing: boolean;
+    handoff: Handoff | null;
+  }
+  type Update = (s: BoardState) => BoardState;
+  const TURN = 8;
+  const lostSeat1 = { lostShips: lost };
+
+  function render(state: BoardState, frame: Frame): { state: BoardState; banner: boolean; card: boolean } {
+    let s = state;
+    // The board settles in two or three passes; the bound only stops a loop that never would
+    for (let pass = 0; pass < 10; pass++) {
+      const helm = helmOf(frame.choosing ? lostSeat1 : {}, "main", "1", TURN);
+      const queued: Update[] = [];
+      if (helmChanged(s.lastHelm, helm)) {
+        queued.push((x) => ({ ...x, lastHelm: helm }));
+        if (captainPicked(s.lastHelm, helm)) queued.push((x) => ({ ...x, newCaptainTurn: { player: helm.player, turn: helm.turn } }));
+      }
+      // On the state this render began with, as Board.tsx reads it
+      const opening = nextOpening({ announced: s.announced, newCaptain: s.newCaptainTurn }, helm, frame.handoff);
+      if (opening.kind === "drop") {
+        queued.push(opening.which === "announced" ? (x) => ({ ...x, announced: null }) : (x) => ({ ...x, newCaptainTurn: null }));
+      }
+      if (opening.kind === "open") {
+        const as = opening.newCaptain ? "newCaptain" : "plain";
+        queued.push((x) => ({ ...x, announced: null }));
+        queued.push((x) => ({ ...x, newCaptainTurn: null }));
+        queued.push((x) => ({ ...x, bannerShowing: true, opened: [...x.opened, as] }));
+      }
+      if (queued.length > 0) {
+        s = queued.reduce((x, update) => update(x), s);
+        continue;
+      }
+      const card = eventCardShows({
+        handoff: frame.handoff,
+        turnChangeShowing: s.bannerShowing,
+        gameOver: false,
+        captainTurnPending: captainTurnToOpen(helm, s.newCaptainTurn),
+      });
+      return { state: s, banner: s.bannerShowing, card };
+    }
+    throw new Error("the board never settled");
+  }
+
+  /** The hand-off from seat 0 to seat 1, at `phase`. */
+  const handoff = (phase: HandoffPhase) => at(phase, "0", "1");
+  /** The seat 0 turn the board showed before the turn passed. */
+  const before: BoardState = {
+    lastHelm: { player: "0", turn: TURN - 1, choosing: false },
+    newCaptainTurn: null,
+    announced: null,
+    bannerShowing: false,
+    opened: [],
+  };
+
+  /** Steps the board through `frames`, each with what happens between renders (the announcement, the banner's end). */
+  function play(steps: { frame: Frame; between?: Update }[]): { steps: { banner: boolean; card: boolean }[]; opened: BoardState["opened"] } {
+    let s = before;
+    const shown = steps.map(({ frame, between }) => {
+      if (between) s = between(s);
+      const out = render(s, frame);
+      s = out.state;
+      return { banner: out.banner, card: out.card };
+    });
+    return { steps: shown, opened: s.opened };
+  }
+  const announce: Update = (s) => ({ ...s, announced: "1" });
+  const bannerDone: Update = (s) => ({ ...s, bannerShowing: false });
+  const off = { banner: false, card: false };
+
+  it("a slow pick: the hand-off rests on the captain screen, and the card waits for the pick and the banner", () => {
+    expect(
+      play([
+        { frame: { choosing: true, handoff: handoff("npcs") } },
+        { frame: { choosing: true, handoff: handoff("nextTurn") }, between: announce },
+        // The hand-off at rest while the seat chooses: the bug was the card mounting here
+        { frame: { choosing: true, handoff: handoff("idle") } },
+        { frame: { choosing: true, handoff: handoff("idle") } },
+        // The pick: the new captain's turn opens at once, its banner over the card
+        { frame: { choosing: false, handoff: handoff("idle") } },
+        { frame: { choosing: false, handoff: handoff("idle") }, between: bannerDone },
+      ]),
+    ).toEqual({
+      steps: [off, off, off, off, { banner: true, card: false }, { banner: false, card: true }],
+      opened: ["newCaptain"],
+    });
+  });
+
+  it("a quick pick: the new captain's turn waits for the hand-off to announce, then opens once", () => {
+    expect(
+      play([
+        { frame: { choosing: true, handoff: handoff("sailing") } },
+        // Picked while the NPCs still sail: nothing opens yet
+        { frame: { choosing: false, handoff: handoff("npcs") } },
+        { frame: { choosing: false, handoff: handoff("nextTurn") }, between: announce },
+        { frame: { choosing: false, handoff: handoff("idle") } },
+        { frame: { choosing: false, handoff: handoff("idle") }, between: bannerDone },
+      ]),
+    ).toEqual({
+      steps: [off, off, { banner: true, card: false }, { banner: true, card: false }, { banner: false, card: true }],
+      opened: ["newCaptain"],
+    });
+  });
+
+  // #378: the pick and the announcement in one render open the turn as a plain
+  // one (`turnChangeView`, not `newCaptainView`). Expected to fail until #378 is
+  // fixed; then drop `.fails`.
+  it.fails("a pick landing in the render the hand-off announces still opens as a new captain's turn (#378)", () => {
+    expect(
+      play([
+        { frame: { choosing: true, handoff: handoff("npcs") } },
+        { frame: { choosing: false, handoff: handoff("nextTurn") }, between: announce },
+        { frame: { choosing: false, handoff: handoff("idle") } },
+        { frame: { choosing: false, handoff: handoff("idle") }, between: bannerDone },
+      ]),
+    ).toEqual({
+      steps: [off, { banner: true, card: false }, { banner: true, card: false }, { banner: false, card: true }],
+      opened: ["newCaptain"],
+    });
   });
 });

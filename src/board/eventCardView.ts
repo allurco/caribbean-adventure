@@ -89,21 +89,22 @@ export function eventLogLength(layout: ShellLayout): number {
  * Whether the drawn card may show: once the turn's hand-off has come to
  * rest (`controlsLocked`: it rests at "idle", never back to null) and the
  * turn change is over, so it never covers either; not once the game is over.
- * Nor while a seat whose ship is gone chooses its new captain, or that
- * captain's turn is still to open (`captainTurnToOpen` in captainPickTurn.ts,
- * #372): the hand-off to such a seat rests on the captain screen, and the
- * card waits for the pick and the new captain's banner, then shows in full.
+ * Nor while a new captain's turn is pending (`captainTurnPending`, from
+ * `captainTurnToOpen` in captainPickTurn.ts, #372): the seat whose ship is
+ * gone is choosing, or has picked and its turn is still to open. The
+ * hand-off to such a seat rests on the captain screen, and the card waits
+ * for the pick and the new captain's banner, then shows in full.
  */
 export function eventCardShows({
   handoff,
   turnChangeShowing,
   gameOver,
-  captainTurnToOpen,
+  captainTurnPending,
 }: {
   handoff: Handoff | null;
   turnChangeShowing: boolean;
   gameOver: boolean;
-  captainTurnToOpen: boolean;
+  captainTurnPending: boolean;
 }): boolean {
-  return !controlsLocked(handoff) && !turnChangeShowing && !gameOver && !captainTurnToOpen;
+  return !controlsLocked(handoff) && !turnChangeShowing && !gameOver && !captainTurnPending;
 }
