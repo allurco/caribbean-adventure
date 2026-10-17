@@ -20,6 +20,11 @@ export function newlyEnded(seenKey: string, now: SettledRound | undefined): Sett
 export interface FightOverView {
   /** The last settled round seen (its key): a round arriving after it is new. */
   readonly seenKey: string;
+  /**
+   * The round that ended a fight, waiting for the board to finish playing
+   * it (the volleys, the sinking): the panel opens on it only then, or null.
+   */
+  readonly waiting: SettledRound | null;
   /** The round the panel shows, or null when it is closed. */
   readonly shown: SettledRound | null;
   /** What the fight called its NPC ("Merchant"), kept for its end: an NPC sunk is gone from G. */
@@ -39,29 +44,48 @@ export interface FightOverSignals {
   readonly announced: boolean;
   /** The seatless hotseat board, where every captain plays at one screen. */
   readonly hotseat: boolean;
+  /**
+   * The key (`settledKey`) of the last round the board has finished playing:
+   * its effects were seen done on a frame after it arrived (the combat
+   * director no longer `holding`), or "" for none yet.
+   */
+  readonly playedKey: string;
 }
 
 /** The panel as the board opens: closed, every round stored by then already seen. */
 export function initialFightOver(lastRound: SettledRound | undefined): FightOverView {
-  return { seenKey: settledKey(lastRound), shown: null, npcLabel: null, announced: false };
+  return { seenKey: settledKey(lastRound), waiting: null, shown: null, npcLabel: null, announced: false };
 }
 
 /**
- * The panel after a render (#380): it opens on a round that ended its fight
- * as that round arrives, closes once a new fight is on and, in hotseat, once
- * the hand-off announces the next captain's turn, whose board it is then;
- * and it keeps the label of the NPC fought. The same object back when
- * nothing changed, so the board sets it only then.
+ * The panel after a render (#380). A round that ended its fight waits as
+ * it arrives, and the panel opens on it once the board has played it out,
+ * never while its volleys fly or its ship sinks. The panel closes once a
+ * new fight is on and, in hotseat, once the hand-off announces the next
+ * captain's turn, whose board it is then (a round still waiting is dropped
+ * with it); solo and a seat's own board keep it until Close. It keeps the
+ * label of the NPC fought. The same object back when nothing changed, so
+ * the board sets it only then.
  */
 export function nextFightOver(view: FightOverView, s: FightOverSignals): FightOverView {
   const seenKey = settledKey(s.lastRound);
-  let shown = view.shown;
-  if (seenKey !== view.seenKey) shown = newlyEnded(view.seenKey, s.lastRound) ?? shown;
-  if (s.inCombat) shown = null;
-  if (s.hotseat && s.announced && !view.announced && shown === view.shown) shown = null;
+  let { waiting, shown } = view;
+  if (seenKey !== view.seenKey) waiting = newlyEnded(view.seenKey, s.lastRound) ?? waiting;
+  if (waiting && settledKey(waiting) === s.playedKey) {
+    shown = waiting;
+    waiting = null;
+  }
+  if (s.inCombat) {
+    waiting = null;
+    shown = null;
+  }
+  if (s.hotseat && s.announced && !view.announced) {
+    waiting = null;
+    if (shown === view.shown) shown = null;
+  }
   const npcLabel = s.npcInFight ?? view.npcLabel;
-  if (seenKey === view.seenKey && shown === view.shown && npcLabel === view.npcLabel && s.announced === view.announced) return view;
-  return { seenKey, shown, npcLabel, announced: s.announced };
+  if (seenKey === view.seenKey && waiting === view.waiting && shown === view.shown && npcLabel === view.npcLabel && s.announced === view.announced) return view;
+  return { seenKey, waiting, shown, npcLabel, announced: s.announced };
 }
 
 /** The panel closed by its Close button. */

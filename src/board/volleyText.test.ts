@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerLine, combatantLabel, fightOverLines, noAnswer, pendingVolley, pursuitRollsLine, roundShown, volleyLine } from "./volleyText";
+import { answerLine, combatantLabel, drawRollsLine, fightOverLines, noAnswer, pendingVolley, pursuitRollsLine, roundShown, volleyLine } from "./volleyText";
 import type { CombatState, SettledRound } from "../game/types";
 
 const fight = (extra: Partial<CombatState>): CombatState => ({
@@ -43,29 +43,30 @@ describe("volleyLine: a fired volley, in words (#380)", () => {
   const at = (hull: number, masts: number, crew: number) => ({ hull, masts, crew });
 
   it("names the guns, the hits and where each landed", () => {
-    expect(volleyLine({ shooterId: "0", guns: 6, hits: 4, locations: at(2, 1, 1), shotBonuses: [], dealt: at(2, 1, 1) })).toEqual({ fired: "fired 6 guns", hits: "4 hits: 2 hull, 1 masts, 1 crew" });
+    expect(volleyLine({ shooterId: "0", guns: 6, hits: 4, locations: at(2, 1, 1), shotBonuses: [], dealt: at(2, 1, 1) })).toEqual({ fired: "fired 6 guns", hits: "4 hits: 2 hull, 1 mast, 1 crew" });
     expect(volleyLine({ shooterId: "1", guns: 1, hits: 1, locations: at(0, 0, 1) })).toEqual({ fired: "fired 1 gun", hits: "1 hit: 1 crew" });
     expect(volleyLine({ shooterId: "1", guns: 3, hits: 0, locations: at(0, 0, 0) })).toEqual({ fired: "fired 3 guns", hits: "no hits" });
   });
 
   it("says what chain or grape shot added, as recorded when fired, whatever the shooter carries now", () => {
-    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(1, 1, 0), shotBonuses: ["chain_shot"], dealt: at(1, 2, 0) }).hits).toBe("2 hits: 1 hull, 1 masts +1 chain shot");
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(1, 1, 0), shotBonuses: ["chain_shot"], dealt: at(1, 2, 0) }).hits).toBe("2 hits: 1 hull, 1 mast +1 chain shot");
     expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(0, 1, 1), shotBonuses: ["chain_shot", "grape_shot"], dealt: at(0, 2, 2) }).hits).toBe(
-      "2 hits: 1 masts +1 chain shot, 1 crew +1 grape shot",
+      "2 hits: 1 mast +1 chain shot, 1 crew +1 grape shot",
     );
     // Recorded with no shot: none is claimed, though the shooter may have bought one since
-    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(0, 1, 1), shotBonuses: [], dealt: at(0, 1, 1) }).hits).toBe("2 hits: 1 masts, 1 crew");
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 2, locations: at(0, 1, 1), shotBonuses: [], dealt: at(0, 1, 1) }).hits).toBe("2 hits: 1 mast, 1 crew");
   });
 
   it("says when mast hits went to the hull, past the cap: all of them, or some", () => {
     expect(volleyLine({ shooterId: "0", guns: 4, hits: 3, locations: at(0, 3, 0), shotBonuses: [], dealt: at(3, 0, 0) }).hits).toBe("3 hits: 3 masts (to hull, masts gone)");
     expect(volleyLine({ shooterId: "0", guns: 4, hits: 3, locations: at(0, 3, 0), shotBonuses: [], dealt: at(2, 1, 0) }).hits).toBe("3 hits: 3 masts (2 to hull, masts gone)");
     // Chain shot's +1 goes the same way
-    expect(volleyLine({ shooterId: "0", guns: 4, hits: 1, locations: at(0, 1, 0), shotBonuses: ["chain_shot"], dealt: at(1, 1, 0) }).hits).toBe("1 hit: 1 masts +1 chain shot (1 to hull, masts gone)");
+    expect(volleyLine({ shooterId: "0", guns: 4, hits: 1, locations: at(0, 1, 0), shotBonuses: ["chain_shot"], dealt: at(1, 1, 0) }).hits).toBe("1 hit: 1 mast +1 chain shot (1 to hull, masts gone)");
   });
 
   it("reads a volley stored before #380 as every hit on its aim", () => {
     expect(volleyLine({ shooterId: "0", guns: 3, aim: "masts", hits: 2 }).hits).toBe("2 hits: 2 masts");
+    expect(volleyLine({ shooterId: "0", guns: 3, aim: "masts", hits: 1 }).hits).toBe("1 hit: 1 mast");
     expect(volleyLine({ shooterId: "0", guns: 2, hits: 1 }).hits).toBe("1 hit: 1 hull");
   });
 });
@@ -158,13 +159,33 @@ describe("fightOverLines: how the fight ended, under its last round (#380)", () 
   });
 });
 
+describe("drawRollsLine: the draw's dice, each with its manoeuvrability and total (#347)", () => {
+  it("adds each side's manoeuvrability to its die", () => {
+    expect(
+      drawRollsLine([
+        { label: "P1", die: 4, maneuverability: 2 },
+        { label: "NPC", die: 5, maneuverability: 0 },
+      ]),
+    ).toBe("Rolls: P1: 4 + 2 = 6 | NPC: 5 + 0 = 5");
+  });
+
+  it("leaves out a side yet to roll", () => {
+    expect(
+      drawRollsLine([
+        { label: "P1", die: 3, maneuverability: 1 },
+        { label: "P2", die: undefined, maneuverability: 3 },
+      ]),
+    ).toBe("Rolls: P1: 3 + 1 = 4");
+  });
+});
+
 describe("pursuitRollsLine: the flight's dice, and the masts that slowed the fleeing ship (#348)", () => {
   it("shows the raw dice when the masts are sound", () => {
     expect(pursuitRollsLine({ pursuer: 4, fleeer: 3 }, 0)).toBe("Pursuit rolls: Pursuer 4 | Fleeer 3");
   });
 
   it("takes the mast penalty off the fleeing ship's die, up to the cap", () => {
-    expect(pursuitRollsLine({ pursuer: 4, fleeer: 3 }, 1)).toBe("Pursuit rolls: Pursuer 4 | Fleeer 3 − 1 masts = 2");
+    expect(pursuitRollsLine({ pursuer: 4, fleeer: 3 }, 1)).toBe("Pursuit rolls: Pursuer 4 | Fleeer 3 − 1 mast = 2");
     expect(pursuitRollsLine({ pursuer: 4, fleeer: 3 }, 5)).toBe("Pursuit rolls: Pursuer 4 | Fleeer 3 − 2 masts = 1");
   });
 });
