@@ -12,6 +12,7 @@ import type {
   ShipClass,
   DamageCategory,
   CombatAction,
+  VolleyAim,
 } from "./types";
 import { SHIP_CLASSES } from "./types";
 import { playerViewFor } from "./playerView";
@@ -25,6 +26,8 @@ import {
   applyCombatAction,
   applyFleeAttempt,
   applyCannons,
+  applyReturnFire,
+  canFireVolley,
   applyCombatResolution,
   openFight,
 } from "./combatMoves";
@@ -590,9 +593,15 @@ export const Caribbean: Game<CaribbeanState> = {
           if (applyFleeAttempt(G, () => random.D6()) === "ended") events.setPhase("main");
         },
 
-        rollCannons: ({ G, random }) => {
-          if (!atCombatStage(G, "cannons")) return INVALID_MOVE;
-          applyCannons(G, () => random.D6());
+        // Each volley is aimed by the ship firing it (#348): hull, masts or crew
+        rollCannons: ({ G, random }, aim?: VolleyAim) => {
+          if (!canFireVolley(G, "cannons", aim)) return INVALID_MOVE;
+          applyCannons(G, aim, () => random.D6());
+        },
+
+        returnFire: ({ G, random }, aim: VolleyAim) => {
+          if (!canFireVolley(G, "returnFire", aim)) return INVALID_MOVE;
+          applyReturnFire(G, aim, () => random.D6());
         },
 
         applyResolution: ({ G, ctx, events }) => {

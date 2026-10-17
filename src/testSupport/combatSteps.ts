@@ -1,20 +1,22 @@
 /**
  * Playing a fight through a boardgame.io client in tests: each step of the
  * fight pressed in turn, as the table would. Round 1 is the ambush (#346):
- * it opens on the attacker's broadside, with no draw.
+ * it opens on the attacker's broadside, with no draw. Every volley is aimed
+ * by the ship firing it (#348); these fire each at the hull.
  */
-import type { CaribbeanState, CombatAction } from "../game/types";
+import type { CaribbeanState, CombatAction, VolleyAim } from "../game/types";
 
 /** A client's state and the combat moves a fight presses. */
 export interface FightClient {
   getState(): { G: CaribbeanState } | null;
-  /** boardgame.io's moves by name: rollSeamanship, rollDefenderSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons, applyResolution. */
-  moves: Record<string, (...args: CombatAction[]) => void>;
+  /** boardgame.io's moves by name: rollSeamanship, rollDefenderSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons(aim), returnFire(aim), applyResolution. */
+  moves: Record<string, (...args: (CombatAction | VolleyAim)[]) => void>;
 }
 
 /** Round 1, the ambush: the attacker's broadside, the answer if any, and the round's end. */
 export function fireTheAmbush(client: FightClient): void {
-  client.moves.rollCannons();
+  client.moves.rollCannons("hull");
+  if (client.getState()?.G.combat?.stage === "returnFire") client.moves.returnFire("hull");
   client.moves.applyResolution();
 }
 
@@ -26,7 +28,8 @@ function pressStep(client: FightClient, action: CombatAction): void {
   else if (combat.stage === "defenderSeamanship") client.moves.rollDefenderSeamanship();
   else if (combat.stage === "chooseAction") client.moves.chooseCombatAction(action);
   else if (combat.stage === "fleeAttempt") client.moves.rollFleeAttempt();
-  else if (combat.stage === "cannons") client.moves.rollCannons();
+  else if (combat.stage === "cannons") client.moves.rollCannons("hull");
+  else if (combat.stage === "returnFire") client.moves.returnFire("hull");
   else client.moves.applyResolution();
 }
 

@@ -348,18 +348,27 @@ describe("combatWaitingFor: the line a seat sees while another seat presses", ()
       "Waiting for Calico Jack to choose"
     );
     expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1" } })).toBe(
-      "Waiting for Calico Jack to fire"
+      "Waiting for Calico Jack to aim"
     );
     // Round 1, the ambush (#346): no draw, and the attacker fires and ends the round
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "cannons", seamanshipWinner: null } })).toBe(
-      "Waiting for Anne Bonny to fire"
+      "Waiting for Anne Bonny to aim"
     );
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "resolution", seamanshipWinner: null } })).toBe(
       "Waiting for Anne Bonny to end the round"
     );
-    // Calico Jack fled and was caught: Anne Bonny fires the parting shot
+    // Each volley is aimed by its ship (#348): the ambush fired, Calico Jack aims the answer
+    expect(combatWaitingFor(G, { playerID: "0", combat: { ...pvp, stage: "returnFire", seamanshipWinner: null } })).toBe(
+      "Waiting for Calico Jack to aim"
+    );
+    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "returnFire", seamanshipWinner: null } })).toBeNull();
+    // Calico Jack won the draw and fired: Anne Bonny aims the answer
+    expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "returnFire", seamanshipWinner: "1" } })).toBe(
+      "Waiting for Anne Bonny to aim"
+    );
+    // Calico Jack fled and was caught: Anne Bonny aims the parting shot
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1", fleeOutcome: "caught" } })).toBe(
-      "Waiting for Anne Bonny to fire"
+      "Waiting for Anne Bonny to aim"
     );
   });
 

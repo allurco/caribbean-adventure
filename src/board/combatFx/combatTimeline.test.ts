@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { combatBeatsFrom, type CombatBeat, type VolleyBeat } from "./combatTimeline";
-import type { CaribbeanState, CombatState, NPCShip, ShipClass, ShipState } from "../../game/types";
+import type { CaribbeanState, CombatState, NPCShip, ShipClass, ShipState, VolleyAim } from "../../game/types";
 import { hex } from "../../game/hex";
 import { emptyCargo } from "../../game/economy";
 import { SHIP_SPECS } from "../../game/constants";
@@ -86,8 +86,8 @@ function makeCombat(overrides: Partial<CombatState> = {}): CombatState {
   };
 }
 
-/** A volley as the cannons record it (#346): who fired, how many guns, how many hit. */
-const fired = (shooterId: string, guns: number, hits: number) => ({ shooterId, guns, hits });
+/** A volley as the cannons record it (#346): who fired, how many guns, how many hit, and where it was aimed (#348). */
+const fired = (shooterId: string, guns: number, hits: number, aim: VolleyAim = "hull") => ({ shooterId, guns, aim, hits });
 
 const volleyOf = (beats: CombatBeat[]): VolleyBeat => {
   const volley = beats.find((b): b is VolleyBeat => b.kind === "volley");
@@ -182,13 +182,29 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(patterns.size).toBeGreaterThan(1);
   });
 
-  it("chain shot that hits brings a mast down", () => {
+  it("a volley aimed at the masts that hits brings a mast down (#348); one aimed elsewhere never does", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
     const ships = { ...before.ships, "0": makeShip("Frigate", { upgrades: ["chain_shot"] }) };
-    const hit = makeState({ ships, combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 1)] }) });
-    const miss = makeState({ ships, combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 0)] }) });
-    expect(volleyOf(combatBeatsFrom({ ...before, ships }, hit)).volleys[0].mastFalls).toBe(true);
-    expect(volleyOf(combatBeatsFrom({ ...before, ships }, miss)).volleys[0].mastFalls).toBe(false);
+    const falls = (volley: ReturnType<typeof fired>) =>
+      volleyOf(combatBeatsFrom({ ...before, ships }, makeState({ ships, combat: makeCombat({ stage: "resolution", volleys: [volley] }) }))).volleys[0].mastFalls;
+    expect(falls(fired("0", 4, 1, "masts"))).toBe(true);
+    expect(falls(fired("0", 4, 0, "masts"))).toBe(false);
+    expect(falls(fired("0", 4, 3, "hull"))).toBe(false);
+    expect(falls(fired("0", 4, 3, "crew"))).toBe(false);
+  });
+
+  it("the first volley plays as it is fired, while the answer waits on its aim (#348)", () => {
+    const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
+    const waiting = makeState({ combat: makeCombat({ stage: "returnFire", volleys: [fired("0", 4, 2)] }) });
+    expect(volleyOf(combatBeatsFrom(before, waiting)).volleys.map((v) => v.shooterId)).toEqual(["0"]);
+  });
+
+  it("the answer plays on its own as it is fired, not the first volley again (#348)", () => {
+    const waiting = makeState({ combat: makeCombat({ stage: "returnFire", volleys: [fired("0", 4, 2)] }) });
+    const answered = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 2), fired("1", 2, 1, "crew")] }) });
+    const volleys = volleyOf(combatBeatsFrom(waiting, answered)).volleys;
+    expect(volleys.map((v) => [v.shooterId, v.targetId])).toEqual([["1", "0"]]);
+    expect(volleyOf(combatBeatsFrom(waiting, answered)).seedKey).not.toBe(volleyOf(combatBeatsFrom(makeState({ combat: makeCombat({ stage: "cannons" }) }), waiting)).seedKey);
   });
 
   it("a flight that escapes, and one that is caught", () => {

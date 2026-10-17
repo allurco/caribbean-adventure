@@ -219,6 +219,16 @@ That is enough to answer "which PR is this from?" later without guessing.
 - **For the maintainer:** "Final Glory" shows the leader's score on every board.
 - **Not checked:** the online match; 3 or 4 seats.
 
+### 2026-10-16: aimed volleys, hull, masts or crew (#348, PR #361)
+
+- **Branch and commit:** `feat/348-aim` at `50482f1`.
+- **Renderer:** the Playwright MCP browser, Chromium 155 on the GPU (ANGLE Metal), 1602×882 at DPR 2.
+- **View:** `?players=2&size=small&seed=1`, `?size=small&seed=1` and `?seats=1&players=2&size=small&seed=1` (each with `skipLogin=1`), the camera where the fight puts it.
+- **How the fights were staged:** as in #347's entry: the client found through the React fiber tree, captains drafted with `pickCaptain(0, "Sloop")`, `G` edited and dispatched as `UPDATE` (hotseat and solo) or written into the local master's `storageAPI.setState("default", …)` then `transport.requestSync()` (`?seats=1`). Ships put side by side with hull 20, crew 6 and 4 guns; a staged Spain Flute merchant (`npc-test`) in solo. Draw winners were forced by setting manoeuvrability to 0 against 10. `chain_shot` and `grape_shot` were added to `upgrades` in `G`. The fights were played with the panel's buttons.
+- **Findings, all as intended:** the round-1 ambush shows "FIRE: AIM AT" Hull, Masts and Crew, then a separate `returnFire` step where the defender aims ("ANSWER: AIM AT"). From round 2 the draw's winner aims first and the loser aims the answer. The volley lines say where each volley was aimed ("fired 4 guns at the masts: 3 hits"), every hit lands on the aimed track, and both stat boxes show "Mast damage". Against a merchant its answer fires by itself at the hull; when it wins the draw the player presses one "Merchant fires" button, then aims the answer. Chain shot adds 1 only to a volley aimed at the masts that hits, grape shot only to one aimed at the crew; aimed at the hull, grape shot adds nothing. In `?seats=1` the other seat reads "Waiting for <captain> to aim" with its buttons off, at the first volley and at the answer, and wrong-seat moves are invalid. Console: only the invalid moves sent on purpose, plus the known 90 s readiness warnings after seat switches.
+- **For the maintainer:** the volley line counts dice hits, not the shot's bonus (2 hits, 3 mast damage). The pursuit panel shows raw dice with no mast penalty. "Maneuverability" in the stat box ignores mast damage. Mast damage has no cap (a Flute reached 6); the cap at 2 is being added.
+- **Not checked:** the online match (`/api`); 3 or 4 seats; whether the flee penalty changes an outcome on screen.
+
 ### 2026-10-16: both captains roll the draw, ties to the defender (#347, PR #360)
 
 - **Branch and commit:** `feat/347-both-roll` at `7ee6a68`.

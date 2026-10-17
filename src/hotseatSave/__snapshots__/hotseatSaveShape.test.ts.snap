@@ -1,6 +1,32 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 6 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a fight: G.combat and its volleys > fight, save version 7 1`] = `
+{
+  "actionChosen": "string",
+  "attackerHits": "number",
+  "attackerId": "string",
+  "defenderHits": "number",
+  "defenderId": "string",
+  "distance": "number",
+  "fleeOutcome": "null",
+  "fleeRolls": "null",
+  "isNPCCombat": "boolean",
+  "round": "number",
+  "seamanshipRolls": {},
+  "seamanshipWinner": "null",
+  "stage": "string",
+  "volleys": [
+    {
+      "aim": "string",
+      "guns": "number",
+      "hits": "number",
+      "shooterId": "string",
+    },
+  ],
+}
+`;
+
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 7 1`] = `
 {
   "cellPatches": [],
   "map": {

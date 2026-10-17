@@ -152,7 +152,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.attackNPC("prey");
     expect(stateOf(client).ctx.phase).toBe("combat");
     expect(npcSteps(client)).toBe(0);
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
     expect(npcSteps(client)).toBe(0);
   });
 
@@ -245,7 +245,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.chooseCombatAction("flee");
     client.moves.rollFleeAttempt();
     expect(stateOf(client).G.combat?.fleeOutcome).toBe("caught");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
     expect(npcSteps(client)).toBe(0);
     client.moves.applyResolution();
     expectFightOver(client);

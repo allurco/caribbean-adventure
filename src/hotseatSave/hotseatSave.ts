@@ -30,8 +30,13 @@ export type MatchState = State<CaribbeanState>;
  *   combat stage, `defenderSeamanship`, waits on the defender's. A version 5
  *   save migrates as it is, mid-fight too: its `seamanship` stage waits on
  *   the attacker's roll, as version 6's does.
+ * - 7: every volley is aimed by the ship firing it (#348): `rollCannons` and
+ *   the answer, a new combat stage, `returnFire`, take an aim, recorded on
+ *   each of `G.combat.volleys`. A version 6 save migrates as it is, mid-fight
+ *   too: each of its stages is one version 7 still has, and a volley it
+ *   recorded with no aim went to the hull, as the board reads it.
  */
-export const HOTSEAT_SAVE_VERSION = 6;
+export const HOTSEAT_SAVE_VERSION = 7;
 
 /** G without the map, which is generated again from its size and seed. */
 export type SavedG = Omit<CaribbeanState, "cells" | "regions">;
