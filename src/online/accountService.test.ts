@@ -209,6 +209,33 @@ describe("watchSession", () => {
     expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
+  it("hears another tab sign in while this one waits for the email link, then sign out (#280)", async () => {
+    // supabase-js re-emits another tab's auth events to this tab's listeners.
+    const { client, emit } = fakeClient({ session: null });
+    const seen: (string | null)[] = [];
+    watchSession(client, (s) => seen.push(s ? s.userId : null));
+    await vi.waitFor(() => expect(seen).toEqual([null]));
+    emit({ user: { id: ID, email: "anne@example.com" } });
+    emit(null);
+    expect(seen).toEqual([null, ID, null]);
+  });
+
+  it("keeps another tab's sign-in that lands before this tab's first read (#280)", async () => {
+    const { client, emit } = fakeClient();
+    let land: (session: SessionLike | null) => void = () => {};
+    client.auth.getSession = () =>
+      new Promise((resolve) => {
+        land = (session) => resolve({ data: { session }, error: null });
+      });
+    const seen: (string | null)[] = [];
+    watchSession(client, (s) => seen.push(s ? s.userId : null));
+    emit({ user: { id: ID } });
+    // The read began before the other tab wrote the session: it is stale.
+    land(null);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toEqual([ID]);
+  });
+
   it("drops the first read when stopped before it lands", async () => {
     const { client } = fakeClient({ session: { user: { id: ID } } });
     const seen: unknown[] = [];
