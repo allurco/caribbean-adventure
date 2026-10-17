@@ -312,6 +312,40 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-17: the tavern's shadow, gaps closed in the shell (#431, PR #432), independent check
+
+- **Branch and commit:** `fix/431-tavern-shadow` at `9230b07` (before the rebase; the rebased `.glb` is byte-identical), against `4e31273` (main) in a separate clean worktree, both on dev servers.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal: "ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Max, Unspecified Version)"), Playwright, `--use-angle=metal --enable-gpu --ignore-gpu-blocklist`. In game 1280×800, prop viewer 1600×1000, DPR 1.
+- **View:** `?size=small&seed=1&skipLogin=1&snapshot=1`: the Isla Quieta tavern (22.59, 0.09, 12.73) at distance 1.0 and 1.4, at yaws +90, +180 and +270 (pitch 40), top-down (pitch 80), and at oblique yaws (pitch 15 to 30); a second seed-1 tavern at (3.10, 17.43). Seed 7's tavern at (7.57, 21.54). `?view=props&focus=6`: the default shot, orbited, low off each corner, and from under the gables and eaves.
+- **How it was staged:** the camera was set through `__THREE_DEVTOOLS__`, the HUD was hidden, and the tavern's instanced mesh was found by its triangle count. The sun is pinned at golden hour, so yaw and tavern were varied instead. Main/branch pairs were compared by pixel difference (×6).
+- **Findings:** on main a dashed bright line and a lit sliver show through the shadow; on the branch the shadow is solid at every yaw and on both taverns. Up close the look changes slightly, as intended: the bargeboard inner faces show as a dark verge strip 1 to 3 px wide at distance 1.0, and in the prop viewer the corner posts and the jetty underside read solid where main let the sky through. No stray faces, no z-fighting, no console errors.
+- **Not checked:** other sun angles (the light is pinned); the maintainer's machine.
+
+### 2026-10-17: the tavern's shadow leak, before and after (#431, PR #432), author's check
+
+- **Branch and commit:** `fix/431-tavern-shadow` at `9230b07`, against `4e31273` (main).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal, "ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Max)"), Playwright, `--use-angle=metal`; 1280×800 in game, 1600×1000 in the prop viewer, DPR 1.
+- **View:** `?size=small&seed=1&skipLogin=1&snapshot=1`, the Isla Quieta tavern at world (22.59, 0.09, 12.73), camera distance 1.0 and 1.4 (plus yaw ±0.9 at 1.0); `?view=props&focus=6`.
+- **Findings:** main shows a dashed bright line through the generated tavern's shadow and a lit sliver near the gable end; the branch shows a solid shadow and an unchanged tavern. These were real geometry gaps, not a headless artefact: three.js casts one-sided meshes by their back faces, so any open slit in the shell leaks light. The pure ray test `boats/tests/test_town_tavern_shadow.py` now pins it.
+
+### 2026-10-17: the tavern's review fixes and look pass (#394, PR #427)
+
+- **Branch and commit:** `fix/394-tavern-review` at `5420c3c`, against `6ccc90d` (main, #425's model) and `bee20ba` (main before #425, the code-built tavern). Clean detached worktrees, one dev server each.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal, Apple M1 Max), Playwright 1.59, 1280×800, DPR 1; 1-minute load ~17 at the start.
+- **View:** `?size=small&seed=1&skipLogin=1&snapshot=1&stats=1`; the camera set through `__THREE_DEVTOOLS__` (R3F store) on the Isla Quieta tavern (22.59, 12.73) at 3.4 (ship zoom), 25.74 (map zoom), 1.4 and 1.0, HUD hidden. `?view=props` (and `focus=6|7`), `?seedGallery=1`, and every tavern of the 12 gallery seeds at 1.5. Fallback: a Playwright route aborting `**/town/tavern.glb`.
+- **Findings, as intended:** the tavern is 6 draws a frame in every version, so draws per copy are unchanged. #427 is −168 tris a tavern against #425 and +652 against the code-built tavern (cap 890). Frame totals also differ by the snapshot's drafted ship, so compare per-object draw lists, not totals. All 66 taverns on the 12 seeds stand on the ground. With the model aborted the board opens on the code-built tavern with one `[town]` warning (#425 logged three). The gate opens ~4.1 s. No console errors.
+- **Found:** a dashed bright line through the #427 tavern's ground shadow, and a lit sliver at its base (#425's is solid), likely a see-through slit opened by the deeper relief. Cause not confirmed.
+- **Not checked:** medium and large maps; a phone; the maintainer's machine.
+
+### 2026-10-17: foam up close after #413: it thins away instead of breaking into bubbles (#389, filed as #426)
+
+- **Branch and commit:** `origin/main` at `d16d57d`, against `ed514c0` (the first parent of #413's merge `364980a`). Clean detached worktrees, dev servers.
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal, Apple M1 Max), Playwright 1.59, 1280×800, DPR 1, HUD hidden by CSS. Load average 15–22, so no frame times.
+- **View:** `?size=small&seed=1&skipLogin=1` and `seed=7`, solo, `pickCaptain(0, "Sloop")`. The ship staged by store `UPDATE` at the second port's docking hex, then on open water; a coast framed at a beach cell. Camera set through the R3F store (`__THREE_DEVTOOLS__` hook), keeping its pitch: 1.1 to 3.0, 3.4, 6 and 20. Sweeps with reduced motion, so time is frozen and the two commits can be diffed; sailing with `moveShip(q, r)`. Also `?post=0`.
+- **Findings:** at 2.8 and out the frames are pixel-identical to before #413. Below that the white foam's pixel share drops to 0.75–0.80 of before at 2.6, 0.22–0.27 at 2.2 and 0.10–0.21 at 1.1–1.8. What is left is faint grey specks; the hull has no waterline foam; wakes are hard-edged dot clusters; flecks are a few lone white dots. Cause: `closeUpFoam` keeps a disc whose area goes with the square of the coverage and multiplies it by the coverage, and the hull patch fades to 0 up close.
+- **Not from #413:** blocky patches on the sails at 1.1, and the dashed wake arms, in both commits.
+- **Not checked:** fights, `?fx=0`, the before commit's NPC wakes, the Mac mini.
+
 ### 2026-10-17: the draw's winner may not fire first out of range (#356, PR #374)
 
 - **Branch and commit:** the PR's branch at `1186fe4` (clean worktree, dev server).
