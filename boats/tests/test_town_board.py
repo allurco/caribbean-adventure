@@ -35,6 +35,17 @@ def test_over_budget_triangles_are_refused():
     assert any("1,801 triangles" in f for f in faults(tris=1_801))
 
 
+def test_growth_past_the_code_built_piece_is_refused_under_the_flat_budget():
+    # #394: the code-built tavern draws 670 (AGED_BUILDING_TRIANGLES.tavern),
+    # and the model may draw at most 890 more.
+    assert board.CODE_BUILT_TRIS["tavern"] == 670
+    assert board.MAX_GROWTH == 890
+    assert faults(tris=1_560) == []
+    grown = faults(tris=1_561)
+    assert any("891 more than the code-built tavern's 670" in f for f in grown)
+    assert not any("over the tavern's 1,800" in f for f in grown)
+
+
 def test_an_oversized_file_is_refused():
     assert any("250,000" in f for f in faults(nbytes=250_001))
 

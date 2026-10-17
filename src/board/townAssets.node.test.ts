@@ -13,22 +13,38 @@ import { glbTriangles, readGlb } from "./glb";
 import { AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./visuals/agedBuildingGeometry";
 import { townModelGeometry } from "./townModelGeometry";
 import { TOWN_MODELS } from "./townModels";
-import { TOWN_ASSET_BUDGET, townAssetProblems, townCatalogueFileProblems } from "./townAssetCheck";
+import { TOWN_ASSET_BUDGET, TOWN_TRIANGLE_GROWTH, townAssetProblems, townCatalogueFileProblems } from "./townAssetCheck";
 
 const TOWN_DIR = new URL("../../public/town/", import.meta.url);
 const SHIPPED = readdirSync(TOWN_DIR).filter((file) => !file.startsWith("."));
 const tavern = TOWN_MODELS.tavern;
 const tavernBytes = () => new Uint8Array(readFileSync(new URL(tavern.file, TOWN_DIR)));
 
-/** The tavern's file with its JSON changed by `edit`, and its binary chunk grown by `pad` bytes. */
-const planted = (edit: (json: ReturnType<typeof readGlb>["json"]) => void, pad = 0): Uint8Array => {
+type GlbJson = ReturnType<typeof readGlb>["json"];
+
+/** The tavern's file with its JSON changed by `edit`, its binary chunk grown by `pad` bytes and then changed by `editBin`. */
+const planted = (edit: (json: GlbJson) => void, pad = 0, editBin: (json: GlbJson, bin: DataView) => void = () => {}): Uint8Array => {
   const { json, bin } = readGlb(tavernBytes());
   const copy = structuredClone(json);
   edit(copy);
   const grown = new Uint8Array(bin.length + pad);
   grown.set(bin);
+  editBin(copy, new DataView(grown.buffer));
   return writeGlb(copy, grown);
 };
+
+/** The tavern with its first `_TINT` value written as `value` (the exporter writes the channel as float32). */
+const withFirstTint = (value: number) =>
+  planted(
+    () => {},
+    0,
+    (json, bin) => {
+      const accessor = json.accessors![json.meshes![0].primitives[0].attributes._TINT!];
+      expect(accessor.componentType).toBe(5126);
+      const view = json.bufferViews![accessor.bufferView!];
+      bin.setFloat32((view.byteOffset ?? 0) + (accessor.byteOffset ?? 0), value, true);
+    }
+  );
 
 describe("town assets", () => {
   it("has a file for every catalogue entry and an entry for every file", () => {
@@ -58,6 +74,31 @@ describe("town assets", () => {
     expect(townAssetProblems(tavern, overBudget).join("\n")).toMatch(/triangles drawn, over 1800/);
   });
 
+  it("flags a file grown past the code-built piece's triangles plus the growth the PRD allows, under the flat budget", () => {
+    // #394: at most (1,800 − 910) = 890 more triangles than the code-built tavern draws.
+    const cap = tavern.codeBuiltTriangles + TOWN_TRIANGLE_GROWTH;
+    expect(cap).toBeLessThan(tavern.maxTriangles);
+    // Parts drawn once more, one by one, until the file is past the growth cap but inside the flat budget.
+    const grown = planted((json) => {
+      const parts = json.nodes!.filter((n) => n.mesh !== undefined).sort((a, b) => a.name!.localeCompare(b.name!));
+      const trisOf = (mesh: number) =>
+        json.meshes![mesh].primitives.reduce((sum, p) => sum + json.accessors![p.indices!].count / 3, 0);
+      let triangles = glbTriangles(readGlb(tavernBytes()));
+      for (const part of parts) {
+        if (triangles > cap) break;
+        const extra = trisOf(part.mesh!);
+        if (triangles + extra > tavern.maxTriangles) continue;
+        json.nodes!.push({ name: part.name, mesh: part.mesh });
+        json.scenes![0].nodes!.push(json.nodes!.length - 1);
+        triangles += extra;
+      }
+      expect(triangles).toBeGreaterThan(cap);
+    });
+    const problems = townAssetProblems(tavern, grown).join("\n");
+    expect(problems).toMatch(new RegExp(`more than the code-built ${tavern.kind}'s ${tavern.codeBuiltTriangles}`));
+    expect(problems).not.toMatch(/over 1800/);
+  });
+
   it("flags a file over the byte cap", () => {
     const heavy = planted(() => {}, TOWN_ASSET_BUDGET.maxBytes);
     expect(townAssetProblems(tavern, heavy).join("\n")).toMatch(/bytes, over 250000/);
@@ -76,6 +117,21 @@ describe("town assets", () => {
       json.nodes!.find((n) => n.name === "Chimney_00")!.name = "Smoke";
     });
     expect(townAssetProblems(tavern, noChimney).join("\n")).toMatch(/Chimney_00/);
+  });
+
+  it("flags a missing vertex colour, and a tint that is not one of the channels", () => {
+    const uncoloured = planted((json) => {
+      delete json.meshes![0].primitives[0].attributes.COLOR_0;
+    });
+    expect(townAssetProblems(tavern, uncoloured).join("\n")).toMatch(/primitive 0 has no COLOR_0/);
+    expect(townAssetProblems(tavern, withFirstTint(6)).join("\n")).toMatch(/tint 6 is not one of the 6 channels/);
+    expect(townAssetProblems(tavern, withFirstTint(2.5)).join("\n")).toMatch(/tint 2.5 is not one of the 6 channels/);
+    expect(townAssetProblems(tavern, withFirstTint(-1)).join("\n")).toMatch(/tint -1 is not one of the 6 channels/);
+    const shortNormals = planted((json) => {
+      const primitive = json.meshes![0].primitives[0];
+      json.accessors![primitive.attributes.NORMAL!].count -= 1;
+    });
+    expect(townAssetProblems(tavern, shortNormals).join("\n")).toMatch(/the board cannot draw it: primitive 0: NORMAL has/);
   });
 
   it("flags a footprint, height or origin off the catalogue's by more than 3 %", () => {

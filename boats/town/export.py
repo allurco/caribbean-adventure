@@ -2,12 +2,14 @@
 
 `export_piece(p)` rebuilds the piece (`build.rebuild`), writes the `.glb`
 the game loads (`public/town/<stem>.glb`) and the `.blend` it came from
-(`boats/build/town_<stem>.blend`), and then opens the written file as BYTES
+(`boats/build/town_<stem>.blend`), each first to a staging path under
+`build/` (`publish.publish_piece`), and opens the staged file as BYTES
 through the ships' own reader, `frigate.gltf`, which imports no bpy: the
 triangles it draws, its size, its images, each primitive's attributes, the
 tint values, its parts and anchors, and its bounds against the plan's,
-mapped Blender (x, y, z) -> glTF (x, z, -y). Any fault raises, so a file
-over budget or out of shape is never left looking finished.
+mapped Blender (x, y, z) -> glTF (x, z, -y). Any fault raises before either
+file is moved into place, so a file over budget or out of shape never
+replaces a good one. The `.blend` is checked for local paths the same way.
 
 Run inside Blender: `Blender -b --factory-startup --python boats/town/run.py`.
 """
@@ -18,7 +20,7 @@ import bpy
 
 from frigate import gltf
 
-from . import board, build, tavern
+from . import blend_paths, board, build, publish, tavern
 from .params import TavernParams
 
 BOATS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -138,23 +140,39 @@ def verify_piece(p, path: str | None = None) -> dict:
     }
 
 
-def write_blend(p) -> str:
-    path = blend_path(p)
+def write_blend(p, path: str | None = None) -> str:
+    """Save the piece's datablocks, and nothing that remembers a machine.
+
+    `bpy.data.libraries.write` saves only the scene and what it uses: no
+    window manager or screens, so no file browser's last directory (the
+    user's home, next to "Save As Blender File"). The render output path
+    (`/tmp/` by default) is cleared first, every path is made relative, and
+    the file is written uncompressed so `blend_paths.local_path_faults` can
+    read it.
+    """
+    path = path or blend_path(p)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=path, copy=True)
+    scene = bpy.context.scene
+    scene.render.filepath = ""
+    blocks = {scene, *bpy.data.collections, *bpy.data.objects, *bpy.data.meshes,
+              *bpy.data.materials}
+    bpy.data.libraries.write(path, blocks, path_remap="RELATIVE_ALL", fake_user=False,
+                             compress=False)
     return path
 
 
 def export_piece(p: TavernParams | None = None) -> dict:
-    """Build, write and verify one town piece. Raises on any fault."""
+    """Build, write and verify one town piece. Raises on any fault, and then
+    leaves `public/town/` and the tracked `.blend` as they were
+    (`publish.publish_piece`)."""
     p = p or TavernParams()
     p.validate()
     build.rebuild(p)
     coll = bpy.data.collections[build.collection_name(p)]
-    path = glb_path(p)
-    _write(path, coll)
-    found = verify_piece(p, path)
-    found["blend"] = write_blend(p)
-    if found["faults"]:
-        raise RuntimeError("the exported piece breaks its contract: " + "; ".join(found["faults"]))
-    return found
+    return publish.publish_piece(
+        glb_path(p), blend_path(p), BUILD_DIR,
+        write_glb=lambda path: _write(path, coll),
+        verify=lambda path: verify_piece(p, path),
+        write_blend=lambda path: write_blend(p, path),
+        check_blend=blend_paths.local_path_faults,
+    )

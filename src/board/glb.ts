@@ -298,39 +298,55 @@ export function glbAttributeValues(glb: Glb, attribute: string): number[][] {
 export interface GlbTriangleSoup {
   readonly positions: Float32Array;
   readonly normals: Float32Array;
-  /** `COLOR_0` as RGB (white where a primitive has none). */
+  /** `COLOR_0` as RGB. */
   readonly colors: Float32Array;
-  /** The town kit's `_TINT` channel (0 where a primitive has none). */
-  readonly tints: Float32Array;
+  /** The town kit's `_TINT` channel, one byte per corner (PRD #392: 0 none to 5 glass), for the village merge to read. */
+  readonly tints: Uint8Array;
   readonly vertexCount: number;
 }
 
-/** The whole model as one unindexed triangle soup in its own frame: what the board draws a merged piece from. */
+/** The attributes the soup reads, each one value per POSITION. */
+const SOUP_ATTRIBUTES = ["NORMAL", "COLOR_0", "_TINT"] as const;
+
+/**
+ * The whole model as one unindexed triangle soup in its own frame: what the
+ * board draws a piece from. Throws, rather than drawing defaults, on a
+ * primitive whose POSITION is not VEC3, whose NORMAL, COLOR_0 or _TINT is
+ * missing or shorter than its POSITION, or whose tint is not a whole number
+ * a byte holds: the board then draws the code-built piece instead.
+ */
 export function glbTriangleSoup(glb: Glb): GlbTriangleSoup {
   const positions: number[] = [];
   const normals: number[] = [];
   const colors: number[] = [];
   const tints: number[] = [];
-  for (const { placed, primitive } of drawnPrimitives(glb)) {
-    const { POSITION, NORMAL, COLOR_0, _TINT } = primitive.attributes;
-    if (POSITION === undefined) continue;
+  drawnPrimitives(glb).forEach(({ placed, primitive }, i) => {
+    const { POSITION } = primitive.attributes;
+    if (POSITION === undefined) return;
+    if (glb.json.accessors?.[POSITION]?.type !== "VEC3") throw new Error(`primitive ${i}: POSITION is not VEC3`);
     const p = accessorValues(glb, POSITION);
-    const n = NORMAL === undefined ? [] : accessorValues(glb, NORMAL);
-    const c = COLOR_0 === undefined ? [] : accessorValues(glb, COLOR_0);
-    const t = _TINT === undefined ? [] : accessorValues(glb, _TINT);
+    const [n, c, t] = SOUP_ATTRIBUTES.map((name) => {
+      const index = primitive.attributes[name];
+      if (index === undefined) throw new Error(`primitive ${i}: no ${name}`);
+      const values = accessorValues(glb, index);
+      if (values.length < p.length) throw new Error(`primitive ${i}: ${name} has ${values.length} values for ${p.length} positions`);
+      return values;
+    });
     const corners = primitive.indices === undefined ? p.map((_, k) => k) : indices(glb, primitive.indices);
     for (const k of corners) {
+      const tint = t[k][0];
+      if (!Number.isInteger(tint) || tint < 0 || tint > 255) throw new Error(`primitive ${i}: _TINT ${tint} is not a whole number from 0 to 255`);
       positions.push(...placed.toModel(p[k] as Vec3));
-      normals.push(...(n[k] ? placed.turnToModel(n[k] as Vec3) : [0, 1, 0]));
-      colors.push(...(c[k] ? c[k].slice(0, 3) : [1, 1, 1]));
-      tints.push(t[k] ? t[k][0] : 0);
+      normals.push(...placed.turnToModel(n[k] as Vec3));
+      colors.push(...c[k].slice(0, 3));
+      tints.push(tint);
     }
-  }
+  });
   return {
     positions: new Float32Array(positions),
     normals: new Float32Array(normals),
     colors: new Float32Array(colors),
-    tints: new Float32Array(tints),
+    tints: new Uint8Array(tints),
     vertexCount: positions.length / 3,
   };
 }

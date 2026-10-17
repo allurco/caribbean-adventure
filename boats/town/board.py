@@ -14,6 +14,14 @@ never what Blender says it wrote.
 # Triangles DRAWN, per kind (PRD #392, "Piece list and budgets").
 MAX_TRIS = {"tavern": 1_800}
 
+# The triangles the code-built piece a model replaces draws
+# (`AGED_BUILDING_TRIANGLES` in `src/board/visuals/agedBuildingGeometry.ts`),
+# and how many more the model may draw (#394: 1,800 less the aged tavern's old
+# 910), so the village grows by at most that much per piece (PRD #392, G3).
+# The town asset test holds the files to the same rule (`TOWN_TRIANGLE_GROWTH`).
+CODE_BUILT_TRIS = {"tavern": 670}
+MAX_GROWTH = 890
+
 # Per file. The whole kit adds at most 3 MB (PRD #392, G4).
 MAX_BYTES = 250_000
 
@@ -41,6 +49,10 @@ def contract_faults(kind: str, nbytes: int, tris: int, images: int,
         return [f"{kind!r} has no budget in MAX_TRIS"]
     if tris > budget:
         out.append(f"it draws {tris:,} triangles, over the {kind}'s {budget:,}")
+    growth = tris - CODE_BUILT_TRIS[kind]
+    if growth > MAX_GROWTH:
+        out.append(f"it draws {tris:,} triangles, {growth:,} more than the code-built "
+                   f"{kind}'s {CODE_BUILT_TRIS[kind]:,}, over the {MAX_GROWTH:,} it may grow by")
     if nbytes > MAX_BYTES:
         out.append(f"the file is {nbytes:,} bytes, over {MAX_BYTES:,}")
     if images:

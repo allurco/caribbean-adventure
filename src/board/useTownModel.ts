@@ -31,8 +31,3 @@ export function useTownModelGeometry(model: TownModel): FacetGeometryData {
   }
   return geometry;
 }
-
-/** A model that failed to load: logged, and its piece drawn code-built. */
-export function logTownModelFailure(model: TownModel, error: unknown): void {
-  console.warn(`[town] model ${model.file} failed to load; drawing the code-built ${model.kind}`, error);
-}
