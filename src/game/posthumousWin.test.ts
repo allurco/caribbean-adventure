@@ -10,9 +10,9 @@ import { createShipState } from "./economy";
 import { fightToTheEnd } from "../testSupport/combatSteps";
 
 /**
- * A captain who reaches the winning glory in the fight that sinks them wins
- * (#369, option A): the game ends on glory on the move that settles the
- * fight, naming the fallen captain. Since #346 a sunk ship never answers, so
+ * Glory belongs to the player, not the ship (#369): a seat that reaches the
+ * winning glory in the fight that sinks its captain wins, on the move that
+ * settles the fight, named by its seat. Since #346 a sunk ship never answers, so
  * both sides go down in one round only in a fight stored at the resolution
  * before #380, whose damage had all landed; those fights start there. A live
  * exchange, played from the attack, pins that only one side sinks.
@@ -93,25 +93,25 @@ function startAt(ships: Record<string, ShipState>, combat: CaribbeanState["comba
 const resolution = (defenderId: string, isNPC: boolean): CaribbeanState["combat"] => ({ ...openFight("0", defenderId, 1, isNPC), round: 2, stage: "resolution" });
 
 describe("a win on glory in the fight that sinks the captain (#369)", () => {
-  it("seat 0 at 9 glory sinks a flotilla and goes down with it: seat 0 wins, fallen", () => {
+  it("seat 0 at 9 glory sinks a flotilla and goes down with it: seat 0 wins", () => {
     const client = startAt({ "0": sinking(0, 0, "blackbeard", WIN_SCORE - 1) }, resolution("flotilla", true), { flotilla: flotilla(0) });
     fightToTheEnd(client);
     const { G, ctx } = client.getState()!;
     expect(G.ships["0"]).toBeUndefined();
     expect(G.lostShips!["0"].score).toBe(WIN_SCORE);
-    expect(ctx.gameover).toEqual({ reason: "glory", winner: "0", captainName: "blackbeard", score: WIN_SCORE, fallen: true });
+    expect(ctx.gameover).toEqual({ reason: "glory", winner: "0", captainName: "Player 1", score: WIN_SCORE });
   });
 
   it("a defender at 9 glory who sinks the attacker and goes down too wins", () => {
     const client = startAt({ "0": sinking(0, 0, "blackbeard", 3), "1": sinking(1, 0, "surcouf", WIN_SCORE - 1) }, resolution("1", false));
     fightToTheEnd(client);
-    expect(client.getState()!.ctx.gameover).toEqual({ reason: "glory", winner: "1", captainName: "surcouf", score: WIN_SCORE, fallen: true });
+    expect(client.getState()!.ctx.gameover).toEqual({ reason: "glory", winner: "1", captainName: "Player 2", score: WIN_SCORE });
   });
 
   it("both captains reaching the winning glory as they sink each other: the first seat in play order wins", () => {
     const client = startAt({ "0": sinking(0, 0, "blackbeard", WIN_SCORE - 1), "1": sinking(1, 0, "surcouf", WIN_SCORE - 1) }, resolution("1", false));
     fightToTheEnd(client);
-    expect(client.getState()!.ctx.gameover).toEqual({ reason: "glory", winner: "0", captainName: "blackbeard", score: WIN_SCORE, fallen: true });
+    expect(client.getState()!.ctx.gameover).toEqual({ reason: "glory", winner: "0", captainName: "Player 1", score: WIN_SCORE });
   });
 
   it("short of the winning glory, sinking together ends nothing: the seats go on to pick new captains", () => {
@@ -122,7 +122,7 @@ describe("a win on glory in the fight that sinks the captain (#369)", () => {
     expect(G.lostShips).toMatchObject({ "0": { score: 3 }, "1": { score: 5 } });
   });
 
-  it("in a live exchange from 1 hull each, the sunk flotilla never answers: seat 0 wins afloat, not fallen", () => {
+  it("in a live exchange from 1 hull each, the sunk flotilla never answers: seat 0 wins afloat, its captain named", () => {
     const attacker = sinking(0, 0, "blackbeard", WIN_SCORE - 1);
     attacker.stats!.hull = { current: 1, max: 40 };
     // Twenty guns, all manned, always hit

@@ -66,7 +66,7 @@ export function awardCombatGlory(winner: ShipState, target: ShipState | NPCShip)
 /**
  * Check if a player has won
  */
-export function hasWon(ship: Pick<ShipState, "score">): boolean {
+export function hasWon(ship: ShipState): boolean {
   return ship.score >= WIN_SCORE;
 }
 
