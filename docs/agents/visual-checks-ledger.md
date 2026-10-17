@@ -221,6 +221,15 @@ That is enough to answer "which PR is this from?" later without guessing.
 - **Not checked:** an online match; Storm and other cards (not in this slice); the merchants on screen during the hand-off (camera elsewhere; timing only).
 - **Re-checked at `52a62cb`** (Chromium, ANGLE Metal; 1280×800, and 844×390 touch at DPR 3): the card shows 23–25 ms after the turn-change banner on every convoy (5 solo, 4 hotseat), never over it, and goes on a click or after 6.0 s; Calm seas shows none. In hotseat the log row lands in the same rAF frame as the released merchants reach `<Scene npcs>`, about 2.1 s after G changes, and each row ends "after <captain>'s turn". At 844×390 with 4 seats there is no log, the glory board clears the captain card, and the card shows and taps away. The desktop log still holds 4 rows; no console errors. (Read fibers from `root.__reactContainer$….stateNode.current`, because the container's own fiber can be the stale alternate tree.)
 
+### 2026-10-16: a new captain's turn opens after the pick (#286, PR #368)
+
+- **Branch and commit:** `fix/286-captain-pick` at `d945bb4`, re-checked at `59e3b58`.
+- **Renderer:** Playwright MCP Chromium on the GPU (ANGLE Metal), 1280×800, DPR 1.
+- **View:** `?players=2&size=small&seed=1&skipLogin=1` and `?seats=1&players=2&size=small&seed=1&skipLogin=1`.
+- **How it was staged:** captains drafted with `pickCaptain`. Fights staged by editing `G` as in the #347 entry (rival on hull 1 beside seat 0, or a Spanish Flute merchant on hull 1), then the panel's buttons, or `master.onUpdate` as seat 0. Losses without a fight were staged by moving the ship to `lostShips`, then End Turn. Banners were logged from the DOM every 50 ms, and the camera read every 100 ms through a `__THREE_DEVTOOLS__` hook (`scene.__r3f.root.getState().camera`).
+- **Findings:** no turn-ends banner over the captain screen; one "Your turn" banner after the pick; the camera flies once to the new ship (hotseat; the picking seat in `?seats=1`), whether the pick comes at once or after 5 s. During a sinking the camera holds until the fight lets go, about 8.6 s after the fight ends, then flies once; a plain turn after sinking an NPC does the same. The rival seat's camera does not move. No console errors.
+- **For the maintainer:** in `?seats=1` the new ship's spawn triggers "Welcome to <port>" over the turn banners, before the camera arrives (`prevPortRef` per viewer seat); the rival's board says "YOUR TURN <rival>" (#371).
+
 ### 2026-10-16: game over when every seat is out (#289, PR #362)
 - **Branch and commit:** `fix/289-all-out` at `f896807`.
 - **Renderer:** Playwright MCP Chromium on the GPU (ANGLE Metal), 1280×800, DPR 1.
