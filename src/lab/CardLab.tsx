@@ -32,12 +32,12 @@ export default function CardLab({ card, nation }: { card?: CardArtSlot; nation?:
     );
   }
   return (
-    <div className="min-h-dvh overflow-y-auto bg-shell-harbour p-4 text-shell-timber-text">
+    <div className="h-dvh overflow-y-auto bg-shell-harbour p-4 text-shell-timber-text">
       <h1 className="font-fell-sc text-3xl">Event cards</h1>
       <p className="font-fell mb-4">Placeholder art until each card's image lands (#247). Add `&card=` and `&nation=` to stage one where the HUD shows it.</p>
       <div className="flex flex-wrap gap-4">
         {labFaces().map((face) => (
-          <span key={face.id} className={CARD_FRAME}>
+          <span key={face.id} className={`${CARD_FRAME} text-ink`}>
             <EventCardFront card={face} />
           </span>
         ))}
