@@ -110,4 +110,6 @@ def test_the_staging_folder_is_git_ignored():
         staged = os.path.join(publish.STAGING_DIR, name)
         found = subprocess.run([git, "check-ignore", "-q", staged],
                                cwd=publish.BOATS_DIR, capture_output=True)
+        if found.returncode == 128:  # not inside a git work tree (an export of the repo)
+            pytest.skip("not in a git work tree")
         assert found.returncode == 0, f"{name} under build/staging/ is not git-ignored"
