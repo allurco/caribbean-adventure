@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { BoxGeometry, Color, Group, Mesh, MeshStandardMaterial, type Material, type Object3D } from "three";
 import { createShipWindUniforms } from "./shipWind";
 import { mergeShipModel } from "./shipModelMerge";
-import { dressShipModel } from "./shipDressing";
+import { dressShipModel, isShipOwnMaterial } from "./shipDressing";
 
 const meshesOf = (object: Object3D): Mesh[] => {
   const meshes: Mesh[] = [];
@@ -147,5 +147,14 @@ describe("dressShipModel", () => {
     for (const mesh of tintedOf(ship)) (mesh.material as MeshStandardMaterial).addEventListener("dispose", () => disposed.push("copy"));
     undress();
     expect(disposed).toEqual(copies.map(() => "copy"));
+  });
+
+  it("marks the copies it made as the ship's own, and nothing it shares (#135)", () => {
+    const { merged, canvas, timber, pennant, band } = mergedShip();
+    const ship = merged.clone(true);
+    const flag = new MeshStandardMaterial();
+    dressShipModel(ship, { colour: "#3b82f6", flagMaterial: flag });
+    for (const mesh of tintedOf(ship)) expect(isShipOwnMaterial(mesh.material as Material)).toBe(true);
+    for (const material of [canvas, timber, pennant, band, flag]) expect(isShipOwnMaterial(material)).toBe(false);
   });
 });
