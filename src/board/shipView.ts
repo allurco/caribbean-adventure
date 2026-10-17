@@ -73,6 +73,17 @@ export function turnChangeView(input: ShipViewInput): CameraView | null {
   return shipView(input);
 }
 
+/**
+ * Where the camera flies once a seat that lost its ship has picked a new
+ * captain (#286): the new ship at its home port, at ship zoom. In networked
+ * play only for the seat that picked, its own ship being the new one; every
+ * other seat's camera stays put. Null too when the ship is missing.
+ */
+export function newCaptainView(input: ShipViewInput): CameraView | null {
+  if (input.playerID != null && input.playerID !== input.currentPlayer) return null;
+  return shipView({ ...input, playerID: null });
+}
+
 /** The ship view of the viewer's own ship, or null when it has none. */
 function shipView({ ships, currentPlayer, playerID }: ShipViewInput): CameraView | null {
   const ship = ships[playerID ?? currentPlayer];
