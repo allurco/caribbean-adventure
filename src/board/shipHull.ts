@@ -58,6 +58,18 @@ export const SHIP_RIDE_HEIGHT = 0.12 * SHIP_SCALE;
 export const SHIP_SINK_DEPTH = 1.5 * SHIP_SCALE;
 
 /**
+ * How high a ship's deck stands above her waterline, world units (#135):
+ * a model's freeboard (its hull's depth less its draft), or the top of the
+ * box for a ship with no model. A sinking ship has faded out by the time it
+ * goes under (`shipSinking.ts`).
+ */
+export const shipDeckHeight = (shipClass: ShipClass | undefined): number => {
+  const model = shipClass ? SHIP_MODELS[shipClass] : null;
+  if (!model) return SHIP_RIDE_HEIGHT + shipHullBox(shipClass)[1] / 2;
+  return model.depthMetres * shipModelScale() - shipModelDraftUnits(model);
+};
+
+/**
  * How far inside a hex's inradius every hull box's footprint stays, at any
  * heading, in world units (ADR 0006): room for the bowsprit, the hull foam
  * and a neighbour's hull, so a ship reads as on its own hex.

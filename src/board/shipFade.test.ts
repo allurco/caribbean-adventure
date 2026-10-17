@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial, type Material, type Object3D } from "three";
 import { createShipWindUniforms } from "./shipWind";
 import { mergeShipModel } from "./shipModelMerge";
-import { dressShipModel } from "./shipDressing";
+import { dressShipModel, isShipOwnMaterial } from "./shipDressing";
 import { fadeShipModel } from "./shipFade";
 
 const meshesOf = (object: Object3D): Mesh[] => {
@@ -52,11 +52,83 @@ describe("fadeShipModel (#135)", () => {
     }
   });
 
-  it("starts opaque-looking: opacity 1 until it is told otherwise", () => {
+  it("stays opaque, and compiles nothing new, until she starts to fade", () => {
     const { merged } = mergedShip();
     const { ship } = dressedShip(merged, new MeshStandardMaterial());
-    fadeShipModel(ship);
-    for (const material of materialsOf(ship)) expect(material.opacity).toBe(1);
+    const fade = fadeShipModel(ship);
+    fade.setOpacity(1);
+    for (const material of materialsOf(ship)) {
+      expect(material.opacity).toBe(1);
+      expect(material.transparent).toBe(false);
+    }
+  });
+
+  it("turns transparent once, as the fade begins, and asks for one recompile only then", () => {
+    const { merged } = mergedShip();
+    const { ship } = dressedShip(merged, new MeshStandardMaterial());
+    const fade = fadeShipModel(ship);
+    fade.setOpacity(1);
+    const versions = materialsOf(ship).map((material) => material.version);
+    fade.setOpacity(0.9);
+    const turned = materialsOf(ship).map((material) => material.version);
+    turned.forEach((version, k) => expect(version).toBe(versions[k] + 1));
+    fade.setOpacity(0.5);
+    fade.setOpacity(0.1);
+    expect(materialsOf(ship).map((material) => material.version)).toEqual(turned);
+    for (const material of materialsOf(ship)) expect(material.transparent).toBe(true);
+  });
+
+  it("fades the wind copies the dressing owns too: her canvas and cloth go transparent", () => {
+    const { merged } = mergedShip();
+    const { ship } = dressedShip(merged, new MeshStandardMaterial());
+    const windy = meshesOf(ship).filter((mesh) => mesh.userData.wind);
+    expect(windy.length).toBeGreaterThan(0);
+    for (const mesh of windy) expect(isShipOwnMaterial(mesh.material as Material)).toBe(true);
+    fadeShipModel(ship).setOpacity(0.4);
+    for (const mesh of windy) {
+      const material = mesh.material as Material;
+      expect(material.transparent).toBe(true);
+      expect(material.opacity).toBe(0.4);
+    }
+  });
+
+  it("survives a re-dress mid-sink: fade, undress, dress in a new colour, fade again, leaving nothing behind", () => {
+    const { merged, loaded } = mergedShip();
+    const flag = new MeshStandardMaterial({ name: "England" });
+    const ship = merged.clone(true);
+    const loadedMaterials = materialsOf(ship);
+    const disposed = new Set<Material>();
+    const track = () => materialsOf(ship).forEach((material) => material.addEventListener("dispose", () => disposed.add(material)));
+
+    let undress = dressShipModel(ship, { colour: "#3b82f6", flagMaterial: flag, wind: createShipWindUniforms() });
+    let fade = fadeShipModel(ship);
+    fade.setOpacity(0.6);
+    const first = materialsOf(ship);
+    track();
+    fade.dispose();
+    undress();
+    materialsOf(ship).forEach((material, k) => expect(material).toBe(loadedMaterials[k]));
+    for (const material of first) expect(disposed.has(material)).toBe(true);
+
+    undress = dressShipModel(ship, { colour: "#ef4444", flagMaterial: flag, wind: createShipWindUniforms() });
+    fade = fadeShipModel(ship);
+    fade.setOpacity(0.3);
+    const second = materialsOf(ship);
+    for (const material of second) {
+      expect(first).not.toContain(material);
+      expect(material.opacity).toBe(0.3);
+      expect(material.transparent).toBe(true);
+    }
+    track();
+    fade.dispose();
+    undress();
+    materialsOf(ship).forEach((material, k) => expect(material).toBe(loadedMaterials[k]));
+    for (const material of second) expect(disposed.has(material)).toBe(true);
+    // The shared materials were never faded, nor disposed.
+    for (const material of [...loaded, flag]) {
+      expect(disposed.has(material)).toBe(false);
+      expect(material.transparent).toBe(false);
+    }
   });
 
   it("never fades another ship of the class, nor the materials they share", () => {
@@ -119,7 +191,7 @@ describe("fadeShipModel (#135)", () => {
     expect(fadeCopies).toBeGreaterThan(0);
     fade.dispose();
     expect(disposed).toEqual(Array(fadeCopies).fill("fade copy"));
-    expect(materialsOf(ship)).toEqual(before);
+    materialsOf(ship).forEach((material, k) => expect(material).toBe(before[k]));
     // The ship's own copies are the dressing's to dispose.
     undress();
     expect(disposed.filter((d) => d === "dress copy").length).toBe(after.length - fadeCopies);
