@@ -29,16 +29,16 @@ Painterly, 3:4, no text (the HUD draws the frame and title). Generated at 896×1
 
 | Slot | Shows | Prompt | Style | Size | Target | Status | Wired by |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `event.calmSeas` | A merchant sloop on a mirror-calm sea | [Calm seas](event-card-prompts.md#calm-seas) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/calm-seas.webp` | made | #247 |
-| `event.merchantConvoy` | Two laden flutes sailing out of port | [Merchant convoy](event-card-prompts.md#merchant-convoy) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/merchant-convoy.webp` | made | #247 |
-| `event.storm` | A frigate heeling under a squall (the style reference for the deck) | [Storm](event-card-prompts.md#storm) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/storm.webp` | made | #247 |
-| `event.flotillaPatrol` | Two warships bearing down, a plain red ensign | [Flotilla patrol](event-card-prompts.md#flotilla-patrol) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/flotilla-patrol.webp` | made | #247 |
-| `event.flotillaPatrol.flag` | Mask over the patrol's ensign, tinted per nation | None: cut by hand from the patrol's art | mask | the art's exact size | `cards/flotilla-patrol.flag.webp` | needed | #247 |
-| `event.npcPirate` | A pirate sloop slipping out of a cove at dusk | [NPC pirate](event-card-prompts.md#npc-pirate) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/npc-pirate.webp` | made | #247 |
-| `event.clemency` | A sealed royal pardon on a sea chest | [Clemency](event-card-prompts.md#clemency) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/clemency.webp` | made | #247 |
-| `event.lostFlag` | A fort's flag falling, a plain red one hoisted | [Lost flag](event-card-prompts.md#lost-flag) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/lost-flag.webp` | made | #247 |
-| `event.lostFlag.flag` | Mask over the hoisted flag, tinted per nation | None: cut by hand from the lost flag's art | mask | the art's exact size | `cards/lost-flag.flag.webp` | needed | #247 |
-| `event.back` | Brass compass rose on a sea chart, shared by every card | [Card back](event-card-prompts.md#card-back) | painterly event | 3:4, 896×1200 → 768×1024, dark margin cropped | `cards/back.webp` | made | #247 |
+| `event.calmSeas` | A merchant sloop on a mirror-calm sea | [Calm seas](event-card-prompts.md#calm-seas) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/calm-seas.webp` | wired | #247 |
+| `event.merchantConvoy` | Two laden flutes sailing out of port | [Merchant convoy](event-card-prompts.md#merchant-convoy) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/merchant-convoy.webp` | wired | #247 |
+| `event.storm` | A frigate heeling under a squall (the style reference for the deck) | [Storm](event-card-prompts.md#storm) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/storm.webp` | wired | #247 |
+| `event.flotillaPatrol` | Two warships bearing down, a plain red ensign | [Flotilla patrol](event-card-prompts.md#flotilla-patrol) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/flotilla-patrol.webp` | wired | #247 |
+| `event.flotillaPatrol.flag` | Mask over the patrol's ensign, tinted per nation | None: cut by hand from the patrol's art | mask | the art's exact size | `cards/flotilla-patrol.flag.webp` | wired | #247 |
+| `event.npcPirate` | A pirate sloop slipping out of a cove at dusk | [NPC pirate](event-card-prompts.md#npc-pirate) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/npc-pirate.webp` | wired | #247 |
+| `event.clemency` | A sealed royal pardon on a sea chest | [Clemency](event-card-prompts.md#clemency) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/clemency.webp` | wired | #247 |
+| `event.lostFlag` | A fort's flag falling, a plain red one hoisted | [Lost flag](event-card-prompts.md#lost-flag) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/lost-flag.webp` | wired | #247 |
+| `event.lostFlag.flag` | Mask over the hoisted flag, tinted per nation | None: cut by hand from the lost flag's art | mask | the art's exact size | `cards/lost-flag.flag.webp` | wired | #247 |
+| `event.back` | Brass compass rose on a sea chart, shared by every card | [Card back](event-card-prompts.md#card-back) | painterly event | 3:4, 896×1200 → 768×1024, dark margin cropped | `cards/back.webp` | wired | #247 |
 | `event.hurricane` | A vast hurricane dwarfing a merchant ship | [Hurricane](event-card-prompts.md#hurricane) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/hurricane.webp` | made | #241 |
 
 ## Order cards
