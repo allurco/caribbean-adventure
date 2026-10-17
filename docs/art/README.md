@@ -5,7 +5,7 @@ The one list of every 2D image the game needs: what each shows, the prompt that 
 - [`event-card-prompts.md`](event-card-prompts.md): painterly cards that match the 3D board's golden-hour look (event cards, order cards).
 - [`ledger-card-prompts.md`](ledger-card-prompts.md): ink engravings on parchment for the online shell's ledger UI (missions, rumours, deeds).
 
-`src/board/artManifest.node.test.ts` holds this file to the code: every event card slot in `src/board/cardArtSlots.ts` and every image under `public/` has a row, a row marked `wired` is one the code really loads, every `in repo` or `wired` file exists, and every prompt link points at a heading that exists.
+`src/board/artManifest.node.test.ts` holds this file to the code: every table line is a row that parses, every event card slot in `src/board/cardArtSlots.ts` and every image under `public/` has a row, a row is `wired` exactly when the code loads its file and `in repo` or `wired` exactly when its file is under `public/`, an event card's row names the file `CARD_ART` names, and every prompt link points at a heading that exists. So a change that lands or wires an image fails the test until it moves the row.
 
 ## How to read the tables
 
@@ -39,7 +39,7 @@ Painterly, 3:4, no text (the HUD draws the frame and title). Generated at 896×1
 | `event.lostFlag` | A fort's flag falling, a plain red one hoisted | [Lost flag](event-card-prompts.md#lost-flag) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/lost-flag.webp` | made | #247 |
 | `event.lostFlag.flag` | Mask over the hoisted flag, tinted per nation | None: cut by hand from the lost flag's art | mask | the art's exact size | `cards/lost-flag.flag.webp` | needed | #247 |
 | `event.back` | Brass compass rose on a sea chart, shared by every card | [Card back](event-card-prompts.md#card-back) | painterly event | 3:4, 896×1200 → 768×1024, dark margin cropped | `cards/back.webp` | made | #247 |
-| `event.hurricane` | A vast hurricane dwarfing a merchant ship | [Hurricane](event-card-prompts.md#hurricane) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/hurricane.webp` | needed | #241 |
+| `event.hurricane` | A vast hurricane dwarfing a merchant ship | [Hurricane](event-card-prompts.md#hurricane) | painterly event | 3:4, 896×1200 → 768×1024 | `cards/hurricane.webp` | made | #241 |
 
 ## Order cards
 
