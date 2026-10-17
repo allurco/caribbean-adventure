@@ -29,7 +29,7 @@ export const isShipOwnMaterial = (material: Material): boolean => shipOwnMateria
 /**
  * Dresses `ship` (a clone of a merged model, `mergeShipModel`) and returns
  * the function that disposes the material copies it made and puts the
- * loaded canvas back.
+ * loaded materials back on every part it dressed.
  */
 export function dressShipModel(ship: Object3D, { colour, flagMaterial, wind }: ShipDress): () => void {
   const copies: Material[] = [];
@@ -39,6 +39,7 @@ export function dressShipModel(ship: Object3D, { colour, flagMaterial, wind }: S
     if (!mesh.isMesh) return;
     const loaded = mesh.material as Material;
     let ours = false;
+    if (mesh.userData.flag || mesh.userData.tinted || (wind && mesh.userData.wind)) restores.push(() => void (mesh.material = loaded));
     if (mesh.userData.flag) mesh.material = flagMaterial;
     else if (mesh.userData.tinted) {
       const copy = (loaded as MeshStandardMaterial).clone();
@@ -59,10 +60,7 @@ export function dressShipModel(ship: Object3D, { colour, flagMaterial, wind }: S
     const depth = shipWindDepthMaterial(wind);
     copies.push(depth);
     mesh.customDepthMaterial = depth;
-    restores.push(() => {
-      if (!mesh.userData.flag && !mesh.userData.tinted) mesh.material = loaded;
-      mesh.customDepthMaterial = undefined;
-    });
+    restores.push(() => void (mesh.customDepthMaterial = undefined));
   });
   return () => {
     for (const restore of restores) restore();

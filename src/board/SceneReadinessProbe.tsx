@@ -9,21 +9,29 @@ import { SHIP_MODELS, shipModelUrl, type ShipModel } from "./shipModels";
 /** Far below the sea, where the warm-up ships are never seen (and culled), but still compiled. */
 const WARM_UP_DEPTH = -1000;
 const noHeading = () => 0;
+/**
+ * The opacity the fading warm-up ship is held at (#135): below 1, so its
+ * materials are the transparent variants a sinking ship fades through.
+ */
+const FADING: { readonly current: number } = { current: 0.5 };
 /** Every class's model, once each. */
 const MODELS = [...new Set(Object.values(SHIP_MODELS).flatMap((model) => (model ? [model] : [])))];
 
 /**
  * Loads one ship model through the cache Ship.tsx draws from and reports it
  * once it is in; until the shaders are compiled it keeps one dressed copy in
- * the scene, out of sight, so its materials compile with the rest.
+ * the scene, out of sight, so its materials compile with the rest. A second,
+ * fading copy (#135) stays for good: its transparent materials compile with
+ * the rest and, never disposed, keep those programs alive, so a ship that
+ * sinks and fades compiles nothing, however many sink.
  */
 function ModelLoaded({ model, url, warm, complete }: { model: ShipModel; url: string; warm: boolean; complete: (id: string) => void }) {
   useGLTF(url, false, false);
   useEffect(() => complete(`model:${url}`), [url, complete]);
-  if (!warm) return null;
   return (
     <group position-y={WARM_UP_DEPTH}>
-      <ShipModelMesh model={model} colour="#888888" flag={SHIP_FLAGS[0]} heading={noHeading} />
+      {warm && <ShipModelMesh model={model} colour="#888888" flag={SHIP_FLAGS[0]} heading={noHeading} />}
+      <ShipModelMesh model={model} colour="#888888" flag={SHIP_FLAGS[0]} heading={noHeading} sinking fade={FADING} />
     </group>
   );
 }

@@ -9,6 +9,7 @@ import {
   SHIP_SINK_DEPTH,
   hullFootprintRadius,
   SHIP_TOOLTIP_CLEARANCE,
+  shipDeckHeight,
   shipHoverBox,
   shipHullBox,
   shipTooltipHeight,
@@ -174,5 +175,25 @@ describe("shipWaterline", () => {
     expect(waterline.length).toBeCloseTo(DEFAULT_HULL_BOX[2], 12);
     expect(waterline.beam).toBeCloseTo(DEFAULT_HULL_BOX[0], 12);
     expect(waterline.roundness).toBeLessThan(0.3);
+  });
+});
+
+describe("shipDeckHeight (#135)", () => {
+  it("is a model's freeboard: its depth less its draft, at the model's scale", () => {
+    for (const shipClass of SHIP_CLASSES) {
+      const model = SHIP_MODELS[shipClass]!;
+      expect(shipDeckHeight(shipClass)).toBeCloseTo(model.depthMetres * shipModelScale() - shipModelDraftUnits(model), 10);
+    }
+  });
+
+  it("is the top of the box for a ship with no class", () => {
+    expect(shipDeckHeight(undefined)).toBeCloseTo(SHIP_RIDE_HEIGHT + DEFAULT_HULL_BOX[1] / 2, 10);
+  });
+
+  it("stands above the water and well short of the sink depth, so a sinking ship's deck goes under", () => {
+    for (const shipClass of [...SHIP_CLASSES, undefined]) {
+      expect(shipDeckHeight(shipClass)).toBeGreaterThan(0);
+      expect(shipDeckHeight(shipClass)).toBeLessThan(SHIP_SINK_DEPTH / 2);
+    }
   });
 });

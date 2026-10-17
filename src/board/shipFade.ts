@@ -5,8 +5,9 @@
  * wind, `shipDressing.ts`) fade in place, and each material she still shares
  * (the hull, the deck, a flag with no wind) is copied for her alone. Geometry
  * and textures stay shared. Disposing puts the shared materials back and
- * disposes only the copies made here; the dressing disposes its own. Pure
- * three.js, no React.
+ * disposes only the copies made here; the dressing disposes its own. She
+ * stays opaque, on the same shader programs as every ship afloat, until her
+ * opacity first drops below 1. Pure three.js, no React.
  */
 import type { Material, Mesh, Object3D } from "three";
 import { isShipOwnMaterial } from "./shipDressing";
@@ -36,14 +37,23 @@ export function fadeShipModel(ship: Object3D): ShipFade {
         mesh.material = current;
       });
     }
-    material.transparent = true;
-    material.opacity = 1;
-    material.needsUpdate = true;
     faded.push(material);
   });
   let disposed = false;
+  // Opaque until she starts to fade: going transparent changes the shader's
+  // defines, so it is done once, as the fade begins (the variants are warmed
+  // at load, `retainFadeVariants`), never for a ship that does not fade.
+  let transparent = false;
   return {
     setOpacity(opacity) {
+      const fading = opacity < 1;
+      if (fading !== transparent) {
+        transparent = fading;
+        for (const material of faded) {
+          material.transparent = fading;
+          material.needsUpdate = true;
+        }
+      }
       for (const material of faded) material.opacity = opacity;
     },
     dispose() {

@@ -157,4 +157,13 @@ describe("dressShipModel", () => {
     for (const mesh of tintedOf(ship)) expect(isShipOwnMaterial(mesh.material as Material)).toBe(true);
     for (const material of [canvas, timber, pennant, band, flag]) expect(isShipOwnMaterial(material)).toBe(false);
   });
+
+  it("puts the loaded materials back on every part it dressed, so the ship can be dressed again (#135)", () => {
+    const { merged } = mergedShip();
+    const ship = merged.clone(true);
+    const loaded = meshesOf(ship).map((mesh) => mesh.material);
+    const undress = dressShipModel(ship, { colour: "#3b82f6", flagMaterial: new MeshStandardMaterial(), wind: createShipWindUniforms() });
+    undress();
+    meshesOf(ship).forEach((mesh, k) => expect(mesh.material).toBe(loaded[k]));
+  });
 });
