@@ -154,6 +154,7 @@ import { npcShipLook, playerShipLook } from "./shipLook";
 import { GallerySnapshot } from "../lab/GallerySnapshot";
 import { BoardLoadingVeil } from "./BoardLoadingVeil";
 import { SceneReadinessProbe } from "./SceneReadinessProbe";
+import { frameOutputFor } from "./shaderWarmUp";
 import { useSceneReadiness } from "./useSceneReadiness";
 import { STARTER_SHIP_CLASSES } from "../game/types";
 import { createRenderStatsFeed } from "./renderStats";
@@ -804,7 +805,7 @@ function Scene({
       />
 
       {/* Post-processing: bloom, vignette, ACES at the lighting's exposure, warm grade */}
-      {renderOff.postProcessing ? (
+      {frameOutputFor(renderOff) === "screen" ? (
         <PlainRender />
       ) : (
         <PostEffects
@@ -1289,7 +1290,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         />
         <SceneReadinessProbe
           compileShaders={readiness.view.compileShaders}
-          frameOutput={renderOff?.postProcessing ? "screen" : "composer"}
+          frameOutput={frameOutputFor(renderOff ?? NOTHING_OFF)}
           shadersCompiled={readiness.view.stage === "frames"}
           countFrames={readiness.view.stage === "frames" && !readiness.view.ready}
           complete={readiness.complete}

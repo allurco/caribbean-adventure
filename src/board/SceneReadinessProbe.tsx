@@ -39,16 +39,23 @@ function ShipModelKeepers({ model, url, warm, complete }: { model: ShipModel; ur
 }
 
 /**
- * The box a sinking ship with no model (or whose model failed) fades as,
- * kept hidden for good like the models' fading keepers: its transparent
- * variant compiles at load and stays.
+ * The box a sinking ship with no model (or whose model failed) goes down as,
+ * kept hidden for good like the models' fading keepers, in both its looks:
+ * opaque as she starts to sink, transparent as she fades. Both variants
+ * compile at load and stay.
  */
-function FadingBoxKeeper() {
+function BoxKeepers() {
   return (
-    <mesh visible={false} castShadow>
-      <boxGeometry args={[...DEFAULT_HULL_BOX]} />
-      <meshStandardMaterial transparent opacity={FADING.current} />
-    </mesh>
+    <group visible={false}>
+      <mesh castShadow>
+        <boxGeometry args={[...DEFAULT_HULL_BOX]} />
+        <meshStandardMaterial />
+      </mesh>
+      <mesh castShadow>
+        <boxGeometry args={[...DEFAULT_HULL_BOX]} />
+        <meshStandardMaterial transparent opacity={FADING.current} />
+      </mesh>
+    </group>
   );
 }
 
@@ -107,7 +114,7 @@ export function SceneReadinessProbe({
 
   return (
     <>
-      <FadingBoxKeeper />
+      <BoxKeepers />
       {MODELS.map((model) => {
         const url = shipModelUrl(model, import.meta.env.BASE_URL);
         return (
