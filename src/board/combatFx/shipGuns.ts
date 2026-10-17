@@ -6,7 +6,7 @@
  * fight's effects. Pure apart from that one per-class table.
  */
 import type { ShipClass } from "../../game/types";
-import { shipHullBox } from "../shipHull";
+import { shipDeckHeight, shipHullBox } from "../shipHull";
 import { shipModel, shipModelScale } from "../shipModels";
 import type { TargetSize, Vec3 } from "./broadside";
 
@@ -23,16 +23,22 @@ export function gunsFromNodes(nodes: readonly { name: string; x: number; y: numb
   return nodes.filter((n) => CANNON.test(n.name)).map((n) => modelToShipLocal(n.x, n.y, n.z));
 }
 
-/** How big a ship of `shipClass` is, its frame's units: from its model, else from its hull box. */
+/**
+ * How big a ship of `shipClass` is, its frame's units: from its model, else
+ * from its hull box. Its freeboard is `shipDeckHeight`, the deck the sinking
+ * fade also reads (#135): for a box, the top of the box as it is drawn,
+ * riding above the waterline.
+ */
 export function shipSize(shipClass: ShipClass | undefined): TargetSize {
   const model = shipModel(shipClass);
   const hull = shipHullBox(shipClass);
-  if (!model) return { length: hull[2], beam: hull[0], freeboard: hull[1] * 0.5, masthead: hull[1] * 3 };
+  const freeboard = shipDeckHeight(shipClass);
+  if (!model) return { length: hull[2], beam: hull[0], freeboard, masthead: hull[1] * 3 };
   const s = shipModelScale();
   return {
     length: model.lengthMetres * s,
     beam: model.beamMetres * s,
-    freeboard: (model.depthMetres - model.draftMetres) * s,
+    freeboard,
     masthead: model.mastheadMetres * s,
   };
 }

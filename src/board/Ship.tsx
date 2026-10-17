@@ -12,7 +12,7 @@ import { SHIP_POSE_PRIORITY } from "./visuals/frameOrder";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
 import { mergeShipModel } from "./shipModelMerge";
 import { dressShipModel } from "./shipDressing";
-import { fadeShipModel } from "./shipFade";
+import { fadeShipModel, setMaterialFade } from "./shipFade";
 import { sinkOpacity, sinkPose, sinkProgress } from "./shipSinking";
 import { shipFlagMaterial } from "./shipFlagMaterials";
 import type { ShipFlag } from "./shipFlags";
@@ -459,14 +459,7 @@ export function SinkingShip({
   const boxMaterial = useRef<MeshStandardMaterial>(null);
   const setFade = (opacity: number) => {
     fade.current = opacity;
-    const box = boxMaterial.current;
-    if (!box) return;
-    box.opacity = opacity;
-    // Opaque until she fades, like the model's (shipFade.ts).
-    if (box.transparent !== opacity < 1) {
-      box.transparent = opacity < 1;
-      box.needsUpdate = true;
-    }
+    if (boxMaterial.current) setMaterialFade(boxMaterial.current, opacity);
   };
   const completedRef = useRef(false);
   const reported = useRef<ReportedPose>({ x: 0, z: 0, heading: 0, anchor: null, copyX: 0 });
