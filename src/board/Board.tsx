@@ -68,7 +68,7 @@ import {
   wrapCopyRange,
 } from "./wrapView";
 import { openingView, type CameraView } from "./shipView";
-import { captainPicked, captainTurnToOpen, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows, type Helm, type TurnOf } from "./captainPickTurn";
+import { captainPickShows, captainPicked, captainTurnToOpen, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows, type Helm, type TurnOf } from "./captainPickTurn";
 import { flightStep, flightStyle, type FlightStyle } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
@@ -1008,6 +1008,8 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     fightResult,
     onNextTurn: setAnnounced,
   });
+  // The captain screen, held until the fight that killed the captain has played and its end is closed (#411)
+  const captainScreenUp = captainPickShows(choosingCaptain(G, ctx.phase, ctx.currentPlayer), handoff, nextFightOverView);
   const turnChangeDone = useCallback(() => {
     setShowTurnChange(false);
     markTurnShown();
@@ -1309,7 +1311,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       </Canvas>
 
       {/* The captain draft, over the finished scene once the loading screen has gone; and a new captain for a lost ship (#265) */}
-      {choosingCaptain(G, ctx.phase, ctx.currentPlayer) && (
+      {captainScreenUp && (
         <div className="absolute inset-0 z-[55]">
           <DraftScreen
             view={draftView(G, turn)}
@@ -1497,7 +1499,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       )}
 
       {/* The outgoing captain's turn ends (#216) */}
-      {handoff && turnEndedBannerShows(handoff, G.ships, choosingCaptain(G, ctx.phase, ctx.currentPlayer)) && (
+      {handoff && turnEndedBannerShows(handoff, G.ships, captainScreenUp) && (
         <TurnEndedBanner
           captainName={G.ships[handoff.from].captain?.name ?? `Player ${Number(handoff.from) + 1}`}
           reducedMotion={handoff.reducedMotion}
