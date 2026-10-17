@@ -60,6 +60,7 @@ import {
 import { focusHeight } from "./groundFollow";
 import { sharedTerrainField } from "./visuals/sharedTerrainField";
 import { worldSeedOf } from "./visuals/subSeed";
+import { ShipFoamFlecks } from "./ShipFoamFlecks";
 import {
   clampFocusToBand,
   groundFootprint,
@@ -731,6 +732,9 @@ function Scene({
       </>
       )}
       </WorldCopies>
+
+      {/* Foam flecks shed along the ships' waterlines, drawn only close up (#389) */}
+      {!renderOff.ocean && <ShipFoamFlecks worldSeed={worldSeed} wrap={Number.isFinite(period) ? period : 0} warm={warmUp} />}
 
       {/* The fight's smoke, flashes, shot, splinters, spray, foam and grapples (#263) */}
       {!renderOff.combatFx && <CombatEffects director={combatDirector} warm={warmUp} />}

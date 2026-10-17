@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CASCADE_PRIORITY, SHIP_POSE_PRIORITY, WAVE_CLOCK_PRIORITY } from "./frameOrder";
+import { CASCADE_PRIORITY, FOAM_FLECK_PRIORITY, SHIP_POSE_PRIORITY, WAVE_CLOCK_PRIORITY } from "./frameOrder";
 
 describe("frame order of the sea", () => {
   it("advances the wave clock before the cascades read it", () => {
@@ -20,5 +20,11 @@ describe("frame order of the sea", () => {
 
   it("poses the ships before the cascades", () => {
     expect(SHIP_POSE_PRIORITY).toBeLessThan(CASCADE_PRIORITY);
+  });
+
+  it("sheds and draws the foam flecks after the ships sail and take their pose, so a fleck leaves the hull where it is drawn (#389)", () => {
+    expect(FOAM_FLECK_PRIORITY).toBeGreaterThan(SHIP_POSE_PRIORITY);
+    expect(FOAM_FLECK_PRIORITY).toBeGreaterThan(WAVE_CLOCK_PRIORITY);
+    expect(FOAM_FLECK_PRIORITY).toBeLessThan(1); // before the composer renders the frame
   });
 });

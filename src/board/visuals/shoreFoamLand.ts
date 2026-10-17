@@ -20,6 +20,7 @@
  */
 import type { MapWrap } from "../../game/hex";
 import { FOAM_MOTION_GLSL, FOAM_SHADING_GLSL } from "./foamShading";
+import { CLOSE_FOAM_GLSL } from "./closeFoam";
 import { SHORE_FOAM_GLSL } from "./shoreFoam";
 import { SURF_TIMING_GLSL, surfTimeUniform } from "./surfMotion";
 import { TERRAIN_FIELD_GLSL } from "./terrainFieldTexture";
@@ -43,6 +44,7 @@ export const LAND_FOAM_GLSL = `
   ${SURF_TIMING_GLSL}
   ${FOAM_MOTION_GLSL}
   ${FOAM_SHADING_GLSL}
+  ${CLOSE_FOAM_GLSL}
   ${SHORE_FOAM_GLSL}
   ${SHELF_RECEDE_GLSL}
 
@@ -58,11 +60,16 @@ export const LAND_FOAM_GLSL = `
     coverage *= smoothstep(-FOAM_WATERLINE_SOFTNESS, 0.0, vFoamWorld.y);
     float footprintMetres = max(length(dFdx(vFoamWorld.xz)), length(dFdy(vFoamWorld.xz))) * FOAM_METRES_PER_UNIT;
     float detail = foamDetailFade(footprintMetres, SHORE_FOAM_LACE_METRES);
-    float lace = foamLace(coverage, foamBreakupNoise(vFoamWorld.xz, SHORE_FOAM_NOISE_SCALE, surfChurn(surfTime)));
+    vec2 churn = surfChurn(surfTime);
+    float closeUp = closeFoamWeight(cameraDistance);
+    float lace = closeLace(coverage, foamBreakupNoise(vFoamWorld.xz, SHORE_FOAM_NOISE_SCALE, churn), closeUp);
     // ... and, like the water's shore bands, as the shelf recedes with
     // camera distance (#77, waterOptics.ts).
-    return mix(coverage * FOAM_FAR_SHARE, lace, detail) * waveDetailFade(length(vFoamWorld - cameraPosition))
+    float foam = mix(coverage * FOAM_FAR_SHARE, lace, detail) * waveDetailFade(length(vFoamWorld - cameraPosition))
       * shoreFoamRecedeShare(shelfRecedeWeight(cameraDistance));
+    // Up close, bubbles instead of a flat patch, as on the water (closeFoam.ts, #389).
+    if (closeUp > 0.0 && foam > 0.0) foam = closeUpFoam(foam, foamBubbleCell(vFoamWorld.xz, churn, FOAM_METRES_PER_UNIT), closeUp);
+    return foam;
   }
 `;
 

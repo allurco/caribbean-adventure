@@ -67,6 +67,8 @@ export const SEED_FEATURES = {
   combatShots: "combatShots",
   /** The look of a fight's smoke, splinters, spray and foam (`combatFx/combatDirector.ts`, #263), per fight. */
   combatEffects: "combatEffects",
+  /** Where and when a ship sheds its foam flecks (`foamFlecks.ts`, #389), per ship id. */
+  shipFoamFlecks: "shipFoamFlecks",
 } as const;
 
 export type SeedFeature = (typeof SEED_FEATURES)[keyof typeof SEED_FEATURES];
