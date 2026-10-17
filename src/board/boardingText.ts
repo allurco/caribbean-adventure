@@ -4,7 +4,7 @@
  * ended (who struck, what the winner took, what floated free).
  */
 import { BOARDING_KILL_MIN, MIN_BOARDING_CREW } from "../game/boarding";
-import type { BoardingRecord, CrewExchange, GoodType } from "../game/types";
+import type { BoardingRecord, CombatState, CrewExchange, GoodType, NPCShip, ShipState } from "../game/types";
 import { GOOD_TYPES } from "../game/types";
 
 /** Why the draw's winner may not board, `distance` hexes off with `boarderCrew` aboard; null when it may. */
@@ -12,6 +12,19 @@ export function boardRefusal(distance: number, boarderCrew: number): string | nu
   if (distance > 1) return "Boarding requires adjacent ships";
   if (boarderCrew < MIN_BOARDING_CREW) return `Too few crew to board: it takes ${MIN_BOARDING_CREW}`;
   return null;
+}
+
+/** Why the draw's winner may not board in the fight on (`boardRefusal`, its crew read from G); null when it may, or with no fight on. */
+export function boardRefusalIn(G: {
+  ships: Record<string, Pick<ShipState, "stats">>;
+  npcs: Record<string, Pick<NPCShip, "stats">>;
+  combat?: Pick<CombatState, "attackerId" | "seamanshipWinner" | "distance">;
+}): string | null {
+  const combat = G.combat;
+  if (!combat) return null;
+  const boarderId = combat.seamanshipWinner ?? combat.attackerId;
+  const boarder = G.ships[boarderId] ?? G.npcs[boarderId];
+  return boardRefusal(combat.distance, boarder?.stats?.crew.current ?? 0);
 }
 
 /** The line over the boarding's button: who boards whom, and how the crew fight goes. */

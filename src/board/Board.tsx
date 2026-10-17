@@ -128,6 +128,7 @@ import { isEliminated } from "../game/captainDeath";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
 import { FightOverPanel } from "./FightOverPanel";
+import { boardRefusalIn } from "./boardingText";
 import { closeFightOver, fightResultHold, initialFightOver, nextFightOver } from "./fightOverShown";
 import { useWhenFightPlayed } from "./combatFx/useWhenFightPlayed";
 import { npcKind } from "./npcName";
@@ -1357,7 +1358,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           // One Fire! for every volley: its hits land at random, and the round settles itself (#380)
           onRollCannons={() => props.moves.rollCannons()}
           onReturnFire={() => props.moves.returnFire()}
+          onFightBoarding={() => props.moves.fightBoarding()}
           onApplyResolution={() => props.moves.applyResolution()}
+          boardRefusal={boardRefusalIn(G)}
           lastRound={G.lastRound}
           // A ship out of range never fires first (#356)
           mayChooseFire={canChooseCombatAction(G, "fire")}

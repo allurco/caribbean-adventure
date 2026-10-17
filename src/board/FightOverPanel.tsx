@@ -3,11 +3,13 @@ import { HUD_EDGE, HUD_TOP_BAR_HEIGHT } from "./hudLayout";
 import { safeInset } from "./safeArea";
 import { combatantLabel, fightOverLines } from "./volleyText";
 import { VolleyLines } from "./VolleyLines";
+import { crewExchangeLine } from "./boardingText";
 
 /**
  * The fight's end (#380): the round settles itself as its last volley
- * lands, so the volleys that ended the fight, and how it ended, stay on the
- * board here once the combat panel has gone, until closed.
+ * lands, so the volleys (or the crew fight, #350) that ended the fight, and
+ * how it ended, stay on the board here once the combat panel has gone,
+ * until closed.
  */
 export function FightOverPanel({
   settled,
@@ -32,6 +34,16 @@ export function FightOverPanel({
       </div>
       <div className="space-y-1 text-center">
         <VolleyLines volleys={settled.volleys} shooterLabel={shooterLabel} />
+        {/* The crew fight that ended it, exchange by exchange (#350) */}
+        {settled.boarding && (
+          <div className="space-y-0.5 max-h-40 overflow-y-auto mb-1">
+            {settled.boarding.exchanges.map((exchange, i) => (
+              <div key={i} className="text-[11px] text-amber-100/80">
+                {crewExchangeLine(exchange, i, shooterLabel(settled.boarding!.boarderId), shooterLabel(settled.boarding!.boardedId))}
+              </div>
+            ))}
+          </div>
+        )}
         {lines.map((line) => (
           <div key={line} className="font-heading text-amber-100 text-sm">
             {line}

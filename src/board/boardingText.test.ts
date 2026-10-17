@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { boardingIntro, boardingOutcomeLines, boardRefusal, crewExchangeLine } from "./boardingText";
-import type { BoardingRecord } from "../game/types";
+import { boardingIntro, boardingOutcomeLines, boardRefusal, boardRefusalIn, crewExchangeLine } from "./boardingText";
+import type { BoardingRecord, CaribbeanState } from "../game/types";
 
 const name = (id: string) => (id === "foe" ? "The merchant" : `Player ${Number(id) + 1}`);
 const goods = (extra: Partial<BoardingRecord["taken"]> = {}) => ({ Wood: 0, Sugar: 0, Rum: 0, Spice: 0, ...extra });
@@ -24,6 +24,21 @@ describe("boardRefusal: why Board is off at the choice (#350)", () => {
   it("names the distance first, then the crew", () => {
     expect(boardRefusal(2, 5)).toBe("Boarding requires adjacent ships");
     expect(boardRefusal(1, 1)).toBe("Too few crew to board: it takes 2");
+  });
+});
+
+describe("boardRefusalIn: the same, for the fight on", () => {
+  const ships = { "0": { stats: { crew: { current: 1, max: 5 } } }, "1": { stats: { crew: { current: 4, max: 5 } } } } as unknown as CaribbeanState["ships"];
+  const combat = (winner: string | null, distance = 1) => ({ attackerId: "0", defenderId: "1", seamanshipWinner: winner, distance });
+
+  it("reads the crew of the draw's winner, who would board", () => {
+    expect(boardRefusalIn({ ships, npcs: {}, combat: combat("0") })).toBe("Too few crew to board: it takes 2");
+    expect(boardRefusalIn({ ships, npcs: {}, combat: combat("1") })).toBeNull();
+    expect(boardRefusalIn({ ships, npcs: {}, combat: combat("1", 2) })).toBe("Boarding requires adjacent ships");
+  });
+
+  it("is nothing with no fight on", () => {
+    expect(boardRefusalIn({ ships, npcs: {}, combat: undefined })).toBeNull();
   });
 });
 

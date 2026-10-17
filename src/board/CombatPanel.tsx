@@ -4,6 +4,7 @@ import { VolleyLines } from "./VolleyLines";
 import { npcKind } from "./npcName";
 import { defenderRollLine, drawIntro } from "./seamanshipText";
 import { HUD_EDGE } from "./hudLayout";
+import { boardingIntro } from "./boardingText";
 import { safeInset } from "./safeArea";
 import { seatName } from "./seat";
 
@@ -20,8 +21,12 @@ interface CombatPanelProps {
   onRollCannons: () => void;
   /** The answer to the first volley, fired by the ship answering (#348). */
   onReturnFire: () => void;
+  /** Fights the boarding, the crew fight that ends the fight (#350). */
+  onFightBoarding: () => void;
   /** Settles a round stored at the resolution before the round settled itself (#380). */
   onApplyResolution: () => void;
+  /** Why the draw's winner may not board (`boardRefusalIn`, #350); null when it may. */
+  boardRefusal: string | null;
   /** The last round the fight settled (`G.lastRound`, #380): its volleys stay on the panel through the next draw. */
   lastRound?: SettledRound;
   /** The draw's winner may choose fire (`canChooseCombatAction`). */
@@ -140,7 +145,9 @@ export function CombatPanel({
   onRollFleeAttempt,
   onRollCannons,
   onReturnFire,
+  onFightBoarding,
   onApplyResolution,
+  boardRefusal,
   lastRound,
   mayChooseFire,
   firstToFireReaches,
@@ -164,6 +171,10 @@ export function CombatPanel({
   const seatNumber = (id: string) => Number(id) + 1;
   const pending = pendingVolley(combat);
   const lastShown = roundShown(combat, lastRound);
+  // Who boards whom (#350): the draw's winner boards the other ship
+  const boarderId = combat.seamanshipWinner ?? combat.attackerId;
+  const boardedId = boarderId === combat.attackerId ? combat.defenderId : combat.attackerId;
+  const crewOf = (id: string) => (ships[id] ?? npcs[id])?.stats?.crew.current ?? 0;
   // The ship that fled, whose shot-away masts slowed it (#348)
   const fleeing = combat.seamanshipWinner === null ? undefined : ships[combat.seamanshipWinner] ?? npcs[combat.seamanshipWinner];
 
@@ -255,7 +266,7 @@ export function CombatPanel({
               <ActionButton
                 label="Board"
                 onClick={() => onChooseAction("board")}
-                disabled={!mayAct || combat.distance > 1}
+                disabled={!mayAct || boardRefusal !== null}
               />
               <ActionButton
                 label="Flee"
@@ -268,11 +279,7 @@ export function CombatPanel({
                 Out of range: {mayAct ? "your" : `${seatName({ ships }, combat.seamanshipWinner ?? combat.attackerId)}'s`} guns cannot reach from {combat.distance} hexes
               </div>
             )}
-            {combat.distance > 1 && (
-              <div className="text-[10px] text-red-400/70 text-center">
-                Boarding requires adjacent ships
-              </div>
-            )}
+            {boardRefusal && <div className="text-[10px] text-red-400/70 text-center">{boardRefusal}</div>}
           </div>
         </div>
       )}
@@ -344,6 +351,20 @@ export function CombatPanel({
             {pending ? answerLine(shooterLabel(pending.shooterId)) : ""}
           </div>
           <ActionButton label="Fire!" onClick={onReturnFire} disabled={!mayAct} primary />
+        </div>
+      )}
+
+      {/* The boarding (#350): no cannon fire this round, the crew fight decides it */}
+      {combat.stage === "boarding" && (
+        <div className="text-center space-y-2">
+          <div className="text-red-400 text-sm font-heading uppercase">Boarding!</div>
+          <div className="text-amber-100/80 text-xs">
+            {boardingIntro(shooterLabel(boarderId), shooterLabel(boardedId))}
+          </div>
+          <div className="text-[10px] text-amber-400/70">
+            Crew: {shooterLabel(boarderId)} {crewOf(boarderId)} | {shooterLabel(boardedId)} {crewOf(boardedId)}
+          </div>
+          <ActionButton label="Fight the Boarding!" onClick={onFightBoarding} disabled={!mayAct} primary />
         </div>
       )}
 
