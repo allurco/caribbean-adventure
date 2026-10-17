@@ -251,7 +251,7 @@ describe("the missions a fight settles (#345)", () => {
     expect(G(client).ships["1"].activeMission?.noDamageTaken).toBe(false);
   });
 
-  it("an escort that lands its hits but takes none keeps its no-damage condition, attacker or defender (#353)", () => {
+  it("the escort that fires keeps its no-damage condition; only the ship hit fails its own (#353)", () => {
     const attacker = ship(0, 0, { cannons: 20 });
     attacker.activeMission = mission("ESCORT", { targetPortName: "Havana", noDamageTaken: true });
     const defender = ship(1, 0);
@@ -259,9 +259,10 @@ describe("the missions a fight settles (#345)", () => {
     const client = startGame({ "0": attacker, "1": defender });
     client.moves.attackShip("1");
     fireTheAmbush(client);
+    // The defender has no guns, so the ambush is the round's only volley: the attacker is never hit
+    expect(G(client).lastRound!.volleys).toHaveLength(1);
     expect(G(client).lastRound!.volleys[0].hits).toBeGreaterThan(0);
 
-    // The attacker took no hit; the defender, hit, fails its own escort only
     expect(G(client).ships["0"].activeMission?.noDamageTaken).toBe(true);
     expect(G(client).ships["1"].activeMission?.noDamageTaken).toBe(false);
   });
