@@ -152,6 +152,11 @@ export function canAttack(
   return true;
 }
 
+/** Do this ship's guns reach a ship `distance` hexes off (#356)? Range only: no crew or guns check. */
+export function isInGunRange(ship: ShipState | NPCShip, distance: number): boolean {
+  return distance <= getShipAttackRange(ship);
+}
+
 /**
  * May this ship answer a volley (#346)? Not when sunk or derelict, with no
  * crew or no gun it can man, or out of its guns' range.
@@ -161,7 +166,7 @@ export function canReturnFire(defender: ShipState | NPCShip, distance: number): 
   // NPCs always have stats, player ships might not
   const stats = defender.stats;
   if (!stats || stats.hull.current <= 0 || getEffectiveCannons(defender) < 1) return false;
-  return distance <= getShipAttackRange(defender);
+  return isInGunRange(defender, distance);
 }
 
 /** The draw (#347): who wins it, each die plus its ship's manoeuvrability, a tie to the defender. */

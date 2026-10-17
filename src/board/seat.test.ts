@@ -7,7 +7,7 @@ import { createShipState, STARTING_GOLD } from "../game/economy";
 import { hex } from "../game/hex";
 import { createNPCShip } from "../game/npcManager";
 import type { Captain, CaribbeanState, CombatState, FleeOutcome, NPCShip } from "../game/types";
-import { choosingCaptain, combatWaitingFor, draftView, fightBystander, fightWatched, gloryScoreboard, hudSeat, hudShip, viewerSeat, seatMayAct, seatMayActInCombat, seatName, waitingFor } from "./seat";
+import { choosingCaptain, combatWaitingFor, draftView, fightBystander, fightWatched, gloryScoreboard, hudSeat, hudShip, viewerSeat, seatMayAct, seatMayActInCombat, seatName, turnCaptainName, waitingFor } from "./seat";
 import { startHandoff } from "./turnHandoff";
 
 const npc = (id: string): NPCShip => createNPCShip(id, hex(5, 0), hex(6, 0), "Spain", "Flute", () => 0.5);
@@ -91,6 +91,25 @@ describe("seatName", () => {
     G.ships["1"].captain = captain("x", "Anne Bonny");
     expect(seatName(G, "1")).toBe("Anne Bonny");
     expect(seatName(G, "2")).toBe("Player 3");
+  });
+});
+
+describe("turnCaptainName: whose turn a log row came on (#372)", () => {
+  it("the seat's captain while it has a ship", () => {
+    const G = table(2);
+    G.ships["1"].captain = captain("x", "Anne Bonny");
+    expect(turnCaptainName(G, "1")).toBe("Anne Bonny");
+  });
+  it("the captain who went down with the ship, once it is lost", () => {
+    const G = table(2);
+    delete G.ships["1"];
+    G.lostShips = { "1": { cause: "sunk", captain: captain("x", "Anne Bonny"), score: 0, stashedGold: 0 } };
+    expect(turnCaptainName(G, "1")).toBe("Anne Bonny");
+  });
+  it("'Player n' with no captain to name", () => {
+    const G = table(2);
+    delete G.ships["1"];
+    expect(turnCaptainName(G, "1")).toBe("Player 2");
   });
 });
 

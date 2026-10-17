@@ -179,7 +179,8 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
     beats.push({ kind: "declare", attackerId: after.attackerId, defenderId: after.defenderId, seconds: paced(BEATS.declare.seconds), seedKey: keyOf("declare") });
   }
 
-  if (before?.stage === "fleeAttempt" && (!after || after.stage === "cannons")) {
+  // Caught: the parting shot next, or the round's end when the pursuer is out of range (#356)
+  if (before?.stage === "fleeAttempt" && (!after || after.fleeOutcome === "caught")) {
     const fleeingId = before.seamanshipWinner ?? before.defenderId;
     const pursuerId = fleeingId === before.attackerId ? before.defenderId : before.attackerId;
     beats.push({ kind: "flee", fleeingId, pursuerId, outcome: after ? "caught" : "escaped", seconds: paced(BEATS.flee.seconds), seedKey: keyOf("flee") });

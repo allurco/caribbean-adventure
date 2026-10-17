@@ -210,6 +210,18 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-17: the draw's winner may not fire first out of range (#356, PR #374)
+
+- **Branch and commit:** the PR's branch at `1186fe4` (clean worktree, dev server).
+- **Renderer:** headless Playwright Chromium on the GPU (ANGLE Metal, per "Recommended setup"), 1280×800, DPR 1.
+- **View:** `?players=2&size=small&seed=1`, `?size=small&seed=1` and `?seats=1&players=2&size=small&seed=1` (each with `skipLogin=1`); the camera where the fight puts it.
+- **How it was staged:** the client found through the React fiber tree; captains drafted with `pickCaptain(0, "Sloop")`. `G` edited and dispatched as `UPDATE` (hotseat, solo) or written to the local master's `storageAPI.setState("default", …)` then `transport.requestSync()` (`?seats=1`): hulls 20, crew 6, 4 guns, `long_guns` on the attacker (and on the defender for the in-range case), ship 1 or a staged Spanish Flute merchant on a water hex 2 away (found with `wrappedDistance`, imported in the page from `/src/game/hex.ts`). The fight opened with `attackShip` / `attackNPC` and was played with the panel's buttons; draw and pursuit winners forced by setting manoeuvrability 10 against 0 before each roll. In `?seats=1` the round-2 choice was staged directly (`stage: "chooseAction"`, `seamanshipWinner: "1"`). Sounds read from the dev build's `[audio] play <id>` console lines after a Shift keypress unlocked audio.
+- **Findings, all as intended:** at distance 2 the draw's winner without `long_guns` sees Fire! and Board greyed out, with "Out of range: the guns cannot reach from 2 hexes"; Flee works. With `long_guns`, Fire! fires at 2 hexes and the other ship answers; at distance 1 Fire! works as before. A merchant that wins the draw out of range flees ("The merchant is trying to flee!"). A ship caught by a pursuer out of range (PvP, and the player caught by a merchant) goes straight to the round's end: "Caught, but out of the pursuer's range: no parting shot", no cannon sound, End Round ends the fight and the turn passes (hotseat: to P2, camera on P2's ship). A catch in range still fires the parting shot with its cannon sounds. In `?seats=1` the losing seat reads "Waiting for <captain> to choose" with all three buttons off. No console errors or warnings.
+- **For the maintainer:** the rival seat also sees the out-of-range line, which doesn't say whose guns. A catch in range has no "caught" line on the resolution (as before).
+- **Not checked:** the online match (`/api`); 3 or 4 seats; fights stored before #346 (covered by unit tests only); the timeline's beats directly (inferred from the cue sounds).
+
+The review fixes (the round-1 legacy rule, the pursuit dice and "Pursuit Caught!" on an out-of-range catch, whose guns the out-of-range line names, the merchant's "can't reach you" line) came after this check, at the next commit; they are logic and wording only, not re-screenshotted.
+
 ### 2026-10-17: the event deck merged with the captain pick's turn opening (#246 PR #370 with #286 PR #368)
 
 - **Branch and commit:** `feat/246-event-deck` at `da4fea2` (main's #368 merged in; clean worktree, dev server). Merged to main as `e047a79` with the same code.

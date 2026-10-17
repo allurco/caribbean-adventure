@@ -20,6 +20,7 @@ import { HudLeftColumn } from "./HudLeftColumn";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
 import { turnReach, routeTo, reachCost } from "../game/reach";
 import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
+import { canChooseCombatAction, firstToFireReaches } from "../game/combatMoves";
 import { getValidScoutTargets } from "../game/scouting";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
 import { HexGrid } from "./HexGrid";
@@ -67,7 +68,7 @@ import {
   wrapCopyRange,
 } from "./wrapView";
 import { openingView, type CameraView } from "./shipView";
-import { captainPicked, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows, type Helm, type TurnOf } from "./captainPickTurn";
+import { captainPicked, captainTurnToOpen, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows, type Helm, type TurnOf } from "./captainPickTurn";
 import { flightStep, flightStyle, type FlightStyle } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
@@ -117,6 +118,7 @@ import {
   seatMayAct,
   seatMayActInCombat,
   seatName,
+  turnCaptainName,
   waitingFor,
 } from "./seat";
 import { HudParchmentPanel } from "./HudParchmentPanel";
@@ -1333,6 +1335,9 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onRollCannons={(aim) => (aim === undefined ? props.moves.rollCannons() : props.moves.rollCannons(aim))}
           onReturnFire={(aim) => props.moves.returnFire(aim)}
           onApplyResolution={() => props.moves.applyResolution()}
+          // A ship out of range never fires first (#356)
+          mayChooseFire={canChooseCombatAction(G, "fire")}
+          firstToFireReaches={firstToFireReaches(G)}
           // Only the seat whose step it is presses it (each captain its own die of the draw, then the faster ship)
           mayAct={seatMayActInCombat({ playerID: props.playerID, combat: G.combat })}
           waitingLine={combatWaitingFor(G, { playerID: props.playerID, combat: G.combat })}
@@ -1367,7 +1372,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {!inCombat && currentShipState && (
         <HudLeftColumn>
           <HudGloryBoard rows={gloryScoreboard(G, hudPlayer, props.onlineSeats)} colours={PLAYER_COLOURS} />
-          <HudEventLog rows={eventLogRows(shownEventLog, G.regions, eventLogLength(hudLayoutKind), (seat) => seatName(G, seat))} />
+          <HudEventLog rows={eventLogRows(shownEventLog, G.regions, eventLogLength(hudLayoutKind), (seat) => turnCaptainName(G, seat))} />
         </HudLeftColumn>
       )}
 
@@ -1511,8 +1516,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         </HudToastStack>
       )}
 
-      {/* The event card drawn as the last turn ended (#246), for every player, once the turn's hand-off is over */}
-      {eventCard && eventCardShows({ handoff, turnChangeShowing: showTurnChange, gameOver: ctx.gameover !== undefined }) && (
+      {/* The event card drawn as the last turn ended (#246), for every player, once the turn's hand-off is over and a new captain's turn has opened (#372) */}
+      {eventCard && eventCardShows({
+          handoff,
+          turnChangeShowing: showTurnChange,
+          gameOver: ctx.gameover !== undefined,
+          captainTurnToOpen: captainTurnToOpen(helm, newCaptainTurn),
+        }) && (
         <EventCard card={eventCard} onDone={clearEventCard} />
       )}
 

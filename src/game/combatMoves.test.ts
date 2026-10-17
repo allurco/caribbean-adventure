@@ -8,9 +8,10 @@ import type { VolleyAim } from "./types";
 import { COMBAT_STAGES, VOLLEY_AIMS } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
 import { MAX_MAST_DAMAGE } from "./combat";
-import { isVolleyStage, volleysFired, applyCannons, applyCombatResolution, applyRollDefenderSeamanship, applyRollSeamanship, canChooseCombatAction, openFight } from "./combatMoves";
+import { firstToFireReaches, isVolleyStage, volleysFired, volleyShooter, applyCannons, applyCombatResolution, applyRollDefenderSeamanship, applyRollSeamanship, canChooseCombatAction, openFight } from "./combatMoves";
 import { createShipState } from "./economy";
 import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
+import { fireTheAmbush } from "../testSupport/combatSteps";
 
 // The stage test sends refused moves on purpose; boardgame.io logs each one.
 silenceInvalidMoveLogs();
@@ -378,11 +379,26 @@ describe("round 1 is the ambush (#346)", () => {
     expect(JSON.stringify(G(client))).toBe(before);
   });
 
+  /** A round-1 fight at the choice (from before #346), the draw won by the defender, `distance` hexes off. */
+  const legacyChoice = (distance: number) =>
+    ({
+      ships: { "0": ship(0, 0, { upgrades: ["long_guns"] }), "1": ship(distance, 0) },
+      npcs: {},
+      combat: { attackerId: "0", defenderId: "1", seamanshipWinner: "1", isNPCCombat: false, round: 1, stage: "chooseAction", distance },
+    }) as unknown as CaribbeanState;
+
   it("refuses board and flee in round 1 even at the choice (a fight from before #346)", () => {
-    const G0 = { combat: { round: 1, stage: "chooseAction", distance: 1 } } as unknown as CaribbeanState;
+    const G0 = legacyChoice(1);
     expect(canChooseCombatAction(G0, "board")).toBe(false);
     expect(canChooseCombatAction(G0, "flee")).toBe(false);
     expect(canChooseCombatAction(G0, "fire")).toBe(true);
+  });
+
+  it("at a round-1 choice from before #346 won by a ship out of range, fire is still the one action: the attacker fires first, and it reaches (#356)", () => {
+    const G0 = legacyChoice(2);
+    expect(canChooseCombatAction(G0, "fire")).toBe(true);
+    expect(canChooseCombatAction(G0, "board")).toBe(false);
+    expect(canChooseCombatAction(G0, "flee")).toBe(false);
   });
 });
 
@@ -733,5 +749,111 @@ describe("the volleys fired by a step (#348)", () => {
     expect(volleysFired(at("resolution", [volley("0", 2)]), at("seamanship"))).toEqual([]);
     expect(volleysFired(at("cannons"), undefined)).toEqual([]);
     expect(volleysFired(at("cannons"), { stage: "resolution" })).toEqual([]);
+  });
+});
+
+describe("a ship out of range never fires first (#356)", () => {
+  /**
+   * A fight at distance 2: the attacker (long guns, two guns) against a
+   * defender of manoeuvrability 20, which wins every draw, with long guns or
+   * without, through the ambush and on to round 2's draw won by the defender.
+   */
+  function atTwoHexes(defenderUpgrades: string[]) {
+    const client = startGame({
+      "0": ship(0, 0, { cannons: 2, upgrades: ["long_guns"] }),
+      "1": ship(2, 0, { cannons: 4, maneuverability: 20, upgrades: defenderUpgrades }),
+    });
+    client.moves.attackShip("1");
+    expect(G(client).combat!.distance).toBe(2);
+    fireTheAmbush(client);
+    client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
+    expect(G(client).combat).toMatchObject({ round: 2, stage: "chooseAction", seamanshipWinner: "1" });
+    return client;
+  }
+
+  it("the draw's winner without long guns may not fire from 2 hexes, nor board: it may only flee", () => {
+    const client = atTwoHexes([]);
+    const before = JSON.stringify(G(client).combat);
+    client.moves.chooseCombatAction("fire");
+    client.moves.chooseCombatAction("board");
+    expect(JSON.stringify(G(client).combat)).toBe(before);
+
+    client.moves.chooseCombatAction("flee");
+    expect(G(client).combat).toMatchObject({ actionChosen: "flee", stage: "fleeAttempt" });
+  });
+
+  it("an NPC that wins the draw 2 hexes off, never outgunned, cannot fire: it flees instead", () => {
+    const foe = { ...npc("FLOTILLA", { cannons: 20, maneuverability: 20 }), position: hex(2, 0) };
+    const client = startGame({ "0": ship(0, 0, { cannons: 2, upgrades: ["long_guns"] }) }, { foe });
+    client.moves.attackNPC("foe");
+    expect(G(client).combat!.distance).toBe(2);
+    fireTheAmbush(client);
+    client.moves.rollSeamanship();
+    expect(G(client).combat).toMatchObject({ round: 2, seamanshipWinner: "foe", actionChosen: "flee", stage: "fleeAttempt" });
+    expect(firstToFireReaches(G(client))).toBe(false);
+  });
+
+  it("a pursuer out of range that catches a flight 2 hexes off fires no parting shot, and the fight ends", () => {
+    /** The attacker (long guns, manoeuvrability 6, masts shot away) wins every draw against the defender of 0 and flees. */
+    const chase = (seed: number) => {
+      const fleeing = ship(0, 0, { cannons: 2, maneuverability: 6, upgrades: ["long_guns"] });
+      fleeing.damage.masts = MAX_MAST_DAMAGE;
+      const client = startGame({ "0": fleeing, "1": ship(2, 0, { cannons: 20 }) }, {}, `far-chase-${seed}`);
+      client.moves.attackShip("1");
+      fireTheAmbush(client);
+      client.moves.rollSeamanship();
+      client.moves.rollDefenderSeamanship();
+      client.moves.chooseCombatAction("flee");
+      client.moves.rollFleeAttempt();
+      return client;
+    };
+    const seed = Array.from({ length: 60 }, (_, i) => i).find((i) => G(chase(i)).combat?.fleeOutcome === "caught");
+    expect(seed).toBeDefined();
+    const client = chase(seed!);
+    expect(G(client).combat).toMatchObject({ stage: "resolution", fleeOutcome: "caught", volleys: [] });
+
+    const hull = G(client).ships["0"].stats!.hull.current;
+    client.moves.applyResolution();
+    expect(G(client).combat).toBeUndefined();
+    expect(G(client).ships["0"].stats!.hull.current).toBe(hull);
+  });
+
+  it("the draw's winner with long guns fires first from 2 hexes, and the attacker answers", () => {
+    const client = atTwoHexes(["long_guns"]);
+    client.moves.chooseCombatAction("fire");
+    client.moves.rollCannons("hull");
+    client.moves.returnFire("hull");
+    expect(G(client).combat!.volleys!.map((v) => v.shooterId)).toEqual(["1", "0"]);
+  });
+});
+
+describe("round-1 fights stored before #346 (#356)", () => {
+  it("after a caught flight in which the attacker fled, the pursuer (the defender) fires the parting shot", () => {
+    const combat = { round: 1, stage: "cannons", attackerId: "0", defenderId: "1", seamanshipWinner: "0", fleeOutcome: "caught" } as const;
+    expect(volleyShooter(combat)).toBe("1");
+  });
+
+  /** A round-1 draw against an NPC (from before #346): the NPC, outgunned and faster, wins it. */
+  function legacyNPCDraw(npcAt: number): CaribbeanState {
+    const foe = { ...npc("FLOTILLA", { cannons: 1, maneuverability: 20 }), position: hex(npcAt, 0) };
+    return {
+      ships: { "0": ship(0, 0, { cannons: 20, upgrades: ["long_guns"] }) },
+      npcs: { foe },
+      floatingLoot: [],
+      combat: { ...openFight("0", "foe", npcAt, true), stage: "seamanship", actionChosen: null },
+    } as unknown as CaribbeanState;
+  }
+
+  it("an outgunned NPC that wins it in range fires: round 1 offers no flight", () => {
+    const G0 = legacyNPCDraw(1);
+    applyRollSeamanship(G0, () => 1);
+    expect(G0.combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "fire", stage: "cannons" });
+  });
+
+  it("an NPC that wins it out of range still fires: in round 1 the attacker fires first, and it reaches", () => {
+    const G0 = legacyNPCDraw(2);
+    applyRollSeamanship(G0, () => 1);
+    expect(G0.combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "fire", stage: "cannons" });
   });
 });
