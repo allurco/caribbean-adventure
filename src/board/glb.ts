@@ -1,8 +1,11 @@
 /**
- * Reads what the ship asset test checks out of a binary glTF (`.glb`): the
- * named parts' bounds and vertex positions in the model's frame, the
- * triangles drawn and the texture sizes. Pure, no Three.js and no Node: it
- * works on the bytes, the JSON chunk's accessors and the image headers.
+ * Reads what the asset tests check, and the board draws, out of a binary
+ * glTF (`.glb`): the named parts' bounds and vertex positions in the model's
+ * frame, the anchors (named nodes that draw nothing), the triangles drawn,
+ * any vertex attribute (`COLOR_0` and the town kit's `_TINT` among them), the
+ * whole model as one unindexed triangle soup, and the texture sizes. Pure,
+ * no Three.js and no Node: it works on the bytes, the JSON chunk's accessors
+ * and the image headers.
  */
 
 type Vec3 = [number, number, number];
@@ -21,9 +24,10 @@ interface GltfJson {
   scene?: number;
   scenes?: { nodes?: number[] }[];
   nodes?: GltfNode[];
-  meshes?: { primitives: { attributes: { POSITION?: number }; indices?: number }[] }[];
+  meshes?: { primitives: { attributes: { POSITION?: number } & Record<string, number | undefined>; indices?: number }[] }[];
   accessors?: {
     count: number;
+    normalized?: boolean;
     min?: number[];
     max?: number[];
     bufferView?: number;
@@ -85,6 +89,8 @@ const nodeTransform = (node: GltfNode) => (p: Vec3): Vec3 => {
 interface Placed {
   readonly node: GltfNode;
   readonly toModel: (p: Vec3) => Vec3;
+  /** Turns a direction from the node's frame into the model's (rotations only: the town and ship nodes carry no shear). */
+  readonly turnToModel: (d: Vec3) => Vec3;
 }
 
 /** Every node drawn by the default scene, with the transform from its frame to the model's. */
@@ -93,14 +99,15 @@ const placedNodes = (json: GltfJson): Placed[] => {
   const scene = json.scenes?.[json.scene ?? 0];
   const roots = scene?.nodes ?? nodes.map((_, i) => i);
   const placed: Placed[] = [];
-  const visit = (index: number, parent: (p: Vec3) => Vec3) => {
+  const visit = (index: number, parent: (p: Vec3) => Vec3, parentTurn: (d: Vec3) => Vec3) => {
     const node = nodes[index];
     const own = nodeTransform(node);
     const toModel = (p: Vec3) => parent(own(p));
-    placed.push({ node, toModel });
-    for (const child of node.children ?? []) visit(child, toModel);
+    const turnToModel = (d: Vec3) => parentTurn(rotate(d, node.rotation ?? [0, 0, 0, 1]));
+    placed.push({ node, toModel, turnToModel });
+    for (const child of node.children ?? []) visit(child, toModel, turnToModel);
   };
-  for (const root of roots) visit(root, (p) => p);
+  for (const root of roots) visit(root, (p) => p, (d) => d);
   return placed;
 };
 
@@ -228,6 +235,104 @@ export function glbTriangles(glb: Glb): number {
     }
   }
   return triangles;
+}
+
+/** Each node that draws nothing, by name, at its origin in the model's frame: the anchors a model carries (`Chimney_00`, `Window_00`, ...). */
+export function glbAnchors(glb: Glb): Map<string, Vec3> {
+  const anchors = new Map<string, Vec3>();
+  for (const { node, toModel } of placedNodes(glb.json)) {
+    if (node.mesh === undefined && node.name) anchors.set(node.name, toModel([0, 0, 0]));
+  }
+  return anchors;
+}
+
+/** The primitives each drawing node draws, in scene order. */
+const drawnPrimitives = (glb: Glb) =>
+  placedNodes(glb.json).flatMap((placed) =>
+    placed.node.mesh === undefined ? [] : (glb.json.meshes?.[placed.node.mesh]?.primitives ?? []).map((primitive) => ({ placed, primitive }))
+  );
+
+/** The attribute names of every primitive drawn, in scene order. */
+export function glbPrimitiveAttributes(glb: Glb): string[][] {
+  return drawnPrimitives(glb).map(({ primitive }) => Object.keys(primitive.attributes));
+}
+
+const COMPONENTS: Record<number, { size: number; read: (view: DataView, at: number) => number; max: number }> = {
+  5120: { size: 1, read: (view, at) => view.getInt8(at), max: 127 },
+  5121: { size: 1, read: (view, at) => view.getUint8(at), max: 255 },
+  5122: { size: 2, read: (view, at) => view.getInt16(at, true), max: 32767 },
+  5123: { size: 2, read: (view, at) => view.getUint16(at, true), max: 65535 },
+  5125: { size: 4, read: (view, at) => view.getUint32(at, true), max: 4294967295 },
+  5126: { size: 4, read: (view, at) => view.getFloat32(at, true), max: 1 },
+};
+const WIDTH: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 };
+
+/** One accessor's values, decoded to numbers: normalised integers to [0, 1] (or [−1, 1]). */
+const accessorValues = (glb: Glb, index: number): number[][] => {
+  const accessor = glb.json.accessors?.[index];
+  if (!accessor || accessor.bufferView === undefined) return [];
+  const component = COMPONENTS[accessor.componentType ?? 0];
+  const width = WIDTH[accessor.type ?? ""];
+  if (!component || !width) throw new Error(`accessor ${index} is not a vertex accessor this reader knows`);
+  const view = glb.json.bufferViews?.[accessor.bufferView];
+  if (!view) return [];
+  const start = (view.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+  const stride = view.byteStride ?? component.size * width;
+  // A normalised signed integer's lowest value reads −1, as the spec clamps it; floats are left as they are.
+  const decode = accessor.normalized ? (raw: number) => Math.max(-1, raw / component.max) : (raw: number) => raw;
+  const data = new DataView(glb.bin.buffer, glb.bin.byteOffset, glb.bin.byteLength);
+  return Array.from({ length: accessor.count }, (_, k) =>
+    Array.from({ length: width }, (_, c) => decode(component.read(data, start + k * stride + c * component.size)))
+  );
+};
+
+/** Every value of the vertex attribute `attribute` over the primitives drawn, decoded; none where no primitive has it. */
+export function glbAttributeValues(glb: Glb, attribute: string): number[][] {
+  return drawnPrimitives(glb).flatMap(({ primitive }) => {
+    const index = primitive.attributes[attribute];
+    return index === undefined ? [] : accessorValues(glb, index);
+  });
+}
+
+/** Every triangle drawn, unindexed, in the model's frame: one entry per corner. */
+export interface GlbTriangleSoup {
+  readonly positions: Float32Array;
+  readonly normals: Float32Array;
+  /** `COLOR_0` as RGB (white where a primitive has none). */
+  readonly colors: Float32Array;
+  /** The town kit's `_TINT` channel (0 where a primitive has none). */
+  readonly tints: Float32Array;
+  readonly vertexCount: number;
+}
+
+/** The whole model as one unindexed triangle soup in its own frame: what the board draws a merged piece from. */
+export function glbTriangleSoup(glb: Glb): GlbTriangleSoup {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const colors: number[] = [];
+  const tints: number[] = [];
+  for (const { placed, primitive } of drawnPrimitives(glb)) {
+    const { POSITION, NORMAL, COLOR_0, _TINT } = primitive.attributes;
+    if (POSITION === undefined) continue;
+    const p = accessorValues(glb, POSITION);
+    const n = NORMAL === undefined ? [] : accessorValues(glb, NORMAL);
+    const c = COLOR_0 === undefined ? [] : accessorValues(glb, COLOR_0);
+    const t = _TINT === undefined ? [] : accessorValues(glb, _TINT);
+    const corners = primitive.indices === undefined ? p.map((_, k) => k) : indices(glb, primitive.indices);
+    for (const k of corners) {
+      positions.push(...placed.toModel(p[k] as Vec3));
+      normals.push(...(n[k] ? placed.turnToModel(n[k] as Vec3) : [0, 1, 0]));
+      colors.push(...(c[k] ? c[k].slice(0, 3) : [1, 1, 1]));
+      tints.push(t[k] ? t[k][0] : 0);
+    }
+  }
+  return {
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    colors: new Float32Array(colors),
+    tints: new Float32Array(tints),
+    vertexCount: positions.length / 3,
+  };
 }
 
 const pngSize = (b: Uint8Array): [number, number] | null => {

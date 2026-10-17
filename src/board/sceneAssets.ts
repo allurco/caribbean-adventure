@@ -1,6 +1,6 @@
 /**
  * Everything the board waits on before it is shown (sceneReadiness.ts): the
- * ship models, the sounds, the event cards' art, the web fonts, the port labels' font, the built
+ * ship and town models, the sounds, the event cards' art, the web fonts, the port labels' font, the built
  * world and the baked sky. sceneAssets.test.ts holds this list to the files
  * under public/, to the fonts index.html links and to every place in the app
  * that loads a file, so a new asset cannot skip the loading screen.
@@ -8,6 +8,7 @@
 import { SOUNDS, soundUrl } from "../audio/soundRegistry";
 import type { ReadinessTask } from "./sceneReadiness";
 import { SHIP_MODELS, shipModelUrl } from "./shipModels";
+import { TOWN_MODELS, townModelUrl } from "./townModels";
 import { eventCardArtUrls } from "./cardArtSlots";
 
 /** The web fonts the HUD uses, as `document.fonts.load` takes them ("weight family"); the ones index.html links. */
@@ -39,6 +40,8 @@ export const NOT_BOARD_ASSETS: Readonly<Record<string, string>> = {
 export const ASSET_LOADER_SITES: Readonly<Record<string, string>> = {
   "src/board/Ship.tsx": "ship models: every model in SHIP_MODELS is a `model:` task, loaded by SceneReadinessProbe",
   "src/board/SceneReadinessProbe.tsx": "loads the ship models through the same useGLTF cache Ship.tsx draws from",
+  "src/board/useTownModel.ts":
+    "town models (#394): every model in TOWN_MODELS is a `model:` task, fetched as bytes by SceneReadinessProbe through the cache PortBuildings.tsx and the prop viewer (a dev view) draw from",
   "src/board/useSceneReadiness.ts": "the port labels' font (troika preloadFont), a `font:labels` task",
   "src/board/cardArtCache.ts": "the event cards' art (#247): every file in CARD_ART is a `card:` task, decoded and kept by useSceneReadiness",
   "src/audio/audioEngine.ts": "sounds: every registry sound is a `sound:` task, prefetched by useSceneReadiness",
@@ -48,13 +51,14 @@ export const ASSET_LOADER_SITES: Readonly<Record<string, string>> = {
 
 /** The URL of every file the board waits on, under the app's base path. */
 export function sceneAssetUrls(base: string): string[] {
-  const models = Object.values(SHIP_MODELS).flatMap((model) => (model ? [shipModelUrl(model, base)] : []));
-  return [...new Set(models), ...SOUNDS.map((sound) => soundUrl(sound, base)), ...eventCardArtUrls(base)];
+  return [...sceneModelUrls(base), ...SOUNDS.map((sound) => soundUrl(sound, base)), ...eventCardArtUrls(base)];
 }
 
-/** The ship model URLs the board waits on. */
+/** The ship and town model URLs the board waits on. */
 export function sceneModelUrls(base: string): string[] {
-  return [...new Set(Object.values(SHIP_MODELS).flatMap((model) => (model ? [shipModelUrl(model, base)] : [])))];
+  const ships = Object.values(SHIP_MODELS).flatMap((model) => (model ? [shipModelUrl(model, base)] : []));
+  const town = Object.values(TOWN_MODELS).map((model) => townModelUrl(model, base));
+  return [...new Set([...ships, ...town])];
 }
 
 /** The readiness tasks, in loading-screen order. */

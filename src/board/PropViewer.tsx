@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
+import { ErrorBoundary } from "react-error-boundary";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Text } from "@react-three/drei";
 import { BufferAttribute, BufferGeometry, MeshStandardMaterial } from "three";
@@ -12,6 +13,8 @@ import { CAMERA_DIRECTION, CAMERA_FOV } from "./cameraBounds";
 import { paletteColor } from "./visuals/palette";
 import { PROP_ENTRIES, type PropEntry, type PropGeometryData } from "./propEntries";
 import { layoutRow, propExtent } from "./propLayout";
+import { logTownModelFailure, useTownModelGeometry } from "./useTownModel";
+import type { TownModel } from "./townModels";
 
 /**
  * The prop viewer (issue #59): `?view=props` shows hand-built props side
@@ -47,7 +50,26 @@ function placeProps(entries: readonly PropEntry[]): PlacedProp[] {
   return entries.map((entry, i) => ({ entry, data: data[i], x: xs[i] }));
 }
 
-function Prop({ entry, data, x }: PlacedProp) {
+/** An entry drawn from its generated model, once loaded. */
+function ModelProp({ model, ...placed }: PlacedProp & { model: TownModel }) {
+  return <BuiltProp {...placed} data={useTownModelGeometry(model)} />;
+}
+
+/** An entry: from its model where it has one (the code-built piece while it loads, or if it fails), else as built. */
+function Prop(placed: PlacedProp) {
+  const { model } = placed.entry;
+  if (!model) return <BuiltProp {...placed} />;
+  const built = <BuiltProp {...placed} />;
+  return (
+    <ErrorBoundary fallback={built} onError={(error) => logTownModelFailure(model, error)}>
+      <Suspense fallback={built}>
+        <ModelProp {...placed} model={model} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
+function BuiltProp({ entry, data, x }: PlacedProp) {
   const { geometry, material } = useMemo(
     () => ({
       geometry: toGeometry(data),

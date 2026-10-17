@@ -1,7 +1,8 @@
 /**
  * What the prop viewer (`PropViewer.tsx`, `?view=props`) shows, issue #59.
  * Pure: builders and colours only, no React. The faceted and notch-up
- * pieces of the fidelity probe, then the aged settlement the game draws.
+ * pieces of the fidelity probe, then the aged settlement the game draws,
+ * and the town kit's generated models beside the pieces they replace.
  */
 import { paletteColor, type PaletteName } from "./visuals/palette";
 import type { Rgb } from "./visuals/palmGeometry";
@@ -18,6 +19,7 @@ import type { PortNation } from "../game/types";
 import { buildQuayGeometry, type QuayColors } from "./visuals/quayGeometry";
 import { buildCrane, buildCraneLoad, buildMarketHall, buildQuayFlag } from "./visuals/harbourPieces";
 import { harbourPieceColors } from "./visuals/villageColors";
+import { TOWN_MODELS, type TownModel } from "./townModels";
 
 /** Any prop builder's output; `colors` is optional (the faceted rock has none and draws white). */
 export interface PropGeometryData {
@@ -34,6 +36,8 @@ export interface PropEntry {
   color: number;
   scale?: number;
   roughness?: number;
+  /** Drawn from this generated model (#394) once it loads; `build` is the code-built piece shown until then, or if it fails. */
+  model?: TownModel;
 }
 
 const rgb = (name: PaletteName): Rgb => {
@@ -84,6 +88,14 @@ export const PROP_ENTRIES: readonly PropEntry[] = [
   { label: "house, aged", build: () => buildAgedBuildingGeometry("house", agedColors("house")), color: 0xffffff, roughness: 0.9 },
   { label: "watchtower, aged (Spain)", build: towerWithFlag("Spain"), color: 0xffffff, roughness: 0.9 },
   { label: "tavern, aged", build: () => buildAgedBuildingGeometry("tavern", agedColors("tavern")), color: 0xffffff, roughness: 0.9 },
+  // The town kit's first generated piece (#392, #394), beside the piece it replaces.
+  {
+    label: "tavern, generated (England)",
+    build: () => buildAgedBuildingGeometry("tavern", agedColors("tavern")),
+    color: 0xffffff,
+    roughness: 0.9,
+    model: TOWN_MODELS.tavern,
+  },
   { label: "warehouse, aged", build: () => buildAgedBuildingGeometry("warehouse", agedColors("warehouse")), color: 0xffffff, roughness: 0.9 },
   { label: "church, aged", build: () => buildAgedBuildingGeometry("church", agedColors("church")), color: 0xffffff, roughness: 0.9 },
   { label: "watchtower, aged (England)", build: towerWithFlag("England"), color: 0xffffff, roughness: 0.9 },
