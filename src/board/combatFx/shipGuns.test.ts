@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { gunsFromNodes, modelToShipLocal, shipSize } from "./shipGuns";
 import { shipModelScale } from "../shipModels";
+import { shipDeckHeight, shipHoverBox } from "../shipHull";
+import type { ShipClass } from "../../game/types";
 
 describe("a ship's guns, read from its model (#263)", () => {
   it("turns model metres (bow along -z) into the ship's frame (bow along +z) at ship scale", () => {
@@ -27,5 +29,14 @@ describe("a ship's guns, read from its model (#263)", () => {
     const galleon = shipSize("Galleon");
     expect(galleon.length).toBeGreaterThan(sloop.length);
     expect(galleon.masthead).toBeGreaterThan(galleon.freeboard);
+  });
+
+  it("puts a box ship's deck where the box's top is drawn, above the waterline it rides over", () => {
+    expect(shipSize(undefined).freeboard).toBeCloseTo(shipHoverBox(undefined).top, 10);
+  });
+
+  it("shares its freeboard with the sinking fade (#135), model or box, so the two never drift", () => {
+    const classes: (ShipClass | undefined)[] = ["Sloop", "Flute", "Frigate", "Galleon", undefined];
+    for (const shipClass of classes) expect(shipSize(shipClass).freeboard).toBeCloseTo(shipDeckHeight(shipClass), 10);
   });
 });

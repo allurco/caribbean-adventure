@@ -19,9 +19,27 @@ export interface ShipFade {
   dispose(): void;
 }
 
+/**
+ * Draws `material` at `opacity`: transparent only while it fades (below 1),
+ * or always if it was transparent afloat (`transparentAfloat`), and not at
+ * all once it has faded out. Going transparent changes the shader's defines,
+ * so the material asks for a recompile only when that changes, never on each
+ * opacity; the programs are warmed at load (`SceneReadinessProbe.tsx`), so
+ * the recompile finds them ready. The model's fade and the box's share it.
+ */
+export function setMaterialFade(material: Material, opacity: number, transparentAfloat = false): void {
+  const transparent = transparentAfloat || opacity < 1;
+  if (material.transparent !== transparent) {
+    material.transparent = transparent;
+    material.needsUpdate = true;
+  }
+  material.opacity = opacity;
+  material.visible = opacity > 0;
+}
+
 /** Makes `ship` (a dressed copy of a merged model) fadeable; call after dressing it, and dispose before undressing it. */
 export function fadeShipModel(ship: Object3D): ShipFade {
-  const faded: Material[] = [];
+  const faded: { material: Material; transparentAfloat: boolean }[] = [];
   const copies: Material[] = [];
   const restores: (() => void)[] = [];
   ship.traverse((object) => {
@@ -37,24 +55,12 @@ export function fadeShipModel(ship: Object3D): ShipFade {
         mesh.material = current;
       });
     }
-    faded.push(material);
+    faded.push({ material, transparentAfloat: material.transparent });
   });
   let disposed = false;
-  // Opaque until she starts to fade: going transparent changes the shader's
-  // defines, so it is done once, as the fade begins (the variants are warmed
-  // at load, `retainFadeVariants`), never for a ship that does not fade.
-  let transparent = false;
   return {
     setOpacity(opacity) {
-      const fading = opacity < 1;
-      if (fading !== transparent) {
-        transparent = fading;
-        for (const material of faded) {
-          material.transparent = fading;
-          material.needsUpdate = true;
-        }
-      }
-      for (const material of faded) material.opacity = opacity;
+      for (const { material, transparentAfloat } of faded) setMaterialFade(material, opacity, transparentAfloat);
     },
     dispose() {
       if (disposed) return;

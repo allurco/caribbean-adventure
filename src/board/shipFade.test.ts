@@ -3,7 +3,7 @@ import { BoxGeometry, Group, Mesh, MeshStandardMaterial, type Material, type Obj
 import { createShipWindUniforms } from "./shipWind";
 import { mergeShipModel } from "./shipModelMerge";
 import { dressShipModel, isShipOwnMaterial } from "./shipDressing";
-import { fadeShipModel } from "./shipFade";
+import { fadeShipModel, setMaterialFade } from "./shipFade";
 
 const meshesOf = (object: Object3D): Mesh[] => {
   const meshes: Mesh[] = [];
@@ -40,7 +40,63 @@ const dressedShip = (merged: Group, flagMaterial: Material, windy = true) => {
 
 const materialsOf = (ship: Object3D) => meshesOf(ship).map((mesh) => mesh.material as MeshStandardMaterial);
 
+describe("setMaterialFade (#135)", () => {
+  it("stays opaque at full opacity, asking for no recompile", () => {
+    const material = new MeshStandardMaterial();
+    const version = material.version;
+    setMaterialFade(material, 1);
+    expect(material.transparent).toBe(false);
+    expect(material.version).toBe(version);
+  });
+
+  it("turns transparent once, as the fade begins, and asks for one recompile only then", () => {
+    const material = new MeshStandardMaterial();
+    const version = material.version;
+    setMaterialFade(material, 0.9);
+    expect(material.transparent).toBe(true);
+    expect(material.opacity).toBe(0.9);
+    expect(material.version).toBe(version + 1);
+    setMaterialFade(material, 0.5);
+    setMaterialFade(material, 0.2);
+    expect(material.opacity).toBe(0.2);
+    expect(material.version).toBe(version + 1);
+  });
+
+  it("goes back to opaque if she is drawn at full opacity again", () => {
+    const material = new MeshStandardMaterial();
+    setMaterialFade(material, 0.5);
+    setMaterialFade(material, 1);
+    expect(material.transparent).toBe(false);
+  });
+
+  it("keeps a material that was transparent afloat transparent at full opacity", () => {
+    const material = new MeshStandardMaterial({ transparent: true });
+    const version = material.version;
+    setMaterialFade(material, 1, true);
+    setMaterialFade(material, 0.5, true);
+    setMaterialFade(material, 1, true);
+    expect(material.transparent).toBe(true);
+    expect(material.version).toBe(version);
+  });
+
+  it("stops drawing once she has faded out, and draws again above nothing", () => {
+    const material = new MeshStandardMaterial();
+    setMaterialFade(material, 0);
+    expect(material.visible).toBe(false);
+    setMaterialFade(material, 0.01);
+    expect(material.visible).toBe(true);
+  });
+});
+
 describe("fadeShipModel (#135)", () => {
+  it("stops drawing every part of her once she has faded out", () => {
+    const { merged } = mergedShip();
+    const { ship } = dressedShip(merged, new MeshStandardMaterial());
+    const fade = fadeShipModel(ship);
+    fade.setOpacity(0);
+    for (const material of materialsOf(ship)) expect(material.visible).toBe(false);
+  });
+
   it("fades every part of the ship to the opacity it is given", () => {
     const { merged } = mergedShip();
     const { ship } = dressedShip(merged, new MeshStandardMaterial({ name: "England" }));

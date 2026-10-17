@@ -1290,6 +1290,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         />
         <SceneReadinessProbe
           compileShaders={readiness.view.compileShaders}
+          frameOutput={renderOff?.postProcessing ? "screen" : "composer"}
           shadersCompiled={readiness.view.stage === "frames"}
           countFrames={readiness.view.stage === "frames" && !readiness.view.ready}
           complete={readiness.complete}
