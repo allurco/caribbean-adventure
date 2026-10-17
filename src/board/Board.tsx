@@ -128,7 +128,7 @@ import { isEliminated } from "../game/captainDeath";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
 import { FightOverPanel } from "./FightOverPanel";
-import { closeFightOver, initialFightOver, nextFightOver } from "./fightOverShown";
+import { closeFightOver, fightResultHold, initialFightOver, nextFightOver } from "./fightOverShown";
 import { useWhenFightPlayed } from "./combatFx/useWhenFightPlayed";
 import { npcKind } from "./npcName";
 import { gaugeLine } from "./combatGauge";
@@ -965,6 +965,25 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     prevPortRef.current = currentPortId;
   }, [viewerShip?.position, G.cells, G.wrap, ctx.phase, viewerShip, viewer]);
 
+  const inCombat = ctx.phase === "combat" && G.combat;
+  // The fight's end (#380): the round that ended it settled itself, so its volleys stay on the board until closed
+  const [fightOverView, setFightOverView] = useState(() => initialFightOver(G.lastRound));
+  const npcInFight = G.combat?.isNPCCombat ? G.npcs[G.combat.defenderId] : undefined;
+  // The last ended round the board has played out (its volleys, the sinking): the panel waits on it
+  const [fightPlayedKey, setFightPlayedKey] = useState("");
+  const nextFightOverView = nextFightOver(fightOverView, {
+    lastRound: G.lastRound,
+    inCombat: Boolean(inCombat),
+    npcInFight: npcInFight ? npcKind(npcInFight) : null,
+    playedKey: fightPlayedKey,
+  });
+  if (nextFightOverView !== fightOverView) setFightOverView(nextFightOverView);
+  const fightOver = nextFightOverView.shown;
+  // Opens once the board has played the round out (its volleys, the sinking), as the hand-off waits
+  useWhenFightPlayed(nextFightOverView.waitKey || null, combatDirector.holding, HANDOFF_TIMING.fightMax, setFightPlayedKey);
+  // In hotseat the next captain's turn waits until this captain closes the fight's end, so it is always read (#380)
+  const fightResult = fightResultHold(nextFightOverView, isHotseatBoard(props.playerID, ctx.numPlayers));
+
   // The hand-off between turns (#216): the outgoing ship arrives, a "turn
   // ends" beat, the NPCs sail, and only then the next turn is announced
   // The turn the hand-off announced, opened as the board renders it (captainPickTurn.ts, #286)
@@ -979,6 +998,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     underway,
     // A turn that ended in a fight hands off once the board has played its last beats (#380)
     fightPlaying: combatDirector.holding,
+    fightResult,
     onNextTurn: setAnnounced,
   });
   const turnChangeDone = useCallback(() => {
@@ -1139,24 +1159,6 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // Only sailing, scouting and jury-rigging use moves; port actions are free (#227)
   const movesRemaining = movesLeft(G, currentPlayer);
 
-  const inCombat = ctx.phase === "combat" && G.combat;
-  // The fight's end (#380): the round that ended it settled itself, so its volleys stay on the board until closed
-  const [fightOverView, setFightOverView] = useState(() => initialFightOver(G.lastRound));
-  const npcInFight = G.combat?.isNPCCombat ? G.npcs[G.combat.defenderId] : undefined;
-  // The last ended round the board has played out (its volleys, the sinking): the panel waits on it
-  const [fightPlayedKey, setFightPlayedKey] = useState("");
-  const nextFightOverView = nextFightOver(fightOverView, {
-    lastRound: G.lastRound,
-    inCombat: Boolean(inCombat),
-    npcInFight: npcInFight ? npcKind(npcInFight) : null,
-    announced: announced !== null,
-    hotseat: isHotseatBoard(props.playerID, ctx.numPlayers),
-    playedKey: fightPlayedKey,
-  });
-  if (nextFightOverView !== fightOverView) setFightOverView(nextFightOverView);
-  const fightOver = nextFightOverView.shown;
-  // Opens once the board has played the round out (its volleys, the sinking), as the hand-off waits
-  useWhenFightPlayed(nextFightOverView.waitKey || null, combatDirector.holding, HANDOFF_TIMING.fightMax, setFightPlayedKey);
   // Whether the HUD's top-left stack shows, for the harbour link over the board (#125): it sits beside the stack on a phone
   const hudStackUp = hudStackShows(G, ctx);
   useEffect(() => (hudStackUp ? hudStackPresence.show() : undefined), [hudStackUp]);

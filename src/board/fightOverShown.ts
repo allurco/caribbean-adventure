@@ -4,6 +4,7 @@
  * board shows it once, as it arrives, never for a game loaded after.
  */
 import type { SettledRound } from "../game/types";
+import type { FightResultHold } from "./turnHandoff";
 
 /** A settled round's key: what says it is new, since an online update brings G anew, never the same object. */
 export function settledKey(settled: SettledRound | undefined): string {
@@ -37,8 +38,6 @@ export interface FightOverView {
   readonly shown: SettledRound | null;
   /** What the fight called its NPC ("Merchant"), kept for its end: an NPC sunk is gone from G. */
   readonly npcLabel: string | null;
-  /** Whether the next turn was announced as last seen: a new announcement closes the panel in hotseat. */
-  readonly announced: boolean;
 }
 
 /** What the board sees as it renders. */
@@ -48,10 +47,6 @@ export interface FightOverSignals {
   readonly inCombat: boolean;
   /** The kind of the NPC in the fight on now, if one is. */
   readonly npcInFight: string | null;
-  /** The hand-off has announced the next turn (#216). */
-  readonly announced: boolean;
-  /** The seatless hotseat board, where every captain plays at one screen. */
-  readonly hotseat: boolean;
   /**
    * The `waitKey` of the last wait the board has finished playing out: its
    * effects were seen done on a frame after the round arrived (the combat
@@ -62,17 +57,15 @@ export interface FightOverSignals {
 
 /** The panel as the board opens: closed, every round stored by then already seen. */
 export function initialFightOver(lastRound: SettledRound | undefined): FightOverView {
-  return { seenKey: settledKey(lastRound), waiting: null, waitKey: "", arrivals: 0, shown: null, npcLabel: null, announced: false };
+  return { seenKey: settledKey(lastRound), waiting: null, waitKey: "", arrivals: 0, shown: null, npcLabel: null };
 }
 
 /**
  * The panel after a render (#380). A round that ended its fight waits as
  * it arrives, and the panel opens on it once the board has played it out,
- * never while its volleys fly or its ship sinks. The panel closes once a
- * new fight is on and, in hotseat, once the hand-off announces the next
- * captain's turn, whose board it is then (a round still waiting is dropped
- * with it); solo and a seat's own board keep it until Close. It keeps the
- * label of the NPC fought. The same object back when nothing changed, so
+ * never while its volleys fly or its ship sinks. It stays until Close, or
+ * until a new fight is on; in hotseat the next captain's turn waits on it
+ * (`fightResultHold`). It keeps the label of the NPC fought. The same object back when nothing changed, so
  * the board sets it only then.
  */
 export function nextFightOver(view: FightOverView, s: FightOverSignals): FightOverView {
@@ -92,14 +85,21 @@ export function nextFightOver(view: FightOverView, s: FightOverSignals): FightOv
     waiting = null;
     shown = null;
   }
-  if (s.hotseat && s.announced && !view.announced) {
-    waiting = null;
-    if (shown === view.shown) shown = null;
-  }
   const npcLabel = s.npcInFight ?? view.npcLabel;
   if (!waiting) waitKey = "";
-  if (seenKey === view.seenKey && waiting === view.waiting && waitKey === view.waitKey && shown === view.shown && npcLabel === view.npcLabel && s.announced === view.announced) return view;
-  return { seenKey, waiting, waitKey, arrivals, shown, npcLabel, announced: s.announced };
+  if (seenKey === view.seenKey && waiting === view.waiting && waitKey === view.waitKey && shown === view.shown && npcLabel === view.npcLabel) return view;
+  return { seenKey, waiting, waitKey, arrivals, shown, npcLabel };
+}
+
+/**
+ * What the fight's end holds the hand-off on (#380): in hotseat, where the
+ * next captain takes the same screen, the turn is announced only once the
+ * panel is closed ("open"), or the round still waits to open ("waiting");
+ * solo and a seat's own board hold nothing ("none").
+ */
+export function fightResultHold(view: Pick<FightOverView, "waiting" | "shown">, hotseat: boolean): FightResultHold {
+  if (!hotseat) return "none";
+  return view.shown ? "open" : view.waiting ? "waiting" : "none";
 }
 
 /** The panel closed by its Close button. */

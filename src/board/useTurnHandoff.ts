@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NPCShip } from "../game/types";
-import { heldNpcsFor, npcsHeldNow, startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } from "./turnHandoff";
+import { heldNpcsFor, npcsHeldNow, startHandoff, stepHandoff, turnPassed, type FightResultHold, type Handoff, type ShownTurn } from "./turnHandoff";
 
 /**
  * Plays the hand-off between turns (turnHandoff.ts, #216) each frame from
@@ -19,6 +19,7 @@ export function useTurnHandoff({
   npcs,
   underway,
   fightPlaying,
+  fightResult,
   onNextTurn,
 }: {
   currentPlayer: string;
@@ -34,6 +35,8 @@ export function useTurnHandoff({
   underway: Record<string, boolean>;
   /** Whether the board still plays a fight's beats (the combat director's `holding`), read each frame (#380). */
   fightPlaying: () => boolean;
+  /** A fight's end the next turn waits on, in hotseat (`fightResultHold`, #380). */
+  fightResult: FightResultHold;
   onNextTurn: (player: string) => void;
 }): {
   handoff: Handoff | null;
@@ -64,7 +67,7 @@ export function useTurnHandoff({
   if (lastNpcs !== npcs) setLastNpcs(npcs);
 
   const current = useRef(handoff);
-  const seen = useRef({ underway, npcs, onNextTurn, fightPlaying });
+  const seen = useRef({ underway, npcs, onNextTurn, fightPlaying, fightResult });
   const turnShown = useRef(false);
   useEffect(() => {
     // A hand-off just started: its announcement is still to come
@@ -72,7 +75,7 @@ export function useTurnHandoff({
     current.current = handoff;
   }, [handoff]);
   useEffect(() => {
-    seen.current = { underway, npcs, onNextTurn, fightPlaying };
+    seen.current = { underway, npcs, onNextTurn, fightPlaying, fightResult };
   });
 
   // Each frame while it runs, step it on
@@ -83,10 +86,11 @@ export function useTurnHandoff({
       frame = requestAnimationFrame(tick);
       const h = current.current;
       if (!h) return;
-      const { underway: u, npcs: n, fightPlaying: playing } = seen.current;
+      const { underway: u, npcs: n, fightPlaying: playing, fightResult: result } = seen.current;
       const next = stepHandoff(h, {
         now: performance.now(),
         fightPlaying: playing(),
+        fightResult: result,
         shipAtRest: !u[h.from],
         npcsAtRest: Object.keys(n).every((id) => !u[id]),
         turnShown: turnShown.current,

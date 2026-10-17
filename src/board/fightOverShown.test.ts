@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { closeFightOver, initialFightOver, newlyEnded, nextFightOver, settledKey } from "./fightOverShown";
+import { closeFightOver, fightResultHold, initialFightOver, newlyEnded, nextFightOver, settledKey } from "./fightOverShown";
 import type { FightOverSignals } from "./fightOverShown";
 import type { SettledRound } from "../game/types";
 
@@ -38,8 +38,6 @@ describe("nextFightOver: the Fight over panel on the board (#380)", () => {
     lastRound: undefined,
     inCombat: false,
     npcInFight: null,
-    announced: false,
-    hotseat: true,
     playedKey: "",
     ...extra,
   });
@@ -92,29 +90,9 @@ describe("nextFightOver: the Fight over panel on the board (#380)", () => {
     expect(nextFightOver(arrived, signals({ lastRound: round(), inCombat: true })).waiting).toBeNull();
   });
 
-  it("in hotseat, closes as the hand-off announces the next captain's turn", () => {
+  it("stays open until Close, whatever the turn: nothing closes it but Close and a new fight", () => {
     const open = opened();
-    expect(nextFightOver(open, signals({ lastRound: round(), playedKey: "wait-1", announced: true })).shown).toBeNull();
-  });
-
-  it("off hotseat (solo, or a seat's own board), keeps it through the hand-off until Close", () => {
-    const kept = opened({ hotseat: false });
-    expect(nextFightOver(kept, signals({ lastRound: round(), playedKey: "wait-1", announced: true, hotseat: false })).shown).toEqual(round());
-  });
-
-  it("in hotseat, a round still waiting when the next turn is announced is dropped with it", () => {
-    const arrived = nextFightOver(initialFightOver(undefined), signals({ lastRound: round() }));
-    const handedOff = nextFightOver(arrived, signals({ lastRound: round(), announced: true }));
-    expect(handedOff.waiting).toBeNull();
-    expect(nextFightOver(handedOff, signals({ lastRound: round(), announced: true, playedKey: arrived.waitKey })).shown).toBeNull();
-  });
-
-  it("an announcement already up when the panel opened does not close it", () => {
-    const announcing = nextFightOver(initialFightOver(undefined), signals({ announced: true }));
-    const arrived = nextFightOver(announcing, signals({ lastRound: round(), announced: true }));
-    const open = nextFightOver(arrived, signals({ lastRound: round(), announced: true, playedKey: arrived.waitKey }));
-    expect(open.shown).toEqual(round());
-    expect(nextFightOver(open, signals({ lastRound: round(), announced: true, playedKey: arrived.waitKey })).shown).toEqual(round());
+    expect(nextFightOver(open, signals({ lastRound: round(), playedKey: "wait-1" }))).toBe(open);
   });
 
   it("keeps the label of the NPC fought once the NPC is gone", () => {
@@ -124,5 +102,20 @@ describe("nextFightOver: the Fight over panel on the board (#380)", () => {
     const sunk = nextFightOver(arrived, signals({ lastRound: sunkRound, playedKey: arrived.waitKey }));
     expect(sunk.npcLabel).toBe("Merchant");
     expect(sunk.shown).toEqual(sunkRound);
+  });
+});
+
+describe("fightResultHold: what the fight's end holds the next turn on (#380)", () => {
+  const view = (waiting: SettledRound | null, shown: SettledRound | null) => ({ waiting, shown });
+
+  it("in hotseat: the round waiting to open, then the panel open until Close", () => {
+    expect(fightResultHold(view(round(), null), true)).toBe("waiting");
+    expect(fightResultHold(view(null, round()), true)).toBe("open");
+    expect(fightResultHold(view(null, null), true)).toBe("none");
+  });
+
+  it("solo and a seat's own board hold nothing", () => {
+    expect(fightResultHold(view(round(), null), false)).toBe("none");
+    expect(fightResultHold(view(null, round()), false)).toBe("none");
   });
 });
