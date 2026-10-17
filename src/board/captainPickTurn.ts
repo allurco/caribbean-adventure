@@ -2,8 +2,9 @@
  * When a turn opens on the board (#216, #286), pure: the "Your turn" banner
  * and the camera to the new ship. A plain turn opens as the hand-off
  * announces it. A seat that lost its ship (#265) has no ship to show then:
- * the captain screen comes up at once (and the outgoing captain's "turn
- * ends" beat is not drawn over it), and the turn opens after the pick, once
+ * the captain screen comes up once the fight that sank it has played and
+ * its end is closed (#411; the outgoing captain's "turn ends" beat is not
+ * drawn over it), and the turn opens after the pick, once
  * the hand-off has nothing left to announce, the camera flying to the new
  * ship at its home port. Every decision is taken from what the board renders
  * (the helm, the hand-off's phase), never from copies a frame callback reads,
@@ -13,7 +14,27 @@
 import { awaitingCaptain } from "../game/captainDeath";
 import type { CaribbeanState } from "../game/types";
 import { newCaptainView, turnChangeView, type CameraView, type ShipViewInput } from "./shipView";
+import type { FightOverView } from "./fightOverShown";
 import type { Handoff } from "./turnHandoff";
+
+/**
+ * Whether the captain screen is up now (#411): a captain is being chosen
+ * (`choosingCaptain` in seat.ts, a fact of `G`), and no fight that killed
+ * the last captain is still on show. The screen waits while the hand-off
+ * plays the fight (its `fight` phase: the killing volley, the sinking, let
+ * go at `HANDOFF_TIMING.fightMax` if the fight never reports played), then
+ * while the Fight over panel waits to open or is open, until Close. With no
+ * fight (the opening draft, no hand-off) it comes up at once.
+ */
+export function captainPickShows(
+  choosing: boolean,
+  handoff: Handoff | null,
+  fightEnd: Pick<FightOverView, "waiting" | "shown">,
+): boolean {
+  if (!choosing) return false;
+  if (handoff?.phase === "fight") return false;
+  return fightEnd.waiting === null && fightEnd.shown === null;
+}
 
 /**
  * Whether the outgoing captain's "turn ends" banner shows: through the

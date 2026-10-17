@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
+import type { SettledRound } from "../game/types";
 import {
+  captainPickShows,
   captainPicked,
   captainTurnToOpen,
   helmChanged,
@@ -12,11 +14,71 @@ import {
 } from "./captainPickTurn";
 import { eventCardShows } from "./eventCardView";
 import { turnChangeView } from "./shipView";
-import { startHandoff, type Handoff, type HandoffPhase } from "./turnHandoff";
+import { HANDOFF_TIMING, startHandoff, stepHandoff, type Handoff, type HandoffPhase, type HandoffSignals } from "./turnHandoff";
 
 const at = (phase: HandoffPhase, from = "0", to = "1"): Handoff => ({ ...startHandoff(from, to, 0, false), phase });
 const ships = { "0": { position: { q: 0, r: 0, s: 0 } } };
 const lost = { "1": { cause: "sunk" as const, score: 3, stashedGold: 0 } };
+
+describe("captainPickShows: the captain screen waits for the fight that killed the captain (#411)", () => {
+  const noFightEnd = { waiting: null, shown: null };
+  const killingRound: SettledRound = {
+    attackerId: "0",
+    defenderId: "1",
+    isNPCCombat: false,
+    round: 2,
+    volleys: [],
+    fleeOutcome: null,
+    fleeRolls: null,
+    ended: true,
+    sunk: ["1"],
+  };
+  const frame = (now: number, fightPlaying: boolean): HandoffSignals => ({
+    now,
+    fightPlaying,
+    fightResult: "none",
+    shipAtRest: true,
+    npcsAtRest: true,
+    turnShown: false,
+  });
+
+  it("stays down while the hand-off still plays the fight: the killing volley, the sinking", () => {
+    expect(captainPickShows(true, at("fight"), noFightEnd)).toBe(false);
+  });
+
+  it("stays down while the fight's end waits to open, and while it is open, until Close", () => {
+    expect(captainPickShows(true, at("sailing"), { waiting: killingRound, shown: null })).toBe(false);
+    expect(captainPickShows(true, at("sailing"), { waiting: null, shown: killingRound })).toBe(false);
+  });
+
+  it("comes up once the fight has played and its end is closed", () => {
+    expect(captainPickShows(true, at("sailing"), noFightEnd)).toBe(true);
+    expect(captainPickShows(true, at("turnEnded"), noFightEnd)).toBe(true);
+    expect(captainPickShows(true, at("idle"), noFightEnd)).toBe(true);
+  });
+
+  it("comes up at fightMax even if the fight never reports played, so the player is never stuck", () => {
+    let h = stepHandoff(startHandoff("0", "1", null, false), frame(1000, true));
+    h = stepHandoff(h, frame(1000 + HANDOFF_TIMING.fightMax - 1, true));
+    expect(captainPickShows(true, h, noFightEnd)).toBe(false);
+    h = stepHandoff(h, frame(1000 + HANDOFF_TIMING.fightMax, true));
+    expect(captainPickShows(true, h, noFightEnd)).toBe(true);
+  });
+
+  it("comes up at once with no fight: the opening draft has no hand-off", () => {
+    expect(captainPickShows(true, null, noFightEnd)).toBe(true);
+  });
+
+  it("comes up on the hand-off's first frames when no fight is playing", () => {
+    const h = stepHandoff(stepHandoff(startHandoff("0", "1", null, false), frame(0, false)), frame(16, false));
+    expect(captainPickShows(true, h, noFightEnd)).toBe(true);
+  });
+
+  it("never when no captain is being chosen", () => {
+    expect(captainPickShows(false, null, noFightEnd)).toBe(false);
+    expect(captainPickShows(false, at("idle"), noFightEnd)).toBe(false);
+  });
+});
 
 describe("turnEndedBannerShows: the outgoing captain's 'turn ends' beat (#216, #286)", () => {
   it("shows through the beat while the outgoing ship is on the board", () => {
