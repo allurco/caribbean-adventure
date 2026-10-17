@@ -4,8 +4,7 @@ Blender writes the paths it remembers into the file: the file browser's last
 directory (the user's home, next to "Save As Blender File"), the render
 output (`/tmp/` by default), and any library or image path. The town export
 saves uncompressed, so the bytes can be read here, and refuses to keep a
-`.blend` that names a local path (`export.write_blend`); the committed file
-is held to the same check by `test_town_blendfile.py`.
+`.blend` that names a local path (`export.export_piece`).
 """
 
 # Prefixes of a path on someone's machine, on macOS, Linux and Windows.

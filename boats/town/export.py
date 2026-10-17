@@ -20,7 +20,7 @@ import bpy
 
 from frigate import gltf
 
-from . import blendfile, board, build, publish, tavern
+from . import blend_paths, board, build, publish, tavern
 from .params import TavernParams
 
 BOATS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -147,7 +147,7 @@ def write_blend(p, path: str | None = None) -> str:
     window manager or screens, so no file browser's last directory (the
     user's home, next to "Save As Blender File"). The render output path
     (`/tmp/` by default) is cleared first, every path is made relative, and
-    the file is written uncompressed so `blendfile.local_path_faults` can
+    the file is written uncompressed so `blend_paths.local_path_faults` can
     read it.
     """
     path = path or blend_path(p)
@@ -174,5 +174,5 @@ def export_piece(p: TavernParams | None = None) -> dict:
         write_glb=lambda path: _write(path, coll),
         verify=lambda path: verify_piece(p, path),
         write_blend=lambda path: write_blend(p, path),
-        check_blend=blendfile.local_path_faults,
+        check_blend=blend_paths.local_path_faults,
     )
