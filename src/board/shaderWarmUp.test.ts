@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compileForFrames } from "./shaderWarmUp";
+import { compileForFrames, frameOutputFor } from "./shaderWarmUp";
 
 interface FakeTarget {
   name: string;
@@ -72,5 +72,30 @@ describe("compileForFrames (#135)", () => {
     await expect(compileForFrames(fake.renderer, compile, "composer", target.create)).rejects.toThrow("no context");
     expect(fake.current()).toBeNull();
     expect(target.made[0].disposed).toBe(true);
+  });
+
+  it("rejects, never throws, when the render target cannot be made, leaving the renderer's own", async () => {
+    const before = { name: "before", disposed: false };
+    const fake = fakeRenderer(before);
+    const createTarget = (): FakeTarget & { dispose(): void } => {
+      throw new Error("out of memory");
+    };
+    await expect(compileForFrames(fake.renderer, fake.compile, "composer", createTarget)).rejects.toThrow("out of memory");
+    expect(fake.compiledInto).toEqual([]);
+    expect(fake.current()).toBe(before);
+  });
+});
+
+describe("frameOutputFor (#135)", () => {
+  it("draws through the composer by default", () => {
+    expect(frameOutputFor({})).toBe("composer");
+  });
+
+  it("draws straight to the screen with the post-processing off (?post=0)", () => {
+    expect(frameOutputFor({ postProcessing: true })).toBe("screen");
+  });
+
+  it("still draws through the composer with only the bloom off", () => {
+    expect(frameOutputFor({ bloom: true })).toBe("composer");
   });
 });
