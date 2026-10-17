@@ -3,8 +3,8 @@ import { HarbourScene } from "./HarbourScene";
 import { harbourViewRecord } from "./harbourView";
 
 /**
- * Dev `?view=harbour` (#122): the harbour backdrop's live scene alone, full
- * screen, its waves held, for scripts/capture-harbour-still.mjs to capture
+ * Dev `?view=harbour` (#122): the harbour scene alone, full screen, its
+ * motion held, for scripts/capture-harbour-still.mjs to capture
  * the still from. It marks the page `data-harbour="settled"` once the scene
  * has drawn a settled frame, and `data-harbour-view` with the view it shows,
  * which the script records with the still.
@@ -21,7 +21,7 @@ export default function HarbourCapture() {
   return (
     <div className="fixed inset-0 bg-shell-harbour">
       <Suspense fallback={null}>
-        <HarbourScene wavesRunning={false} onSettled={onSettled} onFailed={onFailed} />
+        <HarbourScene onSettled={onSettled} onFailed={onFailed} />
       </Suspense>
     </div>
   );

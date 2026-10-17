@@ -3,24 +3,15 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountClient } from "./accountClient";
+import { HARBOUR_STILL } from "./harbourStillImage";
 import type { SessionState } from "./useAccount";
 import type { ProfileState } from "./useProfile";
 
-// The live scene, counted: what the test is about is how often it mounts.
-const scene = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
-vi.mock("../board/harbour/HarbourScene", async () => {
-  const { useEffect } = await import("react");
-  return {
-    HarbourScene: () => {
-      useEffect(() => {
-        scene.mounts += 1;
-        return () => {
-          scene.unmounts += 1;
-        };
-      }, []);
-      return <div data-testid="harbour-scene" />;
-    },
-  };
+// The harbour scene is the dev capture's alone (#418): the shell must never load it.
+const scene = vi.hoisted(() => ({ loaded: false }));
+vi.mock("../board/harbour/HarbourScene", () => {
+  scene.loaded = true;
+  return { HarbourScene: () => null };
 });
 
 // Signed in at once, with no Supabase behind it.
@@ -43,25 +34,31 @@ const CONFIG = { url: "https://example.test", key: "anon" };
 
 let container: HTMLDivElement;
 let root: Root;
+let contexts: string[];
 
 beforeEach(() => {
   vi.useFakeTimers();
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   window.history.replaceState(null, "", "/");
+  delete document.documentElement.dataset.harbour;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  scene.mounts = 0;
-  scene.unmounts = 0;
+  contexts = [];
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(function (this: HTMLCanvasElement, id: string) {
+    contexts.push(id);
+    return null;
+  } as typeof HTMLCanvasElement.prototype.getContext);
 });
 
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
-/** Lets the idle wait run out and the lazy scene's chunk resolve. */
+/** Lets every timer, idle wait and lazy chunk run out. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await act(async () => {
@@ -80,12 +77,24 @@ function sheet(): string | null | undefined {
   return container.querySelector('[data-testid="sheet"]')?.textContent;
 }
 
-describe("OnlineShell's harbour (#122)", () => {
-  it("mounts the live scene once and keeps it across the shell's pages", async () => {
+function showsTheStill(): boolean {
+  return [...container.querySelectorAll<HTMLElement>("[style]")].some((el) => el.style.backgroundImage.includes(HARBOUR_STILL.path));
+}
+
+/** The harbour as the shell must show it on every page: the still, and no 3D scene. */
+function expectStillOnly(): void {
+  expect(showsTheStill()).toBe(true);
+  expect(container.querySelector("canvas")).toBeNull();
+  expect(contexts).toEqual([]);
+  expect(scene.loaded).toBe(false);
+  expect(document.documentElement.dataset.harbour).toBeUndefined();
+}
+
+describe("OnlineShell's harbour (#418: the still, no 3D scene)", () => {
+  it("shows the still on every shell page and never draws the harbour scene", async () => {
     act(() => root.render(<OnlineShell config={CONFIG} initialPage={{ kind: "play" }} />));
     await settle();
-    expect(container.querySelector('[data-testid="harbour-scene"]')).not.toBeNull();
-    expect(scene.mounts).toBe(1);
+    expectStillOnly();
 
     const links = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
     const pages = links.filter((href) => href.startsWith("?view=") || href === "/" || href.startsWith("/?"));
@@ -95,9 +104,8 @@ describe("OnlineShell's harbour (#122)", () => {
       clickLink(href);
       await settle();
       seen.add(sheet() ?? "");
+      expectStillOnly();
     }
     expect(seen.size).toBeGreaterThan(1);
-    expect(scene.mounts).toBe(1);
-    expect(scene.unmounts).toBe(0);
   });
 });

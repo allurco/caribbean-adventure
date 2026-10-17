@@ -21,16 +21,6 @@ async function signedIn(browser: Browser, captain: Captain): Promise<Page> {
   };
   // supabase-js keys the session by the URL's first host label: "localhost".
   await context.addInitScript(([key, value]) => window.localStorage.setItem(key, value), ["sb-localhost-auth-token", JSON.stringify(session)]);
-  // No WebGL on the shell's pages (#412): the harbour stays its still. Its live scene, drawn in
-  // software in headless Chromium, can still be mounting when the captain leaves the page, and the
-  // navigation then never commits. The match board (`?view=match`) keeps WebGL.
-  await context.addInitScript(() => {
-    if (new URLSearchParams(window.location.search).get("view") === "match") return;
-    const getContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, id: string, ...rest: unknown[]) {
-      return id.startsWith("webgl") ? null : getContext.call(this, id, ...(rest as []));
-    } as typeof getContext;
-  });
   return context.newPage();
 }
 

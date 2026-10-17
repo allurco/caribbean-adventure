@@ -2,7 +2,6 @@ import { use, useCallback, useEffect, useMemo, useReducer, useRef } from "react"
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { EventDispatcher, PerspectiveCamera, Vector3, type Camera, type WebGLRenderer } from "three";
 import { ErrorBoundary } from "react-error-boundary";
-import { usePrefersReducedMotion } from "../usePrefersReducedMotion";
 import { CAMERA_FOV } from "../cameraBounds";
 import { SCENE_LIGHTING } from "../visuals/sceneLighting";
 import { sunShadowFor } from "../visuals/atmosphere";
@@ -20,17 +19,13 @@ import { useLandTerrain } from "../visuals/useLandTerrain";
 import { useDecorationLayout } from "../visuals/useDecorationLayout";
 import { WAVE_CASCADES, WHITECAP_CASCADES } from "../visuals/oceanWaves";
 import { DISPLACEMENT_CASCADES } from "../visuals/waveDisplacement";
-import { createFramePacer, HARBOUR_FPS } from "./framePacer";
-import { useRotateGateShowing } from "../../landscape/useRotateGateShowing";
 import { isSettled, settleStep, shouldCompile, UNSETTLED } from "./harbourSettle";
 import { harbourCamera, harbourFov, type Vec3 } from "./harbourView";
 import { MotionHeldContext } from "../visuals/motionHold";
 import { surfTimeUniform } from "../visuals/surfMotion";
-import { harbourWorldOnce, holdHarbourWorld, type HarbourWorld } from "./harbourWorld";
+import { harbourWorldOnce, type HarbourWorld } from "./harbourWorld";
 
 export interface HarbourSceneProps {
-  /** The waves, the surf and the palms run; until then they are held at the moment the still was captured at (motionHold.ts). Frozen anyway under reduced motion. */
-  wavesRunning: boolean;
   /** The scene has drawn a settled frame (harbourSettle.ts): once. */
   onSettled: () => void;
   /** The scene cannot run: no WebGL, a lost context, an error. */
@@ -38,19 +33,17 @@ export interface HarbourSceneProps {
 }
 
 /**
- * The live harbour behind the online shell (#122): the board's sea, land,
- * decorations and light on a fixed map (harbourView.ts), lightened to be a
- * backdrop. Device pixel ratio 1, no shadow maps, no post-processing (the
- * board's tone mapping is the renderer's, its vignette is CSS), a fixed
- * camera, frames on demand at about 30 fps (framePacer.ts), and none at all
- * once settled under reduced motion. Suspends while the map is generated in
- * the map worker.
+ * The harbour the online shell's still is captured from (#122, #418; dev
+ * `?view=harbour`, HarbourCapture.tsx): the board's sea, land, decorations
+ * and light on a fixed map (harbourView.ts), lightened. Device pixel ratio 1,
+ * no shadow maps, no post-processing (the board's tone mapping is the
+ * renderer's, the shell's vignette is CSS), a fixed camera, and all its
+ * motion held (motionHold.ts) so two captures match. It draws frames until
+ * its settled frame, then none. Suspends while the map is generated in the
+ * map worker. The shell never mounts it: it shows only the still.
  */
 export function HarbourScene(props: HarbourSceneProps) {
-  const pending = harbourWorldOnce();
-  const world = use(pending);
-  // Let the world (and every per-map cache on its map) go once the scene is gone
-  useEffect(() => holdHarbourWorld(pending), [pending]);
+  const world = use(harbourWorldOnce());
   const { onFailed } = props;
   const view = useMemo(() => harbourCamera(world.target), [world.target]);
   // R3F forces the context lost when the canvas unmounts: that is leaving, not failing
@@ -78,7 +71,7 @@ export function HarbourScene(props: HarbourSceneProps) {
         onCreated={({ gl }) => gl.domElement.addEventListener("webglcontextlost", onContextLost, { once: true })}
         style={{ position: "absolute", inset: 0 }}
       >
-        <MotionHeldContext value={!props.wavesRunning}>
+        <MotionHeldContext value={true}>
           <Harbour world={world} {...props} />
         </MotionHeldContext>
       </Canvas>
@@ -86,17 +79,13 @@ export function HarbourScene(props: HarbourSceneProps) {
   );
 }
 
-function Harbour({ world, wavesRunning, onSettled }: HarbourSceneProps & { world: HarbourWorld }) {
+function Harbour({ world, onSettled }: HarbourSceneProps & { world: HarbourWorld }) {
   const { cells, wrap, seed, target } = world;
   const lighting = SCENE_LIGHTING;
   const sunShadow = useMemo(() => sunShadowFor(lighting.sun), [lighting.sun]);
-  const reducedMotion = usePrefersReducedMotion();
-  const frozen = reducedMotion || !wavesRunning;
-  // No frames at all under the rotate gate (#123), which covers the backdrop with its own still
-  const gated = useRotateGateShowing();
 
   const sky = useSkyEnvironment(lighting);
-  const waveClock = useWaveClock(frozen);
+  const waveClock = useWaveClock(true);
   const waves = useWaveCascades(WAVE_CASCADES, WHITECAP_CASCADES, DISPLACEMENT_CASCADES, waveClock);
   const terrainField = useTerrainFieldTexture(cells, wrap, seed);
   const land = useLandTerrain(cells, wrap, seed, { sun: lighting.sun.direction, waveSlopes: waves.slopes, terrainField });
@@ -112,7 +101,7 @@ function Harbour({ world, wavesRunning, onSettled }: HarbourSceneProps & { world
     <>
       <FixedView target={target} />
       <ToneExposure exposure={lighting.grade.exposure} />
-      <Pacer running={(!settled || !frozen) && !gated} />
+      <DrawUntil running={!settled} />
 
       <color attach="background" args={[lighting.haze.color]} />
       <fog attach="fog" args={[lighting.haze.color, lighting.haze.near, lighting.haze.far]} />
@@ -252,15 +241,14 @@ function fitFov(camera: Camera, aspect: number): void {
   camera.updateProjectionMatrix();
 }
 
-/** Asks for frames at the backdrop's pace (framePacer.ts) while `running`; the canvas draws nothing otherwise. */
-function Pacer({ running }: { running: boolean }) {
+/** Asks for a frame every animation frame while `running`; the canvas draws nothing otherwise. */
+function DrawUntil({ running }: { running: boolean }) {
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
     invalidate();
     if (!running) return;
-    const pacer = createFramePacer(HARBOUR_FPS);
-    let id = requestAnimationFrame(function tick(now) {
-      if (pacer.shouldDraw(now)) invalidate();
+    let id = requestAnimationFrame(function tick() {
+      invalidate();
       id = requestAnimationFrame(tick);
     });
     return () => cancelAnimationFrame(id);

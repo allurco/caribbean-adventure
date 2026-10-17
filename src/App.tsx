@@ -31,7 +31,7 @@ const isLab = window.location.hash === "#lab";
 // The seed gallery (#161) is dev only: the DEV guard drops it, and its chunk, from production builds.
 const SeedGallery = import.meta.env.DEV ? lazy(() => import("./lab/SeedGallery")) : null;
 const showSeedGallery = SeedGallery !== null && devParams.seedGallery === true;
-// The harbour backdrop's capture view (#122), dev only like the seed gallery.
+// The harbour still's capture view (#122), dev only like the seed gallery.
 const HarbourCapture = import.meta.env.DEV ? lazy(() => import("./board/harbour/HarbourCapture")) : null;
 const showHarbourCapture = HarbourCapture !== null && devParams.harbourCapture === true;
 // The event card lab (#247), dev only like the seed gallery.
@@ -92,11 +92,9 @@ function AppView() {
   }
   if (supabaseConfig && shellPage) {
     // The harbour still is the very first paint (#122), before the shell's chunk is in.
-    // A separate instance from the shell's own: `interactive={false}` keeps it the
-    // still alone (it never mounts the live scene), and it goes when the shell's
-    // backdrop takes its place, which paints the same still on its first frame.
+    // It goes when the shell's backdrop takes its place, the same still.
     return (
-      <Suspense fallback={<HarbourBackdrop interactive={false} />}>
+      <Suspense fallback={<HarbourBackdrop />}>
         <OnlineShell config={supabaseConfig} initialPage={shellPage} />
       </Suspense>
     );

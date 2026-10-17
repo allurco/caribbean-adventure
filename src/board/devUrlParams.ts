@@ -30,7 +30,7 @@ export interface DevUrlParams {
   renderStats?: true;
   /** `?view=cards`: the event card lab (#247), every card and its placeholder art; with `&card=<kind|back>` (and `&nation=` for a flag) one card staged where the HUD shows it, in dev builds only. */
   cardLab?: { card?: CardArtSlot; nation?: PortNation };
-  /** `?view=harbour`: the harbour backdrop's live scene alone, to capture its still from (#122), in dev builds only. */
+  /** `?view=harbour`: the harbour scene alone, to capture the online shell's still from (#122, #418), in dev builds only. */
   harbourCapture?: true;
   /** `?seedGallery=1`: the 12-seed contact sheet instead of the game (#161), in dev builds only. */
   seedGallery?: true;

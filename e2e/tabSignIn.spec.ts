@@ -33,14 +33,6 @@ async function askForLink(page: Page): Promise<void> {
 }
 
 test("the email link signs in every open tab, and signing out signs them all out", async ({ context }) => {
-  // No WebGL: the harbour stays its still. The live scene, drawn in software
-  // in two headless pages at once, can hold a page's main thread for seconds.
-  await context.addInitScript(() => {
-    const getContext = HTMLCanvasElement.prototype.getContext;
-    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, id: string, ...rest: unknown[]) {
-      return id.startsWith("webgl") ? null : getContext.call(this, id, ...(rest as []));
-    } as typeof getContext;
-  });
   const tabA = await context.newPage();
   await askForLink(tabA);
 
@@ -50,6 +42,9 @@ test("the email link signs in every open tab, and signing out signs them all out
 
   // Tab A is behind tab B, as a tab left open is: it signs in by itself, and says so.
   await expect(tabA.getByRole("button", { name: "Sign out" })).toBeVisible({ timeout: 3_000 });
+  // The shell's harbour is its still alone (#418): no canvas, so no WebGL, on its pages.
+  await expect(tabA.locator("canvas")).toHaveCount(0);
+  await expect(tabB.locator("canvas")).toHaveCount(0);
   // The line on the sheet; the live region below carries it for screen readers.
   await expect(tabA.locator('p[aria-hidden="true"]', { hasText: SIGNED_IN_ELSEWHERE })).toBeVisible();
   // And tells a screen reader, through the live region the shell keeps mounted.

@@ -4,7 +4,7 @@ import { HARBOUR_SETTLE_FRAMES, isSettled, settleStep, shouldCompile, UNSETTLED,
 const run = (events: SettleEvent[]) => events.reduce(settleStep, UNSETTLED);
 const frames = (n: number): SettleEvent[] => Array.from({ length: n }, () => "frame");
 
-describe("the harbour's settled frame (#122: the fade waits on it, not a timer)", () => {
+describe("the harbour's settled frame (#122: the capture waits on it, not a timer)", () => {
   it("is not settled however many frames draw before the world and the sky are in", () => {
     expect(isSettled(run(frames(100)))).toBe(false);
     expect(isSettled(run(["world", ...frames(100)]))).toBe(false);

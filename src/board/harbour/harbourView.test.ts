@@ -8,8 +8,8 @@ import { HARBOUR_CAMERA_DISTANCE, HARBOUR_MAP, harbourCamera, harbourFov, harbou
 const cells = generateMapFor(HARBOUR_MAP).cells;
 const target = harbourTarget(cells);
 
-/** A three camera set up as the live scene sets its own at a viewport of `width` × `height`. */
-function liveCamera(width: number, height: number): PerspectiveCamera {
+/** A three camera set up as the harbour scene sets its own when drawn at a viewport of `width` × `height`. */
+function sceneCamera(width: number, height: number): PerspectiveCamera {
   const view = harbourCamera(target);
   const camera = new PerspectiveCamera(harbourFov(width / height), width / height, view.near, 1000);
   camera.position.set(...view.position);
@@ -30,7 +30,7 @@ function coverPixel([x, y]: [number, number], width: number, height: number): [n
   return [(width - STILL_WIDTH * scale) / 2 + x * scale, (height - STILL_HEIGHT * scale) / 2 + y * scale];
 }
 
-describe("the harbour backdrop's view (#122)", () => {
+describe("the harbour still's view (#122, #418)", () => {
   it("looks at the harbour of the port nearest the map's middle, the same one every time", () => {
     expect(harbourTarget(generateMapFor(HARBOUR_MAP).cells)).toEqual(target);
     const ports = cells.filter((c) => c.hasPort).map((c) => hexToWorld(c.hex));
@@ -53,8 +53,8 @@ describe("the harbour backdrop's view (#122)", () => {
     expect(harbourFov(32 / 9)).toBeLessThan(CAMERA_FOV);
   });
 
-  it("lines the still up with the live scene, pixel for pixel, at desktop and landscape-phone sizes", () => {
-    const still = liveCamera(STILL_WIDTH, STILL_HEIGHT);
+  it("lines the still up, under CSS cover, with the scene drawn at each desktop and landscape-phone size, pixel for pixel", () => {
+    const still = sceneCamera(STILL_WIDTH, STILL_HEIGHT);
     const points = [
       new Vector3(...target),
       new Vector3(target[0] - 3, 0, target[2] - 2),
@@ -72,9 +72,9 @@ describe("the harbour backdrop's view (#122)", () => {
       [667, 375],
     ];
     for (const [width, height] of viewports) {
-      const live = liveCamera(width, height);
+      const drawn = sceneCamera(width, height);
       for (const point of points) {
-        const [lx, ly] = pixelOf(point, live, width, height);
+        const [lx, ly] = pixelOf(point, drawn, width, height);
         const [sx, sy] = coverPixel(pixelOf(point, still, STILL_WIDTH, STILL_HEIGHT), width, height);
         expect(Math.abs(lx - sx), `${width}×${height} x`).toBeLessThan(0.01);
         expect(Math.abs(ly - sy), `${width}×${height} y`).toBeLessThan(0.01);

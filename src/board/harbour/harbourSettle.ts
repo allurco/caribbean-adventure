@@ -1,6 +1,6 @@
 /**
- * When the harbour backdrop's live scene has drawn a settled frame (#122),
- * the signal its fade waits on, pure. Like the board's loading gate
+ * When the harbour scene has drawn a settled frame (#122), the signal the
+ * still's capture (HarbourCapture.tsx) waits on, pure. Like the board's loading gate
  * (sceneReadiness.ts), but for one scene with no assets to fetch: the world
  * built, the sky baked (the sea waits on it), every shader compiled, then a
  * run of frames drawn, so nothing is still compiling or popping in when the
