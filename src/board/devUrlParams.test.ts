@@ -77,7 +77,7 @@ describe("parseDevUrlParams", () => {
     expect(parseDevUrlParams("?view=cards&card=storm&nation=Spain")).toEqual({ cardLab: { card: "storm" } });
   });
 
-  it("opens the harbour backdrop's capture view, in dev builds (#122)", () => {
+  it("opens the harbour still's capture view, in dev builds (#122)", () => {
     expect(parseDevUrlParams("?view=harbour")).toEqual({ harbourCapture: true });
     expect(parseDevUrlParams("?view=harbours")).toEqual({});
   });

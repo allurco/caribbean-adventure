@@ -29,7 +29,7 @@ export function surfTimeRate(reducedMotion: boolean): number {
 
 /**
  * The surf clock after a frame of `deltaSeconds`, wrapped to [0, SURF_LOOP_SECONDS).
- * While `held` (motionHold.ts: the harbour backdrop before its fade, #122) it stands still.
+ * While `held` (motionHold.ts: the harbour still's capture, #122) it stands still.
  */
 export function advanceSurfTime(current: number, deltaSeconds: number, reducedMotion: boolean, held = false): number {
   if (held || !Number.isFinite(deltaSeconds) || deltaSeconds <= 0) return current;

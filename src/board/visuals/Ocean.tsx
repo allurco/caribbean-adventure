@@ -618,7 +618,7 @@ export function Ocean({
   const seabed = useSeabedPrepass();
 
   const reducedMotion = usePrefersReducedMotion();
-  // Held surf (motionHold.ts): the harbour backdrop before its fade (#122); never on the board.
+  // Held surf (motionHold.ts): the harbour still's capture (#122); never on the board.
   const motionHeld = useMotionHeld();
 
   const material = useMemo(() => {

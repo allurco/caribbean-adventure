@@ -1,14 +1,14 @@
 /**
- * What the harbour backdrop behind the online shell shows (#122), and from
- * where, pure. The live scene and the captured still both come from here, so
- * they line up:
+ * What the harbour still behind the online shell shows (#122, #418), and
+ * from where, pure. The scene the still is captured from (HarbourScene.tsx)
+ * and the still as the shell shows it both come from here, so they line up:
  *
  * - one fixed map (`HARBOUR_MAP`) and one fixed camera, the board's own
  *   (due north at its pitch, ADR 0002), looking at the harbour of the port
  *   nearest the map's middle;
  * - the still is captured at `STILL_WIDTH` × `STILL_HEIGHT`, wider than any
  *   desktop or phone held sideways, and shown with CSS `background-size:
- *   cover` centred. Up to the still's aspect the live camera keeps the
+ *   cover` centred. Up to the still's aspect the scene's camera keeps the
  *   board's vertical field of view and cover fits the still to the height;
  *   past it the camera keeps the still's horizontal field and cover fits the
  *   width. Either way the two agree pixel for pixel (harbourView.test.ts).

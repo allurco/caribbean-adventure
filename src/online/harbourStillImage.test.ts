@@ -6,7 +6,7 @@ import { HARBOUR_STILL } from "./harbourStillImage";
 const PUBLIC_FILES = Object.keys(import.meta.glob("../../public/**/*")).map((path) => path.replace("../../public/", ""));
 
 describe("the harbour still (#122)", () => {
-  it("was captured from the view the live scene shows; re-capture it when the map, the camera or the size changes (docs/harbour-still.md)", () => {
+  it("was captured from the view the harbour scene shows; re-capture it when the map, the camera or the size changes (docs/harbour-still.md)", () => {
     expect(HARBOUR_STILL.capturedWith).toEqual(harbourViewRecord());
   });
 

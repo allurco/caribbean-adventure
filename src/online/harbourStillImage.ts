@@ -1,6 +1,6 @@
 // Written by scripts/capture-harbour-still.mjs (npm run capture:harbour); re-capture rather than edit (docs/harbour-still.md).
 
-/** The harbour backdrop's still (#122): where it is served from under the app's base, its inlined placeholder and the view it was captured from. */
+/** The online shell's harbour still (#122): where it is served from under the app's base, its inlined placeholder and the view it was captured from. */
 export const HARBOUR_STILL = {
   path: "harbour/harbour-still.webp",
   placeholder: "data:image/webp;base64,UklGRqACAABXRUJQVlA4WAoAAAAgAAAAHwAADAAASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZWUDggsgAAAJAEAJ0BKiAADQA+7WKpTamlpCIwCAEwHYlmAJ0ygxgARlOvwOzrTZdAzRt4AAD+5GVTaMY1kXHOcwBZjKAUW80O+vemiDgkXfkbFcif8nFOrKonAw6vVlS8YbQb4Yf7Mp2BX8vx2n3eDOxCtJIj/5R6HCAveXbZ3wfUgLdSq9rNTnSUu905RVpuE1xQOYkI/v0jhdxCl/Swi9+2sVOBJhqR9/yjs5s+dNHXX0Qa6SzwAAA=",

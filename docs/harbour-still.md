@@ -1,6 +1,6 @@
 # The harbour still
 
-The online shell paints a still of the harbour first, then fades the live scene in over it (#122). The two only match while the still shows what the live scene shows, so **capture the still again whenever the harbour's map, its camera or its look changes**.
+The online shell's backdrop is a still of the harbour (#122), and only the still: the shell's pages draw no live scene and create no WebGL context (#418), so a software or weak GPU never holds the menus up. The still is captured from the harbour scene (`src/board/harbour/HarbourScene.tsx`), the board's own sea, land and light on a fixed map, so it shows the game's look. **Capture it again whenever the harbour's map, its camera or the board's look changes**, or it drifts from the game.
 
 ## What the still depends on
 
@@ -13,12 +13,12 @@ The online shell paints a still of the harbour first, then fades the live scene 
 npm run capture:harbour
 ```
 
-`scripts/capture-harbour-still.mjs` starts a Vite dev server, opens the dev-only view `?view=harbour` (the backdrop's live scene alone, full screen, its waves held at their first moment) in headless Chromium on the GPU at the still's size, waits for the scene's settled frame, and writes:
+`scripts/capture-harbour-still.mjs` starts a Vite dev server, opens the dev-only view `?view=harbour` (the harbour scene alone, full screen, its waves held at their first moment) in headless Chromium on the GPU at the still's size, waits for the scene's settled frame, and writes:
 
 - `public/harbour/harbour-still.webp`: the still;
 - `src/online/harbourStillImage.ts`: its path, a tiny inlined placeholder (shown blurred at first paint) and the view it was captured from.
 
-It takes a few seconds on a machine with a GPU. The view holds all the scene's motion (`wavesRunning={false}`: the wave clock, and through `MotionHeldContext` in `src/board/visuals/motionHold.ts` the surf and the palms' sway), the same pose the backdrop holds until its fade starts, and it runs with reduced motion as well, so two runs give byte-identical files. The script prints the WebGL renderer it got. Check that it is a GPU ("ANGLE Metal Renderer: …" on a Mac, where it asks for ANGLE's Metal back end; elsewhere it takes Chromium's default), not "SwiftShader": a software-rendered still lights the water differently from the live scene the player sees (see `docs/agents/visual-checks-ledger.md`).
+It takes a few seconds on a machine with a GPU. The scene holds all its motion (the wave clock, and through `MotionHeldContext` in `src/board/visuals/motionHold.ts` the surf and the palms' sway), and the capture runs with reduced motion as well, so two runs give byte-identical files. The script prints the WebGL renderer it got. Check that it is a GPU ("ANGLE Metal Renderer: …" on a Mac, where it asks for ANGLE's Metal back end; elsewhere it takes Chromium's default), not "SwiftShader": a software-rendered still lights the water differently from the board the player sees (see `docs/agents/visual-checks-ledger.md`).
 
 Then:
 
@@ -28,4 +28,4 @@ Then:
 
 ## Why it lines up
 
-The live camera keeps the board's vertical field of view up to the still's aspect (2.4 : 1) and the still's horizontal field beyond it. The still is shown with CSS `background-size: cover`, centred. Under that pair of rules, every world point lands on the same pixel in both, at any viewport size: `harbourView.test.ts` checks this at desktop, ultrawide and landscape-phone sizes. Changing either rule, or the still's size, breaks the match until the still is captured again.
+The still is shown with CSS `background-size: cover`, centred, so it fills any viewport, cropped evenly. The scene's camera keeps the board's vertical field of view up to the still's aspect (2.4 : 1) and the still's horizontal field beyond it, so `?view=harbour` opened at any window size frames exactly what the still shows there: `harbourView.test.ts` checks this at desktop, ultrawide and landscape-phone sizes. Changing either rule, or the still's size, breaks the match until the still is captured again.

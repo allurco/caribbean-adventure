@@ -2,15 +2,15 @@ import { HARBOUR_STILL } from "./harbourStillImage";
 
 const STILL_URL = `${import.meta.env.BASE_URL}${HARBOUR_STILL.path}`;
 
-/** Sized like the live scene's camera (harbourView.ts): cover, centred, so the still lines up with it at any aspect. */
+/** Cover, centred (harbourView.ts): the still fills the viewport at any aspect, cropped evenly. */
 const LAYER = "absolute inset-0 bg-cover bg-center bg-no-repeat";
 
 /**
- * The harbour as first painted (#122): the still captured from the live
- * scene's fixed camera, over a tiny blurred copy inlined in the bundle, so
- * the harbour's colours are on screen before the still has downloaded. The
- * shell's first paint (the fallback while its chunk loads) and the backdrop
- * until the live scene has faded in.
+ * The harbour behind the online shell (#122, #418): the still captured from
+ * the harbour scene's fixed camera, over a tiny blurred copy inlined in the
+ * bundle, so the harbour's colours are on screen before the still has
+ * downloaded. The shell's backdrop on every page, its first paint (the
+ * fallback while its chunk loads) and the rotate gate's picture.
  */
 export function HarbourStill() {
   return (

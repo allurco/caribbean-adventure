@@ -1,6 +1,6 @@
-// Captures the harbour backdrop's still (#122) from its live scene, the same
-// fixed camera the online shell's backdrop fades in from. Repeatable: same
-// map, same camera, waves held at their first moment. See docs/harbour-still.md.
+// Captures the online shell's harbour still (#122, #418) from the harbour
+// scene, the shell's only backdrop. Repeatable: same map, same camera, waves
+// held at their first moment. See docs/harbour-still.md.
 //
 //   npm run capture:harbour
 //
@@ -82,7 +82,7 @@ try {
     new URL("../src/online/harbourStillImage.ts", import.meta.url),
     `// Written by scripts/capture-harbour-still.mjs (npm run capture:harbour); re-capture rather than edit (docs/harbour-still.md).
 
-/** The harbour backdrop's still (#122): where it is served from under the app's base, its inlined placeholder and the view it was captured from. */
+/** The online shell's harbour still (#122): where it is served from under the app's base, its inlined placeholder and the view it was captured from. */
 export const HARBOUR_STILL = {
   path: ${JSON.stringify(STILL_PATH)},
   placeholder: ${JSON.stringify(encoded.placeholder)},

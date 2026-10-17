@@ -23,7 +23,7 @@ export function SignInGate({ config, children }: SignInGateProps) {
   const signingIn = client !== undefined && session.status === "signedOut";
   return (
     <div className="absolute inset-0 overflow-hidden bg-shell-harbour">
-      <HarbourBackdrop interactive={signingIn} />
+      <HarbourBackdrop />
       {signingIn ? <ShellSignIn client={client} /> : <ShellStatus />}
     </div>
   );
