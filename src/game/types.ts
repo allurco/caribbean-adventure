@@ -141,11 +141,11 @@ export interface Volley {
    * shooter's upgrades then. Absent from a volley stored before this was
    * recorded (save version 9 and before, an online match): read as none.
    */
-  shots?: ShotBonus[];
+  shotBonuses?: ShotBonus[];
   /**
    * The damage it dealt (#380), after the mast cap: mast hits past
    * `MAX_MAST_DAMAGE` (chain shot's included) went to the hull. Absent as
-   * `shots` is: the line then names where the hits landed only.
+   * `shotBonuses` is: the line then names where the hits landed only.
    */
   dealt?: DamageState;
 }

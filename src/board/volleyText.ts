@@ -33,7 +33,7 @@ export function volleyLine(volley: Volley): { fired: string; hits: string } {
   const fired = `fired ${volley.guns} gun${volley.guns === 1 ? "" : "s"}`;
   if (volley.hits === 0) return { fired, hits: "no hits" };
   const at = hitCountsOf(volley);
-  const shots = volley.shots ?? [];
+  const shots = volley.shotBonuses ?? [];
   const chain = shots.includes("chain_shot");
   const grape = shots.includes("grape_shot");
   const onMasts = at.masts + (chain ? 1 : 0);

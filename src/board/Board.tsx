@@ -114,6 +114,7 @@ import {
   gloryScoreboard,
   hudSeat,
   hudShip,
+  isHotseatBoard,
   viewerSeat,
   seatMayAct,
   seatMayActInCombat,
@@ -1149,7 +1150,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
     inCombat: Boolean(inCombat),
     npcInFight: npcInFight ? npcKind(npcInFight) : null,
     announced: announced !== null,
-    hotseat: props.playerID == null && ctx.numPlayers > 1,
+    hotseat: isHotseatBoard(props.playerID, ctx.numPlayers),
   });
   if (nextFightOverView !== fightOverView) setFightOverView(nextFightOverView);
   const fightOver = nextFightOverView.shown;

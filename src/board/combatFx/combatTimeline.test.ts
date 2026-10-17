@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { combatBeatsFrom, type CombatBeat, type VolleyBeat } from "./combatTimeline";
+import { combatBeatsFrom, type CombatBeat, type VolleyBeat, mastFalls } from "./combatTimeline";
 import type { CaribbeanState, CombatState, HitLocation, NPCShip, ShipClass, ShipState, Volley } from "../../game/types";
 import { hex } from "../../game/hex";
 import { emptyCargo } from "../../game/economy";
@@ -213,6 +213,16 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(falls({ shooterId: "0", guns: 4, hits: 3, locations: { hull: 2, masts: 1, crew: 0 } })).toBe(true);
     // A volley stored before #380, aimed at the masts
     expect(falls({ shooterId: "0", guns: 4, hits: 1, aim: "masts" })).toBe(true);
+  });
+
+  it("mastFalls: only a volley that dealt mast damage brings a mast down, never one whose mast hits all went to the hull", () => {
+    const at = (hull: number, masts: number, crew: number) => ({ hull, masts, crew });
+    expect(mastFalls({ shooterId: "0", guns: 4, hits: 2, locations: at(0, 2, 0), dealt: at(1, 1, 0) })).toBe(true);
+    // The masts already gone: every mast hit went to the hull
+    expect(mastFalls({ shooterId: "0", guns: 4, hits: 2, locations: at(0, 2, 0), dealt: at(2, 0, 0) })).toBe(false);
+    expect(mastFalls({ shooterId: "0", guns: 4, hits: 1, locations: at(1, 0, 0), dealt: at(1, 0, 0) })).toBe(false);
+    // Stored without its damage (save version 9): a hit on the masts is enough
+    expect(mastFalls({ shooterId: "0", guns: 4, hits: 1, locations: at(0, 1, 0) })).toBe(true);
   });
 
   it("the first volley plays as it is fired, while the answer waits on its aim (#348)", () => {

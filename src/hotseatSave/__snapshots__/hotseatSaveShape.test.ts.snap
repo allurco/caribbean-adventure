@@ -30,7 +30,7 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
         "masts": "number",
       },
       "shooterId": "string",
-      "shots": [],
+      "shotBonuses": [],
     },
   ],
 }
@@ -62,7 +62,7 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
         "masts": "number",
       },
       "shooterId": "string",
-      "shots": [],
+      "shotBonuses": [],
     },
   ],
 }

@@ -217,7 +217,7 @@ export function volleyOutcome(
   locations: HitCounts,
   shooterUpgrades: readonly string[],
   targetMastDamage = 0,
-): { shots: ShotBonus[]; dealt: DamageState } {
+): { shotBonuses: ShotBonus[]; dealt: DamageState } {
   const shots = shotBonuses(locations, shooterUpgrades);
   const onMasts = locations.masts + (shots.includes("chain_shot") ? 1 : 0);
   const masts = Math.min(onMasts, Math.max(0, MAX_MAST_DAMAGE - targetMastDamage));
@@ -226,7 +226,7 @@ export function volleyOutcome(
     crew: locations.crew + (shots.includes("grape_shot") ? 1 : 0),
     masts,
   };
-  return { shots, dealt };
+  return { shotBonuses: shots, dealt };
 }
 
 /** The shots that added to a volley (#380): chain shot when a hit landed on the masts, grape shot when one landed on the crew. */

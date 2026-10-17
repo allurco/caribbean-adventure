@@ -391,7 +391,7 @@ describe("round 1 is the ambush (#346)", () => {
     const client = startGame({ "0": ship(0, 0, { cannons: 0 }), "1": ship(1, 0, { cannons: 0, maneuverability: 20 }) });
     client.moves.attackShip("1");
     client.moves.rollCannons();
-    expect(G(client).lastRound!.volleys).toEqual([{ shooterId: "0", guns: 0, hits: 0, locations: { hull: 0, masts: 0, crew: 0 }, shots: [], dealt: { hull: 0, masts: 0, crew: 0 } }]);
+    expect(G(client).lastRound!.volleys).toEqual([{ shooterId: "0", guns: 0, hits: 0, locations: { hull: 0, masts: 0, crew: 0 }, shotBonuses: [], dealt: { hull: 0, masts: 0, crew: 0 } }]);
     expect(G(client).combat).toMatchObject({ round: 2, stage: "seamanship", volleys: [] });
 
     client.moves.rollSeamanship();
@@ -537,7 +537,7 @@ describe("a fight from before #346, mid-round when the change deploys", () => {
     // Both guns hit (6s), then the hits land on the hull (1) and the masts (3)
     const dice = [6, 6, 1, 3];
     expect(applyCannons(G0, () => dice.shift()!, 1)).toBe("continues");
-    expect(G0.combat!.volleys).toEqual([{ shooterId: "0", guns: 2, hits: 2, locations: { hull: 1, masts: 1, crew: 0 }, shots: [], dealt: { hull: 1, masts: 1, crew: 0 } }]);
+    expect(G0.combat!.volleys).toEqual([{ shooterId: "0", guns: 2, hits: 2, locations: { hull: 1, masts: 1, crew: 0 }, shotBonuses: [], dealt: { hull: 1, masts: 1, crew: 0 } }]);
     // The answer is the defender's own step
     expect(G0.combat!.stage).toBe("returnFire");
   });
@@ -567,7 +567,7 @@ describe("every hit lands at random (#380)", () => {
     const G0 = ambush(4, 2);
     // Four guns: three hit (5, 6, 6), one misses (2); the hits land on the hull, the masts and the crew
     applyCannons(G0, scripted(5, 2, 6, 6, 1, 4, 5), 1);
-    expect(G0.combat!.volleys).toEqual([{ shooterId: "0", guns: 4, hits: 3, locations: { hull: 1, masts: 1, crew: 1 }, shots: [], dealt: { hull: 1, masts: 1, crew: 1 } }]);
+    expect(G0.combat!.volleys).toEqual([{ shooterId: "0", guns: 4, hits: 3, locations: { hull: 1, masts: 1, crew: 1 }, shotBonuses: [], dealt: { hull: 1, masts: 1, crew: 1 } }]);
     expect(G0.ships["1"].damage).toEqual({ hull: 1, masts: 1, crew: 1 });
     expect(G0.ships["1"].stats!.hull.current).toBe(39);
     expect(G0.ships["1"].stats!.crew.current).toBe(19);
@@ -585,12 +585,12 @@ describe("every hit lands at random (#380)", () => {
     // Three hits, all on the masts: two masts and chain shot's +1 past the cap go to the hull
     applyCannons(G0, scripted(6, 6, 6, 3, 4, 3), 1);
     const [volley] = G0.lastRound!.volleys;
-    expect(volley).toMatchObject({ locations: { hull: 0, masts: 3, crew: 0 }, shots: ["chain_shot"], dealt: { hull: 2, masts: MAX_MAST_DAMAGE, crew: 0 } });
+    expect(volley).toMatchObject({ locations: { hull: 0, masts: 3, crew: 0 }, shotBonuses: ["chain_shot"], dealt: { hull: 2, masts: MAX_MAST_DAMAGE, crew: 0 } });
     expect(G0.ships["1"].damage).toEqual(volley.dealt);
     // A miss records no shot and no damage
     const missed = ambush(2, 0, ["chain_shot", "grape_shot"]);
     applyCannons(missed, scripted(1, 1), 1);
-    expect(missed.lastRound!.volleys[0]).toMatchObject({ hits: 0, shots: [], dealt: { hull: 0, masts: 0, crew: 0 } });
+    expect(missed.lastRound!.volleys[0]).toMatchObject({ hits: 0, shotBonuses: [], dealt: { hull: 0, masts: 0, crew: 0 } });
   });
 
   it("chain shot adds one to the masts when a hit lands there, grape shot one to the crew when a hit lands there", () => {
@@ -613,8 +613,8 @@ describe("every hit lands at random (#380)", () => {
     // The player's gun misses; the NPC's two hit, on the crew and the hull
     applyCannons(G0, scripted(1, 6, 5, 6, 2), 1);
     expect(G0.lastRound!.volleys).toEqual([
-      { shooterId: "0", guns: 1, hits: 0, locations: { hull: 0, masts: 0, crew: 0 }, shots: [], dealt: { hull: 0, masts: 0, crew: 0 } },
-      { shooterId: "foe", guns: 2, hits: 2, locations: { hull: 1, masts: 0, crew: 1 }, shots: [], dealt: { hull: 1, masts: 0, crew: 1 } },
+      { shooterId: "0", guns: 1, hits: 0, locations: { hull: 0, masts: 0, crew: 0 }, shotBonuses: [], dealt: { hull: 0, masts: 0, crew: 0 } },
+      { shooterId: "foe", guns: 2, hits: 2, locations: { hull: 1, masts: 0, crew: 1 }, shotBonuses: [], dealt: { hull: 1, masts: 0, crew: 1 } },
     ]);
     expect(G0.ships["0"].damage).toEqual({ hull: 1, masts: 0, crew: 1 });
   });

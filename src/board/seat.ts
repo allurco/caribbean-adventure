@@ -34,6 +34,15 @@ export function seatMayAct({ playerID, currentPlayer }: SeatTurn): boolean {
   return playerID == null || playerID === currentPlayer;
 }
 
+/**
+ * Whether this is the seatless hotseat board: no seat (`playerID`) and more
+ * than one captain at the one screen. A solo game has no seat either, but
+ * no other captain to hand the board to.
+ */
+export function isHotseatBoard(playerID: string | null | undefined, numPlayers: number): boolean {
+  return playerID == null && numPlayers > 1;
+}
+
 /** Whose ship the board treats as the viewer's own (hover, ship details, port, scouting): the seat's, or in hotseat the current player's. */
 export function viewerSeat({ playerID, currentPlayer }: SeatTurn): string {
   return playerID ?? currentPlayer;

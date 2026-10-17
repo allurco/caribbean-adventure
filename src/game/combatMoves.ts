@@ -324,8 +324,8 @@ function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, d
   const locations = rollHitLocations(hits, d6);
   // The shots and the damage as fired, so the volley reads the same after the shooter sinks or buys another shot
   const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
-  const { shots, dealt } = volleyOutcome(locations, upgrades, target.damage.masts);
-  combat.volleys = [...(combat.volleys ?? []), { shooterId, guns, hits, locations, shots, dealt }];
+  const { shotBonuses, dealt } = volleyOutcome(locations, upgrades, target.damage.masts);
+  combat.volleys = [...(combat.volleys ?? []), { shooterId, guns, hits, locations, shotBonuses, dealt }];
   if (shooterId === combat.attackerId) combat.attackerHits = hits;
   else combat.defenderHits = hits;
   if (hits === 0) return;
@@ -478,7 +478,7 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
   // Check for sunk/derelict
   let combatEnded = false;
   // Player ships sunk this exchange: lost once both sides' glory and bounties are settled
-  const sunk: string[] = [];
+  const playerShipsSunk: string[] = [];
   // Ships this round left derelict, never one derelict before it (#380)
   const leftDerelict: string[] = [];
   // Every ship the round sank, the NPC too, for the fight's end (#380)
@@ -531,7 +531,7 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
 
       const loot = createLootFromShip(defenderShip, nextLootId(G));
       G.floatingLoot.push(loot);
-      sunk.push(combat.defenderId);
+      playerShipsSunk.push(combat.defenderId);
       combatEnded = true;
     } else if (isDerelict(defenderShip)) {
       if (!defenderShip.isDerelict) leftDerelict.push(combat.defenderId);
@@ -552,7 +552,7 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
 
     const loot = createLootFromShip(attacker, nextLootId(G));
     G.floatingLoot.push(loot);
-    sunk.push(combat.attackerId);
+    playerShipsSunk.push(combat.attackerId);
     combatEnded = true;
   } else if (isDerelict(attacker)) {
     if (!attacker.isDerelict) leftDerelict.push(combat.attackerId);
@@ -561,8 +561,8 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
   }
 
   // The sunk ships leave G.ships here, and their captains die with them (#265)
-  for (const id of sunk) loseShip(G, id, "sunk");
-  sankThisRound.push(...sunk);
+  for (const id of playerShipsSunk) loseShip(G, id, "sunk");
+  sankThisRound.push(...playerShipsSunk);
 
   // After a failed flee attempt, combat ends after the parting shot
   if (combat.fleeOutcome === "caught") {

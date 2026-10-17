@@ -7,7 +7,7 @@ import { createShipState, STARTING_GOLD } from "../game/economy";
 import { hex } from "../game/hex";
 import { createNPCShip } from "../game/npcManager";
 import type { Captain, CaribbeanState, CombatState, FleeOutcome, NPCShip } from "../game/types";
-import { choosingCaptain, combatWaitingFor, draftView, fightBystander, fightWatched, gloryScoreboard, hudSeat, hudShip, viewerSeat, seatMayAct, seatMayActInCombat, seatName, turnCaptainName, waitingFor } from "./seat";
+import { choosingCaptain, combatWaitingFor, draftView, fightBystander, fightWatched, gloryScoreboard, hudSeat, hudShip, isHotseatBoard, viewerSeat, seatMayAct, seatMayActInCombat, seatName, turnCaptainName, waitingFor } from "./seat";
 import { startHandoff } from "./turnHandoff";
 
 const npc = (id: string): NPCShip => createNPCShip(id, hex(5, 0), hex(6, 0), "Spain", "Flute", () => 0.5);
@@ -46,6 +46,15 @@ function localSeats(seats: number) {
   });
   return clients;
 }
+
+describe("isHotseatBoard: the seatless board several captains share", () => {
+  it("no seat and more than one captain; never a seat's own board or a solo game", () => {
+    expect(isHotseatBoard(undefined, 2)).toBe(true);
+    expect(isHotseatBoard(null, 4)).toBe(true);
+    expect(isHotseatBoard(undefined, 1)).toBe(false);
+    expect(isHotseatBoard("1", 2)).toBe(false);
+  });
+});
 
 describe("seatMayAct", () => {
   it("hotseat (no seat): the one shared screen may always act", () => {

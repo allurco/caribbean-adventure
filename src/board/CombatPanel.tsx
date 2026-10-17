@@ -155,11 +155,13 @@ export function CombatPanel({
     : ships[combat.defenderId];
   const isNPC = combat.isNPCCombat;
   const npcLabel = isNPC && defender ? npcKind(defender as NPCShip) : "Merchant";
-  // Seats count from 1 on the board, as everywhere else (#110)
-  const seatLabel = (id: string | null) => Number(id) + 1;
   // A fight stored before #346 records no volleys.
   const volleys = combat.volleys ?? [];
   const shooterLabel = (id: string) => combatantLabel(combat, id, npcLabel);
+  // Who won the draw, by name ("Player 2", "Merchant"); shown only once the draw is in
+  const winnerLabel = combat.seamanshipWinner ? shooterLabel(combat.seamanshipWinner) : "";
+  // A seat's bare number for the short forms ("P2"), counting from 1 as everywhere else (#110)
+  const seatNumber = (id: string) => Number(id) + 1;
   const pending = pendingVolley(combat);
   const lastShown = roundShown(combat, lastRound);
   // The ship that fled, whose shot-away masts slowed it (#348)
@@ -173,13 +175,13 @@ export function CombatPanel({
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         {attacker && (
-          <ShipCombatStats ship={attacker} label={`Attacker (P${seatLabel(combat.attackerId)})`} />
+          <ShipCombatStats ship={attacker} label={`Attacker (P${seatNumber(combat.attackerId)})`} />
         )}
         {defender && (
           isNPC ? (
             <NPCCombatStats npc={defender as NPCShip} label={`Defender (${npcLabel})`} />
           ) : (
-            <ShipCombatStats ship={defender as ShipState} label={`Defender (P${seatLabel(combat.defenderId)})`} />
+            <ShipCombatStats ship={defender as ShipState} label={`Defender (P${seatNumber(combat.defenderId)})`} />
           )
         )}
       </div>
@@ -227,13 +229,11 @@ export function CombatPanel({
           <div className="text-center">
             <div className="text-amber-400 text-xs mb-1">Seamanship Winner</div>
             <div className="text-lg font-heading text-amber-100">
-              {isNPC && combat.seamanshipWinner === combat.defenderId
-                ? npcLabel
-                : `Player ${seatLabel(combat.seamanshipWinner)}`}
+              {winnerLabel}
             </div>
             <div className="text-[10px] text-amber-400/60 mt-1">
-              Rolls: P{seatLabel(combat.attackerId)}: {combat.seamanshipRolls[combat.attackerId]} |
-              {isNPC ? " NPC" : ` P${seatLabel(combat.defenderId)}`}: {combat.seamanshipRolls[combat.defenderId]}
+              Rolls: P{seatNumber(combat.attackerId)}: {combat.seamanshipRolls[combat.attackerId]} |
+              {isNPC ? " NPC" : ` P${seatNumber(combat.defenderId)}`}: {combat.seamanshipRolls[combat.defenderId]}
             </div>
           </div>
 
@@ -241,7 +241,7 @@ export function CombatPanel({
             <div className="text-amber-100/80 text-xs text-center">
               {isNPC
                 ? "Choose your action:"
-                : `Player ${seatLabel(combat.seamanshipWinner)}, choose your action:`}
+                : `${winnerLabel}, choose your action:`}
             </div>
             <div className="flex gap-2 justify-center">
               <ActionButton
@@ -282,7 +282,7 @@ export function CombatPanel({
             <div className="text-amber-100/80 text-xs">
               {/* "You" only against an NPC: between two seats both screens show this, so it names the seat */}
               {!isNPC
-                ? `Player ${seatLabel(combat.seamanshipWinner)} is attempting to flee!`
+                ? `${winnerLabel} is attempting to flee!`
                 : combat.seamanshipWinner === combat.attackerId
                   ? "You are attempting to escape!"
                   : firstToFireReaches

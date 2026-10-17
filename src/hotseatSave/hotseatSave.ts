@@ -46,7 +46,7 @@ export type MatchState = State<CaribbeanState>;
  *   `returnFire` takes no aim now, and a fight at its `resolution` settles by
  *   the legacy `applyResolution` move, the panel's End Round.
  * - 10: each volley records the shots that added to it and the damage it
- *   dealt (`shots`, `dealt`), and the settled round the ships it sank and
+ *   dealt (`shotBonuses`, `dealt`), and the settled round the ships it sank and
  *   left derelict (`sunk`, `leftDerelict`), so the board reads them as they
  *   were. A version 9 save lacks them, which reads as none (the volley line
  *   names where its hits landed only), so it migrates as it is.
