@@ -162,7 +162,8 @@ function combatEvents(before: CombatState | undefined, after: CombatState | unde
     events.push({ type: "boarded", attackerId: before.attackerId, defenderId: before.defenderId });
   }
   if (before.stage === "fleeAttempt" && !after) events.push({ type: "fleeAttempted", outcome: "escaped" });
-  if (before.stage === "fleeAttempt" && nextStage === "cannons") events.push({ type: "fleeAttempted", outcome: "caught" });
+  // Caught: the parting shot next, or the round's end when the pursuer is out of range (#356)
+  if (before.stage === "fleeAttempt" && after?.fleeOutcome === "caught") events.push({ type: "fleeAttempted", outcome: "caught" });
 
   if (!after) events.push({ type: "combatEnded" });
   return events;

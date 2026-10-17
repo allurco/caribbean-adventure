@@ -20,6 +20,8 @@ interface CombatPanelProps {
   /** The answer to the first volley, aimed by the ship answering (#348). */
   onReturnFire: (aim: VolleyAim) => void;
   onApplyResolution: () => void;
+  /** The draw's winner may choose fire: its guns reach the other ship (`canChooseCombatAction`, #356). */
+  mayChooseFire: boolean;
   /** This client presses the fight's current step (`seatMayActInCombat`, #110); else its controls are off. */
   mayAct: boolean;
   /** Who and what this client waits on while another seat presses (`combatWaitingFor`). */
@@ -175,6 +177,7 @@ export function CombatPanel({
   onRollCannons,
   onReturnFire,
   onApplyResolution,
+  mayChooseFire,
   mayAct,
   waitingLine,
   watchingLine,
@@ -277,7 +280,7 @@ export function CombatPanel({
               <ActionButton
                 label="Fire!"
                 onClick={() => onChooseAction("fire")}
-                disabled={!mayAct}
+                disabled={!mayAct || !mayChooseFire}
                 primary
               />
               <ActionButton
@@ -291,6 +294,11 @@ export function CombatPanel({
                 disabled={!mayAct}
               />
             </div>
+            {!mayChooseFire && (
+              <div className="text-[10px] text-red-400/70 text-center">
+                Out of range: the guns cannot reach from {combat.distance} hexes
+              </div>
+            )}
             {combat.distance > 1 && (
               <div className="text-[10px] text-red-400/70 text-center">
                 Boarding requires adjacent ships
@@ -377,6 +385,9 @@ export function CombatPanel({
             <VolleyLines volleys={volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
             {volleys.length === 1 && combat.fleeOutcome !== "caught" && (
               <div className="text-[10px] text-amber-400/60">No answer: the other ship could not fire back</div>
+            )}
+            {volleys.length === 0 && combat.fleeOutcome === "caught" && (
+              <div className="text-amber-100/80 text-xs">Caught, but out of the pursuer&apos;s range: no parting shot</div>
             )}
           </div>
           <div className="text-center">
