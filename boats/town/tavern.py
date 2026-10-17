@@ -33,16 +33,16 @@ from .prims import Piece, WallFrame, rect, slab
 #   walls 224: 96 blocks of 2 (four courses of 6, 7, 6, 7 across the
 #     front and back and 5, 6, 5, 6 along the gables), 12 ledges of 2 and
 #     the 4 of 2 that close the set-back top course under the timber storey;
-#   upper 294: front and back 74 each (10 panels, 4 posts, 3 beams,
+#   upper 318: front and back 74 each (10 panels, 4 posts, 3 beams,
 #     2 braces), the gable walls 64 each (8 panels, 3 posts, 3 beams,
-#     2 braces), 4 corner posts of 4 and the jetty's soffit;
+#     2 braces), 4 corner posts of 10 and the jetty's soffit;
 #   gables 28: each its plaster 2, king post 6 and collar 6;
-#   roof 442: 7 rows of 28 on each slope (6 tones a row), the undersides 4, fascias 4,
-#     ridge cap 10, four bargeboards of 8;
+#   roof 450: 7 rows of 28 on each slope (6 tones a row), the undersides 4, fascias 4,
+#     ridge cap 10, four bargeboards of 10;
 #   chimney 68: the stack's 3 bands 24, its cap 12, two pots of 16;
 #   door 36; windows 146 (4 ground of 26, 7 upper of 6); sign 38;
 #   benches 44.
-PLANNED_TRIANGLES = 1_330
+PLANNED_TRIANGLES = 1_362
 
 WINDOW_COUNT = 11
 
@@ -193,15 +193,16 @@ def _upper_storey(piece: Piece, p: TavernParams, tones: _Tones, glass_at: list):
                  tones.of(tones.c.glass, 0.08), TINTS["glass"], sides=())
             _glazing_bars(windows, frame, c, lo_v, hi_v, 0.75, tones)
             glass_at.append(frame.at(c, (lo_v + hi_v) / 2, 0.1))
-    # The corner posts, each showing its two outer faces.
+    # The corner posts: closed round and underneath, though only the two
+    # outer faces show, so no sliver of sun passes through the corner they
+    # stand proud of (#431).
     oak = pal.linear(tones.c.oak)
     for sx in (-1.0, 1.0):
         for y_wall, sy in ((yf, -1.0), (yb, 1.0)):
             xs = sorted((sx * (W - 0.3), sx * (W + p.rail)))
             ys = sorted((y_wall - sy * 0.3, y_wall + sy * p.rail))
-            keep = {("+x" if sx > 0 else "-x"), ("+y" if sy > 0 else "-y")}
             upper.box((xs[0], ys[0], G), (xs[1], ys[1], U), oak, TINTS["trim"],
-                      skip={"+x", "-x", "+y", "-y", "+z", "-z"} - keep)
+                      skip={"+z"})
     # The jetty's soffit, under the overhang.
     upper.face(((-W, yf, G), (W, yf, G), (W, -D, G), (-W, -D, G)),
                pal.mix(oak, pal.linear(tones.c.plaster), 0.5), TINTS["none"],
@@ -311,6 +312,10 @@ def _roof(piece: Piece, p: TavernParams, tones: _Tones):
                       c, TINTS["trim"], out=(0.0, -side * t, -1.0))
             roof.face(((x_in, y1, bot1), (x_out, y1, bot1), (x_out, y1, top1), (x_in, y1, top1)),
                       c, TINTS["trim"], out=(0.0, side, 0.0))
+            # Its inner face: the bargeboard hangs below the roof's underside,
+            # and light would pass through it there (#431).
+            roof.face(((x_in, y0, bot0), (x_in, y1, bot1), (x_in, y1, top1), (x_in, y0, top0)),
+                      c, TINTS["trim"], out=(-sx, 0.0, 0.0))
 
 
 def _chimney(piece: Piece, p: TavernParams, tones: _Tones):
