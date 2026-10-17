@@ -79,6 +79,13 @@ describe("closeUpFoam", () => {
     }
   });
 
+  it("opens water between the bubbles even in solid foam where the cluster noise is low, so a wake's core is not a white ribbon", () => {
+    expect(closeUpFoam(1, 0, 1, -1)).toBeLessThan(0.5);
+    expect(closeUpFoam(1, 1, 1, -1)).toBe(1);
+    const mixed = meanOver((cell, i) => closeUpFoam(1, cell, 1, ((i % 21) - 10) / 10));
+    expect(mixed).toBeGreaterThan(0.9);
+  });
+
   it("draws the bubbles white, thin foam as a few of them, not as grey dust", () => {
     for (const foam of [0.1, 0.3, 0.6]) {
       const lit = CELLS.map((c) => closeUpFoam(foam, c, 1)).filter((v) => v > 0.02);
@@ -90,9 +97,16 @@ describe("closeUpFoam", () => {
 
 describe("closeBubbleWeight", () => {
   const small = BUBBLE_METRES * BUBBLE_SMALL_RATIO;
-  it("is the close-up weight where the bubbles span many pixels", () => {
+  it("follows the close-up weight, ramped up, where the bubbles span many pixels", () => {
     expect(closeBubbleWeight(1, small / 20)).toBe(1);
-    expect(closeBubbleWeight(0.4, small / 20)).toBeCloseTo(0.4, 12);
+    expect(closeBubbleWeight(0.1, small / 20)).toBeGreaterThan(0.1);
+    expect(closeBubbleWeight(0.1, small / 20)).toBeLessThan(1);
+  });
+
+  it("comes in fully well before the close-up weight does, so the zoom between does not draw a grey mix of foam and bubbles", () => {
+    expect(closeBubbleWeight(closeFoamWeight(2.3), small / 20)).toBe(1);
+    expect(closeBubbleWeight(closeFoamWeight(2.7), small / 20)).toBeGreaterThan(0);
+    expect(closeBubbleWeight(closeFoamWeight(2.7), small / 20)).toBeLessThan(0.2);
   });
 
   it("fades the bubbles out where they would be a pixel or two, so the far part of a close frame does not sparkle", () => {
@@ -145,7 +159,7 @@ describe("CLOSE_FOAM_GLSL", () => {
     expect(CLOSE_FOAM_GLSL).toContain("if (weight <= 0.0 || foam <= 0.0) return foam;");
     expect(CLOSE_FOAM_GLSL).toContain("float perOctave = 1.0 - sqrt(1.0 - clamp(foam, 0.0, 1.0));");
     expect(CLOSE_FOAM_GLSL).toContain("return 1.0 - sqrt(perOctave / BUBBLE_CONE_FILL);");
-    expect(CLOSE_FOAM_GLSL).toContain("float level = f * (1.0 + BUBBLE_CLUSTER * cluster * (1.0 - f));");
+    expect(CLOSE_FOAM_GLSL).toContain("float level = min(1.0, f * (1.0 + BUBBLE_CLUSTER * cluster * (1.0 - BUBBLE_CLUSTER_DENSE * f)));");
     expect(CLOSE_FOAM_GLSL).toContain("float edge = 0.5 * BUBBLE_SOFTNESS * (1.0 - threshold);");
     expect(CLOSE_FOAM_GLSL).toContain("float bubbles = smoothstep(threshold - edge, threshold + edge, cell);");
     expect(CLOSE_FOAM_GLSL).toContain("float bubbled = bubbles + (1.0 - bubbles) * smoothstep(BUBBLE_GAP_FROM, 1.0, level);");
@@ -154,7 +168,7 @@ describe("CLOSE_FOAM_GLSL", () => {
     expect(CLOSE_FOAM_GLSL).toContain("float widen = CLOSE_LACE_SOFTENING * min(weight, 1.0);");
     expect(CLOSE_FOAM_GLSL).toContain("return smoothstep(threshold - 0.5 * widen, threshold + FOAM_LACE_SOFTNESS + 0.5 * widen, noise);");
     expect(CLOSE_FOAM_GLSL).toContain("if (closeUp <= 0.0) return 0.0;");
-    expect(CLOSE_FOAM_GLSL).toContain("return closeUp * foamDetailFade(footprintMetres, BUBBLE_METRES * BUBBLE_SMALL_RATIO);");
+    expect(CLOSE_FOAM_GLSL).toContain("return min(closeUp * CLOSE_BUBBLE_GAIN, 1.0) * foamDetailFade(footprintMetres, BUBBLE_METRES * BUBBLE_SMALL_RATIO);");
     expect(CLOSE_FOAM_GLSL).toContain("vec2 closeShipFoamShares(float weight)");
     expect(CLOSE_FOAM_GLSL).toContain("return vec2(mix(1.0, CLOSE_PATCH_RESIDUE, w), 1.0);");
     expect(CLOSE_FOAM_GLSL).toContain("float withContactLine(float foam, float contact, float weight)");

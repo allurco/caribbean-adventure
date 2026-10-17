@@ -11,13 +11,17 @@
  * contact line and patch) reads as a flat white patch. So, only up close, by
  * camera distance (`closeFoamWeight`):
  *
- * - every foam is broken again by a fine field of bubbles (`foamBubbles`):
- *   round cells of two sizes, kept where the cell value clears a threshold
- *   the coverage lowers, so thin foam is a scatter of bubbles and dense foam
- *   clustered bubbles with dark water between, never a slab;
- * - the hull's contact patch fades out and its contact line thins to a
- *   share of its strength (`closeShipFoamShares`); the ships' foam flecks,
- *   particles riding the sea (foamFlecks.ts), take over the stirred water.
+ * - every foam is broken again by a fine field of bubbles (`closeUpFoam`,
+ *   `foamBubbleCell`): round cells of two sizes, white, covering as much of
+ *   the sea as the foam's level, so the foam keeps its amount (#426): thin
+ *   foam is a few white bubbles, dense foam packed ones, and a coarse noise
+ *   gathers them into clumps and streaks; they come in faster than the
+ *   weight (`closeBubbleWeight`) and fade out where they would be a pixel
+ *   or two;
+ * - the hull's contact patch fades to a residue (`closeShipFoamShares`) and
+ *   its contact line is laid back over the bubbles (`withContactLine`), so
+ *   the hull keeps a white waterline; the ships' foam flecks, particles
+ *   riding the sea (foamFlecks.ts), take over the stirred water.
  *
  * At the weight 0 (the opening ship view, mid and map zoom) all of it is the
  * identity: the foam there is drawn exactly as before.
@@ -50,9 +54,17 @@ export const BUBBLE_CONE_FILL = 0.94;
 /** STYLISTIC: a bubble's soft edge, as a share of its radius (half inside, half outside its rim). */
 export const BUBBLE_SOFTNESS = 0.5;
 /** STYLISTIC: foam denser than this also fills the water between the bubbles, so solid foam stays solid. */
-export const BUBBLE_GAP_FROM = 0.85;
+export const BUBBLE_GAP_FROM = 0.95;
 /** STYLISTIC: how much the coarse cluster noise moves the foam's level from place to place, so bubbles gather in streaks and clumps. */
 export const BUBBLE_CLUSTER = 0.8;
+/**
+ * STYLISTIC: how much of the cluster's swing dense foam loses (it shrinks as
+ * the foam's level times this): under 1, so even solid foam opens water
+ * between its bubbles where the noise is low, and a wake's core reads as
+ * packed bubbles, not a white ribbon. Over 1 the level is held at 1, which
+ * costs solid foam a few hundredths of its amount.
+ */
+export const BUBBLE_CLUSTER_DENSE = 0.75;
 /** STYLISTIC: the cluster noise's feature size, water metres. */
 export const BUBBLE_CLUSTER_METRES = 2.4;
 
@@ -78,7 +90,7 @@ export function bubbleThreshold(foam: number): number {
 export function closeUpFoam(foam: number, cell: number, weight: number, cluster = 0): number {
   if (weight <= 0 || foam <= 0) return foam;
   const f = Math.min(1, foam);
-  const level = f * (1 + BUBBLE_CLUSTER * cluster * (1 - f));
+  const level = Math.min(1, f * (1 + BUBBLE_CLUSTER * cluster * (1 - BUBBLE_CLUSTER_DENSE * f)));
   const threshold = bubbleThreshold(level);
   const edge = 0.5 * BUBBLE_SOFTNESS * (1 - threshold);
   const bubbles = smoothstep(threshold - edge, threshold + edge, cell);
@@ -143,14 +155,24 @@ export function foamBubbleCell(x: number, z: number, churnX: number, churnZ: num
 }
 
 /**
+ * STYLISTIC: how much faster than the close-up weight the bubbles come in:
+ * a mix of smooth foam and bubbles reads as grey, so the bubbles are whole
+ * from half the close-up weight (camera 2.3) in, and the mix is kept to the
+ * last stretch before 2.8, where the weight is still exactly 0.
+ */
+export const CLOSE_BUBBLE_GAIN = 3;
+
+/**
  * The bubbles' weight where a pixel spans `footprintMetres`: the close-up
- * weight `closeUp`, faded out (foamDetailFade) where the small bubbles would
- * be a pixel or two across, so the far part of a close frame draws the smooth
- * foam rather than sparkling. 0 wherever `closeUp` is.
+ * weight `closeUp`, ramped up by CLOSE_BUBBLE_GAIN, and faded out
+ * (foamDetailFade) where the small bubbles would be a pixel or two across,
+ * so the far part of a close frame draws the foam's own lace rather than
+ * sparkling. 0 wherever `closeUp` is. The lace's widening (`closeLace`)
+ * takes this weight too: it is there for the bubbles to fray into.
  */
 export function closeBubbleWeight(closeUp: number, footprintMetres: number): number {
   if (closeUp <= 0) return 0;
-  return closeUp * foamDetailFade(footprintMetres, BUBBLE_METRES * BUBBLE_SMALL_RATIO);
+  return Math.min(1, closeUp * CLOSE_BUBBLE_GAIN) * foamDetailFade(footprintMetres, BUBBLE_METRES * BUBBLE_SMALL_RATIO);
 }
 
 /**
@@ -182,7 +204,7 @@ export function withContactLine(foam: number, contact: number, weight: number): 
  */
 export const CLOSE_LACE_SOFTENING = 0.5;
 
-/** The foam's lace (foamShading.ts `foamLace`) at close-up weight `weight`: its edge widened up close, itself at weight 0. */
+/** The foam's lace (foamShading.ts `foamLace`) at the bubbles' weight `weight` (`closeBubbleWeight`): its edge widened up close, itself at weight 0. */
 export function closeLace(coverage: number, noise: number, weight: number): number {
   if (weight <= 0 || coverage <= 0) return foamLace(coverage, noise);
   const widen = CLOSE_LACE_SOFTENING * Math.min(1, weight);
@@ -201,9 +223,11 @@ export function closeLace(coverage: number, noise: number, weight: number): numb
 export const CLOSE_FOAM_GLSL = `
   const float CLOSE_FOAM_NEAR = ${CLOSE_FOAM_NEAR.toFixed(4)};
   const float CLOSE_FOAM_FAR = ${CLOSE_FOAM_FAR.toFixed(4)};
+  const float CLOSE_BUBBLE_GAIN = ${CLOSE_BUBBLE_GAIN.toFixed(4)};
   const float BUBBLE_CONE_FILL = ${BUBBLE_CONE_FILL.toFixed(4)};
   const float BUBBLE_GAP_FROM = ${BUBBLE_GAP_FROM.toFixed(4)};
   const float BUBBLE_CLUSTER = ${BUBBLE_CLUSTER.toFixed(4)};
+  const float BUBBLE_CLUSTER_DENSE = ${BUBBLE_CLUSTER_DENSE.toFixed(4)};
   const float BUBBLE_CLUSTER_METRES = ${BUBBLE_CLUSTER_METRES.toFixed(4)};
   const float BUBBLE_SOFTNESS = ${BUBBLE_SOFTNESS.toFixed(4)};
   const float CLOSE_PATCH_RESIDUE = ${CLOSE_PATCH_RESIDUE.toFixed(4)};
@@ -257,7 +281,7 @@ export const CLOSE_FOAM_GLSL = `
   }
   float closeBubbleWeight(float closeUp, float footprintMetres) {
     if (closeUp <= 0.0) return 0.0;
-    return closeUp * foamDetailFade(footprintMetres, BUBBLE_METRES * BUBBLE_SMALL_RATIO);
+    return min(closeUp * CLOSE_BUBBLE_GAIN, 1.0) * foamDetailFade(footprintMetres, BUBBLE_METRES * BUBBLE_SMALL_RATIO);
   }
   // The coarse noise (−1 … 1, mean 0) that gathers the bubbles into streaks and clumps.
   float foamBubbleCluster(vec2 worldXZ, vec2 churn, float metresPerUnit) {
@@ -270,7 +294,7 @@ export const CLOSE_FOAM_GLSL = `
   float closeUpFoam(float foam, float cell, float weight, float cluster) {
     if (weight <= 0.0 || foam <= 0.0) return foam;
     float f = min(foam, 1.0);
-    float level = f * (1.0 + BUBBLE_CLUSTER * cluster * (1.0 - f));
+    float level = min(1.0, f * (1.0 + BUBBLE_CLUSTER * cluster * (1.0 - BUBBLE_CLUSTER_DENSE * f)));
     float threshold = bubbleThreshold(level);
     float edge = 0.5 * BUBBLE_SOFTNESS * (1.0 - threshold);
     float bubbles = smoothstep(threshold - edge, threshold + edge, cell);

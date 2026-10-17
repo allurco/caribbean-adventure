@@ -227,9 +227,9 @@ const fragmentShader = `
 
   // A coverage turned into lace by the breakup noise at \`scale\` cycles per
   // unit, falling back to its smooth mean where the lace's \`featureMetres\`
-  // features are under a few pixels.
-  float lacedFoam(float coverage, float scale, float featureMetres, vec2 churn, float footprintMetres, float closeUp) {
-    float lace = closeLace(coverage, foamBreakupNoise(vWorld.xz, scale, churn), closeUp);
+  // features are under a few pixels; its edge widened by the bubbles' weight (closeFoam.ts).
+  float lacedFoam(float coverage, float scale, float featureMetres, vec2 churn, float footprintMetres, float bubbleWeight) {
+    float lace = closeLace(coverage, foamBreakupNoise(vWorld.xz, scale, churn), bubbleWeight);
     return mix(coverage * FOAM_FAR_SHARE, lace, foamDetailFade(footprintMetres, featureMetres));
   }
 
@@ -511,6 +511,8 @@ const fragmentShader = `
     float contactLine;
     float footprintUnits = footprintMetres / METRES_PER_UNIT;
     float closeUp = closeFoamWeight(cameraDistance);
+    // The bubbles' weight, and the lace's widening with it (closeFoam.ts): 0 wherever closeUp is.
+    float bubbleWeight = closeBubbleWeight(closeUp, footprintMetres);
     shipContactFoam(vWorld.xz, footprintUnits, closeUp, shipCoverage, shipShade, contactLine);
     seaColor *= 1.0 - shipShade * shipFoamFade;
     float hullCoverage = shipCoverage * shipFoamFade;
@@ -519,9 +521,9 @@ const fragmentShader = `
     // one laces each patch (foamChurnLace, foamShading.ts); the two are
     // unioned, so they join without a seam.
     float wakeCoverage = shipWakeCoverage(vWorld.xz, footprintUnits) * shipFoamFade;
-    float shore = lacedFoam(shoreCoverage, SHORE_FOAM_NOISE_SCALE, SHORE_FOAM_LACE_METRES, churn, footprintMetres, closeUp);
-    float whitecaps = lacedFoam(whitecapCoverage, WHITECAP_NOISE_SCALE, WHITECAP_LACE_METRES, churn, footprintMetres, closeUp);
-    float hull = lacedFoam(hullCoverage, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres, closeUp);
+    float shore = lacedFoam(shoreCoverage, SHORE_FOAM_NOISE_SCALE, SHORE_FOAM_LACE_METRES, churn, footprintMetres, bubbleWeight);
+    float whitecaps = lacedFoam(whitecapCoverage, WHITECAP_NOISE_SCALE, WHITECAP_LACE_METRES, churn, footprintMetres, bubbleWeight);
+    float hull = lacedFoam(hullCoverage, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres, bubbleWeight);
     float wake = 0.0;
     if (wakeCoverage > 0.0) {
       float coarse = foamBreakupNoise(vWorld.xz, WAKE_NOISE_SCALE, churn);
@@ -540,12 +542,11 @@ const fragmentShader = `
     // back over them, laced but not bubbled, so each hull keeps a white
     // waterline. At the weight 0 (2.8 and out) none of this runs.
     if (closeUp > 0.0 && foam > 0.0) {
-      float bubbleWeight = closeBubbleWeight(closeUp, footprintMetres);
       if (bubbleWeight > 0.0) {
         foam = closeUpFoam(foam, foamBubbleCell(vWorld.xz, churn, METRES_PER_UNIT), bubbleWeight,
           foamBubbleCluster(vWorld.xz, churn, METRES_PER_UNIT));
       }
-      float line = lacedFoam(contactLine * shipFoamFade, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres, closeUp);
+      float line = lacedFoam(contactLine * shipFoamFade, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres, bubbleWeight);
       foam = withContactLine(foam, line, closeUp);
     }
     // Foam is rough and opaque: it replaces the water, its sky reflection and

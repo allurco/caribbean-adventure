@@ -73,7 +73,7 @@ describe("LAND_FOAM_GLSL", () => {
     expect(LAND_FOAM_GLSL).toContain("coverage *= smoothstep(-FOAM_WATERLINE_SOFTNESS, 0.0, vFoamWorld.y);");
     expect(LAND_FOAM_GLSL).toContain("vec2 churn = surfChurn(surfTime);");
     // Laced like the water's, its edge softened and broken into bubbles only up close (closeFoam.ts, #389).
-    expect(LAND_FOAM_GLSL).toContain("closeLace(coverage, foamBreakupNoise(vFoamWorld.xz, SHORE_FOAM_NOISE_SCALE, churn), closeUp)");
+    expect(LAND_FOAM_GLSL).toContain("closeLace(coverage, foamBreakupNoise(vFoamWorld.xz, SHORE_FOAM_NOISE_SCALE, churn), bubbleWeight)");
     expect(LAND_FOAM_GLSL).toContain("float bubbleWeight = closeBubbleWeight(closeUp, footprintMetres);");
     expect(LAND_FOAM_GLSL).toContain(
       "closeUpFoam(foam, foamBubbleCell(vFoamWorld.xz, churn, FOAM_METRES_PER_UNIT), bubbleWeight,\n        foamBubbleCluster(vFoamWorld.xz, churn, FOAM_METRES_PER_UNIT))"
