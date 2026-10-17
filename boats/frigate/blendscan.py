@@ -77,8 +77,15 @@ _BLENDER_BUNDLED = re.compile(
 
 
 def _is_blender_bundled(path: bytes) -> bool:
-    """Whether a matched path is one of a standard Blender install's assets."""
-    return bool(_BLENDER_BUNDLED.match(path)) and b".." not in path
+    """Whether a matched path is one of a standard Blender install's assets.
+
+    A match runs on over every printable byte, so what follows the install's
+    prefix is scanned again: a local path carried on in the same string is
+    still reported.
+    """
+    prefix = _BLENDER_BUNDLED.match(path)
+    return (prefix is not None and b".." not in path
+            and LOCAL_PATH.search(path, prefix.end()) is None)
 
 
 def local_paths(raw: bytes) -> list[str]:
