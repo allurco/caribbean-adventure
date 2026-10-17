@@ -3,6 +3,7 @@ import { INVALID_MOVE } from "boardgame.io/core";
 import type { Move } from "boardgame.io";
 import { Caribbean } from "./Game";
 import { withSeatedCombat } from "./seatedCombat";
+import { seatMayActInCombat, type FightStep } from "./combatActor";
 import type { CaribbeanState, CombatState } from "./types";
 
 const fight = (seamanshipWinner: string): Partial<CombatState> => ({
@@ -27,23 +28,32 @@ describe("withSeatedCombat (#113 review)", () => {
     expect(press("rollSeamanship", "1", { ...fight("1"), stage: "seamanship" })).toBe(INVALID_MOVE);
     // Each captain rolls its own die of the draw (#347): the attacker may not roll the defender's
     expect(press("rollDefenderSeamanship", "0", { ...fight("1"), stage: "defenderSeamanship", seamanshipWinner: null })).toBe(INVALID_MOVE);
-    for (const name of ["rollFleeAttempt", "rollCannons", "applyResolution"]) {
+    for (const name of ["rollFleeAttempt", "rollCannons"]) {
       expect(press(name, "0", { ...fight("1"), stage: "cannons" }), name).toBe(INVALID_MOVE);
     }
   });
 
-  it("refuses the answer, and its aim, from the ship that fired first (#348)", () => {
+  it("refuses the answer from the ship that fired first (#348)", () => {
     // Round 1: the attacker fired the ambush; the defender answers
     expect(press("returnFire", "0", { ...fight("0"), seamanshipWinner: null, round: 1, stage: "returnFire" })).toBe(INVALID_MOVE);
     // From round 2 the defender won the draw and fired first; the attacker answers
     expect(press("returnFire", "1", { ...fight("1"), round: 2, stage: "returnFire" })).toBe(INVALID_MOVE);
   });
 
-  it("refuses the parting shot, and its damage, from the ship caught fleeing: its pursuer fires it", () => {
+  it("refuses the parting shot from the ship caught fleeing: its pursuer fires it", () => {
     for (const fled of ["0", "1"]) {
-      for (const [name, stage] of [["rollCannons", "cannons"], ["applyResolution", "resolution"]] as const) {
-        const caught = { ...fight(fled), stage, fleeOutcome: "caught" as const };
-        expect(press(name, fled, caught), `${name} by ${fled}`).toBe(INVALID_MOVE);
+      const caught = { ...fight(fled), stage: "cannons" as const, fleeOutcome: "caught" as const };
+      expect(press("rollCannons", fled, caught), `rollCannons by ${fled}`).toBe(INVALID_MOVE);
+    }
+  });
+
+  it("the legacy resolution (a fight stored before #380) may be pressed by either captain of the fight, and no bystander", () => {
+    for (const winner of ["0", "1"]) {
+      for (const fleeOutcome of [null, "caught"] as const) {
+        const stored = { ...fight(winner), stage: "resolution" as const, fleeOutcome };
+        for (const seat of ["0", "1"]) expect(seatMayActInCombat({ playerID: seat, combat: stored as FightStep }), `${seat} after ${winner}`).toBe(true);
+        expect(press("applyResolution", "2", stored)).toBe(INVALID_MOVE);
+        expect(seatMayActInCombat({ playerID: "2", combat: stored as FightStep })).toBe(false);
       }
     }
   });

@@ -8,18 +8,20 @@
  * Dice come in as `d6` (boardgame.io's `random.D6`), rolled in the order
  * the moves always rolled them. A step that ends the fight clears
  * `G.combat` and answers "ended": the caller then sets the phase back to
- * main.
+ * main. The round settles itself (#380): the step that fires its last volley
+ * (or a caught flight with no parting shot) settles it too, recording it in
+ * `G.lastRound` for the board.
  */
-import type { CaribbeanState, CombatAction, CombatStage, CombatState, NPCShip, ShipState, Volley, VolleyAim } from "./types";
-import { COMBAT_ACTIONS, VOLLEY_AIMS } from "./types";
+import type { CaribbeanState, CombatAction, CombatStage, CombatState, NPCShip, SettledRound, ShipState, Volley } from "./types";
+import { COMBAT_ACTIONS } from "./types";
 import {
   canReturnFire,
   resolveSeamanship,
   resolveFleeAttempt,
   shouldNPCFlee,
   countCannonHits,
-  aimedDamage,
-  npcAim,
+  rollHitLocations,
+  volleyDamage,
   applyDamage,
   isSunk,
   isDerelict,
@@ -229,9 +231,10 @@ export function applyCombatAction(G: CaribbeanState, action: CombatAction, turn:
  * The flight: the pursuer's die against the fleeing ship's, each plus its
  * manoeuvrability. A clean escape ends the fight; a ship caught takes the
  * pursuer's parting shot next, if the pursuer's guns reach it (#356), and
- * the round ends either way.
+ * the fight ends after it. Out of range, the round settles at once (#380).
+ * `turn` dates what the settling records.
  */
-export function applyFleeAttempt(G: CaribbeanState, d6: RollD6): CombatStepOutcome {
+export function applyFleeAttempt(G: CaribbeanState, d6: RollD6, turn: number): CombatStepOutcome {
   const combat = fightOf(G);
 
   const isNPC = combat.isNPCCombat;
@@ -279,9 +282,12 @@ export function applyFleeAttempt(G: CaribbeanState, d6: RollD6): CombatStepOutco
 
   // Caught - pursuer gets a free parting shot (defender can't return fire)
   // Go to cannons stage, but only pursuer fires: if its guns reach (#356),
-  // else no shot, and the round goes straight to its end.
-  combat.stage = reaches(G, combat, pursuerId) ? "cannons" : "resolution";
-  return "continues";
+  // else no shot, and the round settles at once (#380).
+  if (reaches(G, combat, pursuerId)) {
+    combat.stage = "cannons";
+    return "continues";
+  }
+  return applyCombatResolution(G, turn);
 }
 
 /** A broadside's dice: one per gun its crew can man. */
@@ -305,22 +311,24 @@ function opponentOf(combat: Pick<CombatState, "attackerId" | "defenderId">, id: 
 
 /**
  * One volley (#346): `shooterId` fires every gun its crew can man at the
- * other side, aimed at `aim` (#348), and the damage lands at once, before
- * anything else is rolled. Recorded in the round's volleys and in the side's hits.
+ * other side, each hit then rolls where it lands (#380), and the damage
+ * lands at once, before anything else is rolled. Recorded in the round's
+ * volleys and in the side's hits.
  */
-function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, aim: VolleyAim, d6: RollD6): void {
+function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, d6: RollD6): void {
   const shooter = combatantOf(G, combat, shooterId);
   const targetId = opponentOf(combat, shooterId);
   const target = combatantOf(G, combat, targetId);
   const guns = getEffectiveCannons(shooter);
   const hits = fireBroadside(guns, d6);
-  combat.volleys = [...(combat.volleys ?? []), { shooterId, guns, aim, hits }];
+  const locations = rollHitLocations(hits, d6);
+  combat.volleys = [...(combat.volleys ?? []), { shooterId, guns, hits, locations }];
   if (shooterId === combat.attackerId) combat.attackerHits = hits;
   else combat.defenderHits = hits;
   if (hits === 0) return;
 
   const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
-  applyDamage(target, aimedDamage(hits, aim, upgrades, target.damage.masts));
+  applyDamage(target, volleyDamage(locations, upgrades, target.damage.masts));
   // An escort's attacker that takes a hit fails its no-damage condition.
   if (targetId === combat.attackerId) {
     const mission = G.ships[combat.attackerId].activeMission;
@@ -351,94 +359,109 @@ export function volleyShooter(combat: Pick<CombatState, "stage" | "round" | "att
   return combat.stage === "returnFire" ? opponentOf(combat, first) : first;
 }
 
-/** Whether the engine aims this ship's volleys (an NPC's, `npcAim`), not a seat. */
-export function engineAims(combat: Pick<CombatState, "isNPCCombat" | "defenderId">, shooterId: string): boolean {
-  return combat.isNPCCombat && shooterId === combat.defenderId;
-}
-
 /** The steps that fire a volley (#348): the cannons (the first, or a parting shot) and the answer. */
 export function isVolleyStage(stage: CombatStage): stage is "cannons" | "returnFire" {
   return stage === "cannons" || stage === "returnFire";
 }
 
+/** The same fight, both sides as they were. */
+function sameFight(a: Pick<CombatState, "attackerId" | "defenderId">, b: Pick<CombatState, "attackerId" | "defenderId">): boolean {
+  return a.attackerId === b.attackerId && a.defenderId === b.defenderId;
+}
+
 /**
- * The volleys a step fired, from the fight `before` it to the fight `after`
- * (#348): the first volley as the answer waits on its aim, then only the
- * answer, or both when nobody answers by hand. None at any other step, once
- * the fight has ended, or from a fight stored with no volleys (before #346).
+ * The round a step settled (#380): `next.lastRound` when it is the record
+ * of the round the fight was on `before` the step, and the fight has left
+ * that round (gone on to the next, or ended). Null otherwise.
+ */
+export function roundSettledBy(
+  before: Pick<CombatState, "attackerId" | "defenderId" | "round">,
+  next: Pick<CaribbeanState, "combat" | "lastRound">,
+): SettledRound | null {
+  const settled = next.lastRound;
+  if (!settled || settled.round !== before.round || !sameFight(settled, before)) return null;
+  if (next.combat && sameFight(next.combat, before) && next.combat.round === before.round) return null;
+  return settled;
+}
+
+/**
+ * The volleys a step fired, from the fight `before` it to the state `next`
+ * after it (#348): the first volley as the answer waits, then only the
+ * answer, or every volley of the round when the round settled in the step
+ * (#380: read from `next.lastRound`, the fight then on to the next round or
+ * over). None at any other step, or from a fight stored with no volleys
+ * (before #346).
  */
 export function volleysFired(
-  before: Pick<CombatState, "stage" | "volleys">,
-  after: Pick<CombatState, "stage" | "volleys"> | undefined,
+  before: Pick<CombatState, "stage" | "volleys" | "attackerId" | "defenderId" | "round">,
+  next: Pick<CaribbeanState, "combat" | "lastRound">,
 ): Volley[] {
-  if (!after || !isVolleyStage(before.stage) || after.stage === before.stage) return [];
+  if (!isVolleyStage(before.stage)) return [];
+  const after = next.combat;
   const firedBefore = before.stage === "returnFire" ? (before.volleys ?? []).length : 0;
-  return (after.volleys ?? []).slice(firedBefore);
+  if (after && sameFight(after, before) && after.round === before.round) {
+    return after.stage === before.stage ? [] : (after.volleys ?? []).slice(firedBefore);
+  }
+  return (roundSettledBy(before, next)?.volleys ?? []).slice(firedBefore);
 }
 
 /**
- * May the volley the fight waits on be fired with `aim`? Only at the
- * cannons or the answer (`stage`), and never with an aim the game does not
- * know. A seat's volley needs hull, masts or crew; an NPC's takes the
- * engine's aim (`npcAim`), so it may come with none, and a known aim sent
- * for it is not read.
+ * May the volley the fight waits on be fired? Only at the cannons or the
+ * answer (`stage`), and with no argument (#380: hits land at random, so
+ * nobody aims): an aim sent by a client from before is refused.
  */
-export function canFireVolley(G: CaribbeanState, stage: "cannons" | "returnFire", aim: unknown): boolean {
-  if (!atCombatStage(G, stage)) return false;
-  if (aim != null && !isOneOf(VOLLEY_AIMS, aim)) return false;
-  const combat = fightOf(G);
-  return aim != null || engineAims(combat, volleyShooter(combat));
+export function canFireVolley(G: CaribbeanState, stage: "cannons" | "returnFire", stray?: unknown): boolean {
+  return atCombatStage(G, stage) && stray === undefined;
 }
 
-/** The aim the shooter fires with: the engine's for an NPC, else its seat's, which `canFireVolley` required. */
-function aimOf(combat: CombatState, shooterId: string, aim: VolleyAim | null | undefined): VolleyAim {
-  if (engineAims(combat, shooterId)) return npcAim();
-  if (aim == null) throw new Error("A seat's volley is aimed: check canFireVolley before firing");
-  return aim;
+/** Whether the engine fires this ship's answer on its own (an NPC's), not a seat. */
+function engineFires(combat: Pick<CombatState, "isNPCCombat" | "defenderId">, shooterId: string): boolean {
+  return combat.isNPCCombat && shooterId === combat.defenderId;
 }
 
 /**
  * The cannons, volley by volley (#346): the first to fire (`firstToFire`)
- * fires, aimed (#348), and its damage lands. Then the other side answers if
- * it still can (`canReturnFire`, after that damage): an NPC at once, aimed
- * by the engine; a seat at its own step, `returnFire`, to aim it. After a
- * caught flight only the pursuer fires. The sunk and the derelict are
- * settled in the resolution. Check `canFireVolley` first.
+ * fires, and its damage lands. Then the other side answers if it still can
+ * (`canReturnFire`, after that damage): an NPC at once; a seat at its own
+ * step, `returnFire`. After a caught flight only the pursuer fires. With no
+ * answer to wait on, the round settles in the same step (#380). Check
+ * `canFireVolley` first. `turn` dates what the settling records.
  */
-export function applyCannons(G: CaribbeanState, aim: VolleyAim | null | undefined, d6: RollD6): void {
+export function applyCannons(G: CaribbeanState, d6: RollD6, turn: number): CombatStepOutcome {
   const combat = fightOf(G);
   combat.volleys = [];
   combat.attackerHits = 0;
   combat.defenderHits = 0;
 
   const first = firstToFire(combat);
-  fireVolley(G, combat, first, aimOf(combat, first, aim), d6);
+  fireVolley(G, combat, first, d6);
 
   const answering = opponentOf(combat, first);
   if (combat.fleeOutcome === "caught" || !canReturnFire(combatantOf(G, combat, answering), combat.distance)) {
-    combat.stage = "resolution";
-    return;
+    return applyCombatResolution(G, turn);
   }
-  if (engineAims(combat, answering)) {
-    fireVolley(G, combat, answering, npcAim(), d6);
-    combat.stage = "resolution";
-    return;
+  if (engineFires(combat, answering)) {
+    fireVolley(G, combat, answering, d6);
+    return applyCombatResolution(G, turn);
   }
   combat.stage = "returnFire";
+  return "continues";
 }
 
-/** The answer (#348): the ship fired on aims and fires back, and its damage lands. Check `canFireVolley` first. */
-export function applyReturnFire(G: CaribbeanState, aim: VolleyAim | null | undefined, d6: RollD6): void {
+/** The answer (#348): the ship fired on fires back, its damage lands, and the round settles (#380). Check `canFireVolley` first. */
+export function applyReturnFire(G: CaribbeanState, d6: RollD6, turn: number): CombatStepOutcome {
   const combat = fightOf(G);
-  const answering = volleyShooter(combat);
-  fireVolley(G, combat, answering, aimOf(combat, answering, aim), d6);
-  combat.stage = "resolution";
+  fireVolley(G, combat, volleyShooter(combat), d6);
+  return applyCombatResolution(G, turn);
 }
 
 /**
  * The resolution: the volleys' damage has landed; the sunk and the
  * derelict are settled (bounties, glory, missions, loot, a sunk captain lost). The
  * fight ends there, or after a parting shot; else a new round begins.
+ * The round is recorded in `G.lastRound` (#380). It runs by itself as the
+ * round's last volley lands; the `applyResolution` move still presses it
+ * for a fight stored at the `resolution` stage before #380.
  * `turn` dates any bounty or claim it settles.
  */
 export function applyCombatResolution(G: CaribbeanState, turn: number): CombatStepOutcome {
@@ -534,6 +557,17 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
   if (combat.fleeOutcome === "caught") {
     combatEnded = true;
   }
+
+  G.lastRound = {
+    attackerId: combat.attackerId,
+    defenderId: combat.defenderId,
+    isNPCCombat: combat.isNPCCombat,
+    round: combat.round,
+    volleys: combat.volleys ?? [],
+    fleeOutcome: combat.fleeOutcome,
+    fleeRolls: combat.fleeRolls,
+    ended: combatEnded,
+  };
 
   if (combatEnded) {
     G.combat = undefined;

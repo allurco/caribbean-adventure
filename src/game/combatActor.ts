@@ -33,19 +33,21 @@ export interface SeatFight {
  * the faster ship, then its action (fire, board or flee) and the rolls after
  * it. Each captain rolls its own die of the draw (#347), the attacker first,
  * then the defender; the faster ship presses the rest, but for a flight that
- * was caught: the pursuer fires the parting shot and settles the round, not
- * the ship it fires on. Each volley is aimed by the ship firing it (#348):
- * the answer to the first is the other side's step. Against an NPC the attacker presses every step: its
+ * was caught: the pursuer fires the parting shot, not the ship it fires on.
+ * The answer to the first volley is the other side's step (#348). The round
+ * then settles itself (#380): only a fight stored at the resolution before
+ * that waits on it, named the attacker's step (either captain may press it,
+ * `seatMayActInCombat`). Against an NPC the attacker presses every step: its
  * one roll throws the NPC's die too, and when the NPC wins the draw the
  * engine picks its action.
  */
 export function combatActor(combat: FightTurn): string {
-  if (combat.stage === "seamanship" || combat.isNPCCombat) return combat.attackerId;
+  if (combat.stage === "seamanship" || combat.stage === "resolution" || combat.isNPCCombat) return combat.attackerId;
   if (combat.stage === "defenderSeamanship") return combat.defenderId ?? combat.attackerId;
   const faster = combat.seamanshipWinner ?? combat.attackerId;
   const other = faster === combat.attackerId ? (combat.defenderId ?? combat.attackerId) : combat.attackerId;
   if (combat.stage === "returnFire") return other;
-  const partingShot = combat.fleeOutcome === "caught" && (combat.stage === "cannons" || combat.stage === "resolution");
+  const partingShot = combat.fleeOutcome === "caught" && combat.stage === "cannons";
   if (!partingShot) return faster;
   return other;
 }
@@ -53,9 +55,12 @@ export function combatActor(combat: FightTurn): string {
 /**
  * May this seat press the fight's current step? A seatless client (the
  * hotseat table, `playerID` undefined or null) always; else only the seat
- * whose step it is. The combat moves refuse everyone else, so online one
- * seat can never press another's step.
+ * whose step it is, but for the legacy resolution (#380), which either
+ * captain of the fight may press. The combat moves refuse everyone else, so
+ * online one seat can never press another's step.
  */
 export function seatMayActInCombat({ playerID, combat }: SeatFight): boolean {
-  return playerID == null || playerID === combatActor(combat);
+  if (playerID == null) return true;
+  if (combat.stage === "resolution") return playerID === combat.attackerId || (!combat.isNPCCombat && playerID === combat.defenderId);
+  return playerID === combatActor(combat);
 }

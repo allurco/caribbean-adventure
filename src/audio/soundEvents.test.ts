@@ -186,24 +186,37 @@ describe("soundEventsFrom", () => {
     expect(soundEventsFrom(attackerRolled, drawn)).toEqual([{ type: "seamanshipRolled" }]);
   });
 
-  const volley = (shooterId: string, hits: number) => ({ shooterId, guns: 4, aim: "hull" as const, hits });
-
-  it("emits cannon fire with both sides' hits when both volleys are fired at once", () => {
-    const prev = makeState({ combat: makeCombat({ stage: "cannons", actionChosen: "fire" }) });
-    const next = makeState({
-      combat: makeCombat({ stage: "resolution", actionChosen: "fire", attackerHits: 2, defenderHits: 1, volleys: [volley("0", 2), volley("1", 1)] }),
+  const volley = (shooterId: string, hits: number) => ({ shooterId, guns: 4, hits, locations: { hull: hits, masts: 0, crew: 0 } });
+  /** The round settled itself (#380): the fight on to round 2's draw, or over, the round kept in G.lastRound. */
+  const settledRound = (volleys: ReturnType<typeof volley>[], extra: Partial<CaribbeanState> = {}, ended = false) =>
+    makeState({
+      combat: ended ? undefined : makeCombat({ round: 2, stage: "seamanship" }),
+      lastRound: { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys, fleeOutcome: null, fleeRolls: null, ended },
+      ...extra,
     });
-    expect(soundEventsFrom(prev, next)).toEqual([{ type: "cannonsFired", attackerHits: 2, defenderHits: 1 }]);
+
+  it("emits cannon fire with both sides' hits when both volleys are fired at once, the round settling with them (#380)", () => {
+    const prev = makeState({ combat: makeCombat({ stage: "cannons", actionChosen: "fire" }) });
+    expect(soundEventsFrom(prev, settledRound([volley("0", 2), volley("1", 1)]))).toEqual([{ type: "cannonsFired", attackerHits: 2, defenderHits: 1 }]);
   });
 
-  it("emits cannon fire for each volley as it is fired, with that volley's hits only: the first, then the answer aimed on its own step (#348)", () => {
+  it("emits cannon fire for each volley as it is fired, with that volley's hits only: the first, then the answer on its own step (#348)", () => {
     const prev = makeState({ combat: makeCombat({ stage: "cannons", actionChosen: "fire" }) });
     const waiting = makeState({ combat: makeCombat({ stage: "returnFire", actionChosen: "fire", attackerHits: 2, volleys: [volley("0", 2)] }) });
     expect(soundEventsFrom(prev, waiting)).toEqual([{ type: "cannonsFired", attackerHits: 2, defenderHits: 0 }]);
-    const answered = makeState({
-      combat: makeCombat({ stage: "resolution", actionChosen: "fire", attackerHits: 2, defenderHits: 1, volleys: [volley("0", 2), volley("1", 1)] }),
-    });
-    expect(soundEventsFrom(waiting, answered)).toEqual([{ type: "cannonsFired", attackerHits: 0, defenderHits: 1 }]);
+    expect(soundEventsFrom(waiting, settledRound([volley("0", 2), volley("1", 1)]))).toEqual([{ type: "cannonsFired", attackerHits: 0, defenderHits: 1 }]);
+  });
+
+  it("a volley that sinks a ship: its cannon fire, then the sinking, then the fight's end, all from the one move (#380)", () => {
+    const loot = { id: "loot-1", hex: hex(4, 4), cargo: emptyCargo(), gold: 5 };
+    const prev = makeState({ combat: makeCombat({ stage: "cannons", actionChosen: "fire" }) });
+    const { "1": _sunk, ...rest } = prev.ships;
+    void _sunk;
+    expect(soundEventsFrom(prev, settledRound([volley("0", 3)], { ships: rest, floatingLoot: [loot] }, true))).toEqual([
+      { type: "shipSunk", shipId: "1", isNpc: false },
+      { type: "cannonsFired", attackerHits: 3, defenderHits: 0 },
+      { type: "combatEnded" },
+    ]);
   });
 
   it("emits a boarding when the action choice ends the combat", () => {
@@ -223,9 +236,11 @@ describe("soundEventsFrom", () => {
     ]);
     const caught = makeState({ combat: makeCombat({ stage: "cannons", fleeOutcome: "caught" }) });
     expect(soundEventsFrom(prev, caught)).toEqual([{ type: "fleeAttempted", outcome: "caught" }]);
-    // Caught by a pursuer out of range: no parting shot, straight to the round's end (#356)
-    const caughtOutOfRange = makeState({ combat: makeCombat({ stage: "resolution", fleeOutcome: "caught" }) });
-    expect(soundEventsFrom(prev, caughtOutOfRange)).toEqual([{ type: "fleeAttempted", outcome: "caught" }]);
+    // Caught by a pursuer out of range: no parting shot (#356), and the round settles, ending the fight (#380)
+    const caughtOutOfRange = makeState({
+      lastRound: { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys: [], fleeOutcome: "caught", fleeRolls: { pursuer: 6, fleeer: 1 }, ended: true },
+    });
+    expect(soundEventsFrom(prev, caughtOutOfRange)).toEqual([{ type: "fleeAttempted", outcome: "caught" }, { type: "combatEnded" }]);
   });
 
   it("emits a sinking when a ship or NPC goes and loot appears", () => {

@@ -13,7 +13,8 @@
  */
 import type { CaribbeanState, CombatState, NPCShip, ShipState, Volley as FiredVolley } from "../../game/types";
 import { hexToWorld, nearestImage, type Hex } from "../../game/hex";
-import { isVolleyStage, volleysFired } from "../../game/combatMoves";
+import { hitCountsOf } from "../../game/combat";
+import { isVolleyStage, roundSettledBy, volleysFired } from "../../game/combatMoves";
 import { SEED_FEATURES } from "../visuals/seedFeatures";
 import { stream, subSeed, worldSeedOf } from "../visuals/subSeed";
 import { BEATS, pacedSeconds } from "./beatTiming";
@@ -125,11 +126,14 @@ function rippledShots(count: number, hits: number, start: number, flight: number
 
 /**
  * The beat of the volleys `firedNow`, the round's volleys after the first
- * `firedBefore` (#348: the answer is fired on its own step, after the first).
+ * `firedBefore` (#348: the answer is fired on its own step, after the first),
+ * fired in the round of `combat`, the fight before the step. A ship the
+ * volleys sank is gone from `next`: it is drawn where `prev` had it.
  */
-function volleyBeat(next: CaribbeanState, combat: CombatState, firedNow: readonly FiredVolley[], firedBefore: number): VolleyBeat | null {
-  const attacker = combatant(next, combat.attackerId, combat);
-  const defender = combatant(next, combat.defenderId, combat);
+function volleyBeat(prev: CaribbeanState, next: CaribbeanState, combat: CombatState, firedNow: readonly FiredVolley[], firedBefore: number): VolleyBeat | null {
+  const either = (id: string) => combatant(next, id, combat) ?? combatant(prev, id, combat);
+  const attacker = either(combat.attackerId);
+  const defender = either(combat.defenderId);
   if (!attacker || !defender) return null;
   const flight = shotSeconds(worldDistance(next, attacker.position, defender.position));
   const seed = worldSeedOf(next);
@@ -141,12 +145,12 @@ function volleyBeat(next: CaribbeanState, combat: CombatState, firedNow: readonl
   let start = 0;
   let end = 0;
   for (const fired of firedNow) {
-    const shooter = combatant(next, fired.shooterId, combat);
+    const shooter = either(fired.shooterId);
     if (!shooter || fired.guns === 0) continue;
     const targetId = fired.shooterId === combat.attackerId ? combat.defenderId : combat.attackerId;
     const shots = rippledShots(fired.guns, fired.hits, start, flight, random(fired.shooterId));
-    // A volley aimed at the masts that hits brings one down (#348)
-    volleys.push({ shooterId: fired.shooterId, targetId, shots, mastFalls: fired.hits > 0 && fired.aim === "masts" });
+    // A volley with a hit on the masts brings one down (#348, #380)
+    volleys.push({ shooterId: fired.shooterId, targetId, shots, mastFalls: hitCountsOf(fired).masts > 0 });
     start = shots[shots.length - 1].fireAt + REPLY_GAP;
     end = Math.max(end, ...shots.map((s) => s.landAt));
   }
@@ -179,11 +183,13 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
     beats.push({ kind: "declare", attackerId: after.attackerId, defenderId: after.defenderId, seconds: paced(BEATS.declare.seconds), seedKey: keyOf("declare") });
   }
 
-  // Caught: the parting shot next, or the round's end when the pursuer is out of range (#356)
+  // Caught: the parting shot next, or, the pursuer out of range (#356), the
+  // fight over at once, the round settled with the flight caught (#380)
   if (before?.stage === "fleeAttempt" && (!after || after.fleeOutcome === "caught")) {
     const fleeingId = before.seamanshipWinner ?? before.defenderId;
     const pursuerId = fleeingId === before.attackerId ? before.defenderId : before.attackerId;
-    beats.push({ kind: "flee", fleeingId, pursuerId, outcome: after ? "caught" : "escaped", seconds: paced(BEATS.flee.seconds), seedKey: keyOf("flee") });
+    const caught = after?.fleeOutcome === "caught" || roundSettledBy(before, next)?.fleeOutcome === "caught";
+    beats.push({ kind: "flee", fleeingId, pursuerId, outcome: caught ? "caught" : "escaped", seconds: paced(BEATS.flee.seconds), seedKey: keyOf("flee") });
   }
 
   if (before?.stage === "chooseAction" && !after && before.distance <= 1 && sunkIds(prev, next).length === 0) {
@@ -191,10 +197,11 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
     beats.push({ kind: "closeAlongside", attackerId: before.attackerId, defenderId: before.defenderId, seconds: paced(BEATS.closeAlongside.seconds), seedKey: keyOf("board") });
   }
 
-  // Each volley plays as it is fired (#348): the first as the answer waits on its aim, then the answer
-  if (before && isVolleyStage(before.stage) && after) {
+  // Each volley plays as it is fired (#348): the first as the answer waits, then the answer;
+  // the last of a round as the round settles, the fight then on to the draw or over (#380)
+  if (before && isVolleyStage(before.stage)) {
     const firedBefore = before.stage === "returnFire" ? (before.volleys ?? []).length : 0;
-    const volley = volleyBeat(next, after, volleysFired(before, after), firedBefore);
+    const volley = volleyBeat(prev, next, before, volleysFired(before, next), firedBefore);
     if (volley) beats.push(volley);
   }
 

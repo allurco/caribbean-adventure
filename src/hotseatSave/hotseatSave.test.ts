@@ -10,6 +10,7 @@ import { generateMapFor } from "../game/mapRequest";
 import { STARTER_SHIP_CLASSES, type ShipState } from "../game/types";
 import { restoreHotseat, saveHotseat, type MatchState } from "./hotseatSave";
 import { hotseatStoreEnhancer } from "./hotseatStoreEnhancer";
+import { parseHotseatSave } from "./parseHotseatSave";
 
 const request = { mapSize: "small", mapSeed: 7 } as const;
 const map = { ...request, ...generateMapFor(request) };
@@ -40,9 +41,8 @@ function fightOneRound(client: Match) {
     if (stage === "seamanship") client.moves.rollSeamanship();
     else if (stage === "chooseAction") client.moves.chooseCombatAction("fire");
     else if (stage === "fleeAttempt") client.moves.rollFleeAttempt();
-    else if (stage === "cannons") client.moves.rollCannons("hull");
-    else if (stage === "returnFire") client.moves.returnFire("hull");
-    else if (stage === "resolution") client.moves.applyResolution();
+    else if (stage === "cannons") client.moves.rollCannons();
+    else if (stage === "returnFire") client.moves.returnFire();
   }
 }
 
@@ -100,6 +100,31 @@ describe("a saved hotseat game", () => {
     expect(playable(restored)).toEqual(playable(original));
   });
 
+  it("a version 8 save made mid-fight at the resolution restores, and its round settles by the legacy End Round (#380)", () => {
+    const opened = newMatch(2);
+    playOpening(opened);
+    const state: MatchState = opened.store.getState();
+    const attackerId = state.ctx.currentPlayer;
+    const defenderId = attackerId === "0" ? "1" : "0";
+    const { q, r } = state.G.ships[attackerId].position;
+    const alongside = { ...state.G.ships[defenderId], position: { q: q + 1, r, s: -q - 1 - r } };
+    const match = newMatch(2, { ...state, G: { ...state.G, ships: { ...state.G.ships, [defenderId]: alongside } } });
+    match.moves.attackShip(defenderId);
+    expect(match.getState()!.ctx.phase).toBe("combat");
+
+    // The save as version 8 kept it: the round's aimed volleys landed, waiting on End Round
+    const v8 = throughStorage(match.store.getState()) as unknown as { version: number; state: { G: CaribbeanState } };
+    v8.version = 8;
+    v8.state.G.combat = { ...v8.state.G.combat!, stage: "resolution", volleys: [{ shooterId: attackerId, guns: 2, aim: "masts", hits: 1 }] };
+    const parsed = parseHotseatSave(JSON.stringify(v8));
+    expect(parsed.kind).toBe("saved");
+    const restored = newMatch(2, restoreHotseat((parsed as { save: ReturnType<typeof saveHotseat> }).save, map));
+    restored.moves.applyResolution();
+    const after = restored.getState()!;
+    expect(after.G.combat).toMatchObject({ round: 2, stage: "seamanship" });
+    expect(after.G.lastRound?.volleys).toEqual([{ shooterId: attackerId, guns: 2, aim: "masts", hits: 1 }]);
+  });
+
   it("restores mid-draft, the hands still dealt", () => {
     const original = newMatch(2);
     original.moves.pickCaptain(0, STARTER_SHIP_CLASSES[0]);
@@ -132,7 +157,7 @@ describe("a saved hotseat game", () => {
   it("records when it was saved, and the save's schema version", () => {
     const save = saveHotseat(newMatch(1).store.getState(), map, 1_234);
     expect(save.savedAt).toBe(1_234);
-    expect(save.version).toBe(8);
+    expect(save.version).toBe(9);
   });
 
   it("refuses a map that is not the save's", () => {

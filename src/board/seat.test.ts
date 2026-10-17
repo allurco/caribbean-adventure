@@ -322,18 +322,23 @@ describe("seatMayActInCombat: who presses each step of a fight", () => {
   });
 
   it("the faster ship, the draw's winner, presses the action and every roll after it", () => {
-    for (const stage of ["chooseAction", "fleeAttempt", "cannons", "resolution"] as const) {
+    for (const stage of ["chooseAction", "fleeAttempt", "cannons"] as const) {
       expect(presses(fight(stage, "1"))).toEqual(["1"]);
       expect(presses(fight(stage, "0"))).toEqual(["0"]);
     }
   });
 
-  it("a flight caught: the pursuer fires the parting shot and applies it, not the ship that fled", () => {
-    for (const stage of ["cannons", "resolution"] as const) {
-      // The attacker fled and was caught: the defender fires
-      expect(presses(fight(stage, "0", false, "caught"))).toEqual(["1"]);
-      // The defender fled and was caught: the attacker fires
-      expect(presses(fight(stage, "1", false, "caught"))).toEqual(["0"]);
+  it("a flight caught: the pursuer fires the parting shot, not the ship that fled", () => {
+    // The attacker fled and was caught: the defender fires
+    expect(presses(fight("cannons", "0", false, "caught"))).toEqual(["1"]);
+    // The defender fled and was caught: the attacker fires
+    expect(presses(fight("cannons", "1", false, "caught"))).toEqual(["0"]);
+  });
+
+  it("the legacy resolution (a fight stored before #380): either captain of the fight, never a bystander", () => {
+    for (const winner of ["0", "1", null]) {
+      expect(presses(fight("resolution", winner))).toEqual(["0", "1"]);
+      expect(presses(fight("resolution", winner, false, "caught"))).toEqual(["0", "1"]);
     }
   });
 
@@ -367,27 +372,28 @@ describe("combatWaitingFor: the line a seat sees while another seat presses", ()
       "Waiting for Calico Jack to choose"
     );
     expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1" } })).toBe(
-      "Waiting for Calico Jack to aim"
+      "Waiting for Calico Jack to fire"
     );
-    // Round 1, the ambush (#346): no draw, and the attacker fires and ends the round
+    // Round 1, the ambush (#346): no draw, and the attacker fires
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "cannons", seamanshipWinner: null } })).toBe(
-      "Waiting for Anne Bonny to aim"
+      "Waiting for Anne Bonny to fire"
     );
-    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "resolution", seamanshipWinner: null } })).toBe(
+    // A bystander waits on the legacy resolution, which either captain may press (#380)
+    expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "resolution", seamanshipWinner: null } })).toBe(
       "Waiting for Anne Bonny to end the round"
     );
-    // Each volley is aimed by its ship (#348): the ambush fired, Calico Jack aims the answer
+    // The answer is the other ship's own step (#348): the ambush fired, Calico Jack answers
     expect(combatWaitingFor(G, { playerID: "0", combat: { ...pvp, stage: "returnFire", seamanshipWinner: null } })).toBe(
-      "Waiting for Calico Jack to aim"
+      "Waiting for Calico Jack to fire"
     );
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "returnFire", seamanshipWinner: null } })).toBeNull();
-    // Calico Jack won the draw and fired: Anne Bonny aims the answer
+    // Calico Jack won the draw and fired: Anne Bonny answers
     expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "returnFire", seamanshipWinner: "1" } })).toBe(
-      "Waiting for Anne Bonny to aim"
+      "Waiting for Anne Bonny to fire"
     );
-    // Calico Jack fled and was caught: Anne Bonny aims the parting shot
+    // Calico Jack fled and was caught: Anne Bonny fires the parting shot
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1", fleeOutcome: "caught" } })).toBe(
-      "Waiting for Anne Bonny to aim"
+      "Waiting for Anne Bonny to fire"
     );
   });
 

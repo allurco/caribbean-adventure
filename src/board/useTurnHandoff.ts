@@ -18,6 +18,7 @@ export function useTurnHandoff({
   reducedMotion,
   npcs,
   underway,
+  fightPlaying,
   onNextTurn,
 }: {
   currentPlayer: string;
@@ -31,6 +32,8 @@ export function useTurnHandoff({
   npcs: Record<string, NPCShip>;
   /** Which ships (players' and NPCs', by id) are under way. */
   underway: Record<string, boolean>;
+  /** Whether the board still plays a fight's beats (the combat director's `holding`), read each frame (#380). */
+  fightPlaying: () => boolean;
   onNextTurn: (player: string) => void;
 }): {
   handoff: Handoff | null;
@@ -61,7 +64,7 @@ export function useTurnHandoff({
   if (lastNpcs !== npcs) setLastNpcs(npcs);
 
   const current = useRef(handoff);
-  const seen = useRef({ underway, npcs, onNextTurn });
+  const seen = useRef({ underway, npcs, onNextTurn, fightPlaying });
   const turnShown = useRef(false);
   useEffect(() => {
     // A hand-off just started: its announcement is still to come
@@ -69,7 +72,7 @@ export function useTurnHandoff({
     current.current = handoff;
   }, [handoff]);
   useEffect(() => {
-    seen.current = { underway, npcs, onNextTurn };
+    seen.current = { underway, npcs, onNextTurn, fightPlaying };
   });
 
   // Each frame while it runs, step it on
@@ -80,9 +83,10 @@ export function useTurnHandoff({
       frame = requestAnimationFrame(tick);
       const h = current.current;
       if (!h) return;
-      const { underway: u, npcs: n } = seen.current;
+      const { underway: u, npcs: n, fightPlaying: playing } = seen.current;
       const next = stepHandoff(h, {
         now: performance.now(),
+        fightPlaying: playing(),
         shipAtRest: !u[h.from],
         npcsAtRest: Object.keys(n).every((id) => !u[id]),
         turnShown: turnShown.current,

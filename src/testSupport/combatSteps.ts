@@ -1,23 +1,22 @@
 /**
  * Playing a fight through a boardgame.io client in tests: each step of the
  * fight pressed in turn, as the table would. Round 1 is the ambush (#346):
- * it opens on the attacker's broadside, with no draw. Every volley is aimed
- * by the ship firing it (#348); these fire each at the hull.
+ * it opens on the attacker's broadside, with no draw. Every hit lands where
+ * it rolls, and the round settles itself as its last volley lands (#380).
  */
-import type { CaribbeanState, CombatAction, VolleyAim } from "../game/types";
+import type { CaribbeanState, CombatAction } from "../game/types";
 
 /** A client's state and the combat moves a fight presses. */
 export interface FightClient {
   getState(): { G: CaribbeanState } | null;
-  /** boardgame.io's moves by name: rollSeamanship, rollDefenderSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons(aim), returnFire(aim), applyResolution. */
-  moves: Record<string, (...args: (CombatAction | VolleyAim)[]) => void>;
+  /** boardgame.io's moves by name: rollSeamanship, rollDefenderSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons, returnFire, and the legacy applyResolution. */
+  moves: Record<string, (...args: CombatAction[]) => void>;
 }
 
-/** Round 1, the ambush: the attacker's broadside, the answer if any, and the round's end. */
+/** Round 1, the ambush: the attacker's broadside and the answer if any; the round settles itself. */
 export function fireTheAmbush(client: FightClient): void {
-  client.moves.rollCannons("hull");
-  if (client.getState()?.G.combat?.stage === "returnFire") client.moves.returnFire("hull");
-  client.moves.applyResolution();
+  client.moves.rollCannons();
+  if (client.getState()?.G.combat?.stage === "returnFire") client.moves.returnFire();
 }
 
 /** Presses the step the fight waits on, choosing `action` when the draw's winner chooses. */
@@ -28,8 +27,9 @@ function pressStep(client: FightClient, action: CombatAction): void {
   else if (combat.stage === "defenderSeamanship") client.moves.rollDefenderSeamanship();
   else if (combat.stage === "chooseAction") client.moves.chooseCombatAction(action);
   else if (combat.stage === "fleeAttempt") client.moves.rollFleeAttempt();
-  else if (combat.stage === "cannons") client.moves.rollCannons("hull");
-  else if (combat.stage === "returnFire") client.moves.returnFire("hull");
+  else if (combat.stage === "cannons") client.moves.rollCannons();
+  else if (combat.stage === "returnFire") client.moves.returnFire();
+  // Only a fight stored at the resolution before #380 waits on it
   else client.moves.applyResolution();
 }
 
