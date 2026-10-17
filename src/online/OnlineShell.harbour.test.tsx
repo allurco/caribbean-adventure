@@ -7,7 +7,7 @@ import { HARBOUR_STILL } from "./harbourStillImage";
 import type { SessionState } from "./useAccount";
 import type { ProfileState } from "./useProfile";
 
-// The live scene is the dev capture's alone (#418): the shell must never load it.
+// The harbour scene is the dev capture's alone (#418): the shell must never load it.
 const scene = vi.hoisted(() => ({ loaded: false }));
 vi.mock("../board/harbour/HarbourScene", () => {
   scene.loaded = true;
@@ -81,7 +81,7 @@ function showsTheStill(): boolean {
   return [...container.querySelectorAll<HTMLElement>("[style]")].some((el) => el.style.backgroundImage.includes(HARBOUR_STILL.path));
 }
 
-/** The harbour as the shell must show it on every page: the still, and no live scene. */
+/** The harbour as the shell must show it on every page: the still, and no 3D scene. */
 function expectStillOnly(): void {
   expect(showsTheStill()).toBe(true);
   expect(container.querySelector("canvas")).toBeNull();
@@ -90,8 +90,8 @@ function expectStillOnly(): void {
   expect(document.documentElement.dataset.harbour).toBeUndefined();
 }
 
-describe("OnlineShell's harbour (#418: the still, no live scene)", () => {
-  it("shows the still on every shell page and never draws the live scene", async () => {
+describe("OnlineShell's harbour (#418: the still, no 3D scene)", () => {
+  it("shows the still on every shell page and never draws the harbour scene", async () => {
     act(() => root.render(<OnlineShell config={CONFIG} initialPage={{ kind: "play" }} />));
     await settle();
     expectStillOnly();
