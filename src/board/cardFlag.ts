@@ -3,9 +3,8 @@
  * plain red flag in their art, and the HUD lays the card's nation over it.
  * The nation's flag is the one its ships fly (`flagDesign` in shipFlags.ts),
  * drawn as an SVG and stretched over the flag's box in the card's frame,
- * then cut to the flag's shape: the art's own mask once it lands
- * (cardArtSlots.ts says how), else a pennant drawn in the box for the
- * placeholder. Plain CSS values out, so the component only spreads them.
+ * then cut to the flag's shape: the art's own mask (cardArtSlots.ts says
+ * how), else a pennant drawn in the box for the placeholder. Plain CSS values out, so the component only spreads them.
  * Pure.
  */
 import type { PortNation } from "../game/types";

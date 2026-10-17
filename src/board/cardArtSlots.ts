@@ -6,17 +6,17 @@
  * cardArtSlots.test.ts holds the table to public/cards/ both ways, and
  * sceneAssets.ts puts every file here on the board's loading gate. Pure.
  *
- * The art is 3:4 (`CARD_ART_WIDTH` × `CARD_ART_HEIGHT`) and carries no
+ * The art is 3:4, at most `CARD_ART_MAX` (cardArtCheck.ts), and carries no
  * text: the HUD draws the frame, the rounding and the title
  * (docs/art/event-card-prompts.md).
  *
  * **Flags.** Flotilla patrol and Lost flag carry a plain red flag, tinted
- * per nation (cardFlag.ts). When their art lands, add beside it a mask the
- * same size as the art (`<name>.flag.webp`: opaque over the flag's cloth,
- * transparent elsewhere), name it as the slot's `flag.mask`, and set
- * `flag.box` to the flag's bounding box in the frame. The HUD then lays the
- * nation's flag over the box, cut to the mask. Until then the placeholder's
- * own flag uses the same layer, cut to a drawn pennant at the same box.
+ * per nation (cardFlag.ts). Beside each one's art lies a mask the same size
+ * (`<name>.flag.webp`: opaque over the flag's cloth, transparent elsewhere),
+ * named as the slot's `flag.mask`, and `flag.box` is the flag's bounding box
+ * in the frame. The HUD lays the nation's flag over the box, cut to the
+ * mask. A new painting of either card needs its own mask and box; a slot
+ * with no art cuts the placeholder's flag to a drawn pennant at the box.
  */
 import { NATIONS, PORT_NATIONS, type PortNation } from "../game/types";
 
@@ -59,23 +59,24 @@ export interface CardArt {
   flag: { mask: string | null; box: FlagBox } | null;
 }
 
-/** The placeholder flags' boxes: high on the right, clear of the title at the top. */
-const PATROL_FLAG: FlagBox = { x: 0.56, y: 0.3, w: 0.3, h: 0.15 };
-const LOST_FLAG: FlagBox = { x: 0.5, y: 0.28, w: 0.32, h: 0.16 };
+/** The flags' boxes: the bounding box of each painting's red flag, which its mask cuts to the cloth. */
+const PATROL_FLAG: FlagBox = { x: 0.767, y: 0.411, w: 0.181, h: 0.133 };
+const LOST_FLAG: FlagBox = { x: 0.517, y: 0.277, w: 0.273, h: 0.204 };
 
 /**
- * Each slot's art. All placeholders for now: the WebP images, the card
- * back's crop and the flag masks come with the maintainer's art (#247).
+ * Each slot's art (#247): WebP under public/cards/, cropped to 3:4 from the
+ * maintainer's AI-generated paintings (NOTICE). Every slot now has its art,
+ * so no card draws its placeholder.
  */
 export const CARD_ART: Readonly<Record<CardArtSlot, CardArt>> = {
-  calmSeas: { file: null, flag: null },
-  merchantConvoy: { file: null, flag: null },
-  storm: { file: null, flag: null },
-  flotillaPatrol: { file: null, flag: { mask: null, box: PATROL_FLAG } },
-  npcPirate: { file: null, flag: null },
-  clemency: { file: null, flag: null },
-  lostFlag: { file: null, flag: { mask: null, box: LOST_FLAG } },
-  back: { file: null, flag: null },
+  calmSeas: { file: "cards/calm-seas.webp", flag: null },
+  merchantConvoy: { file: "cards/merchant-convoy.webp", flag: null },
+  storm: { file: "cards/storm.webp", flag: null },
+  flotillaPatrol: { file: "cards/flotilla-patrol.webp", flag: { mask: "cards/flotilla-patrol.flag.webp", box: PATROL_FLAG } },
+  npcPirate: { file: "cards/npc-pirate.webp", flag: null },
+  clemency: { file: "cards/clemency.webp", flag: null },
+  lostFlag: { file: "cards/lost-flag.webp", flag: { mask: "cards/lost-flag.flag.webp", box: LOST_FLAG } },
+  back: { file: "cards/back.webp", flag: null },
 };
 
 /**
