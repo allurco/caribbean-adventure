@@ -167,6 +167,108 @@ One entry per report. Newest first.
 
 ## Batches
 
+### 2026-10-17: the event card art (#247, PR #421)
+
+- **Branch and commit:** `feat/247-card-art-files` at `a458aae` (clean worktree, dev server, no Supabase variables).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), Playwright 1.59; 1280×800, and 844×390 with `isMobile`, `hasTouch` and DPR 2; flag crops at DPR 3.
+- **View:** `?view=cards` (the gallery, scrolled), and `?view=cards&card=<kind>&nation=<nation>` for each card and each nation it flies; flag crops taken with the tint layer shown and hidden. In game: `?skipLogin=1&size=small&seed=7`, captain and Sloop drafted through the draft screen; a Merchant convoy staged by pushing `merchantConvoy` onto `G.eventDeck.drawPile` through an `UPDATE` to the client's store (found through the React fiber tree), then End Turn.
+- **Findings, as intended:** all 8 faces show their painting (768×1024 WebP, no placeholder); the flag tint sits on the painted flag's cloth for every nation (Flotilla patrol: England, France, Spain, Netherlands; Lost flag: the same plus the Jolly Roger), with no offset or spill; titles legible, corners rounded (12 px). In game the convoy card shows its painting about 4 s after End Turn (after the turn banner) for 6 s; Calm seas draws show no card (by design) and the log is text only (by design). All 10 `cards/*` files return 200 about 0.7 s after load, and the gate opens at about 3.6 s. No console errors.
+- **For the maintainer:** Storm's region line sits where the parchment fade meets the dark cloud, the deck's lowest contrast; the patrol card's masthead pennants stay maroon (noted in the PR).
+
+### 2026-10-17: the shell shows only the harbour still (#418, PR #419)
+
+- **Branch and commit:** `feat/418-shell-still` at `eaf0a19` (clean worktree, dev server).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal), Playwright 1.59; 1280×800, and 844×390 with `isMobile`, `hasTouch` and DPR 2.
+- **View:** the e2e dev config (`e2e/vite.e2e.config.ts` with `E2E_BACKEND=1`, Supabase pointed at `/e2e-supabase`), signed in as a test captain through a stored session, as the e2e specs do; the bare root signed out for sign-in. Pages: the root, `?saved=1`, `?view=lobby|party|ranked|account|rooms`, `?view=profile&id=…`, then the nav links clicked in turn. `HTMLCanvasElement.prototype.getContext` wrapped by an init script.
+- **Findings, as intended:** on every page at both sizes the still fills the backdrop (`cover`, `50% 50%`), no `data-harbour` attribute is set, there is no `<canvas>`, and no `webgl` or `webgl2` context is created, read again 7 s after load and after in-shell navigation (about 0.9 s a page). No console errors and no failed requests. `?skipLogin=1&size=small&seed=7` still draws the board (webgl2 on ANGLE Metal) and opens the draft.
+- **Not from this PR:** every shell page makes two 2d contexts on detached canvases while `@react-three/drei` loads: `App.tsx` imports `PropViewer` and `ShaderLab` eagerly, so the shell still downloads three, drei and the board.
+
+### 2026-10-17: sinking ships warm the fade's shaders for the composer's target (#135, PR #391)
+
+- **Branch and commit:** `fix/135-fade-warmup` at `fdfcc46` against `cf69e19` (main before #391; main merged #391 at its first commit, `7b5a8c0`). Clean worktrees, dev servers.
+- **Renderer:** headless Chromium on a real GPU (ANGLE Metal, Apple M1 Max), Playwright 1.59, 1280×800 at DPR 1. Frame times taken at a 1-minute load of 10–16 (an earlier batch at load ~160 was discarded).
+- **View:** `?size=small&seed=7&skipLogin=1` solo (composer on), and `&post=0`; camera where the fight puts it.
+- **How it was staged:** client from the fiber tree, `pickCaptain(0, "Sloop")`, seat 0 made a pirate first by `UPDATE` (otherwise the Jolly Roger's own programs land in sink 1), then for each sink a hull-1 Spanish merchant of a chosen class beside the ship, `attackNPC`, the panel's Fire!, Close. Programs from `renderer.info.programs` (renderer through a `__THREE_DEVTOOLS__` hook), plus a time-stamped count of every `linkProgram` (three releases the fade's programs after a sink, so only a link counter shows they compile again on every sink). Fade start from a ship material's first `transparent` flip; frame times from rAF timestamps; stills from a CDP screencast.
+- **Findings:** on `cf69e19` every fight sink links 12 programs (two variants each of the ship's six materials) as the fade starts, a first fading frame of 160–290 ms, on every sink, every class. On `fdfcc46` no sink links a program in its fade (Sloop, Frigate, Galleon, Flute, repeat sinks, `?post=0`, and a box ship with `frigate.glb` blocked); first fading frame 8–17 ms, max 26 ms. Draws at rest are the same per frame (254 at the main view, identical draw lists): the hidden keepers draw nothing. No console errors.
+- **For the maintainer:** a fight-held sink starts fading about 10.4 s after Fire! and is gone 1.5 s (Sloop) to 2.4 s (Flute) later, so about a fifth to a third into the 7 s sink beat. In solo play the captain screen dims an own sink. The first fight of a session has one 260–530 ms frame as the shot resolves, with no shader compile, on both commits.
+- **Not checked:** the maintainer's machine (16 GB Mac mini); the Vercel preview; an online match.
+
+### 2026-10-17: foam up close, bubbles and flecks instead of a white patch (#389, PR #413)
+
+- **Branch and commit:** `feat/389-ship-foam` at the first commit (before the review fixes), against `cf69e19` (main) for "before" (the change stashed in the same worktree).
+- **Renderer:** headless Chromium on the GPU (ANGLE Metal, Apple M1 Max), 1280×800, dev server, `stats=1`.
+- **View:** `?size=small&seed=1&skipLogin=1&stats=1`. Captain picked with `pickCaptain(0, "Sloop")`. The ship was staged by store `UPDATE` on open water at hex (18, 5), and the camera set through the R3F store (`__THREE_DEVTOOLS__` hook, pitch 47°) at distance 1.1, 1.6, 3.4, 6 and 20. A coast was framed at a water/island edge (the edges in a fixed order, the one a third of the way in). Sailing used `moves.moveShip(q, r)`, and for the close sail shot the camera was pinned midway along the move.
+- **Findings:** before, up close, there was a solid white rim along the ship's waterline, a solid white wake ribbon under way, and flat smooth white blobs in the shore band and on the sand's wash. After: no rim, the wake and the shore foam in bubbles with frayed edges, and small flecks off the bow and sides. At 3.4, 6 and 20 the picture looks the same as before (identity at weight 0).
+- **Learned:** `moveShip` takes `(q, r)`, not a hex object. The camera flies on its own after a move and after End Turn, so pin it after the move starts. The captain is random per load, so the HUD and sail flag differ between shots. The flecks at first included a carry along the hull, and since the registry's speed eases off after a move (Ship.tsx `FOAM_SPEED_DECAY`), that threw them ahead of a stopped ship. The carry was removed and a test pins it.
+- **Not checked:** the review-fix commit in the browser; the Mac mini's fps; the fight scenes and sinking ships up close (by code, sinking ships unregister and shed nothing, and fight poses register as before); the puff shader's +0.012 lift up close (N1).
+
+### 2026-10-17: random hits and the round settling itself, review follow-ups (#380, PR #390)
+
+- **Branch and commit:** `fix/380-review` at `aea0453` (clean detached worktree, dev server).
+- **Renderer:** headless Playwright Chromium on the GPU (ANGLE Metal, Apple M1 Max, per "Recommended setup"), 1280×800, DPR 1.
+- **View:** `?players=2&size=small&seed=7`, `?size=small&seed=7` and `?seats=1&players=2&size=small&seed=7` (each with `skipLogin=1`), the camera where the fight puts it.
+- **How the fights were staged:** the client found through the React fiber tree. Captains drafted with `pickCaptain(0, "Sloop")`. `G` edited and dispatched as `UPDATE` (hotseat, solo) or written to the local master's `storageAPI.setState` then `transport.requestSync()` (`?seats=1`). Ships put on open water side by side, hulls raised (or lowered for a sinking), cannons 6 to 12, `chain_shot` and `grape_shot` on one side, the target's masts at the cap (2) to force overflow. Staged Spanish Flute merchants in solo. The draw and pursuit winners were forced by setting manoeuvrability 10 against 0; distance 2 with `long_guns` for the out-of-range catch. Played with the panel's buttons. Sounds read from the dev `[audio] play` console lines after a Shift keypress unlocked audio.
+- **Findings, as intended:**
+  - One Fire! per volley step and no End Round: each round settles on the answer.
+  - Volley lines name hits by location. "+1 chain shot" and "+1 grape shot" show only for the ship that has them fitted. Overflow reads "(to hull, masts gone)" when all mast hits went to the hull, and "(1 to hull, masts gone)" when some did.
+  - `mast-crack` plays only for a volley that dealt mast damage, never when every mast hit went to the hull.
+  - Fight over lists "is sunk" and "is left derelict". A caught flight reads "The parting shot ends the chase", or "Caught, but out of the pursuer's range: no parting shot" with no cannon sound.
+  - Where the panel closes:
+    - **Hotseat:** it closes when the hand-off announces the next turn.
+    - **Solo:** it stays until Close.
+    - **`?seats=1`:** it stays on the seat's own board past the hand-off.
+  - Console: no errors; in `?seats=1` only the known 90 s readiness warnings.
+- **Found:** the Fight over panel opens about 0.5 s after the last Fire!, before the volley and the sinking have played (sink sounds at 3.5 to 6.7 s, "Your turn" at about 13.5 s). It says "is sunk" while the ship is still afloat. The panel opens on `G.lastRound` without waiting on `combatDirector.holding`; this was already so in #386. Sent back to #390.
+- **For the maintainer:**
+  - When the sunk seat's captain dies, "Choose Your Captain" covers the volley and the sinking at once (existing #265 and #286 flow; filed separately).
+  - "1 masts".
+  - The draw line still shows raw dice.
+- **Not checked:**
+  - The online match (`/api`), and 3 or 4 seats.
+  - The other seat's board receiving Fight over live in `?seats=1`: one board is mounted at a time, and a remount counts stored rounds as seen.
+  - Saves from version 9 and before (unit tests only).
+  - The mast-fall animation itself (inferred from the cue sound).
+
+### 2026-10-17: harbour furniture, cranes, market hall, piers and flags (#181, PR #383)
+
+- **Branch and commit:** `feat/181-harbour-furniture` at `0f56156` (clean worktree, dev server); base origin/main at `48ef75e` (a detached worktree) for the draw counts.
+- **Renderer:** headless Chromium on a real GPU (ANGLE Metal), Playwright 1.59, 1280×800 at DPR 1; a phone context at 844×390, `isMobile`, touch, DPR 3.
+- **View:** `?size=small&seed=1&snapshot=1&skipLogin=1` with `cx`/`cz`/`dist` on Isla Quieta (22.7, 13), Skull Cove (34.7, 18) and Serpent's Landing (30.2, 24.1); `?view=props&focus=11|12|13`. The camera was set afterwards through `__THREE_DEVTOOLS__` (`scene.__r3f.root.getState()`: controls target and camera position, orbit and top-down), with the HUD hidden by making the canvas's siblings invisible. Crane sway: crops 0.7 s apart compared in the page, with and without emulated reduced motion. Draws counted by wrapping WebGL2's draw calls over one frame.
+- **Findings, as intended:** 2 to 4 piers and 1 to 2 cranes per port, the hall on the town terrace, nothing but piers on water, no floating or clipping seen. The cranes' loads sway, and are still under reduced motion. Nation flags on the quay (England's cross at Isla Quieta); black flags only at Skull Cove. Flags are static, as #181 says. Draws per frame +6 to +14 against main (one more village draw, plus its shadow and wrap copies); frame time 8.3 ms median on both (vsync-capped). No console errors.
+- **For the maintainer:** the thatch reads as a smooth ochre hipped roof, its course steps faint. Several added piers are short and lie mostly on the beach, ending at the surf. One Isla Quieta crane stands inland between houses with its load over sand. The quay flag flies along the quay's heading, not the wind. The pirate flag is black with a white rectangle, no skull. In the prop viewer the crane's close-up starts end-on along the jib.
+- **Bugs:** none found.
+- **Not checked:** medium and large maps, other seeds, a real phone.
+
+### 2026-10-17: event card art slots, frame and placeholders (#247, PR #381)
+
+- **Branch and commit:** the PR's branch at `f082f4c` (clean worktree, dev server).
+- **Renderer:** headless Chromium on a real GPU (ANGLE Metal), Playwright 1.59, 1280×800 at DPR 1 (DPR 2 for per-card close-ups); a phone context at 844×390, `isMobile`, touch, DPR 3.
+- **View:** `?view=cards`; `?view=cards&card=<kind|back>&nation=<n>` for merchantConvoy, flotillaPatrol (England, France, Spain, Netherlands), lostFlag (Pirate), storm, npcPirate and the back; `?players=2&size=small&seed=7&skipLogin=1` and `?players=4&…` (phone) for the game.
+- **How it was staged:** as in the event deck entry: captains through `moves.pickCaptain(0, "Sloop")`, `merchantConvoy` pushed onto `G.eventDeck.drawPile` by a store `UPDATE`, then `events.endTurn()`; the loading screen's label and the banner and card timeline sampled from an in-page rAF loop.
+- **Findings, as intended:** every frame is 256×341 (3:4 exactly, 12 px corners) on both sizes, fully on screen; titles in IM Fell English SC, ink on parchment; at 844×390 the effect line drops to 13 px and Merchant convoy's long line leaves the art in view. The flags match the ships' (`shipFlags.ts`); the Pirates fly the Jolly Roger. In the game the card follows the "Your Turn" banner by 30–60 ms in the new frame with its placeholder, goes after 6.0 s or a tap, and on the phone sits over the captain card. The empty `cards` stage never shows its label; the gate clears in about 4 s. No console errors.
+- **Bugs found, lab only (`?view=cards` gallery):** the gallery's faces draw their title and effect in the lab's pale text colour (its frame span has no `text-ink`, which the HUD's button sets); and the gallery cannot scroll (`min-h-dvh` under the app's `overflow: hidden`), so only the first two rows are reachable.
+- **For the maintainer:** the placeholder flag is a flat, saturated rectangle brighter than the engraving; on Flotilla patrol it flies from a staff between the ships; on Storm the region line sits on the cloud's edge, still readable. On the phone the dev-only seed bar overlaps the card's bottom border.
+
+### 2026-10-17: sinking ships fade their model (#135, PR #379)
+
+- **Branch and commit:** the PR's branch at `5d6587d`, against main at `b81d7c8` (its base) on a second dev server for A/B.
+- **Renderer:** headless Chromium on a real GPU (ANGLE Metal), 1280×800, DPR 1. Sink frame sequences from a CDP screencast; a per-frame in-page recorder read the opacity and `transparent` of the meshes near each ship, and `renderer.info.programs`, reached through `__THREE_DEVTOOLS__`.
+- **View:** `?players=3&fx=0&size=small&seed=1&skipLogin=1&cx=17.25&cz=3.9&dist=3` (and `dist=3.5`), then the same without `fx=0`. Sloops drafted through `pickCaptain`; Frigates staged into `G` from `SHIP_SPECS` (the draft offers only Sloop and Flute). The defender staged at hull 1 alongside, at (11,−3) and (12,−4), by store `UPDATE`, then `attackShip`, `rollCannons("hull")` and `applyResolution`. Three seats, not two: with two the turn passes to the shipless seat and its captain-pick overlay dims the whole sink.
+- **Findings, as intended:** the sunk Sloop or Frigate rolls, pitches, goes down with flag limp and sails slack, fades 1 → 0 over about 1.75 s and is removed; the attacker alongside kept opacity 1 with no transparent material throughout; across 3 sinks each (Sloop, Frigate, fx on) geometries, textures and programs return to the same counts. No console errors or warnings.
+- **Bugs found (sent back to the PR):** about 12 shader programs compile as each sink starts (`transparent` on the cloned materials): two frames of 115–167 ms, against main's worst of about 34 ms, paid again on every sink. With effects on, the fight-held sink also went through the fade copies (`transparent` at opacity 1, programs 75 → 87).
+- **For the maintainer:** the drop and the fade shared one curve, so the hull was under the sea by about 0.4–0.5 s at an opacity of about 0.85–0.9; from the board camera the fade was barely seen. Decided: the fade plays while she is visible, for fight sinkings too.
+- **Not checked:** an online match; a Galleon or Flute; the phone layout.
+
+### 2026-10-17: the event card waits for a new captain's pick (#372, PR #375)
+
+- **Branch and commit:** `fix/372-card-pick` at `654049b` (clean worktree, dev server); merged to main as `b81d7c8` with the same code.
+- **Renderer:** headless Chromium on a real GPU (ANGLE Metal), Playwright, 1280×800 at DPR 1.
+- **View:** `?players=2&size=small&seed=7&skipLogin=1`, `?size=small&seed=7&skipLogin=1` (solo), `?seats=1&players=2&size=small&seed=7&skipLogin=1`; camera at each seat's default.
+- **How it was staged:** captains through `moves.pickCaptain(0, "Sloop")` (in `?seats=1`, as either seat through `client.transport.master.onUpdate` with a `MAKE_MOVE` / `GAME_EVENT` payload and that seat's `playerID`). The loss as in #372: during seat 1's turn, seat 0's ship moved to `lostShips` and `merchantConvoy` pushed onto `G.eventDeck.drawPile`, by store `UPDATE` (in `?seats=1`, written to the master's `storageAPI.state`, then `transport.requestSync()`; the seat switched with the `P1`/`P2` buttons). Timeline from one in-page rAF loop (guard against starting a second: two loops alternate the camera's "previous" position and break flight counting): card, banners, waiting lines, log rows, `G`, the camera through `__THREE_DEVTOOLS__`, and the scene's object count as a proxy for the released merchants.
+- **Findings, as intended:** with a pick after 13 s the card is in 0 of ~1,500 frames on the captain screen (hotseat) and 0 of ~3,100 on the watching seat in `?seats=1`; after the pick, one "Your Turn" banner, one camera flight (hotseat, and the picking seat in `?seats=1`), then the card for 6.03–6.06 s. A pick after 3 s or 0.5 s: card only after the banner (at 0.5 s the hand-off's turn-ends banner plays first, once the captain screen closes). Log rows: before the pick the lost seat's rows name the lost captain (the glory board still says "Player 1"); after it they name the new captain, as the PR says. The watching seat reads "Waiting for Player 1 to pick a new captain", never the dead captain. Normal turn ends (hotseat, solo, `?seats=1`, 3 each): log row about 1.1 s after G changes, merchants in the scene one frame later, then the banner, then the card 30–40 ms after it for 6.0 s. No console errors.
+- **For the maintainer:** in `?seats=1` the watching seat's HUD left column (glory board and log) is hidden while the rival chooses a captain; the rival's board still says "YOUR TURN <rival>" (#371).
+- **Not checked:** an online match; a loss through a real fight (staged only); 3 or 4 seats; the phone layout.
+
 ### 2026-10-15: the harbour backdrop, review fixes (#122, PR #310)
 
 - **Branch and commit:** `feat/122-harbour-backdrop` at `a4f6eca`, against `093663c` (the PR's head before the fixes) for the comparisons.
