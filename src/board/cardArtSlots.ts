@@ -65,12 +65,12 @@ const LOST_FLAG: FlagBox = { x: 0.517, y: 0.277, w: 0.273, h: 0.204 };
 
 /**
  * Each slot's art (#247): WebP under public/cards/, cropped to 3:4 from the
- * maintainer's AI-generated paintings (NOTICE). Merchant convoy still draws
- * its placeholder: none of the paintings shows its prompt yet.
+ * maintainer's AI-generated paintings (NOTICE). Every slot now has its art,
+ * so no card draws its placeholder.
  */
 export const CARD_ART: Readonly<Record<CardArtSlot, CardArt>> = {
   calmSeas: { file: "cards/calm-seas.webp", flag: null },
-  merchantConvoy: { file: null, flag: null },
+  merchantConvoy: { file: "cards/merchant-convoy.webp", flag: null },
   storm: { file: "cards/storm.webp", flag: null },
   flotillaPatrol: { file: "cards/flotilla-patrol.webp", flag: { mask: "cards/flotilla-patrol.flag.webp", box: PATROL_FLAG } },
   npcPirate: { file: "cards/npc-pirate.webp", flag: null },
