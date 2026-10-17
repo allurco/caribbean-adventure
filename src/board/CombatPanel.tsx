@@ -1,6 +1,6 @@
-import type { CombatState, ShipState, CombatAction, NPCShip, Volley, VolleyAim } from "../game/types";
-import { VOLLEY_AIMS } from "../game/types";
-import { AIM_LABELS, answerLine, pendingVolley, pursuitRollsLine, volleyLine, type PendingVolley } from "./volleyAim";
+import type { CombatState, ShipState, CombatAction, NPCShip, SettledRound } from "../game/types";
+import { answerLine, pendingVolley, pursuitRollsLine, roundShown } from "./volleyText";
+import { VolleyLines } from "./VolleyLines";
 import { npcKind } from "./npcName";
 import { defenderRollLine, drawIntro } from "./seamanshipText";
 import { HUD_EDGE } from "./hudLayout";
@@ -16,11 +16,14 @@ interface CombatPanelProps {
   onRollDefenderSeamanship: () => void;
   onChooseAction: (action: CombatAction) => void;
   onRollFleeAttempt: () => void;
-  /** Fires the volley the fight waits on, aimed (#348); an NPC's volley takes no aim, the engine picks it. */
-  onRollCannons: (aim?: VolleyAim) => void;
-  /** The answer to the first volley, aimed by the ship answering (#348). */
-  onReturnFire: (aim: VolleyAim) => void;
+  /** Fires the volley the fight waits on (#380: one Fire!, its hits landing at random). */
+  onRollCannons: () => void;
+  /** The answer to the first volley, fired by the ship answering (#348). */
+  onReturnFire: () => void;
+  /** Settles a round stored at the resolution before the round settled itself (#380). */
   onApplyResolution: () => void;
+  /** The last round the fight settled (`G.lastRound`, #380): its volleys stay on the panel through the next draw. */
+  lastRound?: SettledRound;
   /** The draw's winner may choose fire (`canChooseCombatAction`). */
   mayChooseFire: boolean;
   /** The guns of the ship that fires first this round reach the other ship (`firstToFireReaches`, #356). */
@@ -108,63 +111,23 @@ function ActionButton({
   );
 }
 
-/** The round's volleys in the order they were fired, each one's damage landed (#346), and where each was aimed (#348). */
-function VolleyLines({
-  volleys,
+/** The last round's volleys, settled on their own (#380), shown on the next round's panel until it fires. */
+function LastRoundLines({
+  settled,
   shooterLabel,
   upgradesOf,
 }: {
-  volleys: Volley[];
+  settled: SettledRound;
   shooterLabel: (id: string) => string;
   upgradesOf: (id: string) => readonly string[];
 }) {
   return (
-    <>
-      {volleys.map((volley, i) => {
-        const line = volleyLine(volley, upgradesOf(volley.shooterId));
-        return (
-          <div key={i} className="text-xs text-amber-100/80">
-            <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> {line.fired}:{" "}
-            <span className="font-heading text-red-400">{line.hits}</span>
-          </div>
-        );
-      })}
-    </>
-  );
-}
-
-/**
- * The aim of the volley the fight waits on (#348): one button per aim for a
- * seat's volley, each firing it there; one for an NPC's, which the engine aims.
- */
-function AimButtons({
-  pending,
-  shooter,
-  fireLabel,
-  onFire,
-  onEngineFire,
-  mayAct,
-}: {
-  pending: PendingVolley | null;
-  shooter: string;
-  fireLabel: string;
-  /** Fires a seat's volley, aimed. */
-  onFire: (aim: VolleyAim) => void;
-  /** Fires an NPC's volley, which the engine aims; only at the cannons, as an NPC answers on its own. */
-  onEngineFire?: () => void;
-  mayAct: boolean;
-}) {
-  if (pending?.aimedBy === "engine" && onEngineFire) {
-    return <ActionButton label={`${shooter} fires`} onClick={onEngineFire} disabled={!mayAct} primary />;
-  }
-  return (
-    <div className="space-y-1">
-      <div className="text-[10px] text-amber-400/70 uppercase tracking-wider">{fireLabel}: aim at</div>
-      <div className="flex gap-2 justify-center">
-        {VOLLEY_AIMS.map((aim) => (
-          <ActionButton key={aim} label={AIM_LABELS[aim]} onClick={() => onFire(aim)} disabled={!mayAct} primary={aim === "hull"} />
-        ))}
-      </div>
+    <div className="space-y-0.5 text-center mb-3 border-b border-red-800/30 pb-2">
+      <div className="text-[10px] text-amber-400/70 uppercase tracking-wider">Round {settled.round}</div>
+      <VolleyLines volleys={settled.volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
+      {settled.volleys.length === 1 && settled.fleeOutcome !== "caught" && (
+        <div className="text-[10px] text-amber-400/60">No answer: the other ship could not fire back</div>
+      )}
     </div>
   );
 }
@@ -180,6 +143,7 @@ export function CombatPanel({
   onRollCannons,
   onReturnFire,
   onApplyResolution,
+  lastRound,
   mayChooseFire,
   firstToFireReaches,
   mayAct,
@@ -199,6 +163,7 @@ export function CombatPanel({
   const volleys = combat.volleys ?? [];
   const shooterLabel = (id: string) => (isNPC && id === combat.defenderId ? npcLabel : `Player ${seatLabel(id)}`);
   const pending = pendingVolley(combat);
+  const lastShown = roundShown(combat, lastRound);
   // A ship's upgrades, read for the hit its shot added; NPCs carry none
   const upgradesOf = (id: string): readonly string[] => ships[id]?.upgrades ?? [];
   // The ship that fled, whose shot-away masts slowed it (#348)
@@ -230,6 +195,8 @@ export function CombatPanel({
 
       {watchingLine && <div className="text-center text-xs italic text-amber-200/90 mb-1">{watchingLine}</div>}
       {waitingLine && <div className="text-center text-xs italic text-amber-200/90 mb-2">{waitingLine}</div>}
+
+      {lastShown && <LastRoundLines settled={lastShown} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />}
 
       {combat.stage === "seamanship" && (
         <div className="text-center space-y-2">
@@ -363,13 +330,11 @@ export function CombatPanel({
               {pending ? `${shooterLabel(pending.shooterId)} fires first; the other ship answers if it still can` : ""}
             </div>
           )}
-          <AimButtons
-            pending={pending}
-            shooter={pending ? shooterLabel(pending.shooterId) : ""}
-            fireLabel={combat.fleeOutcome === "caught" ? "Fire Parting Shot" : "Fire"}
-            onFire={onRollCannons}
-            onEngineFire={() => onRollCannons()}
-            mayAct={mayAct}
+          <ActionButton
+            label={combat.fleeOutcome === "caught" ? "Fire Parting Shot!" : "Fire!"}
+            onClick={onRollCannons}
+            disabled={!mayAct}
+            primary
           />
         </div>
       )}
@@ -380,10 +345,11 @@ export function CombatPanel({
           <div className="text-amber-100/80 text-xs mb-2">
             {pending ? answerLine(shooterLabel(pending.shooterId)) : ""}
           </div>
-          <AimButtons pending={pending} shooter={pending ? shooterLabel(pending.shooterId) : ""} fireLabel="Answer" onFire={onReturnFire} mayAct={mayAct} />
+          <ActionButton label="Fire!" onClick={onReturnFire} disabled={!mayAct} primary />
         </div>
       )}
 
+      {/* Only a fight stored at the resolution before #380 waits on it: every other round settles itself */}
       {combat.stage === "resolution" && (
         <div className="space-y-3">
           {/* The round's volleys in the order they were fired; each one's damage has landed (#346) */}

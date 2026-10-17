@@ -3,9 +3,8 @@ import { Client } from "boardgame.io/client";
 import type { Game } from "boardgame.io";
 import { hex, hexGrid } from "./hex";
 import type { MapCell } from "./mapGenerator";
-import type { Captain, CaribbeanState, CombatStage, Mission, NPCRole, NPCShip, ShipState } from "./types";
-import type { VolleyAim } from "./types";
-import { COMBAT_STAGES, VOLLEY_AIMS } from "./types";
+import type { Captain, CaribbeanState, CombatStage, CombatState, Mission, NPCRole, NPCShip, ShipState } from "./types";
+import { COMBAT_STAGES } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
 import { MAX_MAST_DAMAGE } from "./combat";
 import { firstToFireReaches, isVolleyStage, volleysFired, volleyShooter, applyCannons, applyCombatResolution, applyRollDefenderSeamanship, applyRollSeamanship, canChooseCombatAction, openFight } from "./combatMoves";
@@ -126,8 +125,7 @@ function mission(type: Mission["type"], extra: Partial<Mission> = {}): Mission {
  * has a gun), so the fight is in round 2, at the draw.
  */
 function pastTheAmbush(client: TestClient) {
-  client.moves.rollCannons("hull");
-  client.moves.applyResolution();
+  client.moves.rollCannons();
   expect(G(client).combat).toMatchObject({ round: 2, stage: "seamanship" });
 }
 
@@ -135,8 +133,7 @@ describe("an NPC that wins the draw picks its own action (#345)", () => {
   it("outgunned, it flees: the fight goes to the flight, and the faster NPC gets clean away, never having fired", () => {
     const client = startGame({ "0": ship(0, 0, { cannons: 4 }) }, { foe: npc("MERCHANT", { maneuverability: 20 }) });
     client.moves.attackNPC("foe");
-    client.moves.rollCannons("hull");
-    client.moves.applyResolution();
+    client.moves.rollCannons();
     client.moves.rollSeamanship();
     expect(G(client).combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "flee", stage: "fleeAttempt" });
 
@@ -154,8 +151,9 @@ describe("an NPC that wins the draw picks its own action (#345)", () => {
     client.moves.rollSeamanship();
     expect(G(client).combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "fire", stage: "cannons" });
 
-    client.moves.rollCannons("hull");
-    expect(G(client).combat!.volleys!.map((v) => v.shooterId)).toEqual(["foe"]);
+    client.moves.rollCannons();
+    // The player has no gun to answer with: the round settles at once
+    expect(G(client).lastRound!.volleys.map((v) => v.shooterId)).toEqual(["foe"]);
   });
 });
 
@@ -179,35 +177,34 @@ describe("boarding an NPC (#345)", () => {
 });
 
 describe("a ship left derelict (#345)", () => {
-  it("an NPC whose last crew falls to grape shot is left derelict, and the fight ends", () => {
+  it("an NPC whose last crew falls is left derelict, and the fight ends with the volley that did it", () => {
     const client = startGame(
-      { "0": ship(0, 0, { cannons: 20, upgrades: ["grape_shot"] }) },
+      { "0": ship(0, 0, { cannons: 20 }) },
       { foe: npc("MERCHANT", { crew: 1 }) }
     );
     client.moves.attackNPC("foe");
-    client.moves.rollCannons("crew");
-    expect(G(client).combat!.attackerHits).toBeGreaterThan(0);
-    client.moves.applyResolution();
+    client.moves.rollCannons();
 
     const after = G(client);
+    expect(after.lastRound!.volleys[0].locations!.crew).toBeGreaterThan(0);
     expect(after.combat).toBeUndefined();
+    expect(client.getState()!.ctx.phase).toBe("main");
     expect(after.npcs.foe.isDerelict).toBe(true);
     expect(after.npcs.foe.stats.crew.current).toBe(0);
     expect(after.npcs.foe.stats.hull.current).toBeGreaterThan(0);
   });
 
-  it("an attacker whose last crew falls to the defender's grape shot is left derelict, and the fight ends", () => {
+  it("an attacker whose last crew falls to the defender's answer is left derelict, and the fight ends", () => {
     const client = startGame({
       "0": ship(0, 0, { crew: 1 }),
-      "1": ship(1, 0, { cannons: 20, upgrades: ["grape_shot"] }),
+      "1": ship(1, 0, { cannons: 20 }),
     });
     client.moves.attackShip("1");
-    client.moves.rollCannons("hull");
-    client.moves.returnFire("crew");
-    expect(G(client).combat!.defenderHits).toBeGreaterThan(0);
-    client.moves.applyResolution();
+    client.moves.rollCannons();
+    client.moves.returnFire();
 
     const after = G(client);
+    expect(after.lastRound!.volleys[1].locations!.crew).toBeGreaterThan(0);
     expect(after.combat).toBeUndefined();
     expect(after.ships["0"].isDerelict).toBe(true);
     expect(after.ships["1"].isDerelict).toBeUndefined();
@@ -221,11 +218,10 @@ describe("the missions a fight settles (#345)", () => {
     const client = startGame({ "0": hunter }, { foe: npc("FLOTILLA", { hull: 1 }) });
     const before = G(client).ships["0"];
     client.moves.attackNPC("foe");
-    client.moves.rollCannons("hull");
-    expect(G(client).combat!.attackerHits).toBeGreaterThan(0);
-    client.moves.applyResolution();
+    client.moves.rollCannons();
 
     const after = G(client);
+    expect(after.lastRound!.volleys[0].hits).toBeGreaterThan(0);
     expect(after.npcs.foe).toBeUndefined();
     expect(after.ships["0"].activeMission).toBeUndefined();
     expect(after.ships["0"].gold).toBe(before.gold + 50);
@@ -237,8 +233,8 @@ describe("the missions a fight settles (#345)", () => {
     escort.activeMission = mission("ESCORT", { targetPortName: "Havana", noDamageTaken: true });
     const client = startGame({ "0": escort }, { foe: npc("FLOTILLA", { cannons: 20 }) });
     client.moves.attackNPC("foe");
-    client.moves.rollCannons("hull");
-    expect(G(client).combat!.defenderHits).toBeGreaterThan(0);
+    client.moves.rollCannons();
+    expect(G(client).lastRound!.volleys[1].hits).toBeGreaterThan(0);
 
     expect(G(client).ships["0"].activeMission?.noDamageTaken).toBe(false);
   });
@@ -250,10 +246,43 @@ const STEP_MOVES = {
   defenderSeamanship: (c: TestClient) => c.moves.rollDefenderSeamanship(),
   chooseAction: (c: TestClient) => c.moves.chooseCombatAction("fire"),
   fleeAttempt: (c: TestClient) => c.moves.rollFleeAttempt(),
-  cannons: (c: TestClient) => c.moves.rollCannons("hull"),
-  returnFire: (c: TestClient) => c.moves.returnFire("hull"),
+  cannons: (c: TestClient) => c.moves.rollCannons(),
+  returnFire: (c: TestClient) => c.moves.returnFire(),
   resolution: (c: TestClient) => c.moves.applyResolution(),
 } satisfies Record<CombatStage, (c: TestClient) => void>;
+
+/**
+ * A client whose game starts mid-fight, at `combat` (a fight stored before
+ * #380 at the resolution, which play no longer reaches).
+ */
+function startMidFight(ships: Record<string, ShipState>, combat: CaribbeanState["combat"], npcs: Record<string, NPCShip> = {}) {
+  const game: Game<CaribbeanState> = {
+    ...Caribbean,
+    seed: "mid-fight-380",
+    phases: {
+      main: Caribbean.phases!.main!,
+      combat: { ...Caribbean.phases!.combat!, start: true },
+    },
+    setup: () => ({
+      cells,
+      ships,
+      mapSize: "small",
+      captainDeck: [],
+      draftHands: {},
+      floatingLoot: [],
+      npcs,
+      npcIdCounter: 0,
+      wrap: null,
+      pirates: {},
+      bountyClaims: [],
+      movesUsed: 0,
+      combat,
+    }),
+  };
+  const client = Client<CaribbeanState>({ game: withHotseatView(game), numPlayers: Object.keys(ships).length });
+  client.start();
+  return client;
+}
 
 /** A fight between two gunless ships brought to `stage`: the attacker, faster, wins the draw and flees. */
 function fightAt(stage: CombatStage): TestClient {
@@ -261,13 +290,17 @@ function fightAt(stage: CombatStage): TestClient {
     // The answer (#348): the defender has guns to answer the attacker's opening broadside with
     const client = startGame({ "0": ship(0, 0), "1": ship(1, 0, { cannons: 2 }) });
     client.moves.attackShip("1");
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
     expect(G(client).combat!.stage).toBe("returnFire");
     return client;
   }
+  if (stage === "resolution") {
+    // Only a fight stored before #380 waits on the resolution
+    return startMidFight({ "0": ship(0, 0), "1": ship(1, 0) }, { ...openFight("0", "1", 1, false), round: 2, stage: "resolution" });
+  }
   const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }), "1": ship(1, 0) });
   client.moves.attackShip("1");
-  const path: CombatStage[] = ["cannons", "resolution", "seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt"];
+  const path: CombatStage[] = ["cannons", "seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt"];
   for (const step of path) {
     if (step === stage) break;
     if (step === "chooseAction") client.moves.chooseCombatAction("flee");
@@ -304,33 +337,32 @@ describe("round 1 is the ambush (#346)", () => {
       "1": ship(1, 0, { cannons: 20, crew: 20 }),
     });
     client.moves.attackShip("1");
-    client.moves.rollCannons("crew");
-    client.moves.returnFire("hull");
-
-    const after = G(client);
-    const [first, answer] = after.combat!.volleys!;
+    client.moves.rollCannons();
+    const first = G(client).combat!.volleys![0];
     expect(first).toMatchObject({ shooterId: "0", guns: 20 });
-    expect(first.hits).toBeGreaterThan(0);
-    // The opening broadside, aimed at the crew, took its gunners before the answer was rolled.
-    const gunnersLeft = 20 - first.hits;
-    expect(after.ships["1"].stats!.crew.current).toBe(gunnersLeft);
+    expect(first.locations!.crew).toBeGreaterThan(0);
+    // The opening broadside's hits on the crew took its gunners before the answer was rolled.
+    const gunnersLeft = 20 - first.locations!.crew;
+    expect(G(client).ships["1"].stats!.crew.current).toBe(gunnersLeft);
+
+    client.moves.returnFire();
+    const after = G(client);
+    const [, answer] = after.lastRound!.volleys;
     expect(answer).toMatchObject({ shooterId: "1", guns: gunnersLeft });
-    expect(after.combat!.volleys).toHaveLength(2);
-    // Both volleys' damage has landed already, before the round's end.
-    expect(after.combat!.stage).toBe("resolution");
-    expect(after.ships["0"].stats!.hull.current).toBe(40 - answer.hits);
+    expect(after.lastRound!.volleys).toHaveLength(2);
+    // The round settled itself as the answer landed: round 2's draw is next.
+    expect(after.combat).toMatchObject({ round: 2, stage: "seamanship" });
+    expect(after.ships["0"].stats!.hull.current).toBe(40 - answer.locations!.hull - Math.max(0, answer.locations!.masts - MAX_MAST_DAMAGE));
   });
 
   it("a defender sunk by the opening broadside never fires back", () => {
     const client = startGame({ "0": ship(0, 0, { cannons: 20 }), "1": ship(1, 0, { cannons: 20, hull: 1 }) });
     client.moves.attackShip("1");
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
 
-    expect(G(client).combat!.volleys).toEqual([expect.objectContaining({ shooterId: "0" })]);
-    expect(G(client).combat!.defenderHits).toBe(0);
+    expect(G(client).lastRound!.volleys).toEqual([expect.objectContaining({ shooterId: "0" })]);
+    expect(G(client).lastRound!.ended).toBe(true);
     expect(G(client).ships["0"].stats!.hull.current).toBe(40);
-
-    client.moves.applyResolution();
     expect(G(client).combat).toBeUndefined();
     expect(G(client).ships["1"]).toBeUndefined();
     expect(client.getState()!.ctx.phase).toBe("main");
@@ -342,25 +374,24 @@ describe("round 1 is the ambush (#346)", () => {
       "1": ship(1, 0, { cannons: 20, crew: 1 }),
     });
     client.moves.attackShip("1");
-    client.moves.rollCannons("hull");
-    expect(G(client).combat!.volleys).toHaveLength(1);
+    client.moves.rollCannons();
+    expect(G(client).lastRound!.volleys).toHaveLength(1);
     expect(G(client).ships["0"].stats!.hull.current).toBe(40);
   });
 
   it("an NPC sunk by the opening broadside never fires back", () => {
     const client = startGame({ "0": ship(0, 0, { cannons: 20 }) }, { foe: npc("FLOTILLA", { cannons: 20, hull: 1 }) });
     client.moves.attackNPC("foe");
-    client.moves.rollCannons("hull");
-    expect(G(client).combat!.volleys).toEqual([expect.objectContaining({ shooterId: "0" })]);
+    client.moves.rollCannons();
+    expect(G(client).lastRound!.volleys).toEqual([expect.objectContaining({ shooterId: "0" })]);
     expect(G(client).ships["0"].stats!.hull.current).toBe(40);
   });
 
   it("a defender with no guns stays in the fight: round 2 opens on the draw, and it may flee then", () => {
     const client = startGame({ "0": ship(0, 0, { cannons: 0 }), "1": ship(1, 0, { cannons: 0, maneuverability: 20 }) });
     client.moves.attackShip("1");
-    client.moves.rollCannons("hull");
-    expect(G(client).combat!.volleys).toEqual([{ shooterId: "0", guns: 0, aim: "hull", hits: 0 }]);
-    client.moves.applyResolution();
+    client.moves.rollCannons();
+    expect(G(client).lastRound!.volleys).toEqual([{ shooterId: "0", guns: 0, hits: 0, locations: { hull: 0, masts: 0, crew: 0 } }]);
     expect(G(client).combat).toMatchObject({ round: 2, stage: "seamanship", volleys: [] });
 
     client.moves.rollSeamanship();
@@ -409,26 +440,26 @@ describe("from round 2, damage lands per volley (#346)", () => {
       "1": ship(1, 0, { cannons: 20, maneuverability: 20 }),
     });
     client.moves.attackShip("1");
-    client.moves.rollCannons("hull");
-    client.moves.returnFire("hull");
-    client.moves.applyResolution();
+    client.moves.rollCannons();
+    client.moves.returnFire();
     expect(G(client).combat).toMatchObject({ round: 2, stage: "seamanship" });
 
     client.moves.rollSeamanship();
     client.moves.rollDefenderSeamanship();
     expect(G(client).combat!.seamanshipWinner).toBe("1");
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons("crew");
+    const crewBefore = G(client).ships["0"].stats!.crew.current;
+    const gunners = Math.min(20, G(client).ships["1"].stats!.crew.current);
+    client.moves.rollCannons();
 
     const [first] = G(client).combat!.volleys!;
-    expect(first).toMatchObject({ shooterId: "1", guns: 20, aim: "crew" });
-    expect(first.hits).toBeGreaterThan(0);
+    expect(first).toMatchObject({ shooterId: "1", guns: gunners });
+    expect(first.locations!.crew).toBeGreaterThan(0);
     expect(G(client).combat!.stage).toBe("returnFire");
-    client.moves.returnFire("hull");
-    const [, answer] = G(client).combat!.volleys!;
+    client.moves.returnFire();
+    const [, answer] = G(client).lastRound!.volleys;
     // The crew shot away before the attacker's answer was rolled.
-    expect(answer).toMatchObject({ shooterId: "0", guns: 20 - first.hits });
-    expect(G(client).combat!).toMatchObject({ defenderHits: first.hits, attackerHits: answer.hits });
+    expect(answer).toMatchObject({ shooterId: "0", guns: Math.min(20, crewBefore - first.locations!.crew) });
   });
 });
 
@@ -503,151 +534,182 @@ describe("a fight from before #346, mid-round when the change deploys", () => {
 
   it("at the cannons: the volleys are fired by the new rules", () => {
     const G0 = legacyFight("cannons");
-    applyCannons(G0, "hull", () => 6);
-    expect(G0.combat!.volleys).toEqual([{ shooterId: "0", guns: 2, aim: "hull", hits: 2 }]);
-    // The answer is the defender's own step, aimed by it (#348)
+    // Both guns hit (6s), then the hits land on the hull (1) and the masts (3)
+    const dice = [6, 6, 1, 3];
+    expect(applyCannons(G0, () => dice.shift()!, 1)).toBe("continues");
+    expect(G0.combat!.volleys).toEqual([{ shooterId: "0", guns: 2, hits: 2, locations: { hull: 1, masts: 1, crew: 0 } }]);
+    // The answer is the defender's own step
     expect(G0.combat!.stage).toBe("returnFire");
   });
 });
 
-/** The damage a volley of `hits` aimed at `aim` does to a ship with sound masts: past MAX_MAST_DAMAGE, mast hits go to the hull. */
-function landed(aim: VolleyAim, hits: number) {
-  if (aim !== "masts") return { hull: 0, crew: 0, masts: 0, [aim]: hits };
-  const masts = Math.min(hits, MAX_MAST_DAMAGE);
-  return { hull: hits - masts, crew: 0, masts };
+/** Two ships at the ambush, by hand: the attacker with `guns` guns and `upgrades`, the defender with `answer` guns. */
+function ambush(guns: number, answer: number, upgrades: string[] = [], npcFoe = false): CaribbeanState {
+  return {
+    ships: { "0": ship(0, 0, { cannons: guns, upgrades }), ...(npcFoe ? {} : { "1": ship(1, 0, { cannons: answer }) }) },
+    npcs: npcFoe ? { foe: npc("FLOTILLA", { cannons: answer }) } : {},
+    floatingLoot: [],
+    combat: openFight("0", npcFoe ? "foe" : "1", 1, npcFoe),
+  } as unknown as CaribbeanState;
 }
 
-describe("every volley is aimed by the ship firing it (#348)", () => {
-  it("the opening broadside takes its firer's aim, and every hit lands there", () => {
-    for (const aim of VOLLEY_AIMS) {
-      const client = startGame({ "0": ship(0, 0, { cannons: 20 }), "1": ship(1, 0, { crew: 30 }) });
-      client.moves.attackShip("1");
-      client.moves.rollCannons(aim);
+/** Dice in the order given; the test fails if a step rolls more than it was given. */
+function scripted(...dice: number[]) {
+  return () => {
+    const die = dice.shift();
+    if (die === undefined) throw new Error("rolled more dice than scripted");
+    return die;
+  };
+}
 
-      const [volley] = G(client).combat!.volleys!;
-      expect(volley).toMatchObject({ shooterId: "0", guns: 20, aim });
-      expect(volley.hits).toBeGreaterThan(0);
-      const target = G(client).ships["1"];
-      expect(target.damage).toEqual(landed(aim, volley.hits));
-      expect(target.stats!.hull.current).toBe(40 - landed(aim, volley.hits).hull);
-      expect(target.stats!.crew.current).toBe(aim === "crew" ? 30 - volley.hits : 30);
-    }
+describe("every hit lands at random (#380)", () => {
+  it("each hit of a volley rolls its own location after the guns', and the damage lands there", () => {
+    const G0 = ambush(4, 2);
+    // Four guns: three hit (5, 6, 6), one misses (2); the hits land on the hull, the masts and the crew
+    applyCannons(G0, scripted(5, 2, 6, 6, 1, 4, 5), 1);
+    expect(G0.combat!.volleys).toEqual([{ shooterId: "0", guns: 4, hits: 3, locations: { hull: 1, masts: 1, crew: 1 } }]);
+    expect(G0.ships["1"].damage).toEqual({ hull: 1, masts: 1, crew: 1 });
+    expect(G0.ships["1"].stats!.hull.current).toBe(39);
+    expect(G0.ships["1"].stats!.crew.current).toBe(19);
   });
 
-  it("refuses to fire with no aim, or one it does not know", () => {
+  it("mast hits past MAX_MAST_DAMAGE go to the hull", () => {
+    const G0 = ambush(3, 0);
+    applyCannons(G0, scripted(6, 6, 6, 3, 4, 3), 1);
+    expect(G0.lastRound!.volleys[0].locations).toEqual({ hull: 0, masts: 3, crew: 0 });
+    expect(G0.ships["1"].damage).toEqual({ hull: 1, masts: MAX_MAST_DAMAGE, crew: 0 });
+  });
+
+  it("chain shot adds one to the masts when a hit lands there, grape shot one to the crew when a hit lands there", () => {
+    const fire = (upgrades: string[], ...dice: number[]) => {
+      const G0 = ambush(2, 0, upgrades);
+      applyCannons(G0, scripted(...dice), 1);
+      return G0.ships["1"].damage;
+    };
+    // Two hits, on the masts and the crew
+    expect(fire([], 6, 6, 3, 5)).toEqual({ hull: 0, masts: 1, crew: 1 });
+    expect(fire(["chain_shot"], 6, 6, 3, 5)).toEqual({ hull: 0, masts: 2, crew: 1 });
+    expect(fire(["grape_shot"], 6, 6, 3, 5)).toEqual({ hull: 0, masts: 1, crew: 2 });
+    expect(fire(["chain_shot", "grape_shot"], 6, 6, 3, 5)).toEqual({ hull: 0, masts: 2, crew: 2 });
+    // Two hits on the hull: the shots add nothing
+    expect(fire(["chain_shot", "grape_shot"], 6, 6, 1, 2)).toEqual({ hull: 2, masts: 0, crew: 0 });
+  });
+
+  it("an NPC fires the same way: its answer's hits each roll a location", () => {
+    const G0 = ambush(1, 2, [], true);
+    // The player's gun misses; the NPC's two hit, on the crew and the hull
+    applyCannons(G0, scripted(1, 6, 5, 6, 2), 1);
+    expect(G0.lastRound!.volleys).toEqual([
+      { shooterId: "0", guns: 1, hits: 0, locations: { hull: 0, masts: 0, crew: 0 } },
+      { shooterId: "foe", guns: 2, hits: 2, locations: { hull: 1, masts: 0, crew: 1 } },
+    ]);
+    expect(G0.ships["0"].damage).toEqual({ hull: 1, masts: 0, crew: 1 });
+  });
+
+  it("over many seeds, the hits spread over all three locations, and each volley's damage is its locations'", () => {
+    const seen = { hull: 0, masts: 0, crew: 0 };
+    for (let seed = 0; seed < 30; seed++) {
+      const client = startGame({ "0": ship(0, 0, { cannons: 6 }), "1": ship(1, 0, { cannons: 6, crew: 40 }) }, {}, `random-hits-${seed}`);
+      client.moves.attackShip("1");
+      client.moves.rollCannons();
+      const [volley] = G(client).combat!.volleys!;
+      const at = volley.locations!;
+      expect(at.hull + at.masts + at.crew).toBe(volley.hits);
+      const masts = Math.min(at.masts, MAX_MAST_DAMAGE);
+      expect(G(client).ships["1"].damage).toEqual({ hull: at.hull + at.masts - masts, masts, crew: at.crew });
+      for (const where of ["hull", "masts", "crew"] as const) seen[where] += at[where];
+    }
+    expect(Math.min(seen.hull, seen.masts, seen.crew)).toBeGreaterThan(0);
+  });
+
+  it("one Fire! for every volley: rollCannons and returnFire take no aim, and refuse one sent by an old client", () => {
+    const client = startGame({ "0": ship(0, 0, { cannons: 2 }), "1": ship(1, 0, { cannons: 2 }) });
+    client.moves.attackShip("1");
+    const before = JSON.stringify(G(client));
+    for (const stray of ["hull", "masts", "guns", null, { aim: "hull" }]) client.moves.rollCannons(stray);
+    expect(JSON.stringify(G(client))).toBe(before);
+
+    client.moves.rollCannons();
+    expect(G(client).combat!.stage).toBe("returnFire");
+    const waiting = JSON.stringify(G(client));
+    for (const stray of ["crew", null]) client.moves.returnFire(stray);
+    expect(JSON.stringify(G(client))).toBe(waiting);
+    client.moves.returnFire();
+    expect(G(client).lastRound!.volleys.map((v) => v.shooterId)).toEqual(["0", "1"]);
+  });
+});
+
+describe("the round settles itself (#380)", () => {
+  it("the answer settles the round: no press, the draw is next, and the round's volleys stay in G.lastRound", () => {
+    const client = startGame({ "0": ship(0, 0, { cannons: 4 }), "1": ship(1, 0, { cannons: 4 }) });
+    client.moves.attackShip("1");
+    client.moves.rollCannons();
+    client.moves.returnFire();
+    const after = G(client);
+    expect(after.combat).toMatchObject({ round: 2, stage: "seamanship", volleys: [] });
+    expect(after.lastRound).toMatchObject({ attackerId: "0", defenderId: "1", round: 1, ended: false, fleeOutcome: null });
+    expect(after.lastRound!.volleys.map((v) => v.shooterId)).toEqual(["0", "1"]);
+  });
+
+  it("against an NPC one Fire! fires both volleys and settles the round", () => {
+    const client = startGame({ "0": ship(0, 0, { cannons: 4 }) }, { foe: npc("FLOTILLA", { cannons: 4 }) });
+    client.moves.attackNPC("foe");
+    client.moves.rollCannons();
+    expect(G(client).combat).toMatchObject({ round: 2, stage: "seamanship" });
+    expect(G(client).lastRound!.volleys.map((v) => v.shooterId)).toEqual(["0", "foe"]);
+  });
+
+  it("a volley that sinks the defender ends the fight in the same move, back to main, the round kept for the board", () => {
+    const client = startGame({ "0": ship(0, 0, { cannons: 20 }), "1": ship(1, 0, { cannons: 20, hull: 1 }) });
+    client.moves.attackShip("1");
+    client.moves.rollCannons();
+    expect(G(client).combat).toBeUndefined();
+    expect(G(client).ships["1"]).toBeUndefined();
+    expect(client.getState()!.ctx.phase).toBe("main");
+    expect(G(client).lastRound).toMatchObject({ round: 1, ended: true });
+  });
+
+  it("a new fight clears the last fight's round", () => {
     const client = startGame({ "0": ship(0, 0, { cannons: 2 }), "1": ship(1, 0) });
     client.moves.attackShip("1");
-    const before = JSON.stringify(G(client));
     client.moves.rollCannons();
-    client.moves.rollCannons("guns");
-    client.moves.rollCannons({ aim: "hull" });
-    expect(JSON.stringify(G(client))).toBe(before);
+    expect(G(client).lastRound).toBeDefined();
+    client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
+    client.moves.chooseCombatAction("board");
+    expect(G(client).combat).toBeUndefined();
+    expect(G(client).lastRound!.round).toBe(1);
+    // The next seat's turn: it attacks, and the old round goes
+    client.moves.attackShip("0");
+    expect(G(client).combat).toBeDefined();
+    expect(G(client).lastRound).toBeUndefined();
   });
 
-  it("the answer waits on the answering ship's own aim, with the first volley's damage landed", () => {
-    const client = startGame({ "0": ship(0, 0, { cannons: 20 }), "1": ship(1, 0, { cannons: 20, crew: 30 }) });
-    client.moves.attackShip("1");
-    client.moves.rollCannons("crew");
-
-    const waiting = G(client).combat!;
-    expect(waiting.stage).toBe("returnFire");
-    expect(waiting.volleys).toHaveLength(1);
-    const lost = waiting.volleys![0].hits;
-    expect(G(client).ships["1"].stats!.crew.current).toBe(30 - lost);
-    // The first ship cannot fire again, nor end the round, before the answer
-    client.moves.rollCannons("hull");
+  it("a fight stored at the resolution before #380 still settles, by the legacy applyResolution move", () => {
+    const client = startMidFight({ "0": ship(0, 0), "1": ship(1, 0, { hull: 0 }) }, { ...openFight("0", "1", 1, false), round: 2, stage: "resolution" });
     client.moves.applyResolution();
-    expect(G(client).combat!.volleys).toHaveLength(1);
-
-    client.moves.returnFire("masts");
-    const [, answer] = G(client).combat!.volleys!;
-    expect(answer).toMatchObject({ shooterId: "1", guns: 20, aim: "masts" });
-    expect(G(client).combat!.stage).toBe("resolution");
-    expect(G(client).ships["0"].damage).toEqual(landed("masts", answer.hits));
-    expect(G(client).ships["0"].stats!.hull.current).toBe(40 - landed("masts", answer.hits).hull);
+    expect(G(client).combat).toBeUndefined();
+    expect(G(client).ships["1"]).toBeUndefined();
+    expect(client.getState()!.ctx.phase).toBe("main");
   });
 
-  it("refuses an answer with no aim", () => {
-    const client = fightAt("returnFire");
+  it("refuses the legacy applyResolution at any other step", () => {
+    const client = startGame({ "0": ship(0, 0, { cannons: 2 }), "1": ship(1, 0, { cannons: 2 }) });
+    client.moves.attackShip("1");
+    client.moves.rollCannons();
     const before = JSON.stringify(G(client));
-    client.moves.returnFire();
-    client.moves.returnFire("rigging");
+    client.moves.applyResolution();
     expect(JSON.stringify(G(client))).toBe(before);
   });
 
-  it("chain shot adds a hit only to a volley aimed at the masts, grape shot only to one aimed at the crew", () => {
-    const fired = (upgrades: string[], aim: VolleyAim) => {
-      const client = startGame({ "0": ship(0, 0, { cannons: 20, upgrades }), "1": ship(1, 0, { crew: 30 }) });
-      client.moves.attackShip("1");
-      client.moves.rollCannons(aim);
-      return { hits: G(client).combat!.volleys![0].hits, damage: G(client).ships["1"].damage };
-    };
-    // The same seed rolls the same dice: each loadout's volley hits the same number of times
-    const { hits } = fired([], "hull");
-    expect(hits).toBeGreaterThan(0);
-    expect(fired(["chain_shot"], "masts").damage).toEqual(landed("masts", hits + 1));
-    expect(fired(["chain_shot"], "hull").damage).toEqual({ hull: hits, crew: 0, masts: 0 });
-    expect(fired(["grape_shot"], "crew").damage).toEqual({ hull: 0, crew: hits + 1, masts: 0 });
-    expect(fired(["grape_shot"], "masts").damage).toEqual(landed("masts", hits));
-  });
-
-  it("over many seeds, a fight's volleys damage only where each was aimed", () => {
-    for (let seed = 0; seed < 40; seed++) {
-      const first = VOLLEY_AIMS[seed % 3];
-      const second = VOLLEY_AIMS[Math.floor(seed / 3) % 3];
-      const client = startGame({ "0": ship(0, 0, { cannons: 4 }), "1": ship(1, 0, { cannons: 4 }) }, {}, `aim-${seed}`);
-      client.moves.attackShip("1");
-      client.moves.rollCannons(first);
-      client.moves.returnFire(second);
-      const [volley, answer] = G(client).combat!.volleys!;
-      expect(volley.aim).toBe(first);
-      expect(answer.aim).toBe(second);
-      expect(G(client).ships["1"].damage).toEqual(landed(first, volley.hits));
-      expect(G(client).ships["0"].damage).toEqual(landed(second, answer.hits));
-    }
-  });
-
-  it("an NPC answers on its own, aimed at the hull", () => {
-    const client = startGame({ "0": ship(0, 0, { cannons: 20 }) }, { foe: npc("FLOTILLA", { cannons: 20 }) });
-    client.moves.attackNPC("foe");
-    client.moves.rollCannons("masts");
-
-    const combat = G(client).combat!;
-    expect(combat.stage).toBe("resolution");
-    expect(combat.volleys!.map((v) => [v.shooterId, v.aim])).toEqual([["0", "masts"], ["foe", "hull"]]);
-    expect(G(client).ships["0"].damage).toEqual({ hull: combat.volleys![1].hits, crew: 0, masts: 0 });
-  });
-
-  it("an NPC's volley takes the engine's aim, whatever aim is sent, and refuses an aim the game does not know", () => {
-    const fired = (aim?: unknown) => {
-      const client = startGame({ "0": ship(0, 0, { cannons: 20 }) }, { foe: npc("FLOTILLA", { cannons: 20, maneuverability: 20 }) });
-      client.moves.attackNPC("foe");
-      client.moves.rollCannons("hull");
-      client.moves.applyResolution();
-      client.moves.rollSeamanship();
-      expect(G(client).combat).toMatchObject({ seamanshipWinner: "foe", stage: "cannons" });
-      const before = JSON.stringify(G(client));
-      client.moves.rollCannons(aim);
-      return { client, unchanged: JSON.stringify(G(client)) === before };
-    };
-    expect(fired("guns").unchanged).toBe(true);
-    expect(fired({ aim: "hull" }).unchanged).toBe(true);
-    for (const aim of [undefined, null, "masts"]) {
-      const { client, unchanged } = fired(aim);
-      expect(unchanged).toBe(false);
-      expect(G(client).combat!.volleys!.map((v) => [v.shooterId, v.aim])).toEqual([["foe", "hull"]]);
-    }
-  });
-
-  it("an NPC that catches a fleeing player fires the parting shot, aimed by the engine, and the fight ends", () => {
+  it("an NPC that catches a fleeing player fires the parting shot, and the fight ends with it", () => {
     /** The player (manoeuvrability 6, masts shot away) wins every draw against the NPC of 0 and flees. */
     const chase = (seed: number) => {
       const fleeing = ship(0, 0, { maneuverability: 6 });
       fleeing.damage.masts = MAX_MAST_DAMAGE;
       const client = startGame({ "0": fleeing }, { foe: npc("FLOTILLA", { cannons: 4 }) }, `npc-chase-${seed}`);
       client.moves.attackNPC("foe");
-      client.moves.rollCannons("hull");
-      client.moves.applyResolution();
+      client.moves.rollCannons();
       client.moves.rollSeamanship();
       client.moves.chooseCombatAction("flee");
       client.moves.rollFleeAttempt();
@@ -658,31 +720,27 @@ describe("every volley is aimed by the ship firing it (#348)", () => {
     const client = chase(seed!);
     expect(G(client).combat).toMatchObject({ stage: "cannons", fleeOutcome: "caught", seamanshipWinner: "0" });
 
-    // The player presses the NPC's parting shot; the engine aims it
+    // The player presses the NPC's parting shot
     client.moves.rollCannons();
-    expect(G(client).combat!.volleys).toEqual([expect.objectContaining({ shooterId: "foe", aim: "hull" })]);
-    expect(G(client).combat!.stage).toBe("resolution");
-    client.moves.applyResolution();
     expect(G(client).combat).toBeUndefined();
     expect(client.getState()!.ctx.phase).toBe("main");
+    expect(G(client).lastRound).toMatchObject({ fleeOutcome: "caught", ended: true, volleys: [expect.objectContaining({ shooterId: "foe" })] });
   });
 
-  it("an NPC that fires first aims at the hull, and the player then aims its own answer", () => {
-    const client = startGame({ "0": ship(0, 0, { cannons: 20 }) }, { foe: npc("FLOTILLA", { cannons: 20, maneuverability: 20 }) });
+  it("an NPC that fires first, and the player then answers on its own step", () => {
+    // The NPC is never outgunned, whatever the ambush's hits on its crew, so it fires
+    const client = startGame({ "0": ship(0, 0, { cannons: 20 }) }, { foe: npc("FLOTILLA", { cannons: 30, crew: 60, maneuverability: 20 }) });
     client.moves.attackNPC("foe");
-    client.moves.rollCannons("hull");
-    client.moves.applyResolution();
+    client.moves.rollCannons();
     client.moves.rollSeamanship();
     expect(G(client).combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "fire", stage: "cannons" });
 
-    // The player presses the NPC's volley; the NPC's own aim is used
-    client.moves.rollCannons("hull");
-    expect(G(client).combat!.volleys!.map((v) => [v.shooterId, v.aim])).toEqual([["foe", "hull"]]);
+    client.moves.rollCannons();
+    expect(G(client).combat!.volleys!.map((v) => v.shooterId)).toEqual(["foe"]);
     expect(G(client).combat!.stage).toBe("returnFire");
 
-    client.moves.returnFire("crew");
-    expect(G(client).combat!.volleys!.map((v) => [v.shooterId, v.aim])).toEqual([["foe", "hull"], ["0", "crew"]]);
-    expect(G(client).npcs.foe.stats.crew.current).toBe(20 - G(client).combat!.volleys![1].hits);
+    client.moves.returnFire();
+    expect(G(client).lastRound!.volleys.map((v) => v.shooterId)).toEqual(["foe", "0"]);
   });
 
   /**
@@ -719,36 +777,44 @@ describe("every volley is aimed by the ship firing it (#348)", () => {
     expect(caughtOnlyByMasts).toBeGreaterThan(0);
   });
 
-  it("the pursuer aims the parting shot at the ship it caught, and nobody answers it", () => {
+  it("the pursuer fires the parting shot at the ship it caught, nobody answers it, and the fight ends", () => {
     const seed = Array.from({ length: 60 }, (_, i) => i).find((i) => caught(flight(i, MAX_MAST_DAMAGE)));
     expect(seed).toBeDefined();
     const client = flight(seed!, MAX_MAST_DAMAGE);
     expect(G(client).combat).toMatchObject({ fleeOutcome: "caught", stage: "cannons" });
 
-    client.moves.rollCannons("crew");
-    expect(G(client).combat!.volleys).toEqual([expect.objectContaining({ shooterId: "0", aim: "crew" })]);
-    expect(G(client).combat!.stage).toBe("resolution");
+    client.moves.rollCannons();
+    expect(G(client).combat).toBeUndefined();
+    expect(G(client).lastRound!.volleys).toEqual([expect.objectContaining({ shooterId: "0" })]);
   });
 });
 
-describe("the volleys fired by a step (#348)", () => {
-  const volley = (shooterId: string, hits: number) => ({ shooterId, guns: 4, aim: "hull" as const, hits });
-  const at = (stage: CombatStage, volleys = [] as ReturnType<typeof volley>[]) => ({ stage, volleys });
+describe("the volleys fired by a step (#348, #380)", () => {
+  const volley = (shooterId: string, hits: number) => ({ shooterId, guns: 4, hits, locations: { hull: hits, masts: 0, crew: 0 } });
+  const fight = { attackerId: "0", defenderId: "1", round: 2 };
+  const at = (stage: CombatStage, volleys = [] as ReturnType<typeof volley>[], round = 2) => ({ ...fight, round, stage, volleys });
+  const settled = (volleys: ReturnType<typeof volley>[], ended = false) => ({ ...fight, isNPCCombat: false, volleys, fleeOutcome: null, fleeRolls: null, ended });
 
   it("isVolleyStage: the cannons and the answer, no other step", () => {
     expect(COMBAT_STAGES.filter(isVolleyStage)).toEqual(["cannons", "returnFire"]);
   });
 
-  it("the first volley as the answer waits, then only the answer, and the parting shot alone", () => {
-    expect(volleysFired(at("cannons"), at("returnFire", [volley("0", 2)]))).toEqual([volley("0", 2)]);
-    expect(volleysFired(at("returnFire", [volley("0", 2)]), at("resolution", [volley("0", 2), volley("1", 1)]))).toEqual([volley("1", 1)]);
-    expect(volleysFired(at("cannons"), at("resolution", [volley("0", 2), volley("1", 1)]))).toEqual([volley("0", 2), volley("1", 1)]);
+  it("the first volley as the answer waits, then only the answer from the settled round", () => {
+    expect(volleysFired(at("cannons"), { combat: at("returnFire", [volley("0", 2)]) as CombatState })).toEqual([volley("0", 2)]);
+    const next = { combat: at("seamanship", [], 3) as CombatState, lastRound: settled([volley("0", 2), volley("1", 1)]) };
+    expect(volleysFired(at("returnFire", [volley("0", 2)]), next)).toEqual([volley("1", 1)]);
+    expect(volleysFired(at("cannons"), next)).toEqual([volley("0", 2), volley("1", 1)]);
   });
 
-  it("none at any other step, nor when the fight ended, nor from a fight stored with no volleys", () => {
-    expect(volleysFired(at("resolution", [volley("0", 2)]), at("seamanship"))).toEqual([]);
-    expect(volleysFired(at("cannons"), undefined)).toEqual([]);
-    expect(volleysFired(at("cannons"), { stage: "resolution" })).toEqual([]);
+  it("every volley of a round that ended the fight, read from the settled round", () => {
+    expect(volleysFired(at("cannons"), { lastRound: settled([volley("0", 3)], true) })).toEqual([volley("0", 3)]);
+  });
+
+  it("none at any other step, nor for a refused step, nor from a round settled earlier", () => {
+    expect(volleysFired(at("seamanship"), { combat: at("chooseAction") as CombatState })).toEqual([]);
+    expect(volleysFired(at("cannons"), { combat: at("cannons") as CombatState })).toEqual([]);
+    expect(volleysFired(at("cannons"), {})).toEqual([]);
+    expect(volleysFired(at("cannons"), { lastRound: { ...settled([volley("0", 3)], true), round: 1 } })).toEqual([]);
   });
 });
 
@@ -808,23 +874,22 @@ describe("a ship out of range never fires first (#356)", () => {
       client.moves.rollFleeAttempt();
       return client;
     };
-    const seed = Array.from({ length: 60 }, (_, i) => i).find((i) => G(chase(i)).combat?.fleeOutcome === "caught");
+    const seed = Array.from({ length: 60 }, (_, i) => i).find((i) => G(chase(i)).lastRound?.fleeOutcome === "caught");
     expect(seed).toBeDefined();
     const client = chase(seed!);
-    expect(G(client).combat).toMatchObject({ stage: "resolution", fleeOutcome: "caught", volleys: [] });
-
-    const hull = G(client).ships["0"].stats!.hull.current;
-    client.moves.applyResolution();
+    // The round settles itself at once (#380): no parting shot, and the fight is over
     expect(G(client).combat).toBeUndefined();
-    expect(G(client).ships["0"].stats!.hull.current).toBe(hull);
+    expect(client.getState()!.ctx.phase).toBe("main");
+    expect(G(client).lastRound).toMatchObject({ fleeOutcome: "caught", ended: true, volleys: [] });
+    expect(G(client).ships["0"].stats!.hull.current).toBe(40);
   });
 
   it("the draw's winner with long guns fires first from 2 hexes, and the attacker answers", () => {
     const client = atTwoHexes(["long_guns"]);
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons("hull");
-    client.moves.returnFire("hull");
-    expect(G(client).combat!.volleys!.map((v) => v.shooterId)).toEqual(["1", "0"]);
+    client.moves.rollCannons();
+    client.moves.returnFire();
+    expect(G(client).lastRound!.volleys.map((v) => v.shooterId)).toEqual(["1", "0"]);
   });
 });
 

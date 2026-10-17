@@ -29,19 +29,22 @@ function playedSave() {
 }
 
 /**
- * The same match mid-fight: seat 0 has fired on seat 1 and been answered,
+ * The same match mid-fight: seat 0 has fired on seat 1, which is to answer,
  * by the combat helpers the moves run, so `G.combat` holds every field a
- * fight keeps, its volleys included. A change to a fight's shape fails here.
+ * fight keeps, its volley included. Then `answered`: the answer fired, the
+ * round settled into `G.lastRound`. A change to a fight's shape fails here.
  */
-function midFightSave() {
+function midFightSave(answered = false) {
   const save = playedSave();
   const G = save.state.G;
   G.combat = openFight("0", "1", 1, false);
   G.ships["0"].stats.cannons = 4;
   G.ships["1"].stats.cannons = 4;
-  const sixes = () => 6;
-  applyCannons(G, "masts", sixes);
-  applyReturnFire(G, "crew", sixes);
+  // Every gun hits, the hits landing hull, masts, crew, hull...
+  let die = 0;
+  const dice = () => [6, 6, 6, 6, 1, 3, 5, 2][die++ % 8];
+  applyCannons(G, dice, 1);
+  if (answered) applyReturnFire(G, dice, 1);
   return JSON.parse(JSON.stringify(save));
 }
 
@@ -110,8 +113,15 @@ describe("the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes)",
 
   it("keeps the same shape of a fight: G.combat and its volleys", () => {
     const combat = midFightSave().state.G.combat;
-    expect(combat.stage).toBe("resolution");
-    expect(combat.volleys).toHaveLength(2);
+    expect(combat.stage).toBe("returnFire");
+    expect(combat.volleys).toHaveLength(1);
     expect(shapeOf(combat)).toMatchSnapshot(`fight, save version ${HOTSEAT_SAVE_VERSION}`);
+  });
+
+  it("keeps the same shape of a settled round: G.lastRound and its volleys (#380)", () => {
+    const { G } = midFightSave(true).state;
+    expect(G.combat.stage).toBe("seamanship");
+    expect(G.lastRound.volleys).toHaveLength(2);
+    expect(shapeOf(G.lastRound)).toMatchSnapshot(`settled round, save version ${HOTSEAT_SAVE_VERSION}`);
   });
 });

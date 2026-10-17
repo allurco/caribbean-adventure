@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { combatBeatsFrom, type CombatBeat, type VolleyBeat } from "./combatTimeline";
-import type { CaribbeanState, CombatState, NPCShip, ShipClass, ShipState, VolleyAim } from "../../game/types";
+import type { CaribbeanState, CombatState, HitLocation, NPCShip, ShipClass, ShipState, Volley } from "../../game/types";
 import { hex } from "../../game/hex";
 import { emptyCargo } from "../../game/economy";
 import { SHIP_SPECS } from "../../game/constants";
@@ -86,8 +86,26 @@ function makeCombat(overrides: Partial<CombatState> = {}): CombatState {
   };
 }
 
-/** A volley as the cannons record it (#346): who fired, how many guns, how many hit, and where it was aimed (#348). */
-const fired = (shooterId: string, guns: number, hits: number, aim: VolleyAim = "hull") => ({ shooterId, guns, aim, hits });
+/** A volley as the cannons record it (#346): who fired, how many guns, how many hit, and where they landed (#380), all on `on`. */
+const fired = (shooterId: string, guns: number, hits: number, on: HitLocation = "hull"): Volley => ({
+  shooterId,
+  guns,
+  hits,
+  locations: { hull: 0, masts: 0, crew: 0, [on]: hits },
+});
+
+/**
+ * The state after a round settled itself (#380): the fight on to the next
+ * round's draw, or over (`ended`), and the round kept in `G.lastRound`.
+ */
+function settled(fight: Partial<CombatState>, volleys: Volley[], extra: Partial<CaribbeanState> = {}, ended = false): CaribbeanState {
+  const combat = makeCombat(fight);
+  return makeState({
+    combat: ended ? undefined : { ...combat, round: combat.round + 1, stage: "seamanship", volleys: [], fleeOutcome: null, fleeRolls: null, seamanshipWinner: null },
+    lastRound: { attackerId: combat.attackerId, defenderId: combat.defenderId, isNPCCombat: combat.isNPCCombat, round: combat.round, volleys, fleeOutcome: combat.fleeOutcome, fleeRolls: combat.fleeRolls, ended },
+    ...extra,
+  });
+}
 
 const volleyOf = (beats: CombatBeat[]): VolleyBeat => {
   const volley = beats.find((b): b is VolleyBeat => b.kind === "volley");
@@ -109,7 +127,7 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
 
   it("a volley fires every gun the rules rolled, one after another, both ships", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
-    const after = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 3), fired("1", 2, 1)] }) });
+    const after = settled({}, [fired("0", 4, 3), fired("1", 2, 1)]);
     const volley = volleyOf(combatBeatsFrom(before, after));
     const [attack, reply] = volley.volleys;
     expect(attack).toMatchObject({ shooterId: "0", targetId: "1" });
@@ -130,7 +148,7 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
 
   it("the volleys play in the order they were fired: the draw's winner first, then the answer (#346)", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons", round: 2, seamanshipWinner: "1" }) });
-    const after = makeState({ combat: makeCombat({ stage: "resolution", round: 2, seamanshipWinner: "1", volleys: [fired("1", 2, 1), fired("0", 4, 0)] }) });
+    const after = settled({ round: 2, seamanshipWinner: "1" }, [fired("1", 2, 1), fired("0", 4, 0)]);
     const volleys = volleyOf(combatBeatsFrom(before, after)).volleys;
     expect(volleys.map((v) => [v.shooterId, v.targetId])).toEqual([["1", "0"], ["0", "1"]]);
   });
@@ -139,13 +157,13 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     const frigate = makeShip("Frigate");
     frigate.stats!.crew.current = 1;
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
-    const after = makeState({ ships: { ...before.ships, "0": frigate }, combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 1), fired("1", 2, 1)] }) });
+    const after = settled({}, [fired("0", 4, 1), fired("1", 2, 1)], { ships: { ...before.ships, "0": frigate } });
     expect(volleyOf(combatBeatsFrom(before, after)).volleys[0].shots).toHaveLength(4);
   });
 
   it("a ship that did not answer fires nothing back", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons", distance: 2 }) });
-    const after = makeState({ combat: makeCombat({ stage: "resolution", distance: 2, volleys: [fired("0", 4, 1)] }) });
+    const after = settled({ distance: 2 }, [fired("0", 4, 1)]);
     expect(volleyOf(combatBeatsFrom(before, after)).volleys.map((v) => v.shooterId)).toEqual(["0"]);
   });
 
@@ -153,14 +171,14 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     // Ship 1 won the seamanship, fled, and was caught.
     const caught = { seamanshipWinner: "1", fleeOutcome: "caught" as const };
     const before = makeState({ combat: makeCombat({ ...caught, stage: "cannons" }) });
-    const after = makeState({ combat: makeCombat({ ...caught, stage: "resolution", volleys: [fired("0", 4, 2)] }) });
+    const after = settled({ ...caught }, [fired("0", 4, 2)]);
     const volleys = volleyOf(combatBeatsFrom(before, after)).volleys;
     expect(volleys.map((v) => [v.shooterId, v.targetId])).toEqual([["0", "1"]]);
   });
 
   it("a volley with no gun to fire plays nothing", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
-    const after = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 0, 0)] }) });
+    const after = settled({}, [fired("0", 0, 0)]);
     expect(combatBeatsFrom(before, after)).toEqual([]);
   });
 
@@ -173,11 +191,11 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
 
   it("which shots hit is seeded: the same on every seat, different from fight to fight", () => {
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
-    const after = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 2)] }) });
-    const hits = (state: CaribbeanState) => volleyOf(combatBeatsFrom(before, state)).volleys[0].shots.map((s) => s.hit);
+    const after = settled({}, [fired("0", 4, 2)]);
+    const hits = (state: CaribbeanState, from = before) => volleyOf(combatBeatsFrom(from, state)).volleys[0].shots.map((s) => s.hit);
     expect(hits(after)).toEqual(hits(structuredClone(after)));
     const patterns = new Set(
-      [1, 2, 3, 4, 5, 6, 7, 8].map((round) => hits(makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 2)], round }) })).join())
+      [1, 2, 3, 4, 5, 6, 7, 8].map((round) => hits(settled({ round }, [fired("0", 4, 2)]), makeState({ combat: makeCombat({ stage: "cannons", round }) })).join())
     );
     expect(patterns.size).toBeGreaterThan(1);
   });
@@ -186,11 +204,15 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
     const ships = { ...before.ships, "0": makeShip("Frigate", { upgrades: ["chain_shot"] }) };
     const falls = (volley: ReturnType<typeof fired>) =>
-      volleyOf(combatBeatsFrom({ ...before, ships }, makeState({ ships, combat: makeCombat({ stage: "resolution", volleys: [volley] }) }))).volleys[0].mastFalls;
+      volleyOf(combatBeatsFrom({ ...before, ships }, settled({}, [volley], { ships }))).volleys[0].mastFalls;
     expect(falls(fired("0", 4, 1, "masts"))).toBe(true);
     expect(falls(fired("0", 4, 0, "masts"))).toBe(false);
     expect(falls(fired("0", 4, 3, "hull"))).toBe(false);
     expect(falls(fired("0", 4, 3, "crew"))).toBe(false);
+    // A hit landing on the masts among others brings one down too (#380)
+    expect(falls({ shooterId: "0", guns: 4, hits: 3, locations: { hull: 2, masts: 1, crew: 0 } })).toBe(true);
+    // A volley stored before #380, aimed at the masts
+    expect(falls({ shooterId: "0", guns: 4, hits: 1, aim: "masts" })).toBe(true);
   });
 
   it("the first volley plays as it is fired, while the answer waits on its aim (#348)", () => {
@@ -201,7 +223,7 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
 
   it("the answer plays on its own as it is fired, not the first volley again (#348)", () => {
     const waiting = makeState({ combat: makeCombat({ stage: "returnFire", volleys: [fired("0", 4, 2)] }) });
-    const answered = makeState({ combat: makeCombat({ stage: "resolution", volleys: [fired("0", 4, 2), fired("1", 2, 1, "crew")] }) });
+    const answered = settled({}, [fired("0", 4, 2), fired("1", 2, 1, "crew")]);
     const volleys = volleyOf(combatBeatsFrom(waiting, answered)).volleys;
     expect(volleys.map((v) => [v.shooterId, v.targetId])).toEqual([["1", "0"]]);
     expect(volleyOf(combatBeatsFrom(waiting, answered)).seedKey).not.toBe(volleyOf(combatBeatsFrom(makeState({ combat: makeCombat({ stage: "cannons" }) }), waiting)).seedKey);
@@ -217,11 +239,14 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(combatBeatsFrom(before, caught)).toEqual([
       expect.objectContaining({ kind: "flee", fleeingId: "1", pursuerId: "0", outcome: "caught" }),
     ]);
-    // Caught by a pursuer out of range: no parting shot, straight to the round's end (#356)
-    const caughtOutOfRange = makeState({ combat: makeCombat({ ...fleeing, stage: "resolution", fleeOutcome: "caught" }) });
+    // Caught by a pursuer out of range: no parting shot (#356), and the round settles, ending the fight at once (#380)
+    const caughtOutOfRange = settled({ ...fleeing, fleeOutcome: "caught" }, [], {}, true);
     expect(combatBeatsFrom(before, caughtOutOfRange)).toEqual([
       expect.objectContaining({ kind: "flee", fleeingId: "1", pursuerId: "0", outcome: "caught" }),
     ]);
+    // A round settled earlier in the fight is no flight's outcome: a fight that ends from the flight escaped
+    const earlier = makeState({ lastRound: { ...settled({}, []).lastRound!, round: 0 } });
+    expect(combatBeatsFrom(before, earlier)).toEqual([expect.objectContaining({ kind: "flee", outcome: "escaped" })]);
   });
 
   it("boarding a merchant brings the ships alongside", () => {
@@ -238,6 +263,26 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
       floatingLoot: [{ id: "loot-1", hex: hex(1, 0), cargo: emptyCargo(), gold: 0 }],
     });
     expect(combatBeatsFrom(before, after)).toEqual([expect.objectContaining({ kind: "sink", shipId: "1", shooterId: "0" })]);
+  });
+
+  it("the volley that sinks a ship and ends the fight still plays, from where she lay, before she sinks (#380)", () => {
+    const before = makeState({ combat: makeCombat({ stage: "cannons" }) });
+    const after = settled({}, [fired("0", 4, 3)], {
+      ships: { "0": before.ships["0"] },
+      floatingLoot: [{ id: "loot-1", hex: hex(1, 0), cargo: emptyCargo(), gold: 0 }],
+    }, true);
+    const beats = combatBeatsFrom(before, after);
+    expect(beats.map((b) => b.kind)).toEqual(["volley", "sink"]);
+    expect(volleyOf(beats).volleys.map((v) => [v.shooterId, v.targetId])).toEqual([["0", "1"]]);
+    expect(volleyOf(beats).volleys[0].shots.filter((s) => s.hit)).toHaveLength(3);
+  });
+
+  it("the answer that settles the round plays once, as the fight goes on to the next draw (#380)", () => {
+    const waiting = makeState({ combat: makeCombat({ stage: "returnFire", volleys: [fired("0", 4, 2)] }) });
+    const next = settled({}, [fired("0", 4, 2), fired("1", 2, 1)]);
+    expect(volleyOf(combatBeatsFrom(waiting, next)).volleys.map((v) => v.shooterId)).toEqual(["1"]);
+    // The next state of the same fight plays no volley again
+    expect(combatBeatsFrom(next, { ...next, combat: { ...next.combat!, stage: "defenderSeamanship" } }).filter((b) => b.kind === "volley")).toEqual([]);
   });
 
   it("a seat's fresh ship after its captain was lost (#277) is not a sinking, nor anything else", () => {
@@ -257,7 +302,7 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     const volleyIn = (round: number) =>
       combatBeatsFrom(
         makeState({ combat: makeCombat({ stage: "cannons", round }) }),
-        makeState({ combat: makeCombat({ stage: "resolution", round, volleys: [fired("0", 4, 1)] }) })
+        settled({ round }, [fired("0", 4, 1)])
       )[0].seedKey;
     expect(volleyIn(1)).toBe(volleyIn(1));
     expect(volleyIn(2)).not.toBe(volleyIn(1));

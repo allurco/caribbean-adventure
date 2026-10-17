@@ -4,33 +4,64 @@ import { controlsLocked, endedInFight, HANDOFF_TIMING as T, heldNpcsFor, holdsNp
 
 const calm = (now: number, over: Partial<HandoffSignals> = {}): HandoffSignals => ({
   now,
+  fightPlaying: false,
   shipAtRest: true,
   npcsAtRest: true,
   turnShown: false,
   ...over,
 });
 
+/** A hand-off past its fight phase, the outgoing ship still sailing, from 0 ms. */
+const sailing = (from: string, to: string, reduced = false): Handoff => ({ ...startHandoff(from, to, 0, reduced), phase: "sailing" });
+
+describe("a turn that ends in a fight waits for the fight's last beats (#380)", () => {
+  it("starts on the fight, and holds there while the board still plays it: the volley, a sinking", () => {
+    const h = startHandoff("0", "1", 0, false);
+    expect(h.phase).toBe("fight");
+    expect(stepHandoff(h, calm(5000, { fightPlaying: true }))).toBe(h);
+    expect(controlsLocked(h)).toBe(true);
+    expect(holdsNpcs(h)).toBe(true);
+  });
+
+  it("moves on to the sailing once the fight is played, its clocks starting then, so no later phase is cut short", () => {
+    const h = startHandoff("0", "1", 0, false);
+    const sailingOn = stepHandoff(h, calm(9000));
+    expect(sailingOn).toMatchObject({ phase: "sailing", startedAt: 9000, phaseStartedAt: 9000 });
+    expect(stepHandoff(sailingOn, calm(9000 + T.sailingMin)).phase).toBe("turnEnded");
+  });
+
+  it("with no fight on the board, the first step goes straight to the sailing", () => {
+    expect(stepHandoff(startHandoff("0", "1", 0, false), calm(0)).phase).toBe("sailing");
+  });
+
+  it("gives up waiting on a fight that never lets go", () => {
+    const h = startHandoff("0", "1", 0, false);
+    expect(stepHandoff(h, calm(T.fightMax - 1, { fightPlaying: true })).phase).toBe("fight");
+    expect(stepHandoff(h, calm(T.fightMax, { fightPlaying: true })).phase).toBe("sailing");
+  });
+});
+
 describe("turn hand-off", () => {
   it("waits for the outgoing ship to come to rest before the turn-ended beat", () => {
-    const h = startHandoff("0", "1", 0, false);
+    const h = sailing("0", "1");
     expect(stepHandoff(h, calm(500, { shipAtRest: false })).phase).toBe("sailing");
     expect(stepHandoff(h, calm(900)).phase).toBe("turnEnded");
   });
 
   it("does not take a ship that has not yet reported way on as at rest", () => {
-    const h = startHandoff("0", "1", 0, false);
+    const h = sailing("0", "1");
     expect(stepHandoff(h, calm(T.sailingMin - 1))).toBe(h);
     expect(stepHandoff(h, calm(T.sailingMin)).phase).toBe("turnEnded");
   });
 
   it("waits out a slow reversal (well over 2.5 s) before giving up", () => {
-    const h = startHandoff("0", "1", 0, false);
+    const h = sailing("0", "1");
     expect(stepHandoff(h, calm(3000, { shipAtRest: false })).phase).toBe("sailing");
     expect(T.sailingMax).toBeGreaterThanOrEqual(5000);
   });
 
   it("gives up waiting for a ship that never settles", () => {
-    const h = startHandoff("0", "1", 0, false);
+    const h = sailing("0", "1");
     expect(stepHandoff(h, calm(T.sailingMax, { shipAtRest: false })).phase).toBe("turnEnded");
   });
 
@@ -58,7 +89,7 @@ describe("turn hand-off", () => {
 
   it("starts its clock at its first step when started without one", () => {
     const h = startHandoff("0", "1", null, false);
-    const stamped = stepHandoff(h, calm(5000));
+    const stamped = stepHandoff(stepHandoff(h, calm(5000)), calm(5000));
     expect(stamped).toMatchObject({ phase: "sailing", startedAt: 5000, phaseStartedAt: 5000 });
     expect(stepHandoff(stamped, calm(5000 + T.sailingMin)).phase).toBe("turnEnded");
   });
@@ -70,17 +101,18 @@ describe("turn hand-off", () => {
 
   it("plays the phases in order from a calm board", () => {
     let h = startHandoff("0", "1", 0, false);
-    const seen = [h.phase];
+    const seen: string[] = [h.phase];
     for (let now = 0; now <= T.total && h.phase !== "idle"; now += 50) {
       const next = stepHandoff(h, calm(now, { turnShown: h.phase === "nextTurn" && now - h.phaseStartedAt > 1000 }));
       if (next.phase !== h.phase) seen.push(next.phase);
       h = next;
     }
-    expect(seen).toEqual(["sailing", "turnEnded", "npcs", "nextTurn", "idle"]);
+    expect(seen).toEqual(["fight", "sailing", "turnEnded", "npcs", "nextTurn", "idle"]);
   });
 
   it("holds the NPCs back until their phase, and the controls until the end", () => {
     const at = (phase: Handoff["phase"]): Handoff => ({ ...startHandoff("0", "1", 0, false), phase });
+    expect(holdsNpcs(at("fight"))).toBe(true);
     expect(holdsNpcs(at("sailing"))).toBe(true);
     expect(holdsNpcs(at("turnEnded"))).toBe(true);
     expect(holdsNpcs(at("npcs"))).toBe(false);

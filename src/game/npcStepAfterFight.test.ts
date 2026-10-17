@@ -147,8 +147,9 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.attackNPC("prey");
     expect(stateOf(client).ctx.phase).toBe("combat");
     expect(npcSteps(client)).toBe(0);
-    client.moves.rollCannons("hull");
-    expect(npcSteps(client)).toBe(0);
+    // The volley settles the round, and the fight with it when the prey goes down (#380): only then do the NPCs sail
+    client.moves.rollCannons();
+    expect(npcSteps(client)).toBe(stateOf(client).G.combat ? 0 : 1);
   });
 
   it("an NPC sunk: the NPCs sail once after the fight", () => {
@@ -240,9 +241,8 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.chooseCombatAction("flee");
     client.moves.rollFleeAttempt();
     expect(stateOf(client).G.combat?.fleeOutcome).toBe("caught");
-    client.moves.rollCannons("hull");
-    expect(npcSteps(client)).toBe(0);
-    client.moves.applyResolution();
+    // The parting shot ends the fight with no press (#380), and the NPCs then sail
+    client.moves.rollCannons();
     expectFightOver(client);
     expect(npcSteps(client)).toBe(1);
   });

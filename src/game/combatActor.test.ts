@@ -14,8 +14,8 @@ const fight = (stage: CombatStage, winner: string | null, extra: Partial<FightTu
 });
 
 describe("combatActor: the seat that presses a fight's step", () => {
-  it("round 1, the ambush (#346): with no draw rolled, the attacker fires the opening broadside and ends the round", () => {
-    for (const stage of ["cannons", "resolution"] as const) {
+  it("round 1, the ambush (#346): with no draw rolled, the attacker fires the opening broadside", () => {
+    for (const stage of ["cannons"] as const) {
       expect(combatActor(fight(stage, null))).toBe("0");
       expect(combatActor(fight(stage, null, { defenderId: "npc-1", isNPCCombat: true }))).toBe("0");
       // The voyage list sends no NPC's id: the defender may be null
@@ -38,26 +38,30 @@ describe("combatActor: the seat that presses a fight's step", () => {
 
   it("the draw's winner chooses, and presses its own flight and an exchange of fire", () => {
     for (const winner of ["0", "1"]) {
-      for (const stage of ["chooseAction", "fleeAttempt", "cannons", "resolution"] as const) {
+      for (const stage of ["chooseAction", "fleeAttempt", "cannons"] as const) {
         expect(combatActor(fight(stage, winner))).toBe(winner);
       }
     }
   });
 
-  it("a ship caught fleeing does not fire the parting shot at itself: the pursuer fires it and applies its damage", () => {
+  it("a ship caught fleeing does not fire the parting shot at itself: the pursuer fires it", () => {
     // The attacker won the draw, fled and was caught: the defender gives chase
     expect(combatActor(fight("cannons", "0", { fleeOutcome: "caught" }))).toBe("1");
-    expect(combatActor(fight("resolution", "0", { fleeOutcome: "caught" }))).toBe("1");
     // The defender won the draw, fled and was caught: the attacker gives chase
     expect(combatActor(fight("cannons", "1", { fleeOutcome: "caught" }))).toBe("0");
-    expect(combatActor(fight("resolution", "1", { fleeOutcome: "caught" }))).toBe("0");
+  });
+
+  it("the resolution, which only a fight stored before #380 waits on, is named the attacker's step, whoever won the draw", () => {
+    for (const winner of [null, "0", "1"]) {
+      expect(combatActor(fight("resolution", winner))).toBe("0");
+      expect(combatActor(fight("resolution", winner, { fleeOutcome: "caught" }))).toBe("0");
+    }
   });
 
   it("against an NPC the attacker presses every step, its flight caught included", () => {
     const npc = { defenderId: "npc-1", isNPCCombat: true };
     expect(combatActor(fight("cannons", "0", { ...npc, fleeOutcome: "caught" }))).toBe("0");
     expect(combatActor(fight("cannons", "npc-1", { ...npc, fleeOutcome: "caught" }))).toBe("0");
-    expect(combatActor(fight("resolution", "npc-1", { ...npc, fleeOutcome: "caught" }))).toBe("0");
   });
 
   it("the ship answering a volley aims and fires its own answer (#348): the other side from the one that fired first", () => {

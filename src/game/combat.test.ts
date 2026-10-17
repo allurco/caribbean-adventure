@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { hex, createWrap, offsetToHex, NO_WRAP } from "./hex";
 import type { ShipState } from "./types";
-import { VOLLEY_AIMS } from "./types";
 import { createShipState } from "./economy";
 import {
   BASE_ATTACK_RANGE,
@@ -12,8 +11,11 @@ import {
   canReturnFire,
   resolveSeamanship,
   countCannonHits,
-  aimedDamage,
-  shotBonus,
+  hitLocation,
+  rollHitLocations,
+  volleyDamage,
+  shotBonuses,
+  hitCountsOf,
   MAST_FLEE_PENALTY,
   MAX_MAST_DAMAGE,
   applyDamage,
@@ -197,62 +199,71 @@ describe("countCannonHits", () => {
   });
 });
 
-describe("aimedDamage", () => {
-  it("puts every hit on the hull when aimed at the hull, as before aiming", () => {
-    expect(aimedDamage(3, "hull", [])).toEqual({ hull: 3, crew: 0, masts: 0 });
+describe("hitLocation: where one hit lands (#380)", () => {
+  it("is uniform over hull, masts and crew, two faces of the die each", () => {
+    expect([1, 2, 3, 4, 5, 6].map(hitLocation)).toEqual(["hull", "hull", "masts", "masts", "crew", "crew"]);
+  });
+});
+
+describe("rollHitLocations: each hit rolls its own location (#380)", () => {
+  it("rolls one die per hit, in order, and counts the hits on each location", () => {
+    const dice = [1, 3, 6, 4];
+    expect(rollHitLocations(4, () => dice.shift()!)).toEqual({ hull: 1, masts: 2, crew: 1 });
+    expect(dice).toEqual([]);
   });
 
-  it("puts every hit on the masts when aimed at the masts", () => {
-    expect(aimedDamage(2, "masts", [])).toEqual({ hull: 0, crew: 0, masts: 2 });
+  it("rolls nothing for a volley that missed", () => {
+    expect(rollHitLocations(0, () => { throw new Error("no die for a miss"); })).toEqual({ hull: 0, masts: 0, crew: 0 });
+  });
+});
+
+describe("volleyDamage: the damage of a volley's hits where they landed (#380)", () => {
+  const at = (hull: number, masts: number, crew: number) => ({ hull, masts, crew });
+
+  it("each location takes the hits that landed on it", () => {
+    expect(volleyDamage(at(2, 1, 1), [])).toEqual({ hull: 2, crew: 1, masts: 1 });
+    expect(volleyDamage(at(0, 0, 3), [])).toEqual({ hull: 0, crew: 3, masts: 0 });
   });
 
-  it("puts every hit on the crew when aimed at the crew", () => {
-    expect(aimedDamage(4, "crew", [])).toEqual({ hull: 0, crew: 4, masts: 0 });
-  });
-
-  it("chain shot adds one hit only when aimed at the masts", () => {
-    expect(aimedDamage(1, "masts", ["chain_shot"])).toEqual({ hull: 0, crew: 0, masts: 2 });
-    expect(aimedDamage(2, "hull", ["chain_shot"])).toEqual({ hull: 2, crew: 0, masts: 0 });
-    expect(aimedDamage(2, "crew", ["chain_shot"])).toEqual({ hull: 0, crew: 2, masts: 0 });
-  });
-
-  it("grape shot adds one hit only when aimed at the crew", () => {
-    expect(aimedDamage(2, "crew", ["grape_shot"])).toEqual({ hull: 0, crew: 3, masts: 0 });
-    expect(aimedDamage(2, "hull", ["grape_shot"])).toEqual({ hull: 2, crew: 0, masts: 0 });
-    expect(aimedDamage(2, "masts", ["grape_shot"])).toEqual({ hull: 0, crew: 0, masts: 2 });
+  it("chain shot adds one to the masts when any hit lands on them, grape shot one to the crew when any lands on it", () => {
+    expect(volleyDamage(at(1, 1, 0), ["chain_shot"])).toEqual({ hull: 1, crew: 0, masts: 2 });
+    expect(volleyDamage(at(2, 0, 1), ["chain_shot"])).toEqual({ hull: 2, crew: 1, masts: 0 });
+    expect(volleyDamage(at(1, 0, 2), ["grape_shot"])).toEqual({ hull: 1, crew: 3, masts: 0 });
+    expect(volleyDamage(at(1, 1, 0), ["grape_shot"])).toEqual({ hull: 1, crew: 0, masts: 1 });
+    // One extra each, however many hits landed there, and both when both landed
+    expect(volleyDamage(at(0, 1, 3), ["chain_shot", "grape_shot"])).toEqual({ hull: 0, crew: 4, masts: 2 });
   });
 
   it("a volley with no hits does no damage, shot upgrades or not", () => {
-    for (const aim of VOLLEY_AIMS) {
-      expect(aimedDamage(0, aim, ["chain_shot", "grape_shot"])).toEqual({ hull: 0, crew: 0, masts: 0 });
-    }
+    expect(volleyDamage(at(0, 0, 0), ["chain_shot", "grape_shot"])).toEqual({ hull: 0, crew: 0, masts: 0 });
   });
 
-  it("masts take at most MAX_MAST_DAMAGE (2): a hit aimed at the masts past that goes to the hull, as #257 had it", () => {
+  it("masts take at most MAX_MAST_DAMAGE (2): mast hits past it go to the hull, chain shot's included", () => {
     expect(MAX_MAST_DAMAGE).toBe(2);
-    expect(aimedDamage(3, "masts", [], 0)).toEqual({ hull: 1, crew: 0, masts: 2 });
-    expect(aimedDamage(3, "masts", [], 1)).toEqual({ hull: 2, crew: 0, masts: 1 });
-    expect(aimedDamage(2, "masts", [], 2)).toEqual({ hull: 2, crew: 0, masts: 0 });
-    // Chain shot's hit is aimed at the masts too, and spills over the same way
-    expect(aimedDamage(1, "masts", ["chain_shot"], 0)).toEqual({ hull: 0, crew: 0, masts: 2 });
-    expect(aimedDamage(2, "masts", ["chain_shot"], 1)).toEqual({ hull: 2, crew: 0, masts: 1 });
+    expect(volleyDamage(at(0, 3, 0), [], 0)).toEqual({ hull: 1, crew: 0, masts: 2 });
+    expect(volleyDamage(at(1, 2, 0), [], 1)).toEqual({ hull: 2, crew: 0, masts: 1 });
+    expect(volleyDamage(at(0, 2, 0), [], 2)).toEqual({ hull: 2, crew: 0, masts: 0 });
+    expect(volleyDamage(at(0, 1, 0), ["chain_shot"], 0)).toEqual({ hull: 0, crew: 0, masts: 2 });
+    expect(volleyDamage(at(0, 2, 0), ["chain_shot"], 1)).toEqual({ hull: 2, crew: 0, masts: 1 });
     // A ship already past the cap (mast damage from before #348's cap) takes every mast hit on the hull
-    expect(aimedDamage(2, "masts", [], 5)).toEqual({ hull: 2, crew: 0, masts: 0 });
+    expect(volleyDamage(at(0, 2, 0), [], 5)).toEqual({ hull: 2, crew: 0, masts: 0 });
   });
 
-  it("over every volley a broadside can roll, damages only what it was aimed at, past the mast cap the hull", () => {
+  it("over every spread of hits, deals each hit once plus at most one per shot, and never past the mast cap", () => {
     const loadouts = [[], ["chain_shot"], ["grape_shot"], ["chain_shot", "grape_shot"], ["long_guns"]];
-    for (let hits = 0; hits <= 20; hits++) {
-      for (const aim of VOLLEY_AIMS) {
-        for (const upgrades of loadouts) {
-          for (let masts = 0; masts <= 3; masts++) {
-            const damage = aimedDamage(hits, aim, upgrades, masts);
-            const total = damage.hull + damage.crew + damage.masts;
-            expect(total).toBeGreaterThanOrEqual(hits);
-            expect(total).toBeLessThanOrEqual(hits === 0 ? 0 : hits + 1);
-            expect(masts + damage.masts).toBeLessThanOrEqual(Math.max(masts, MAX_MAST_DAMAGE));
-            if (aim !== "masts") expect(damage).toEqual({ hull: 0, crew: 0, masts: 0, [aim]: total });
-            if (aim === "masts") expect(damage.crew).toBe(0);
+    for (let hull = 0; hull <= 4; hull++) {
+      for (let masts = 0; masts <= 4; masts++) {
+        for (let crew = 0; crew <= 4; crew++) {
+          for (const upgrades of loadouts) {
+            for (let had = 0; had <= 3; had++) {
+              const damage = volleyDamage(at(hull, masts, crew), upgrades, had);
+              const hits = hull + masts + crew;
+              const total = damage.hull + damage.crew + damage.masts;
+              expect(total).toBeGreaterThanOrEqual(hits);
+              expect(total).toBeLessThanOrEqual(hits + shotBonuses(at(hull, masts, crew), upgrades).length);
+              expect(had + damage.masts).toBeLessThanOrEqual(Math.max(had, MAX_MAST_DAMAGE));
+              expect(damage.crew).toBe(crew + (crew > 0 && upgrades.includes("grape_shot") ? 1 : 0));
+            }
           }
         }
       }
@@ -260,13 +271,24 @@ describe("aimedDamage", () => {
   });
 });
 
-describe("shotBonus: the shot that added a hit to a volley (#348)", () => {
-  it("chain shot at the masts, grape shot at the crew, and only to a volley that hits", () => {
-    expect(shotBonus(2, "masts", ["chain_shot", "grape_shot"])).toBe("chain_shot");
-    expect(shotBonus(2, "crew", ["chain_shot", "grape_shot"])).toBe("grape_shot");
-    expect(shotBonus(2, "hull", ["chain_shot", "grape_shot"])).toBeNull();
-    expect(shotBonus(2, "masts", ["grape_shot"])).toBeNull();
-    expect(shotBonus(0, "masts", ["chain_shot"])).toBeNull();
+describe("hitCountsOf: where a recorded volley's hits landed", () => {
+  it("reads a volley's locations (#380)", () => {
+    expect(hitCountsOf({ shooterId: "0", guns: 4, hits: 3, locations: { hull: 1, masts: 0, crew: 2 } })).toEqual({ hull: 1, masts: 0, crew: 2 });
+  });
+
+  it("reads a volley stored before #380 as every hit on its aim, and one stored before #348 as every hit on the hull", () => {
+    expect(hitCountsOf({ shooterId: "0", guns: 4, hits: 3, aim: "masts" })).toEqual({ hull: 0, masts: 3, crew: 0 });
+    expect(hitCountsOf({ shooterId: "0", guns: 4, hits: 2 })).toEqual({ hull: 2, masts: 0, crew: 0 });
+  });
+});
+
+describe("shotBonuses: the shots that added to a volley (#380)", () => {
+  it("chain shot when a hit landed on the masts, grape shot when one landed on the crew", () => {
+    const both = ["chain_shot", "grape_shot"];
+    expect(shotBonuses({ hull: 1, masts: 1, crew: 1 }, both)).toEqual(["chain_shot", "grape_shot"]);
+    expect(shotBonuses({ hull: 2, masts: 0, crew: 1 }, both)).toEqual(["grape_shot"]);
+    expect(shotBonuses({ hull: 2, masts: 0, crew: 0 }, both)).toEqual([]);
+    expect(shotBonuses({ hull: 0, masts: 2, crew: 0 }, ["grape_shot"])).toEqual([]);
   });
 });
 

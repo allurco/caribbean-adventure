@@ -2,7 +2,7 @@ import type { CaribbeanState, CombatState, GoodType, Nation, PirateCause, ShipCl
 import { GOOD_TYPES } from "../game/types";
 import { hexEquals } from "../game/hex";
 import { findAccessiblePort } from "../game/moves";
-import { isVolleyStage, volleysFired } from "../game/combatMoves";
+import { isVolleyStage, roundSettledBy, volleysFired } from "../game/combatMoves";
 
 /**
  * Something audible that happened between two game states (#73). Derived
@@ -67,7 +67,7 @@ export function soundEventsFrom(prev: CaribbeanState | undefined, next: Caribbea
   }
 
   events.push(...pirateEvents(prev, next));
-  events.push(...combatEvents(prev.combat, next.combat));
+  events.push(...combatEvents(prev.combat, next));
   return events;
 }
 
@@ -136,8 +136,9 @@ function totalDamage(ship: ShipState): number {
   return ship.damage.hull + ship.damage.crew + ship.damage.masts;
 }
 
-/** Combat moves by the stage they leave and the one they arrive at. */
-function combatEvents(before: CombatState | undefined, after: CombatState | undefined): SoundEvent[] {
+/** Combat moves by the stage they leave and the one they arrive at (or the round they settled, #380). */
+function combatEvents(before: CombatState | undefined, next: Pick<CaribbeanState, "combat" | "lastRound">): SoundEvent[] {
+  const after = next.combat;
   if (!before && after) {
     return [{ type: "combatStarted", attackerId: after.attackerId, defenderId: after.defenderId }];
   }
@@ -151,19 +152,20 @@ function combatEvents(before: CombatState | undefined, after: CombatState | unde
   if (rolling && after && nextStage !== before.stage) {
     events.push({ type: "seamanshipRolled" });
   }
-  // Each volley is fired on its own step (#348): the first, then the answer, each with its own hits
-  if (isVolleyStage(before.stage) && after && nextStage !== before.stage) {
-    const fired = volleysFired(before, after);
+  // Each volley is fired on its own step (#348): the first, then the answer, each with its own hits;
+  // the last of a round settles it, the fight then on to the draw or over (#380)
+  const fired = volleysFired(before, next);
+  if (isVolleyStage(before.stage) && fired.length > 0) {
     const hitsBy = (id: string) => fired.filter((v) => v.shooterId === id).reduce((sum, v) => sum + v.hits, 0);
-    events.push({ type: "cannonsFired", attackerHits: hitsBy(after.attackerId), defenderHits: hitsBy(after.defenderId) });
+    events.push({ type: "cannonsFired", attackerHits: hitsBy(before.attackerId), defenderHits: hitsBy(before.defenderId) });
   }
   // Choosing an action ends the combat only by boarding (flee and fire move on).
   if (before.stage === "chooseAction" && !after) {
     events.push({ type: "boarded", attackerId: before.attackerId, defenderId: before.defenderId });
   }
-  if (before.stage === "fleeAttempt" && !after) events.push({ type: "fleeAttempted", outcome: "escaped" });
-  // Caught: the parting shot next, or the round's end when the pursuer is out of range (#356)
-  if (before.stage === "fleeAttempt" && after?.fleeOutcome === "caught") events.push({ type: "fleeAttempted", outcome: "caught" });
+  // Caught: the parting shot next, or, the pursuer out of range (#356), the fight over at once (#380)
+  const caught = after?.fleeOutcome === "caught" || roundSettledBy(before, next)?.fleeOutcome === "caught";
+  if (before.stage === "fleeAttempt" && (caught || !after)) events.push({ type: "fleeAttempted", outcome: caught ? "caught" : "escaped" });
 
   if (!after) events.push({ type: "combatEnded" });
   return events;

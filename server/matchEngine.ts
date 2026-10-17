@@ -7,7 +7,7 @@
 import { CreateGameReducer, getFilterPlayerView, InitializeGame, ProcessGameConfig } from "boardgame.io/internal";
 import type { State } from "boardgame.io";
 import { Caribbean } from "../src/game/Game";
-import { combatActor } from "../src/game/combatActor";
+import { seatMayActInCombat } from "../src/game/combatActor";
 import { withSeatedCombat } from "../src/game/seatedCombat";
 import type { CaribbeanSetupData, CaribbeanState } from "../src/game/types";
 import type { MatchAction } from "../src/online/matchSync";
@@ -61,13 +61,14 @@ export function viewFor(state: MatchState, seat: string): MatchState {
 
 /**
  * May `seat` act now? In a fight, only the seat that presses the current
- * step (`combatActor`, the rule the board and the combat moves share);
+ * step (`seatMayActInCombat`, the rule the board and the combat moves share;
+ * either captain for the legacy resolution, #380);
  * otherwise as boardgame.io's `isPlayerActive`: a seat in `activePlayers`
  * when set, else the current player.
  */
 export function seatMayActNow(state: MatchState, seat: string): boolean {
   const { G, ctx } = state;
-  if (G.combat) return seat === combatActor(G.combat);
+  if (G.combat) return seatMayActInCombat({ playerID: seat, combat: G.combat });
   if (ctx.activePlayers) return seat in ctx.activePlayers;
   return ctx.currentPlayer === seat;
 }

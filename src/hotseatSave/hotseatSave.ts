@@ -39,8 +39,14 @@ export type MatchState = State<CaribbeanState>;
  *   event log, and merchants put to sea only through its convoy cards. A
  *   version 7 save lacks it, which reads as an empty pile, shuffled at the
  *   first draw, so it migrates as it is.
+ * - 9: hits land at random and the round settles itself (#380): each volley
+ *   records where its hits landed (`locations`, no aim), and the settled
+ *   round stays in `G.lastRound`. A version 8 save migrates as it is, mid-fight
+ *   too: its volleys' aims read as every hit on the aim (`hitCountsOf`), its
+ *   `returnFire` takes no aim now, and a fight at its `resolution` settles by
+ *   the legacy `applyResolution` move, the panel's End Round.
  */
-export const HOTSEAT_SAVE_VERSION = 8;
+export const HOTSEAT_SAVE_VERSION = 9;
 
 /** G without the map, which is generated again from its size and seed. */
 export type SavedG = Omit<CaribbeanState, "cells" | "regions">;

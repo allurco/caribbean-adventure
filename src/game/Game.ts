@@ -12,7 +12,6 @@ import type {
   ShipClass,
   DamageCategory,
   CombatAction,
-  VolleyAim,
 } from "./types";
 import { SHIP_CLASSES } from "./types";
 import { playerViewFor } from "./playerView";
@@ -545,6 +544,7 @@ export const Caribbean: Game<CaribbeanState> = {
           if (!canAttack(attacker, defender, distance)) return INVALID_MOVE;
 
           G.combat = openFight(ctx.currentPlayer, targetId, distance, false);
+          delete G.lastRound;
 
           events.setPhase("combat");
         },
@@ -568,6 +568,7 @@ export const Caribbean: Game<CaribbeanState> = {
           }
 
           G.combat = openFight(ctx.currentPlayer, npcId, distance, true);
+          delete G.lastRound;
 
           events.setPhase("combat");
         },
@@ -605,22 +606,25 @@ export const Caribbean: Game<CaribbeanState> = {
           if (applyCombatAction(G, action, ctx.turn) === "ended") events.setPhase("main");
         },
 
-        rollFleeAttempt: ({ G, random, events }) => {
+        rollFleeAttempt: ({ G, ctx, random, events }) => {
           if (!atCombatStage(G, "fleeAttempt")) return INVALID_MOVE;
-          if (applyFleeAttempt(G, () => random.D6()) === "ended") events.setPhase("main");
+          if (applyFleeAttempt(G, () => random.D6(), ctx.turn) === "ended") events.setPhase("main");
         },
 
-        // Each volley is aimed by the ship firing it (#348): hull, masts or crew
-        rollCannons: ({ G, random }, aim?: VolleyAim) => {
-          if (!canFireVolley(G, "cannons", aim)) return INVALID_MOVE;
-          applyCannons(G, aim, () => random.D6());
+        // Every hit lands where it rolls (#380): nobody aims, so an aim sent
+        // by a client from before #380 is refused. The round settles itself
+        // as its last volley lands.
+        rollCannons: ({ G, ctx, random, events }, stray?: unknown) => {
+          if (!canFireVolley(G, "cannons", stray)) return INVALID_MOVE;
+          if (applyCannons(G, () => random.D6(), ctx.turn) === "ended") events.setPhase("main");
         },
 
-        returnFire: ({ G, random }, aim: VolleyAim) => {
-          if (!canFireVolley(G, "returnFire", aim)) return INVALID_MOVE;
-          applyReturnFire(G, aim, () => random.D6());
+        returnFire: ({ G, ctx, random, events }, stray?: unknown) => {
+          if (!canFireVolley(G, "returnFire", stray)) return INVALID_MOVE;
+          if (applyReturnFire(G, () => random.D6(), ctx.turn) === "ended") events.setPhase("main");
         },
 
+        // Legacy (#380): only a fight stored at the resolution before the round settled itself
         applyResolution: ({ G, ctx, events }) => {
           if (!atCombatStage(G, "resolution")) return INVALID_MOVE;
           if (applyCombatResolution(G, ctx.turn) === "ended") events.setPhase("main");

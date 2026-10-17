@@ -130,16 +130,15 @@ describe("combat across the east–west seam", () => {
   });
 });
 
-/** The answer, aimed at the hull, when the fight waits on it (#348). */
+/** The answer, when the fight waits on it (#348). */
 function answerIfAsked(client: ReturnType<typeof setupCombatGame>) {
-  if (client.getState()!.G.combat?.stage === "returnFire") client.moves.returnFire("hull");
+  if (client.getState()!.G.combat?.stage === "returnFire") client.moves.returnFire();
 }
 
-/** Round 1, the ambush (#346): the attacker's broadside and the answer, then the round's end; the fight goes on to the draw. */
+/** Round 1, the ambush (#346): the attacker's broadside and the answer; the round settles itself (#380), and the fight goes on to the draw. */
 function pastTheAmbush(client: ReturnType<typeof setupCombatGame>) {
-  client.moves.rollCannons("hull");
+  client.moves.rollCannons();
   answerIfAsked(client);
-  client.moves.applyResolution();
 }
 
 describe("attackShip move", () => {
@@ -346,11 +345,8 @@ describe("combat phase - chooseAction", () => {
 
     if (G.combat && G.combat.fleeOutcome === "caught") {
       expect(G.combat.stage).toBe("cannons");
-      // Continue to resolution
-      client.moves.rollCannons("hull");
-      expect(client.getState()!.G.combat!.stage).toBe("resolution");
-      client.moves.applyResolution();
-      // After parting shot, combat ends
+      client.moves.rollCannons();
+      // After parting shot, combat ends, with no press (#380)
       expect(client.getState()!.G.combat).toBeUndefined();
     }
   });
@@ -417,14 +413,14 @@ describe("combat phase - cannons", () => {
 
   it("rollCannons records attacker hits", () => {
     const client = setupAtCannons();
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
     const { G } = client.getState()!;
     expect(G.combat!.attackerHits).toBeGreaterThanOrEqual(0);
   });
 
   it("defender rolls if canReturnFire (same range)", () => {
     const client = setupAtCannons();
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
     const { G } = client.getState()!;
     // At range 1, defender can return fire
     expect(G.combat!.defenderHits).toBeGreaterThanOrEqual(0);
@@ -447,22 +443,27 @@ describe("combat phase - cannons", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
     const { G } = client.getState()!;
-    expect(G.combat!.defenderHits).toBe(0);
+    // No answer: the round settled on the one volley (#380)
+    expect(G.lastRound!.volleys.map((v) => v.shooterId)).toEqual([G.lastRound!.volleys[0].shooterId]);
+    expect(G.lastRound!.volleys).toHaveLength(1);
   });
 
-  it("waits on the answer after rollCannons, then transitions to resolution (#348)", () => {
+  it("waits on the answer after rollCannons, then settles the round with no press (#348, #380)", () => {
     const client = setupAtCannons();
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
     expect(client.getState()!.G.combat!.stage).toBe("returnFire");
-    client.moves.returnFire("hull");
-    expect(client.getState()!.G.combat!.stage).toBe("resolution");
+    const round = client.getState()!.G.combat!.round;
+    client.moves.returnFire();
+    const { G } = client.getState()!;
+    expect(G.lastRound).toMatchObject({ round });
+    if (G.combat) expect(G.combat).toMatchObject({ round: round + 1, stage: "seamanship" });
   });
 });
 
-describe("combat phase - resolution", () => {
-  function setupAtResolution() {
+describe("combat phase - the round settles itself (#380)", () => {
+  function setupAtCannons() {
     const client = setupCombatGame({
       ship0: createShipWithFullStats(0, 0),
       ship1: createShipWithFullStats(1, 0),
@@ -479,24 +480,25 @@ describe("combat phase - resolution", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons("hull");
     return client;
   }
 
-  it("the cannons land each side's damage, and the resolution adds none (#346)", () => {
-    const client = setupAtResolution();
+  it("each side's damage lands with its volley, and settling the round adds none (#346)", () => {
+    const client = setupAtCannons();
+    client.moves.rollCannons();
     const { G: before } = client.getState()!;
-    const hullsBefore = [before.ships["0"].stats!.hull.current, before.ships["1"].stats!.hull.current];
+    if (before.combat?.stage !== "returnFire") return;
+    const firstShooter = before.combat.volleys![0].shooterId;
+    const firstTarget = firstShooter === "0" ? "1" : "0";
+    const targetHull = before.ships[firstTarget].stats!.hull.current;
 
-    client.moves.applyResolution();
+    client.moves.returnFire();
     const { G } = client.getState()!;
-
-    if (G.ships["0"] && G.ships["1"]) {
-      expect([G.ships["0"].stats!.hull.current, G.ships["1"].stats!.hull.current]).toEqual(hullsBefore);
-    }
+    // The answer hit the first shooter, never the first volley's target again
+    if (G.ships[firstTarget]) expect(G.ships[firstTarget].stats!.hull.current).toBe(targetHull);
   });
 
-  it("sunk ship is removed and loot spawned", () => {
+  it("sunk ship is removed and loot spawned, by the volley that sank it", () => {
     // Set up a weak defender that will sink easily
     const ship1 = createShipWithFullStats(1, 0);
     ship1.stats!.hull.current = 1;
@@ -513,59 +515,45 @@ describe("combat phase - resolution", () => {
     const client = setupCombatGame({ ship0, ship1 });
 
     client.moves.attackShip("1");
-    client.moves.rollCannons("hull");
-
-    const { G: afterCannons } = client.getState()!;
-    const attackerHits = afterCannons.combat!.attackerHits;
-
-    client.moves.applyResolution();
+    client.moves.rollCannons();
 
     const { G } = client.getState()!;
-    // If attacker scored hits, defender (1 hull) should be sunk
-    if (attackerHits > 0) {
+    const [volley] = G.lastRound!.volleys;
+    // A hit on the hull, or a mast hit past the cap, sinks her (1 hull)
+    const holed = volley.locations!.hull + Math.max(0, volley.locations!.masts - 2) > 0;
+    const derelict = volley.locations!.crew >= ship1.stats!.crew.current;
+    if (holed) {
       expect(G.ships["1"]).toBeUndefined();
       expect(G.floatingLoot.length).toBeGreaterThan(0);
       expect(G.combat).toBeUndefined();
-    } else {
-      // No hits = combat continues to next round (attacker won't be sunk since defender has 0 cannons)
+    } else if (!derelict) {
+      // No hit on the hull = combat continues to next round (attacker won't be sunk since defender has 0 cannons)
       expect(G.combat).toBeDefined();
       expect(G.combat!.round).toBe(2);
     }
   });
 
   it("derelict ship is marked when crew reaches 0", () => {
-    // Set up defender with 1 crew - test the derelict logic directly
+    // Set up defender with 1 crew
     const ship1 = createShipWithFullStats(1, 0);
     ship1.stats!.crew.current = 1;
     ship1.stats!.crew.max = 1;
     ship1.stats!.hull.current = 10;
     ship1.stats!.hull.max = 10;
 
-    // Attacker with grape_shot to target crew
     const ship0 = createShipWithFullStats(0, 0);
     ship0.upgrades = ["grape_shot"];
 
     const client = setupCombatGame({ ship0, ship1 });
 
     client.moves.attackShip("1");
-    client.moves.rollCannons("hull");
-
-    // Get state after cannons
-    const { G: afterCannons } = client.getState()!;
-
-    client.moves.applyResolution();
+    client.moves.rollCannons();
 
     const { G, ctx } = client.getState()!;
-    // If attacker got hits, defender took crew damage
-    // Combat might continue (if defender still has crew) or end (if derelict/sunk)
-    if (afterCannons.combat!.attackerHits > 0 && G.ships["1"]) {
-      // If ship exists and took hits, check it might be derelict
-      if (G.ships["1"].stats!.crew.current <= 0) {
-        expect(G.ships["1"].isDerelict).toBe(true);
-        expect(G.combat).toBeUndefined();
-      }
+    if (G.ships["1"] && G.ships["1"].stats!.crew.current <= 0) {
+      expect(G.ships["1"].isDerelict).toBe(true);
+      expect(G.combat).toBeUndefined();
     }
-    // Test passes regardless - we verified the flow works
     expect(ctx.phase).toBeDefined();
   });
 
@@ -583,24 +571,18 @@ describe("combat phase - resolution", () => {
 
     const { G: beforeG } = client.getState()!;
     const winner = beforeG.combat!.seamanshipWinner;
+    const round = beforeG.combat!.round;
     if (client.getState()!.ctx.currentPlayer !== winner) {
       client.events.endTurn!();
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
     answerIfAsked(client);
 
-    const { G: beforeRes } = client.getState()!;
-    const round1 = beforeRes.combat!.round;
-
-    client.moves.applyResolution();
-
     const { G, ctx } = client.getState()!;
-    // If both alive, combat continues (might be new round or ended)
-    // The exact behavior depends on damage dealt
     if (G.combat) {
-      expect(G.combat.round).toBeGreaterThanOrEqual(round1);
+      expect(G.combat.round).toBe(round + 1);
       expect(G.combat.stage).toBe("seamanship");
     } else {
       expect(ctx.phase).toBe("main");
@@ -608,10 +590,9 @@ describe("combat phase - resolution", () => {
   });
 
   it("returns to main phase when combat ended", () => {
-    const client = setupAtResolution();
-
-    // After resolution, combat should either continue or end
-    client.moves.applyResolution();
+    const client = setupAtCannons();
+    client.moves.rollCannons();
+    answerIfAsked(client);
 
     const { ctx, G } = client.getState()!;
     // Both ships sunk with no captain left to deal (an empty deck) ends the game instead (#265)
@@ -642,7 +623,7 @@ describe("combat outcomes", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
 
     const { G } = client.getState()!;
     // Both should be able to fire at range 1
@@ -669,10 +650,11 @@ describe("combat outcomes", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
 
     const { G: afterCannons } = client.getState()!;
-    expect(afterCannons.combat!.defenderHits).toBe(0);
+    // No answer: the round settled on the one volley (#380)
+    expect(afterCannons.lastRound!.volleys).toHaveLength(1);
   });
 
   it("flute with long_guns attacks sloop 2 hexes away - both can fire", () => {
@@ -691,7 +673,7 @@ describe("combat outcomes", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons("hull");
+    client.moves.rollCannons();
 
     const { G } = client.getState()!;
     // Both have long_guns, so defender can return fire at range 2

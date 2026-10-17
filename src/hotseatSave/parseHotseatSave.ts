@@ -47,7 +47,10 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
  * a volley it recorded with no aim is read as aimed at the hull, so every
  * version 6 save is version 7's. Version 7 lacks `G.eventDeck` (#246),
  * which the game reads as an empty pile, shuffled at the first draw, and an
- * empty log.
+ * empty log. Version 8 aimed its volleys (#348); version 9's land at random
+ * and settle the round by themselves (#380), but an aimed volley reads as
+ * every hit on its aim and a fight at version 8's resolution still settles
+ * (the legacy `applyResolution`), so every version 8 save is version 9's.
  */
 function migrate(value: Record<string, unknown>): Record<string, unknown> {
   let current = value;
@@ -57,6 +60,7 @@ function migrate(value: Record<string, unknown>): Record<string, unknown> {
   if (current.version === 5) current = { ...current, version: 6 };
   if (current.version === 6) current = { ...current, version: 7 };
   if (current.version === 7) current = { ...current, version: 8 };
+  if (current.version === 8) current = { ...current, version: 9 };
   return current;
 }
 

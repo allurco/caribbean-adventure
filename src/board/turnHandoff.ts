@@ -1,7 +1,9 @@
 /**
  * The hand-off between turns, on the board only (#216). boardgame.io passes
  * the turn the moment the last move is made; the board then plays it out in
- * order: the outgoing ship sails on to where it was sent (`sailing`), a short
+ * order: a fight that ended the turn finishes playing on the board (`fight`:
+ * the round settles itself with its last volley, #380, so the volley, a
+ * sinking, are still to play), the outgoing ship sails on to where it was sent (`sailing`), a short
  * "turn ends" beat (`turnEnded`), the NPCs moved at the turn's end sail
  * (`npcs`), then the camera flies to the next player and their turn is
  * announced (`nextTurn`), and only then are their controls live (`idle`).
@@ -11,7 +13,7 @@
 
 import type { NPCShip } from "../game/types";
 
-export type HandoffPhase = "sailing" | "turnEnded" | "npcs" | "nextTurn" | "idle";
+export type HandoffPhase = "fight" | "sailing" | "turnEnded" | "npcs" | "nextTurn" | "idle";
 
 export interface Handoff {
   readonly phase: HandoffPhase;
@@ -27,6 +29,8 @@ export interface Handoff {
 /** What the board sees each frame. */
 export interface HandoffSignals {
   readonly now: number;
+  /** The board still plays a fight's beats (the combat director holds the ships, #380). */
+  readonly fightPlaying: boolean;
   /** The outgoing player's ship has come to rest (or is gone). */
   readonly shipAtRest: boolean;
   /** Every NPC ship has come to rest. */
@@ -37,6 +41,8 @@ export interface HandoffSignals {
 
 /** How long each phase may last, and the least it lasts, in ms. */
 export const HANDOFF_TIMING = {
+  /** A fight's last beats (a volley, a sinking, the ships released) may play this long; the rest of the hand-off's limits count from their end. */
+  fightMax: 20000,
   /** A ship reports it is under way within a frame or two of its new hex: wait at least this long. */
   sailingMin: 120,
   // A reversal mid-move slows into its turn and can take over 2 s to settle (#219): wait well past that
@@ -47,7 +53,7 @@ export const HANDOFF_TIMING = {
   npcsMin: 250,
   npcsMax: 4000,
   nextTurnMax: 4000,
-  /** Nothing holds the game longer than this. */
+  /** Nothing holds the game longer than this, once the fight has played. */
   total: 12000,
 } as const;
 
@@ -76,12 +82,13 @@ export const turnPassed = (shown: ShownTurn | null, now: ShownTurn & { readonly 
   shown !== null && !now.fight && shown.turn !== now.turn;
 
 /**
- * A hand-off from `from` to `to`, the outgoing ship still sailing. Started
- * `now`, or, given null, at its first step (the board starts it while
- * rendering, where it does not read the clock).
+ * A hand-off from `from` to `to`, a fight that ended the turn still playing
+ * (none, and its first step moves on to the sailing). Started `now`, or,
+ * given null, at its first step (the board starts it while rendering, where
+ * it does not read the clock).
  */
 export const startHandoff = (from: string, to: string, now: number | null, reducedMotion: boolean): Handoff => ({
-  phase: "sailing",
+  phase: "fight",
   from,
   to,
   startedAt: now,
@@ -95,9 +102,12 @@ const enter = (h: Handoff, phase: HandoffPhase, now: number): Handoff => ({ ...h
 export function stepHandoff(h: Handoff, s: HandoffSignals): Handoff {
   if (h.phase === "idle") return h;
   if (h.startedAt === null) return { ...h, startedAt: s.now, phaseStartedAt: s.now };
-  if (s.now - h.startedAt >= HANDOFF_TIMING.total) return enter(h, "idle", s.now);
+  if (h.phase !== "fight" && s.now - h.startedAt >= HANDOFF_TIMING.total) return enter(h, "idle", s.now);
   const elapsed = s.now - h.phaseStartedAt;
   switch (h.phase) {
+    case "fight":
+      // The rest of the hand-off is timed from the fight's end
+      return s.fightPlaying && elapsed < HANDOFF_TIMING.fightMax ? h : { ...h, phase: "sailing", startedAt: s.now, phaseStartedAt: s.now };
     case "sailing":
       return (s.shipAtRest && elapsed >= HANDOFF_TIMING.sailingMin) || elapsed >= HANDOFF_TIMING.sailingMax
         ? enter(h, "turnEnded", s.now)
@@ -112,7 +122,7 @@ export function stepHandoff(h: Handoff, s: HandoffSignals): Handoff {
 }
 
 /** Whether the board still shows the NPCs where they were before the turn ended. */
-export const holdsNpcs = (h: Handoff | null): boolean => h !== null && (h.phase === "sailing" || h.phase === "turnEnded");
+export const holdsNpcs = (h: Handoff | null): boolean => h !== null && (h.phase === "fight" || h.phase === "sailing" || h.phase === "turnEnded");
 
 /**
  * Whether the turn the board showed (`from`) ended in a fight, now that

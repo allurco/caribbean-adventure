@@ -42,8 +42,8 @@ export const COMBAT_ACTIONS = ["fire", "board", "flee"] as const;
 
 export const COMBAT_STAGES = ["seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt", "cannons", "returnFire", "resolution"] as const;
 
-/** Where a volley is aimed (#348): every hit in it goes there. */
-export const VOLLEY_AIMS = ["hull", "masts", "crew"] as const;
+/** Where a hit lands (#380): each hit of a volley rolls one, uniformly. */
+export const HIT_LOCATIONS = ["hull", "masts", "crew"] as const;
 
 export interface ShipStats {
   maneuverability: number;
@@ -115,19 +115,26 @@ export interface ShipState {
 export type CombatAction = (typeof COMBAT_ACTIONS)[number];
 export type CombatStage = (typeof COMBAT_STAGES)[number];
 export type FleeOutcome = "escaped" | "caught" | null;
-export type VolleyAim = (typeof VOLLEY_AIMS)[number];
+export type HitLocation = (typeof HIT_LOCATIONS)[number];
+/** A volley's hits counted by where they landed (#380). */
+export type HitCounts = Record<HitLocation, number>;
 
-/** One broadside fired in a round (#346): who fired, how many guns, where it was aimed (#348), and how many hit. */
+/** One broadside fired in a round (#346): who fired, how many guns, how many hit, and where each hit landed (#380). */
 export interface Volley {
   shooterId: string;
   guns: number;
-  /**
-   * Where every hit went (#348). Optional only because a volley stored
-   * before #348 (a match or save mid-fight as the change deployed) lacks
-   * it: read it as the hull, where every hit went then.
-   */
-  aim?: VolleyAim;
   hits: number;
+  /**
+   * The hits by where each landed (#380). Optional only because a volley
+   * stored before #380 (an online match mid-fight as the change deployed)
+   * lacks it: read it from `aim` (`hitCountsOf`).
+   */
+  locations?: HitCounts;
+  /**
+   * Where every hit went, in a volley stored before #380 (#348's aim). None
+   * at all before #348: every hit went to the hull then.
+   */
+  aim?: HitLocation;
 }
 
 export interface CombatState {
@@ -151,6 +158,25 @@ export interface CombatState {
   isNPCCombat: boolean;
   fleeOutcome: FleeOutcome;
   fleeRolls: { pursuer: number; fleeer: number } | null;
+}
+
+/**
+ * The last round a fight settled (#380), kept once it is settled: the round
+ * settles itself as its last volley lands, so the board still shows the
+ * round's volleys on the next step, the next draw or the end of the fight.
+ * Replaced by each round settled, cleared as a new fight opens.
+ */
+export interface SettledRound {
+  attackerId: string;
+  defenderId: string;
+  isNPCCombat: boolean;
+  round: number;
+  /** The round's volleys, in the order they were fired. */
+  volleys: Volley[];
+  fleeOutcome: FleeOutcome;
+  fleeRolls: { pursuer: number; fleeer: number } | null;
+  /** Whether the fight ended with this round. */
+  ended: boolean;
 }
 
 export interface FloatingLoot {
@@ -333,6 +359,8 @@ export interface CaribbeanState {
   captainDeck: Captain[];
   draftHands: Record<string, Captain[]>;
   combat?: CombatState;
+  /** The last round a fight settled (#380); none before a fight's first round settles. */
+  lastRound?: SettledRound;
   floatingLoot: FloatingLoot[];
   npcIdCounter: number;
   /**
