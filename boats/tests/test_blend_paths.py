@@ -33,6 +33,18 @@ BLEND_HEADER = b"BLENDER17-01v0502"
     b"\0C:/Users/x\0",
     b"\0e:\\work\\x.blend\0",
     b"\0D:/Documents and Settings/x\0",
+    b"\0/opt/render/out\0",
+    b"\0/root/scenes/x.blend\0",
+    b"\0/mnt/c/Users/x\0",
+    b"\0/usr/local/share/tex.png\0",
+    b"\0/run/user/1000/x\0",
+    b"\0/Library/Caches/x\0",
+    b"\0/Applications/Blender.app/x\0",
+    b"\0~/Desktop/tex.png\0",
+    b"\0\\\\server\\share\\tex.png\0",
+    # Blender's bundled assets, but from an install under a home directory.
+    b"\0/Users/someone/Applications/Blender.app/Contents/Resources/5.2/datafiles/assets/b.blend\0",
+    b"\0/home/someone/blender-5.2/5.2/datafiles/assets/brushes/b.blend\0",
 ])
 def test_it_finds_a_local_path(raw):
     assert blendscan.local_paths(raw)
@@ -44,6 +56,13 @@ def test_it_finds_a_local_path(raw):
     b"\0Hull_Users/rig\0",                     # a name that merely contains it
     b"\0Save As Blender File\0",
     b"\x3f\x80Q:/\x00\x00",                    # a drive-like run inside float data
+    b"\x3f~/ab\x00",                             # a tilde run inside data
+    b"\x3f\\\\ab\\cd\x00",                       # backslashes inside data
+    # Blender's own bundled brushes, which a fresh scene's paint tools name.
+    b"\0/Applications/Blender.app/Contents/Resources/5.2/datafiles/assets/brushes/"
+    b"essentials_brushes-gp_draw.blend\0",
+    b"\0/usr/share/blender/5.2/datafiles/assets/brushes/essentials_brushes-gp_draw.blend\0",
+    b"\0C:\\Program Files\\Blender Foundation\\Blender 5.2\\5.2\\datafiles\\assets\\b.blend\0",
 ])
 def test_it_passes_a_clean_string(raw):
     assert blendscan.local_paths(raw) == []
