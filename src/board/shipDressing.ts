@@ -20,6 +20,12 @@ export interface ShipDress {
   readonly wind?: ShipWindUniforms;
 }
 
+/** The material copies a dressing made for one ship alone (its colour, its wind). */
+const shipOwnMaterials = new WeakSet<Material>();
+
+/** Whether `material` is one ship's own copy, made by `dressShipModel`, rather than one ships share. */
+export const isShipOwnMaterial = (material: Material): boolean => shipOwnMaterials.has(material);
+
 /**
  * Dresses `ship` (a clone of a merged model, `mergeShipModel`) and returns
  * the function that disposes the material copies it made and puts the
@@ -38,6 +44,7 @@ export function dressShipModel(ship: Object3D, { colour, flagMaterial, wind }: S
       const copy = (loaded as MeshStandardMaterial).clone();
       copy.color.set(colour);
       copies.push(copy);
+      shipOwnMaterials.add(copy);
       mesh.material = copy;
       ours = true;
     }
@@ -45,6 +52,7 @@ export function dressShipModel(ship: Object3D, { colour, flagMaterial, wind }: S
     if (!ours) {
       const copy = (mesh.material as Material).clone();
       copies.push(copy);
+      shipOwnMaterials.add(copy);
       mesh.material = copy;
     }
     blowShipWind(mesh.material as Material, wind);

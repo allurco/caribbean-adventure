@@ -2,16 +2,18 @@ import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useFrame } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { ErrorBoundary } from "react-error-boundary";
-import { Mesh, MathUtils, Group, Matrix4, Vector3, type Object3D } from "three";
+import { Mesh, Group, Matrix4, Vector3, type Object3D } from "three";
 import type { ShipClass } from "../game/types";
 import { type ShipFoamSource, shipFoamSources } from "./shipFoamSources";
-import { SHIP_RIDE_HEIGHT, SHIP_SINK_DEPTH, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox, shipWaterline } from "./shipHull";
+import { SHIP_RIDE_HEIGHT, SHIP_WATERLINE_Y, shipHoverBox, shipHullBox, shipWaterline } from "./shipHull";
 import { type OpenWater, type Point, type ShipMotion, courseIncludes, restingMotion, setCourse, stepMotion } from "./shipMotion";
 import { useShipWavePose } from "./useShipWavePose";
 import { SHIP_POSE_PRIORITY } from "./visuals/frameOrder";
 import { type ShipModel, SHIP_MODELS, shipModel, shipModelPlacement, shipModelUrl } from "./shipModels";
 import { mergeShipModel } from "./shipModelMerge";
 import { dressShipModel } from "./shipDressing";
+import { fadeShipModel } from "./shipFade";
+import { sinkPose, sinkProgress } from "./shipSinking";
 import { shipFlagMaterial } from "./shipFlagMaterials";
 import type { ShipFlag } from "./shipFlags";
 import { createShipWindUniforms, shipWindPose, writeShipWindPose } from "./shipWind";
@@ -41,7 +43,6 @@ const mergedShipModel = (scene: Object3D, model: ShipModel): Group => {
   return merged;
 };
 
-const SINK_DURATION = 2.0; // seconds for sinking animation
 /** Seconds over which a ship's reported speed (for its hull foam) eases back to 0 after a move, so the wake fades rather than snaps off. */
 const FOAM_SPEED_DECAY = 0.8;
 
@@ -56,10 +57,6 @@ const COMBAT_REST_RADIUS = 0.8;
 function atPosition(m: ShipMotion, position: readonly [number, number, number], wrapWidth: number): boolean {
   const dx = Number.isFinite(wrapWidth) ? Math.abs(((m.x - position[0]) % wrapWidth + 1.5 * wrapWidth) % wrapWidth - wrapWidth / 2) : Math.abs(m.x - position[0]);
   return dx < 1e-3 && Math.abs(m.z - position[2]) < 1e-3;
-}
-
-function smoothstep(t: number): number {
-  return t * t * (3 - 2 * t);
 }
 
 export function Ship({
@@ -334,8 +331,10 @@ function readShipGuns(scene: Object3D, shipClass: ShipClass): void {
  * group's, which is on the sea (shipModelPlacement, #150). Dressed in its
  * owner's colour and flying its flag (#134), its sails and flags set to the
  * scene's wind for its `heading` at the wave clock's time (#204): still
- * under reduced motion, limp and slack while it sinks. Suspends while the
- * file loads.
+ * under reduced motion, limp and slack while it sinks. Given a `fade`, it
+ * is drawn through material copies of its own and fades to the opacity the
+ * ref holds each frame (#135, shipFade.ts), the other ships of its class
+ * untouched. Suspends while the file loads.
  */
 export function ShipModelMesh({
   model,
@@ -344,6 +343,7 @@ export function ShipModelMesh({
   flag,
   heading,
   sinking = false,
+  fade,
 }: {
   model: ShipModel;
   /** Its class, whose guns the model's nodes give (#263). */
@@ -353,6 +353,8 @@ export function ShipModelMesh({
   /** The ship's heading this frame (its group's rotation about +Y). */
   heading: () => number;
   sinking?: boolean;
+  /** The opacity to draw it at this frame, for a ship fading as it sinks; mounted with or without one, never switched. */
+  fade?: { readonly current: number };
 }) {
   const { scene } = useGLTF(modelUrl(model), false, false);
   if (shipClass) readShipGuns(scene, shipClass);
@@ -369,8 +371,21 @@ export function ShipModelMesh({
   const sea = useSeaSurface();
   const reducedMotion = usePrefersReducedMotion();
   // Its own material copies for the tinted parts and the cloth, disposed when the ship or its colours change.
-  useLayoutEffect(() => dressShipModel(copy, { colour, flagMaterial: shipFlagMaterial(flag), wind }), [copy, colour, flag, wind]);
+  // While it fades, every part through its own copies too, disposed before the dressing is.
+  const fading = fade !== undefined;
+  const fader = useRef<ReturnType<typeof fadeShipModel> | null>(null);
+  useLayoutEffect(() => {
+    const undress = dressShipModel(copy, { colour, flagMaterial: shipFlagMaterial(flag), wind });
+    const fadeCopy = fading ? fadeShipModel(copy) : null;
+    fader.current = fadeCopy;
+    return () => {
+      fader.current = null;
+      fadeCopy?.dispose();
+      undress();
+    };
+  }, [copy, colour, flag, wind, fading]);
   useFrame(() => {
+    if (fade) fader.current?.setOpacity(fade.current);
     const seconds = sea?.clock.waveTimeAt() ?? 0;
     writeShipWindPose(wind, shipWindPose({ heading: heading(), wind: SCENE_WIND, seconds, reducedMotion, sinking }));
   }, SHIP_POSE_PRIORITY);
@@ -388,8 +403,8 @@ export function ShipModelMesh({
  * she is drawn where it puts her: closing alongside, settling, listing and
  * going down by her own height, her flag limp and her sails slack. She is
  * done once she has gone under or the fight lets her go. Held by nothing
- * (a sinking no fight plays), she goes down on her own: rolls, pitches and
- * sinks over SINK_DURATION.
+ * (a sinking no fight plays), she goes down on her own: rolls, pitches,
+ * sinks and fades over SINK_DURATION (shipSinking.ts), box or model alike.
  */
 export function SinkingShip({
   combatId,
@@ -435,6 +450,7 @@ export function SinkingShip({
   const progressRef = useRef(0);
   const startY = position[1] + SHIP_WATERLINE_Y;
   const [opacity, setOpacity] = useState(1);
+  const fade = useRef(1);
   const completedRef = useRef(false);
   const reported = useRef<ReportedPose>({ x: 0, z: 0, heading: 0, anchor: null, copyX: 0 });
 
@@ -469,19 +485,21 @@ export function SinkingShip({
       return;
     }
 
-    progressRef.current = Math.min(progressRef.current + delta / SINK_DURATION, 1);
-    const t = smoothstep(progressRef.current);
-    ref.current.position.y = -MathUtils.lerp(0, SHIP_SINK_DEPTH, t);
-    ref.current.rotation.z = MathUtils.lerp(0, Math.PI / 4, t);
-    ref.current.rotation.x = MathUtils.lerp(0, Math.PI / 8, t);
-    setOpacity(MathUtils.lerp(1, 0, t));
+    progressRef.current = sinkProgress(progressRef.current, delta);
+    const pose = sinkPose(progressRef.current);
+    ref.current.position.y = -pose.drop;
+    ref.current.rotation.z = pose.roll;
+    ref.current.rotation.x = pose.pitch;
+    // The model reads it each frame; the box (a model's fallback too) redraws at it.
+    fade.current = pose.opacity;
+    setOpacity(pose.opacity);
     if (progressRef.current >= 1) {
       completedRef.current = true;
       onComplete();
     }
   });
 
-  // The box fades as it goes; a model goes down whole, its flag limp and its sails slack (#204).
+  // Box or model, she fades as she goes (#135); a model's flag goes limp and its sails slack (#204).
   const box = (
     <mesh position-y={SHIP_RIDE_HEIGHT} castShadow>
       <boxGeometry args={[...hull]} />
@@ -498,7 +516,7 @@ export function SinkingShip({
           {model ? (
             <ErrorBoundary fallback={box} onError={(error) => logModelFailure(model, error)}>
               <Suspense fallback={box}>
-                <ShipModelMesh model={model} colour={color} flag={flag} heading={headingNow} sinking={sinks} />
+                <ShipModelMesh model={model} colour={color} flag={flag} heading={headingNow} sinking={sinks} fade={fade} />
               </Suspense>
             </ErrorBoundary>
           ) : (
