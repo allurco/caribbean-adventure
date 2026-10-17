@@ -170,6 +170,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     fireTheAmbush(client);
     client.moves.rollSeamanship();
     client.moves.chooseCombatAction("board");
+    client.moves.fightBoarding();
     expectFightOver(client);
     expect(stateOf(client).G.npcs.prey).toBeUndefined();
     expect(npcSteps(client)).toBe(1);
@@ -210,6 +211,7 @@ describe("the NPCs' step at the end of a turn (#288)", () => {
     client.moves.rollSeamanship();
     client.moves.rollDefenderSeamanship();
     client.moves.chooseCombatAction("board");
+    client.moves.fightBoarding();
     expectFightOver(client);
     expect(npcSteps(client)).toBe(1);
   });

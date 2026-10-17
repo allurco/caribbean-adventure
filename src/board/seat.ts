@@ -161,6 +161,8 @@ const STEP_WAITED_ON: Record<CombatStage, string> = {
   // Every volley is its firing ship's step (#348), the answer included
   cannons: "to fire",
   returnFire: "to fire",
+  // The crew fight (#350) is the boarder's step
+  boarding: "to board",
   // The round settles itself (#380): only a fight stored at the resolution before then waits on it.
   resolution: "to end the round",
 };

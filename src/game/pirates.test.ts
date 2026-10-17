@@ -160,14 +160,15 @@ describe("turning pirate (#201)", () => {
     // Gunless, so the ambush (#346) leaves the merchant afloat; the faster sailor wins round 2's draw.
     const boarder = ship(0, 0, { nation: "France", guns: false });
     boarder.stats!.maneuverability = 20;
-    const client = startGame(
-      { "0": boarder, "1": ship(4, 0, { nation: "England" }) },
-      { npcs: { merchant: npc("merchant", "MERCHANT", "Spain", 1, 0) } }
-    );
+    // Its 1 crew strikes at once to the crew fight (#350)
+    const merchant = npc("merchant", "MERCHANT", "Spain", 1, 0);
+    merchant.stats.crew.current = 1;
+    const client = startGame({ "0": boarder, "1": ship(4, 0, { nation: "England" }) }, { npcs: { merchant } });
     client.moves.attackNPC("merchant");
     fireTheAmbush(client);
     client.moves.rollSeamanship();
     client.moves.chooseCombatAction("board");
+    client.moves.fightBoarding();
 
     expect(stateOf(client).npcs.merchant).toBeUndefined();
     expect(stateOf(client).pirates).toEqual({ "0": { turn: expect.any(Number), cause: "board" } });

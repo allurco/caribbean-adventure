@@ -159,12 +159,14 @@ describe("an NPC that wins the draw picks its own action (#345)", () => {
 
 describe("boarding an NPC (#345)", () => {
   it("a flotilla: its cargo and gold come aboard, no bounty is added, and it is gone", () => {
-    const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }) }, { foe: npc("FLOTILLA") });
+    // Its 1 crew strikes at once to the crew fight (#350)
+    const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }) }, { foe: npc("FLOTILLA", { crew: 1 }) });
     client.moves.attackNPC("foe");
     pastTheAmbush(client);
     client.moves.rollSeamanship();
     const goldBefore = G(client).ships["0"].gold;
     client.moves.chooseCombatAction("board");
+    client.moves.fightBoarding();
 
     const after = G(client);
     expect(after.combat).toBeUndefined();
@@ -300,6 +302,7 @@ const STEP_MOVES = {
   fleeAttempt: (c: TestClient) => c.moves.rollFleeAttempt(),
   cannons: (c: TestClient) => c.moves.rollCannons(),
   returnFire: (c: TestClient) => c.moves.returnFire(),
+  boarding: (c: TestClient) => c.moves.fightBoarding(),
   resolution: (c: TestClient) => c.moves.applyResolution(),
 } satisfies Record<CombatStage, (c: TestClient) => void>;
 
@@ -344,6 +347,17 @@ function fightAt(stage: CombatStage): TestClient {
     client.moves.attackShip("1");
     client.moves.rollCannons();
     expect(G(client).combat!.stage).toBe("returnFire");
+    return client;
+  }
+  if (stage === "boarding") {
+    // The attacker, faster, wins the draw and boards (#350)
+    const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }), "1": ship(1, 0) });
+    client.moves.attackShip("1");
+    client.moves.rollCannons();
+    client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
+    client.moves.chooseCombatAction("board");
+    expect(G(client).combat!.stage).toBe("boarding");
     return client;
   }
   if (stage === "resolution") {
@@ -740,8 +754,9 @@ describe("the round settles itself (#380)", () => {
     client.moves.rollSeamanship();
     client.moves.rollDefenderSeamanship();
     client.moves.chooseCombatAction("board");
+    client.moves.fightBoarding();
     expect(G(client).combat).toBeUndefined();
-    expect(G(client).lastRound!.round).toBe(1);
+    expect(G(client).lastRound).toMatchObject({ round: 2, boarding: expect.any(Object) });
     // The next seat's turn: it attacks, and the old round goes
     client.moves.attackShip("0");
     expect(G(client).combat).toBeDefined();

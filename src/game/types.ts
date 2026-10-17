@@ -40,7 +40,7 @@ export const DAMAGE_CATEGORIES = ["hull", "crew", "masts"] as const;
 
 export const COMBAT_ACTIONS = ["fire", "board", "flee"] as const;
 
-export const COMBAT_STAGES = ["seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt", "cannons", "returnFire", "resolution"] as const;
+export const COMBAT_STAGES = ["seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt", "cannons", "returnFire", "boarding", "resolution"] as const;
 
 /** Where a hit lands (#380): each hit of a volley rolls one, uniformly. */
 export const HIT_LOCATIONS = ["hull", "masts", "crew"] as const;
@@ -200,6 +200,34 @@ export interface SettledRound {
   sunk?: string[];
   /** The ships this round left derelict, never one already derelict before it. Optional as `sunk` is. */
   leftDerelict?: string[];
+  /** The boarding that ended the fight this round (#350), if one did. */
+  boarding?: BoardingRecord;
+}
+
+/** One exchange of a crew fight (#350): each side's dice, and each side's crew after it. */
+export interface CrewExchange {
+  boarderDice: number[];
+  defenderDice: number[];
+  boarderCrew: number;
+  defenderCrew: number;
+}
+
+/**
+ * A boarding fought out (#350): who boarded whom, the crew fight's
+ * exchanges, who won, and what the winner took from the ship that struck:
+ * all its gold and the cargo that fitted the hold. The cargo that did not
+ * fit floats as loot `lootId` at the loser's hex (`floated`; null when it
+ * all fitted).
+ */
+export interface BoardingRecord {
+  boarderId: string;
+  boardedId: string;
+  exchanges: CrewExchange[];
+  winnerId: string;
+  gold: number;
+  taken: Record<GoodType, number>;
+  floated: Record<GoodType, number> | null;
+  lootId?: string;
 }
 
 export interface FloatingLoot {

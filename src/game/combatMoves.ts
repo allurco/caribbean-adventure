@@ -38,6 +38,8 @@ import { applyMerchantAction, applyPirateBounty, shouldSpawnFlotilla } from "./r
 import { awardCombatGlory } from "./scoring";
 import { nextLootId } from "./ids";
 import { checkAssassinationMission, failEscortMission, completeMission } from "./missions";
+import { MIN_BOARDING_CREW, crewFight, plunder } from "./boarding";
+import { totalCargo } from "./economy";
 
 /** Whether a step left the fight going or ended it (G.combat cleared). */
 export type CombatStepOutcome = "continues" | "ended";
@@ -96,10 +98,12 @@ export function firstToFireReaches(G: CaribbeanState): boolean {
 
 /**
  * May the draw's winner choose this action? Only while the fight waits on
- * the choice, only fire, board or flee, boarding only from the next hex, and
- * fire only when the ship that would fire first reaches (`firstToFireReaches`,
- * #356). Round 1 is the ambush (#346): fire is the only action then (the
- * attacker fires first, and it attacked from within its range).
+ * the choice, only fire, board or flee, and fire only when the ship that
+ * would fire first reaches (`firstToFireReaches`, #356). Boarding only from
+ * the next hex, and only with at least `MIN_BOARDING_CREW` aboard (#350;
+ * shot-away masts do not stop it, the ships already alongside). Round 1 is
+ * the ambush (#346): fire is the only action then (the attacker fires
+ * first, and it attacked from within its range).
  */
 export function canChooseCombatAction(G: CaribbeanState, action: unknown): action is CombatAction {
   if (!atCombatStage(G, "chooseAction")) return false;
@@ -107,8 +111,24 @@ export function canChooseCombatAction(G: CaribbeanState, action: unknown): actio
   const combat = fightOf(G);
   if (combat.round === 1) return action === "fire";
   if (action === "fire" && !firstToFireReaches(G)) return false;
-  if (action === "board" && combat.distance > 1) return false;
+  if (action === "board") return mayBoard(G, combat);
   return true;
+}
+
+/** May the draw's winner board (#350)? From the next hex, with at least `MIN_BOARDING_CREW` aboard. */
+function mayBoard(G: CaribbeanState, combat: CombatState): boolean {
+  if (combat.distance !== 1) return false;
+  const boarder = combatantOf(G, combat, boarderOf(combat));
+  return crewOf(boarder) >= MIN_BOARDING_CREW;
+}
+
+/** The ship that boards: the draw's winner, who chose to (the attacker in a fight with no winner). */
+function boarderOf(combat: Pick<CombatState, "seamanshipWinner" | "attackerId">): string {
+  return combat.seamanshipWinner ?? combat.attackerId;
+}
+
+function crewOf(ship: ShipState | NPCShip): number {
+  return ship.stats?.crew.current ?? 0;
 }
 
 /** A ship in the fight's manoeuvrability, as the draw and the flight add it to a die. */
@@ -174,58 +194,122 @@ export function applyRollDefenderSeamanship(G: CaribbeanState, d6: RollD6): void
 }
 
 /**
- * The draw's winner chooses fire, flee or board. Boarding an NPC takes its
- * cargo and gold and ends the fight; boarding a player ship just ends it.
- * `turn` dates any bounty the boarding earns.
+ * The draw's winner chooses fire, flee or board. Boarding goes to the
+ * boarding (#350), the boarder's step, and that round fires no cannon.
  */
-export function applyCombatAction(G: CaribbeanState, action: CombatAction, turn: number): CombatStepOutcome {
+export function applyCombatAction(G: CaribbeanState, action: CombatAction): void {
   const combat = fightOf(G);
-  // In hotseat mode, we trust the UI to show who should choose
-  // In NPC combat, player always chooses (NPC auto-fires if it won)
-
-  // In NPC combat, boarding captures the NPC's cargo
-  if (action === "board" && combat.isNPCCombat) {
-    const attacker = G.ships[combat.attackerId];
-    const npc = G.npcs[combat.defenderId];
-
-    // Add bounty for boarding a merchant (not flotillas)
-    if (npc.role === "MERCHANT") {
-      applyMerchantAction(G, combat.attackerId, "board_merchant", npc.nation, npc.bounty, turn);
-
-      // Check if flotilla should spawn
-      if (shouldSpawnFlotilla(attacker.bounties, npc.nation)) {
-        spawnFlotillaForPlayer(G, npc.nation, combat.attackerId);
-      }
-    }
-
-    // Transfer cargo and gold to player (simplified boarding)
-    for (const [good, amount] of Object.entries(npc.cargo)) {
-      attacker.cargo[good as keyof typeof attacker.cargo] += amount;
-    }
-    attacker.gold += npc.gold;
-    // Remove the NPC
-    delete G.npcs[combat.defenderId];
-    G.combat = undefined;
-    return "ended";
-  }
-
   combat.actionChosen = action;
+  combat.stage = action === "flee" ? "fleeAttempt" : action === "board" ? "boarding" : "cannons";
+}
 
-  if (action === "flee") {
-    // Transition to flee attempt stage
-    combat.stage = "fleeAttempt";
-    return "continues";
+/**
+ * May the boarding be fought? Only at its stage, and with no argument: the
+ * crew fight has nothing to choose.
+ */
+export function canFightBoarding(G: CaribbeanState, stray?: unknown): boolean {
+  return atCombatStage(G, "boarding") && stray === undefined;
+}
+
+/** A ship loses `lost` crew in a boarding: crew damage, which fails a captain's escort (#353). */
+function loseCrew(ship: ShipState | NPCShip, lost: number): void {
+  if (lost <= 0) return;
+  applyDamage(ship, { hull: 0, masts: 0, crew: lost });
+  if ("activeMission" in ship && ship.activeMission) failEscortMission(ship.activeMission);
+}
+
+/**
+ * The boarding (#350): the crew fight (`crewFight`, its dice from `d6`), then
+ * the side down to 1 crew strikes its colours. The winner takes its gold and
+ * what cargo fits (`plunder`); the rest floats as loot at the loser's hex.
+ * A captain's ship that strikes keeps its ship with 1 crew; an NPC that
+ * strikes is gone, settled as a sunk one is (bounty, glory, missions) but
+ * for its wreck. A captain who wins takes the glory sinking the other
+ * would give. The fight ends, recorded in `G.lastRound`. Check
+ * `canFightBoarding` first. `turn` dates any bounty it earns.
+ */
+export function applyBoarding(G: CaribbeanState, d6: RollD6, turn: number): CombatStepOutcome {
+  const combat = fightOf(G);
+  const boarderId = boarderOf(combat);
+  const boardedId = opponentOf(combat, boarderId);
+  const boarder = combatantOf(G, combat, boarderId);
+  const boarded = combatantOf(G, combat, boardedId);
+
+  const fight = crewFight(crewOf(boarder), crewOf(boarded), d6);
+  loseCrew(boarder, crewOf(boarder) - fight.boarderCrew);
+  loseCrew(boarded, crewOf(boarded) - fight.defenderCrew);
+
+  const [winnerId, loserId] = fight.winner === "boarder" ? [boarderId, boardedId] : [boardedId, boarderId];
+  const winner = combatantOf(G, combat, winnerId);
+  const loser = combatantOf(G, combat, loserId);
+  const spoils = plunder(winner, loser);
+  const floats = totalCargo(spoils.floated) > 0;
+  const lootId = floats ? nextLootId(G) : undefined;
+  if (lootId) G.floatingLoot.push({ id: lootId, hex: { ...loser.position }, cargo: spoils.floated, gold: 0 });
+
+  if ("role" in loser) {
+    // Only the boarder can have beaten an NPC: an NPC never boards
+    settleNPCDefeat(G, combat.attackerId, loserId, loser, "board_merchant", turn);
+    delete G.npcs[loserId];
+  } else if (!("role" in winner)) {
+    awardCombatGlory(winner, loser);
   }
 
-  if (action === "board") {
-    // Boarding ends combat (simplified - winner captures ship)
-    G.combat = undefined;
-    return "ended";
-  }
+  G.lastRound = {
+    ...settledRoundOf(combat),
+    ended: true,
+    boarding: {
+      boarderId,
+      boardedId,
+      exchanges: fight.exchanges,
+      winnerId,
+      gold: spoils.gold,
+      taken: spoils.taken,
+      floated: floats ? spoils.floated : null,
+      ...(lootId ? { lootId } : {}),
+    },
+  };
+  G.combat = undefined;
+  return "ended";
+}
 
-  // action === "fire"
-  combat.stage = "cannons";
-  return "continues";
+/**
+ * An NPC beaten by the attacker, sunk or struck (#350): a merchant earns
+ * the attacker its bounty (`action`, which may turn it pirate and send a
+ * flotilla after it); a worthy one gives combat glory; the NPC an
+ * assassination names pays its reward and completes it.
+ */
+function settleNPCDefeat(G: CaribbeanState, attackerId: string, npcId: string, npc: NPCShip, action: "sink_merchant" | "board_merchant", turn: number): void {
+  const attacker = G.ships[attackerId];
+  if (npc.role === "MERCHANT") {
+    applyMerchantAction(G, attackerId, action, npc.nation, npc.bounty, turn);
+    if (shouldSpawnFlotilla(attacker.bounties, npc.nation)) {
+      spawnFlotillaForPlayer(G, npc.nation, attackerId);
+    }
+  }
+  awardCombatGlory(attacker, npc);
+  if (attacker.activeMission && checkAssassinationMission(attacker.activeMission, npcId, npc)) {
+    attacker.gold += attacker.activeMission.reward.gold;
+    attacker.score += attacker.activeMission.reward.glory;
+    completeMission(attacker.activeMission);
+    attacker.activeMission = undefined;
+  }
+}
+
+/** A round's record as it settles, with nothing yet sunk or left derelict (#380). */
+function settledRoundOf(combat: CombatState): SettledRound {
+  return {
+    attackerId: combat.attackerId,
+    defenderId: combat.defenderId,
+    isNPCCombat: combat.isNPCCombat,
+    round: combat.round,
+    volleys: combat.volleys ?? [],
+    fleeOutcome: combat.fleeOutcome,
+    fleeRolls: combat.fleeRolls,
+    ended: false,
+    sunk: [],
+    leftDerelict: [],
+  };
 }
 
 /**
@@ -487,28 +571,7 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
   if (isNPC) {
     const npc = G.npcs[combat.defenderId];
     if (npc.stats.hull.current <= 0) {
-      // Add bounty for sinking a merchant (not flotillas)
-      if (npc.role === "MERCHANT") {
-        applyMerchantAction(G, combat.attackerId, "sink_merchant", npc.nation, npc.bounty, turn);
-
-        // Check if flotilla should spawn
-        if (shouldSpawnFlotilla(attacker.bounties, npc.nation)) {
-          spawnFlotillaForPlayer(G, npc.nation, combat.attackerId);
-        }
-      }
-
-      // Award combat glory for sinking worthy targets (flotillas)
-      awardCombatGlory(attacker, npc);
-
-      // Check assassination mission completion
-      if (attacker.activeMission &&
-          checkAssassinationMission(attacker.activeMission, combat.defenderId, npc)) {
-        attacker.gold += attacker.activeMission.reward.gold;
-        attacker.score += attacker.activeMission.reward.glory;
-        completeMission(attacker.activeMission);
-        attacker.activeMission = undefined;
-      }
-
+      settleNPCDefeat(G, combat.attackerId, combat.defenderId, npc, "sink_merchant", turn);
       const loot = createLootFromNPC(npc, nextLootId(G));
       G.floatingLoot.push(loot);
       delete G.npcs[combat.defenderId];
@@ -569,13 +632,7 @@ export function applyCombatResolution(G: CaribbeanState, turn: number): CombatSt
   }
 
   G.lastRound = {
-    attackerId: combat.attackerId,
-    defenderId: combat.defenderId,
-    isNPCCombat: combat.isNPCCombat,
-    round: combat.round,
-    volleys: combat.volleys ?? [],
-    fleeOutcome: combat.fleeOutcome,
-    fleeRolls: combat.fleeRolls,
+    ...settledRoundOf(combat),
     ended: combatEnded,
     sunk: sankThisRound,
     leftDerelict,
