@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import indexHtml from "../../index.html?raw";
 import { SOUNDS } from "../audio/soundRegistry";
 import { SHIP_MODELS } from "./shipModels";
+import { eventCardArtUrls } from "./cardArtSlots";
 import { ASSET_LOADER_SITES, NOT_BOARD_ASSETS, SCENE_FONTS, sceneAssetUrls, sceneReadinessTasks } from "./sceneAssets";
 
 /** Every file under public/ (the keys only; nothing is imported), as served paths. */
@@ -35,6 +36,16 @@ describe("scene assets", () => {
   it("knows every place in the app that loads a file, so a new loader cannot skip the gate", () => {
     const sites = SOURCES.filter(({ text }) => LOADER.test(text)).map(({ path }) => path).sort();
     expect(sites).toEqual([...Object.keys(ASSET_LOADER_SITES)].sort());
+  });
+
+  it("waits on every event card's art (#247), so a card never shows before its picture", () => {
+    const urls = sceneAssetUrls("/");
+    const ids = sceneReadinessTasks("/").map((task) => task.id);
+    for (const url of eventCardArtUrls("/")) {
+      expect(urls).toContain(url);
+      expect(ids).toContain(`card:${url}`);
+    }
+    for (const task of sceneReadinessTasks("/").filter((t) => t.id.startsWith("card:"))) expect(task.stage).toBe("cards");
   });
 
   it("waits on every web font the page links", () => {

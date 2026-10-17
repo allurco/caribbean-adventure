@@ -19,6 +19,8 @@ describe("the event card's face (#246)", () => {
       title: "Merchant convoy",
       region: "the Spanish Main",
       effect: "A merchant sails from Havana, bound for Port Royal.",
+      art: "merchantConvoy",
+      nation: null,
     });
   });
 
@@ -32,7 +34,14 @@ describe("the event card's face (#246)", () => {
   });
 
   it("calm seas: no region, a quiet line", () => {
-    expect(eventCardView(calm(2), regions)).toEqual({ id: 2, title: "Calm seas", region: null, effect: "The sea lies quiet." });
+    expect(eventCardView(calm(2), regions)).toEqual({
+      id: 2,
+      title: "Calm seas",
+      region: null,
+      effect: "The sea lies quiet.",
+      art: "calmSeas",
+      nation: null,
+    });
   });
 
   it("a region the map does not know reads as none", () => {

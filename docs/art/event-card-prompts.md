@@ -10,6 +10,10 @@ Prompts for the illustrations on the event deck's cards (#240). The images are g
 - **The register is ADR 0002's:** bold, stylised shapes under realistic golden-hour light and water.
 - **Origin.** The images are AI-generated. Record that in `NOTICE` when they are added.
 
+## Landing the art
+
+The HUD already has a slot for every card and the back (`src/board/cardArtSlots.ts`), each drawing a placeholder engraving until its image exists (#247). To land one: convert it to WebP, 3:4 and no larger than 768×1024 (the card frame is at most 256 CSS px wide, shown at up to 3× density), put it under `public/cards/` and name it as the slot's `file`; the table's tests (`cardArtSlots.test.ts`, and `cardArtFiles.node.test.ts` for the files themselves) and the board's loading gate pick it up. Crop the card back's dark margin first, then to 3:4: the corners are rounded in CSS. For Flotilla patrol and Lost flag, also add a mask the size of the art (`<name>.flag.webp`, opaque over the flag's cloth, transparent elsewhere) as the slot's `flag.mask` (WebP, the art's exact size), and set `flag.box` to the flag's bounding box in the frame: the HUD lays the card's nation's flag over the box, cut to the mask (`src/board/cardFlag.ts`). Check each card at `?view=cards` on the dev server.
+
 ## Style block
 
 Paste this at the start of every prompt.
@@ -52,7 +56,7 @@ third, lit by one shaft of warm sunlight breaking through. Menacing, dramatic mo
 
 ### Flotilla patrol
 
-The ensign stays plain dark red, so one image serves all four nations. The game tints it, or composites the nation's flag over it: St George's cross for England, the Burgundy cross for Spain, white with fleurs-de-lis for France, the Prince's flag for the Netherlands.
+The ensign stays plain dark red, so one image serves all four nations. The game tints it, or composites the nation's flag over it: the same flags the nations' ships fly on the board (`src/board/shipFlags.ts`, the one source): St George's cross for England, the Cross of Burgundy for Spain, a white cross on royal blue for France (the merchant ensign of the period), the Prince's flag for the Netherlands, and the Jolly Roger for a port the Pirates take.
 
 ```
 Two naval warships in close formation bearing down on the viewer, gunports open with cannon run out,
@@ -78,9 +82,12 @@ behind, a calm harbour at golden hour. Relief, mercy, quiet authority.
 
 ### Lost flag
 
+Of its two flags, the game tints the **new one being hoisted**, the taker's: it stays plain dark red like the patrol's ensign. The falling flag is the loser's, which the card does not name, so it stays faded and torn, with no colours or design a nation could be read from.
+
 ```
-A port's flagpole atop a weathered stone fort: one national flag torn and falling, a new flag being
-hoisted in its place, cannon smoke drifting across the ramparts, the harbour and terracotta roofs
+A port's flagpole atop a weathered stone fort: one faded, tattered flag with no recognisable design torn
+and falling, a new flag being hoisted in its place (leave the new flag plain dark red so it can be
+recoloured per nation), cannon smoke drifting across the ramparts, the harbour and terracotta roofs
 below. Turning point, upheaval, conquest.
 ```
 
