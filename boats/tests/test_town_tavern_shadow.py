@@ -67,9 +67,14 @@ def _hits_back_face(origin, d):
     return False
 
 
+# The board's sun stands 22 degrees up at its golden hour (`GOLDEN_HOUR` in
+# src/board/visuals/lighting.ts); the higher suns cover the times of day.
+BOARD_SUN_ELEVATION = 22.0
+
+
 def _sun_rays():
-    """Light directions (sun to ground): eight azimuths at three heights."""
-    for elevation in (25.0, 40.0, 60.0):
+    """Light directions (sun to ground): eight azimuths at four heights."""
+    for elevation in (BOARD_SUN_ELEVATION, 25.0, 40.0, 60.0):
         e = math.radians(elevation)
         for k in range(8):
             az = math.radians(22.5 + 45.0 * k)
@@ -163,11 +168,11 @@ def test_no_sliver_of_sun_passes_through_any_member():
     # Every ray the tavern stops at all it must stop whole: light that comes
     # in through a face turned to the sun leaves through one turned away, or
     # lands where no one sees it. Sweeps the whole silhouette at a tenth of a
-    # metre, from the four quarters at a late-afternoon sun.
+    # metre, from the four quarters at the board's sun and a higher one.
     hidden = _open_bottoms()
     leaks = []
-    for k in range(4):
-        az, e = math.radians(30.0 + 90.0 * k), math.radians(35.0)
+    for elevation, k in ((el, k) for el in (BOARD_SUN_ELEVATION, 35.0) for k in range(4)):
+        az, e = math.radians(30.0 + 90.0 * k), math.radians(elevation)
         d = (-math.cos(e) * math.cos(az), -math.cos(e) * math.sin(az), -math.sin(e))
         e1, e2 = _basis(d)
         cell = 0.5
@@ -191,5 +196,5 @@ def test_no_sliver_of_sun_passes_through_any_member():
                     x, y = o[0] + g * d[0], o[1] + g * d[1]
                     if any(x0 <= x <= x1 and y0 <= y <= y1 for x0, y0, x1, y1 in hidden):
                         continue
-                    leaks.append((round(x, 2), round(y, 2), k))
+                    leaks.append((round(x, 2), round(y, 2), elevation, k))
     assert not leaks, f"{len(leaks)} slivers of sun on the ground, e.g. {leaks[:5]}"
