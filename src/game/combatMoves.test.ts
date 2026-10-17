@@ -159,12 +159,14 @@ describe("an NPC that wins the draw picks its own action (#345)", () => {
 
 describe("boarding an NPC (#345)", () => {
   it("a flotilla: its cargo and gold come aboard, no bounty is added, and it is gone", () => {
-    const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }) }, { foe: npc("FLOTILLA") });
+    // Its 1 crew strikes at once to the crew fight (#350)
+    const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }) }, { foe: npc("FLOTILLA", { crew: 1 }) });
     client.moves.attackNPC("foe");
     pastTheAmbush(client);
     client.moves.rollSeamanship();
     const goldBefore = G(client).ships["0"].gold;
     client.moves.chooseCombatAction("board");
+    client.moves.fightBoarding();
 
     const after = G(client);
     expect(after.combat).toBeUndefined();
@@ -194,7 +196,7 @@ describe("a ship left derelict (#345)", () => {
     expect(after.npcs.foe.stats.hull.current).toBeGreaterThan(0);
   });
 
-  it("an attacker whose last crew falls to the defender's answer is left derelict, and the fight ends", () => {
+  it("a player ship is never left derelict (#350): at 1 crew, the crew hits of the answer go to the hull", () => {
     const client = startGame({
       "0": ship(0, 0, { crew: 1 }),
       "1": ship(1, 0, { cannons: 20 }),
@@ -204,10 +206,34 @@ describe("a ship left derelict (#345)", () => {
     client.moves.returnFire();
 
     const after = G(client);
-    expect(after.lastRound!.volleys[1].locations!.crew).toBeGreaterThan(0);
-    expect(after.combat).toBeUndefined();
-    expect(after.ships["0"].isDerelict).toBe(true);
-    expect(after.ships["1"].isDerelict).toBeUndefined();
+    const answer = after.lastRound!.volleys[1];
+    expect(answer.locations!.crew).toBeGreaterThan(0);
+    expect(answer.dealt!.crew).toBe(0);
+    expect(answer.dealt!.hull).toBe(answer.locations!.hull + answer.locations!.crew + answer.locations!.masts - answer.dealt!.masts);
+    expect(after.ships["0"].stats!.crew.current).toBe(1);
+    expect(after.ships["0"].stats!.hull.current).toBe(40 - answer.dealt!.hull);
+    expect(after.ships["0"].isDerelict).toBeUndefined();
+    expect(after.lastRound!.leftDerelict).toEqual([]);
+  });
+});
+
+describe("a player ship's crew stops at 1 under cannon fire (#350)", () => {
+  it("a volley with more crew hits than the target can spare kills all but one, the rest on the hull", () => {
+    const client = startGame({ "0": ship(0, 0, { cannons: 20 }), "1": ship(1, 0, { crew: 3 }) });
+    client.moves.attackShip("1");
+    client.moves.rollCannons();
+    const volley = G(client).lastRound?.volleys[0] ?? G(client).combat!.volleys![0];
+    expect(volley.locations!.crew).toBeGreaterThan(2);
+    expect(volley.dealt!.crew).toBe(2);
+    expect(G(client).ships["1"].stats!.crew.current).toBe(1);
+  });
+
+  it("an NPC's crew can still reach 0", () => {
+    const client = startGame({ "0": ship(0, 0, { cannons: 20 }) }, { foe: npc("MERCHANT", { crew: 3 }) });
+    client.moves.attackNPC("foe");
+    client.moves.rollCannons();
+    expect(G(client).npcs.foe.stats.crew.current).toBe(0);
+    expect(G(client).npcs.foe.isDerelict).toBe(true);
   });
 });
 
@@ -276,6 +302,7 @@ const STEP_MOVES = {
   fleeAttempt: (c: TestClient) => c.moves.rollFleeAttempt(),
   cannons: (c: TestClient) => c.moves.rollCannons(),
   returnFire: (c: TestClient) => c.moves.returnFire(),
+  boarding: (c: TestClient) => c.moves.fightBoarding(),
   resolution: (c: TestClient) => c.moves.applyResolution(),
 } satisfies Record<CombatStage, (c: TestClient) => void>;
 
@@ -320,6 +347,17 @@ function fightAt(stage: CombatStage): TestClient {
     client.moves.attackShip("1");
     client.moves.rollCannons();
     expect(G(client).combat!.stage).toBe("returnFire");
+    return client;
+  }
+  if (stage === "boarding") {
+    // The attacker, faster, wins the draw and boards (#350)
+    const client = startGame({ "0": ship(0, 0, { maneuverability: 20 }), "1": ship(1, 0) });
+    client.moves.attackShip("1");
+    client.moves.rollCannons();
+    client.moves.rollSeamanship();
+    client.moves.rollDefenderSeamanship();
+    client.moves.chooseCombatAction("board");
+    expect(G(client).combat!.stage).toBe("boarding");
     return client;
   }
   if (stage === "resolution") {
@@ -397,11 +435,9 @@ describe("round 1 is the ambush (#346)", () => {
   });
 
   it("a defender whose last gunner falls to the opening broadside does not answer", () => {
-    const client = startGame({
-      "0": ship(0, 0, { cannons: 20, upgrades: ["grape_shot"] }),
-      "1": ship(1, 0, { cannons: 20, crew: 1 }),
-    });
-    client.moves.attackShip("1");
+    // Only an NPC's last crew can fall (#350): a player ship keeps one
+    const client = startGame({ "0": ship(0, 0, { cannons: 20, upgrades: ["grape_shot"] }) }, { foe: npc("FLOTILLA", { cannons: 20, crew: 1 }) });
+    client.moves.attackNPC("foe");
     client.moves.rollCannons();
     expect(G(client).lastRound!.volleys).toHaveLength(1);
     expect(G(client).ships["0"].stats!.hull.current).toBe(40);
@@ -718,8 +754,9 @@ describe("the round settles itself (#380)", () => {
     client.moves.rollSeamanship();
     client.moves.rollDefenderSeamanship();
     client.moves.chooseCombatAction("board");
+    client.moves.fightBoarding();
     expect(G(client).combat).toBeUndefined();
-    expect(G(client).lastRound!.round).toBe(1);
+    expect(G(client).lastRound).toMatchObject({ round: 2, boarding: expect.any(Object) });
     // The next seat's turn: it attacks, and the old round goes
     client.moves.attackShip("0");
     expect(G(client).combat).toBeDefined();

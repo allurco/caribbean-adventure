@@ -114,6 +114,7 @@ function boardOnce(client: TestClient): void {
   client.moves.rollSeamanship();
   client.moves.rollDefenderSeamanship();
   client.moves.chooseCombatAction("board");
+  client.moves.fightBoarding();
   expect(stateOf(client).G.combat).toBeUndefined();
   expect(stateOf(client).ctx.phase).toBe("main");
 }

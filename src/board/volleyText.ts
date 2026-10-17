@@ -6,6 +6,7 @@
 import { isVolleyStage, sameFight, volleyShooter } from "../game/combatMoves";
 import { fleePenalty, hitCountsOf } from "../game/combat";
 import { seatLabel } from "../game/seats";
+import { boardingOutcomeLines } from "./boardingText";
 import type { CombatState, SettledRound, Volley } from "../game/types";
 
 /** The volley a fight waits on: who fires it. */
@@ -83,10 +84,12 @@ export function roundShown(combat: CombatState, settled: SettledRound | undefine
 
 /**
  * How a fight ended, under the volleys of its last round (#380): the ships
- * it sank or left derelict (one derelict before the round is not news), or
- * a caught flight's end. `nameOf` names a ship by its id.
+ * it sank or left derelict (one derelict before the round is not news), a
+ * boarding's end (#350: who struck, what the winner took), or a caught
+ * flight's end. `nameOf` names a ship by its id.
  */
 export function fightOverLines(settled: SettledRound, nameOf: (id: string) => string): string[] {
+  if (settled.boarding) return boardingOutcomeLines(settled.boarding, nameOf);
   const lines = [
     ...(settled.sunk ?? []).map((id) => `${nameOf(id)} is sunk`),
     ...(settled.leftDerelict ?? []).map((id) => `${nameOf(id)} is left derelict`),

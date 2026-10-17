@@ -249,6 +249,15 @@ describe("volleyDamage: the damage of a volley's hits where they landed (#380)",
     expect(volleyDamage(at(0, 2, 0), [], 5)).toEqual({ hull: 2, crew: 0, masts: 0 });
   });
 
+  it("crew take at most the target's spare crew (#350): crew hits past it go to the hull, grape shot's included", () => {
+    // A player ship at 1 crew has none to spare: every crew hit goes to the hull
+    expect(volleyDamage(at(0, 0, 2), [], 0, 0)).toEqual({ hull: 2, crew: 0, masts: 0 });
+    expect(volleyDamage(at(1, 0, 3), [], 0, 2)).toEqual({ hull: 2, crew: 2, masts: 0 });
+    expect(volleyDamage(at(0, 0, 1), ["grape_shot"], 0, 1)).toEqual({ hull: 1, crew: 1, masts: 0 });
+    // With no limit given (an NPC), every crew hit lands on the crew
+    expect(volleyDamage(at(0, 0, 5), [])).toEqual({ hull: 0, crew: 5, masts: 0 });
+  });
+
   it("over every spread of hits, deals each hit once plus at most one per shot, and never past the mast cap", () => {
     const loadouts = [[], ["chain_shot"], ["grape_shot"], ["chain_shot", "grape_shot"], ["long_guns"]];
     for (let hull = 0; hull <= 4; hull++) {

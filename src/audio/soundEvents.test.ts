@@ -219,11 +219,23 @@ describe("soundEventsFrom", () => {
     ]);
   });
 
-  it("emits a boarding when the action choice ends the combat", () => {
-    const prev = makeState({ combat: makeCombat({ stage: "chooseAction", seamanshipWinner: "0" }) });
+  it("emits a boarding when the crew fight ends the combat (#350)", () => {
+    const prev = makeState({ combat: makeCombat({ stage: "boarding", seamanshipWinner: "0", actionChosen: "board" }) });
     const next = makeState();
     expect(soundEventsFrom(prev, next)).toEqual([
       { type: "boarded", attackerId: "0", defenderId: "1" },
+      { type: "combatEnded" },
+    ]);
+    // Choosing Board only goes on to the boarding: nothing sounds yet
+    const choosing = makeState({ combat: makeCombat({ stage: "chooseAction", seamanshipWinner: "0" }) });
+    expect(soundEventsFrom(choosing, prev)).toEqual([]);
+  });
+
+  it("an NPC struck by a boarding is no sinking, though its cargo floats (#350)", () => {
+    const prev = makeState({ npcs: { foe: makeNpc() }, combat: makeCombat({ stage: "boarding", defenderId: "foe", isNPCCombat: true, actionChosen: "board" }) });
+    const next = makeState({ npcs: {}, floatingLoot: [{ id: "loot-1", hex: hex(1, 0), cargo: emptyCargo(), gold: 0 }] });
+    expect(soundEventsFrom(prev, next)).toEqual([
+      { type: "boarded", attackerId: "0", defenderId: "foe" },
       { type: "combatEnded" },
     ]);
   });

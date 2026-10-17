@@ -44,6 +44,12 @@ describe("combatActor: the seat that presses a fight's step", () => {
     }
   });
 
+  it("the boarding (#350) is the boarder's step, the draw's winner, never the ship boarded; against an NPC, the attacker's", () => {
+    expect(combatActor(fight("boarding", "0"))).toBe("0");
+    expect(combatActor(fight("boarding", "1"))).toBe("1");
+    expect(combatActor(fight("boarding", "0", { defenderId: "npc-1", isNPCCombat: true }))).toBe("0");
+  });
+
   it("a ship caught fleeing does not fire the parting shot at itself: the pursuer fires it", () => {
     // The attacker won the draw, fled and was caught: the defender gives chase
     expect(combatActor(fight("cannons", "0", { fleeOutcome: "caught" }))).toBe("1");

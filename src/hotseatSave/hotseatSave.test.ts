@@ -167,7 +167,7 @@ describe("a saved hotseat game", () => {
   it("records when it was saved, and the save's schema version", () => {
     const save = saveHotseat(newMatch(1).store.getState(), map, 1_234);
     expect(save.savedAt).toBe(1_234);
-    expect(save.version).toBe(10);
+    expect(save.version).toBe(11);
   });
 
   it("refuses a map that is not the save's", () => {

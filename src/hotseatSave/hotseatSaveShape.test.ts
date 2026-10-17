@@ -12,7 +12,7 @@ import { Caribbean, withGeneratedMap, withHotseatView } from "../game/Game";
 import type { CaribbeanState } from "../game/Game";
 import { generateMapFor } from "../game/mapRequest";
 import { STARTER_SHIP_CLASSES } from "../game/types";
-import { applyCannons, applyReturnFire, openFight } from "../game/combatMoves";
+import { applyBoarding, applyCannons, applyReturnFire, openFight } from "../game/combatMoves";
 import { HOTSEAT_SAVE_VERSION, saveHotseat } from "./hotseatSave";
 
 const request = { mapSize: "small", mapSeed: 7 } as const;
@@ -123,5 +123,22 @@ describe("the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes)",
     expect(G.combat.stage).toBe("seamanship");
     expect(G.lastRound.volleys).toHaveLength(2);
     expect(shapeOf(G.lastRound)).toMatchSnapshot(`settled round, save version ${HOTSEAT_SAVE_VERSION}`);
+  });
+
+  it("keeps the same shape of a boarding: G.lastRound.boarding and its exchanges (#350)", () => {
+    const save = playedSave();
+    const G = save.state.G;
+    G.combat = { ...openFight("0", "1", 1, false), round: 2, stage: "boarding", seamanshipWinner: "0", actionChosen: "board" };
+    G.ships["0"].stats.crew.current = 3;
+    G.ships["1"].stats.crew.current = 3;
+    G.ships["1"].cargo.Rum = 20;
+    // Two kills each way, then a third for the boarder: both down to 1, the boarder's win, a hold overflowing
+    let die = 0;
+    const dice = () => [6, 6, 1, 6, 6, 1][die++ % 6];
+    applyBoarding(G, dice, 1);
+    const boarding = JSON.parse(JSON.stringify(G.lastRound.boarding));
+    expect(boarding.exchanges).toHaveLength(1);
+    expect(boarding.floated).not.toBeNull();
+    expect(shapeOf(boarding)).toMatchSnapshot(`boarding, save version ${HOTSEAT_SAVE_VERSION}`);
   });
 });

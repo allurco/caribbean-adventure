@@ -23,6 +23,8 @@ import {
   applyRollSeamanship,
   applyRollDefenderSeamanship,
   applyCombatAction,
+  applyBoarding,
+  canFightBoarding,
   applyFleeAttempt,
   applyCannons,
   applyReturnFire,
@@ -606,9 +608,9 @@ export const Caribbean: Game<CaribbeanState> = {
           applyRollDefenderSeamanship(G, () => random.D6());
         },
 
-        chooseCombatAction: ({ G, ctx, events }, action: CombatAction) => {
+        chooseCombatAction: ({ G }, action: CombatAction) => {
           if (!canChooseCombatAction(G, action)) return INVALID_MOVE;
-          if (applyCombatAction(G, action, ctx.turn) === "ended") events.setPhase("main");
+          applyCombatAction(G, action);
         },
 
         rollFleeAttempt: ({ G, ctx, random, events }) => {
@@ -627,6 +629,12 @@ export const Caribbean: Game<CaribbeanState> = {
         returnFire: ({ G, ctx, random, events }, stray?: unknown) => {
           if (!canFireVolley(G, "returnFire", stray)) return INVALID_MOVE;
           if (applyReturnFire(G, () => random.D6(), ctx.turn) === "ended") events.setPhase("main");
+        },
+
+        // The crew fight (#350), pressed by the boarder: it ends the fight, a side striking its colours
+        fightBoarding: ({ G, ctx, random, events }, stray?: unknown) => {
+          if (!canFightBoarding(G, stray)) return INVALID_MOVE;
+          if (applyBoarding(G, () => random.D6(), ctx.turn) === "ended") events.setPhase("main");
         },
 
         // Legacy (#380): only a fight stored at the resolution before the round settled itself

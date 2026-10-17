@@ -153,6 +153,19 @@ describe("fightOverLines: how the fight ended, under its last round (#380)", () 
     expect(fightOverLines(end({ leftDerelict: ["0"] }), name)).toEqual(["Player 1 is left derelict"]);
   });
 
+  it("a boarding (#350): who struck its colours and what the winner took", () => {
+    const boarding = {
+      boarderId: "0",
+      boardedId: "foe",
+      exchanges: [],
+      winnerId: "0",
+      gold: 17,
+      taken: { Wood: 0, Sugar: 0, Rum: 3, Spice: 0 },
+      floated: null,
+    };
+    expect(fightOverLines(end({ isNPCCombat: true, defenderId: "foe", boarding }), name)).toEqual(["The merchant strikes its colours", "Player 1 takes 17 gold and 3 Rum"]);
+  });
+
   it("a caught flight: the parting shot ends the chase, or none was fired, out of range", () => {
     expect(fightOverLines(end({ fleeOutcome: "caught", volleys: [{ shooterId: "0", guns: 2, hits: 0 }] }), name)).toEqual(["The parting shot ends the chase"]);
     expect(fightOverLines(end({ fleeOutcome: "caught" }), name)).toEqual(["Caught, but out of the pursuer's range: no parting shot"]);

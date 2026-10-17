@@ -221,7 +221,7 @@ describe("GET /api/me/rooms", () => {
 
   // A fight the SQL would not project is no fight: the turn falls back to boardgame.io's current player.
   it.each([
-    ["a stage that is not a combat stage", { stage: "boarding" }],
+    ["a stage that is not a combat stage", { stage: "parley" }],
     ["no stage", { stage: undefined }],
     ["isNPCCombat as a number", { isNPCCombat: 0 }],
     ["isNPCCombat as an empty string", { isNPCCombat: "" }],

@@ -201,8 +201,8 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
     beats.push({ kind: "flee", fleeingId, pursuerId, outcome: caught ? "caught" : "escaped", seconds: paced(BEATS.flee.seconds), seedKey: keyOf("flee") });
   }
 
-  if (before?.stage === "chooseAction" && !after && before.distance <= 1 && sunkIds(prev, next).length === 0) {
-    // Boarding is the one choice that ends the fight at once.
+  if (before?.stage === "chooseAction" && after?.stage === "boarding") {
+    // Board chosen (#350): the ships close alongside for the crew fight.
     beats.push({ kind: "closeAlongside", attackerId: before.attackerId, defenderId: before.defenderId, seconds: paced(BEATS.closeAlongside.seconds), seedKey: keyOf("board") });
   }
 
@@ -214,7 +214,9 @@ export function combatBeatsFrom(prev: CaribbeanState | undefined, next: Caribbea
     if (volley) beats.push(volley);
   }
 
-  for (const shipId of sunkIds(prev, next)) {
+  // An NPC that strikes to a boarding is taken, not sunk, though its cargo may float (#350)
+  const struck = before?.stage === "boarding" ? [] : sunkIds(prev, next);
+  for (const shipId of struck) {
     const other = before ? (shipId === before.attackerId ? before.defenderId : before.attackerId) : null;
     const shooterId = other !== null && (other in next.ships || other in next.npcs) ? other : null;
     beats.push({ kind: "sink", shipId, shooterId, seconds: paced(BEATS.sink.seconds), seedKey: keyOf(`sink:${shipId}`) });

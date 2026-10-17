@@ -9,7 +9,7 @@ import type { CaribbeanState, CombatAction } from "../game/types";
 /** A client's state and the combat moves a fight presses. */
 export interface FightClient {
   getState(): { G: CaribbeanState } | null;
-  /** boardgame.io's moves by name: rollSeamanship, rollDefenderSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons, returnFire, and the legacy applyResolution. */
+  /** boardgame.io's moves by name: rollSeamanship, rollDefenderSeamanship, chooseCombatAction(action), rollFleeAttempt, rollCannons, returnFire, fightBoarding (#350), and the legacy applyResolution. */
   moves: Record<string, (...args: CombatAction[]) => void>;
 }
 
@@ -29,6 +29,7 @@ function pressStep(client: FightClient, action: CombatAction): void {
   else if (combat.stage === "fleeAttempt") client.moves.rollFleeAttempt();
   else if (combat.stage === "cannons") client.moves.rollCannons();
   else if (combat.stage === "returnFire") client.moves.returnFire();
+  else if (combat.stage === "boarding") client.moves.fightBoarding();
   // Only a fight stored at the resolution before #380 waits on it
   else client.moves.applyResolution();
 }

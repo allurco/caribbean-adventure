@@ -406,6 +406,11 @@ describe("combatWaitingFor: the line a seat sees while another seat presses", ()
     expect(combatWaitingFor(G, { playerID: "2", combat: { ...pvp, stage: "returnFire", seamanshipWinner: "1" } })).toBe(
       "Waiting for Anne Bonny to fire"
     );
+    // Calico Jack won the draw and boards (#350): the crew fight is his step
+    expect(combatWaitingFor(G, { playerID: "0", combat: { ...pvp, stage: "boarding", seamanshipWinner: "1" } })).toBe(
+      "Waiting for Calico Jack to board"
+    );
+    expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "boarding", seamanshipWinner: "1" } })).toBeNull();
     // Calico Jack fled and was caught: Anne Bonny fires the parting shot
     expect(combatWaitingFor(G, { playerID: "1", combat: { ...pvp, stage: "cannons", seamanshipWinner: "1", fleeOutcome: "caught" } })).toBe(
       "Waiting for Anne Bonny to fire"

@@ -374,7 +374,7 @@ describe("combat phase - chooseAction", () => {
     expect(G.combat!.stage).toBe(stageBefore);
   });
 
-  it("board ends combat at range 1", () => {
+  it("board ends combat at range 1, once the crew fight is fought (#350)", () => {
     const client = setupAtChooseAction();
     const { G: beforeG } = client.getState()!;
     const winner = beforeG.combat!.seamanshipWinner;
@@ -384,6 +384,8 @@ describe("combat phase - chooseAction", () => {
     }
 
     client.moves.chooseCombatAction("board");
+    expect(client.getState()!.G.combat!.stage).toBe("boarding");
+    client.moves.fightBoarding();
     const { ctx, G } = client.getState()!;
     expect(G.combat).toBeUndefined();
     expect(ctx.phase).toBe("main");
@@ -774,6 +776,8 @@ describe("bounty and flotilla system", () => {
 
     const ship0 = createShipWithFullStats(0, 0);
     ship0.bounties = { England: 0, France: 0, Spain: 0, Netherlands: 0 };
+    // Crew enough that the merchant's answer to the ambush leaves the 2 it takes to board (#350)
+    ship0.stats!.crew = { current: 4, max: 4 };
     const ship1 = createShipWithFullStats(5, 5);
     ship1.bounties = { England: 0, France: 0, Spain: 0, Netherlands: 0 };
 
@@ -804,7 +808,8 @@ describe("bounty and flotilla system", () => {
               maneuverability: 2,
               scouting: 1,
               cannons: 2,
-              crew: { current: 8, max: 8 },
+              // 1 crew left, so it strikes at once to the crew fight (#350)
+              crew: { current: 1, max: 8 },
               hull: { current: 6, max: 6 },
               cargo: 8,
               shallowDraft: true,
@@ -843,14 +848,16 @@ describe("bounty and flotilla system", () => {
     if (afterSeamanship.combat && afterSeamanship.combat.stage === "chooseAction") {
       // Player can board
       client.moves.chooseCombatAction("board");
+      client.moves.fightBoarding();
 
       const { G } = client.getState()!;
       // NPC should be removed
       expect(G.npcs["npc-1"]).toBeUndefined();
       // Bounty should be added (40 for board_merchant + 40 for attack_merchant = 80)
       expect(G.ships["0"].bounties.France).toBe(80);
-      // Cargo transferred
-      expect(G.ships["0"].cargo.Wood).toBe(5);
+      // Cargo transferred, as much as the Sloop's hold of 2 takes; the rest floats (#350)
+      expect(G.ships["0"].cargo.Wood).toBe(2);
+      expect(G.floatingLoot.map((loot) => loot.cargo.Wood)).toEqual([3]);
       // Gold transferred
       expect(G.ships["0"].gold).toBeGreaterThan(50); // starting gold + NPC gold
     }

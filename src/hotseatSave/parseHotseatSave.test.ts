@@ -76,8 +76,18 @@ describe("reading a saved game back", () => {
     }
   });
 
+  it("reads a version 10 save, from before boarding was a crew fight (#350), as this version's, mid-fight at the choice too", () => {
+    expect(HOTSEAT_SAVE_VERSION).toBe(11);
+    // Its fights wait on steps version 11 still has: a Board chosen now goes on to the boarding, and its rounds record none
+    const choosing = { attackerId: "0", defenderId: "1", round: 2, stage: "chooseAction", seamanshipWinner: "0", volleys: [] };
+    const lastRound = { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys: [], fleeOutcome: null, fleeRolls: null, ended: false, sunk: [], leftDerelict: [] };
+    for (const G of [save.state.G, { ...save.state.G, combat: choosing, lastRound }]) {
+      const older = { ...save, version: 10, state: { ...save.state, G } };
+      expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+    }
+  });
+
   it("reads a version 9 save, whose volleys and round record no shots, damage or ships lost, as this version's", () => {
-    expect(HOTSEAT_SAVE_VERSION).toBe(10);
     const volleys = [{ shooterId: "0", guns: 4, hits: 2, locations: { hull: 0, masts: 1, crew: 1 } }];
     const answering = { attackerId: "0", defenderId: "1", round: 1, stage: "returnFire", volleys };
     const lastRound = { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys, fleeOutcome: null, fleeRolls: null, ended: true };

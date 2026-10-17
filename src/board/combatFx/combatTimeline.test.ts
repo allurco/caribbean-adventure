@@ -259,11 +259,19 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(combatBeatsFrom(before, earlier)).toEqual([expect.objectContaining({ kind: "flee", outcome: "escaped" })]);
   });
 
-  it("boarding a merchant brings the ships alongside", () => {
+  it("boarding a merchant brings the ships alongside, as Board is chosen (#350)", () => {
     const npc = makeNpc();
-    const before = makeState({ npcs: { [npc.id]: npc }, combat: makeCombat({ stage: "chooseAction", defenderId: npc.id, isNPCCombat: true }) });
-    const after = makeState({ npcs: {} });
+    const combat = makeCombat({ stage: "chooseAction", defenderId: npc.id, isNPCCombat: true });
+    const before = makeState({ npcs: { [npc.id]: npc }, combat });
+    const after = makeState({ npcs: { [npc.id]: npc }, combat: { ...combat, stage: "boarding", actionChosen: "board" } });
     expect(combatBeatsFrom(before, after)).toEqual([expect.objectContaining({ kind: "closeAlongside", attackerId: "0", defenderId: npc.id })]);
+  });
+
+  it("an NPC that strikes to a boarding is taken, not sunk, though its cargo floats (#350)", () => {
+    const npc = makeNpc();
+    const before = makeState({ npcs: { [npc.id]: npc }, combat: makeCombat({ stage: "boarding", defenderId: npc.id, isNPCCombat: true, actionChosen: "board" }) });
+    const after = makeState({ npcs: {}, floatingLoot: [{ id: "loot-1", hex: hex(1, 0), cargo: emptyCargo(), gold: 0 }] });
+    expect(combatBeatsFrom(before, after)).toEqual([]);
   });
 
   it("a ship that goes down as wreckage appears sinks, holed from the shooter's side", () => {

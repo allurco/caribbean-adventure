@@ -575,6 +575,30 @@ describe("a fight between two seats (#113 review)", () => {
       expect(((await chosen.json()) as MatchBody).state.G.combat?.actionChosen).toBe("fire");
       expect((await store.peekMoves(matchId)).at(-1)).toMatchObject({ name: "chooseCombatAction", seat: Number(chooser) });
     });
+
+    it(`lets only the boarder fight the boarding, never the ship boarded (#350; ${winner === "0" ? "attacker" : "defender"} boards)`, async () => {
+      const { matchId, stateID, chooser, other, tokenOf } = await fightAtChoice(winner);
+      // Set-up: both crews whole again, whatever the ambush killed, so the boarder has the 2 it needs
+      for (const ship of Object.values(((await store.peekMatch(matchId))!.state as View).G.ships)) ship.stats!.crew.current = ship.stats!.crew.max;
+      clock += 1000;
+      let res = await act(matchId, tokenOf(chooser), move(stateID, "chooseCombatAction", "board"));
+      expect(res.status).toBe(200);
+      const state = ((await res.json()) as MatchBody).state;
+      expect(state.G.combat?.stage).toBe("boarding");
+      clock += 1000;
+      const forced = await act(matchId, tokenOf(other), move(state._stateID, "fightBoarding"));
+      expect(forced.status).toBe(403);
+      expect(await forced.json()).toMatchObject({ code: "not_your_turn" });
+      clock += 1000;
+      expect((await act(matchId, tokenOf(chooser), move(state._stateID, "fightBoarding", "crew"))).status).toBe(400);
+      clock += 1000;
+      res = await act(matchId, tokenOf(chooser), move(state._stateID, "fightBoarding"));
+      expect(res.status).toBe(200);
+      const after = ((await res.json()) as MatchBody).state;
+      expect(after.G.combat).toBeUndefined();
+      expect(after.ctx.phase).toBe("main");
+      expect(after.G.lastRound?.boarding).toMatchObject({ boarderId: chooser, boardedId: other });
+    });
   }
 });
 
