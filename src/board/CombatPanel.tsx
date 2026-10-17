@@ -5,6 +5,7 @@ import { npcKind } from "./npcName";
 import { defenderRollLine, drawIntro } from "./seamanshipText";
 import { HUD_EDGE } from "./hudLayout";
 import { safeInset } from "./safeArea";
+import { seatName } from "./seat";
 
 interface CombatPanelProps {
   combat: CombatState;
@@ -20,6 +21,10 @@ interface CombatPanelProps {
   /** The answer to the first volley, aimed by the ship answering (#348). */
   onReturnFire: (aim: VolleyAim) => void;
   onApplyResolution: () => void;
+  /** The draw's winner may choose fire (`canChooseCombatAction`). */
+  mayChooseFire: boolean;
+  /** The guns of the ship that fires first this round reach the other ship (`firstToFireReaches`, #356). */
+  firstToFireReaches: boolean;
   /** This client presses the fight's current step (`seatMayActInCombat`, #110); else its controls are off. */
   mayAct: boolean;
   /** Who and what this client waits on while another seat presses (`combatWaitingFor`). */
@@ -175,6 +180,8 @@ export function CombatPanel({
   onRollCannons,
   onReturnFire,
   onApplyResolution,
+  mayChooseFire,
+  firstToFireReaches,
   mayAct,
   waitingLine,
   watchingLine,
@@ -277,7 +284,7 @@ export function CombatPanel({
               <ActionButton
                 label="Fire!"
                 onClick={() => onChooseAction("fire")}
-                disabled={!mayAct}
+                disabled={!mayAct || !mayChooseFire}
                 primary
               />
               <ActionButton
@@ -291,6 +298,11 @@ export function CombatPanel({
                 disabled={!mayAct}
               />
             </div>
+            {!firstToFireReaches && (
+              <div className="text-[10px] text-red-400/70 text-center">
+                Out of range: {mayAct ? "your" : `${seatName({ ships }, combat.seamanshipWinner ?? combat.attackerId)}'s`} guns cannot reach from {combat.distance} hexes
+              </div>
+            )}
             {combat.distance > 1 && (
               <div className="text-[10px] text-red-400/70 text-center">
                 Boarding requires adjacent ships
@@ -310,7 +322,9 @@ export function CombatPanel({
                 ? `Player ${seatLabel(combat.seamanshipWinner)} is attempting to flee!`
                 : combat.seamanshipWinner === combat.attackerId
                   ? "You are attempting to escape!"
-                  : `The ${npcLabel.toLowerCase()} is trying to flee!`}
+                  : firstToFireReaches
+                    ? `The ${npcLabel.toLowerCase()} is trying to flee!`
+                    : `The ${npcLabel.toLowerCase()} can't reach you and tries to flee!`}
             </div>
           </div>
           <div className="text-center">
@@ -377,6 +391,18 @@ export function CombatPanel({
             <VolleyLines volleys={volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
             {volleys.length === 1 && combat.fleeOutcome !== "caught" && (
               <div className="text-[10px] text-amber-400/60">No answer: the other ship could not fire back</div>
+            )}
+            {/* A fight stored before #346 records no volleys: only a recorded empty round is a shot not fired */}
+            {combat.volleys !== undefined && volleys.length === 0 && combat.fleeOutcome === "caught" && (
+              <>
+                <div className="text-red-400 text-sm font-heading uppercase">Pursuit Caught!</div>
+                <div className="text-amber-100/80 text-xs">Caught, but out of the pursuer&apos;s range: no parting shot</div>
+                {combat.fleeRolls && (
+                  <div className="text-[10px] text-amber-400/60">
+                    {pursuitRollsLine(combat.fleeRolls, fleeing?.damage.masts ?? 0)}
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div className="text-center">

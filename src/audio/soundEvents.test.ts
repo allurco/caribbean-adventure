@@ -223,6 +223,9 @@ describe("soundEventsFrom", () => {
     ]);
     const caught = makeState({ combat: makeCombat({ stage: "cannons", fleeOutcome: "caught" }) });
     expect(soundEventsFrom(prev, caught)).toEqual([{ type: "fleeAttempted", outcome: "caught" }]);
+    // Caught by a pursuer out of range: no parting shot, straight to the round's end (#356)
+    const caughtOutOfRange = makeState({ combat: makeCombat({ stage: "resolution", fleeOutcome: "caught" }) });
+    expect(soundEventsFrom(prev, caughtOutOfRange)).toEqual([{ type: "fleeAttempted", outcome: "caught" }]);
   });
 
   it("emits a sinking when a ship or NPC goes and loot appears", () => {

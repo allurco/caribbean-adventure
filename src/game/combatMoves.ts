@@ -26,6 +26,7 @@ import {
   createLootFromShip,
   createLootFromNPC,
   getEffectiveCannons,
+  isInGunRange,
 } from "./combat";
 import { isOneOf } from "./moveArgs";
 import { loseShip } from "./captainDeath";
@@ -75,16 +76,35 @@ export function atCombatStage(G: CaribbeanState, stage: CombatStage): boolean {
   return G.combat !== undefined && G.combat.stage === stage;
 }
 
+/** Do `id`'s guns reach the other ship of the fight (#356)? */
+function reaches(G: CaribbeanState, combat: CombatState, id: string): boolean {
+  return isInGunRange(combatantOf(G, combat, id), combat.distance);
+}
+
+/**
+ * Do the guns of the ship that fires first this round (`firstToFire`) reach
+ * the other ship (#356)? A ship out of range never fires first. False with
+ * no fight on.
+ */
+export function firstToFireReaches(G: CaribbeanState): boolean {
+  if (!G.combat) return false;
+  return reaches(G, G.combat, firstToFire(G.combat));
+}
+
 /**
  * May the draw's winner choose this action? Only while the fight waits on
- * the choice, only fire, board or flee, and boarding only from the next hex.
- * Round 1 is the ambush (#346): fire is the only action then.
+ * the choice, only fire, board or flee, boarding only from the next hex, and
+ * fire only when the ship that would fire first reaches (`firstToFireReaches`,
+ * #356). Round 1 is the ambush (#346): fire is the only action then (the
+ * attacker fires first, and it attacked from within its range).
  */
 export function canChooseCombatAction(G: CaribbeanState, action: unknown): action is CombatAction {
   if (!atCombatStage(G, "chooseAction")) return false;
   if (!isOneOf(COMBAT_ACTIONS, action)) return false;
-  if (fightOf(G).round === 1 && action !== "fire") return false;
-  if (action === "board" && fightOf(G).distance > 1) return false;
+  const combat = fightOf(G);
+  if (combat.round === 1) return action === "fire";
+  if (action === "fire" && !firstToFireReaches(G)) return false;
+  if (action === "board" && combat.distance > 1) return false;
   return true;
 }
 
@@ -132,8 +152,12 @@ export function applyRollDefenderSeamanship(G: CaribbeanState, d6: RollD6): void
   // If NPC won seamanship in NPC combat, auto-choose their action
   if (combat.isNPCCombat && combat.seamanshipWinner === combat.defenderId) {
     const npc = G.npcs[combat.defenderId];
-    // NPC decides to flee if hull < 2 OR outgunned (cannons limited by current crew)
-    if (shouldNPCFlee(npc.stats.hull.current, getEffectiveCannons(npc), getEffectiveCannons(attacker))) {
+    // The NPC chooses as a seat may (`canChooseCombatAction`): in round 1
+    // (a fight from before #346) it fires, never flees. Otherwise it flees
+    // when its guns cannot reach (#356), or if hull < 2 OR outgunned
+    // (cannons limited by current crew).
+    const outgunned = shouldNPCFlee(npc.stats.hull.current, getEffectiveCannons(npc), getEffectiveCannons(attacker));
+    if (combat.round !== 1 && (!firstToFireReaches(G) || outgunned)) {
       combat.actionChosen = "flee";
       combat.stage = "fleeAttempt";
     } else {
@@ -204,7 +228,8 @@ export function applyCombatAction(G: CaribbeanState, action: CombatAction, turn:
 /**
  * The flight: the pursuer's die against the fleeing ship's, each plus its
  * manoeuvrability. A clean escape ends the fight; a ship caught takes the
- * pursuer's parting shot next.
+ * pursuer's parting shot next, if the pursuer's guns reach it (#356), and
+ * the round ends either way.
  */
 export function applyFleeAttempt(G: CaribbeanState, d6: RollD6): CombatStepOutcome {
   const combat = fightOf(G);
@@ -253,8 +278,9 @@ export function applyFleeAttempt(G: CaribbeanState, d6: RollD6): CombatStepOutco
   }
 
   // Caught - pursuer gets a free parting shot (defender can't return fire)
-  // Go to cannons stage, but only pursuer fires
-  combat.stage = "cannons";
+  // Go to cannons stage, but only pursuer fires: if its guns reach (#356),
+  // else no shot, and the round goes straight to its end.
+  combat.stage = reaches(G, combat, pursuerId) ? "cannons" : "resolution";
   return "continues";
 }
 
@@ -303,15 +329,16 @@ function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, a
 }
 
 /**
- * Who fires first this round: in round 1 (the ambush) the attacker; after a
- * caught flight the pursuer, alone; otherwise the draw's winner, who chose
- * to fire (the attacker in a fight from before #346 with no winner).
+ * Who fires first this round: after a caught flight the pursuer, alone (in
+ * any round, as `combatActor` has it, #356); in round 1 (the ambush) the
+ * attacker; otherwise the draw's winner, who chose to fire (the attacker in
+ * a fight from before #346 with no winner).
  */
 function firstToFire(combat: Pick<CombatState, "round" | "attackerId" | "defenderId" | "seamanshipWinner" | "fleeOutcome">): string {
-  if (combat.round === 1 || combat.seamanshipWinner === null) return combat.attackerId;
-  if (combat.fleeOutcome === "caught") {
-    return combat.seamanshipWinner === combat.attackerId ? combat.defenderId : combat.attackerId;
+  if (combat.fleeOutcome === "caught" && combat.seamanshipWinner !== null) {
+    return opponentOf(combat, combat.seamanshipWinner);
   }
+  if (combat.round === 1 || combat.seamanshipWinner === null) return combat.attackerId;
   return combat.seamanshipWinner;
 }
 

@@ -217,6 +217,11 @@ describe("the combat timeline: G's changes as beats the table watches (#263)", (
     expect(combatBeatsFrom(before, caught)).toEqual([
       expect.objectContaining({ kind: "flee", fleeingId: "1", pursuerId: "0", outcome: "caught" }),
     ]);
+    // Caught by a pursuer out of range: no parting shot, straight to the round's end (#356)
+    const caughtOutOfRange = makeState({ combat: makeCombat({ ...fleeing, stage: "resolution", fleeOutcome: "caught" }) });
+    expect(combatBeatsFrom(before, caughtOutOfRange)).toEqual([
+      expect.objectContaining({ kind: "flee", fleeingId: "1", pursuerId: "0", outcome: "caught" }),
+    ]);
   });
 
   it("boarding a merchant brings the ships alongside", () => {
