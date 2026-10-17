@@ -25,7 +25,7 @@ import os
 
 import bpy
 
-from . import bake, board, checks, colours, env, gltf, palette, texbudget
+from . import bake, blendsave, board, checks, colours, env, gltf, palette, texbudget
 from .params import FrigateParams
 
 BUILD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -292,9 +292,8 @@ def _write(path: str) -> None:
 
 def write_blend(p, path: str | None = None) -> str:
     path = path or blend_path(p)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=path, copy=True)
-    return path
+    # Relative texture paths and no remembered directory: the file is public.
+    return blendsave.save_clean(path)
 
 
 MIME_EXTENSION = {"image/png": "png", "image/jpeg": "jpg"}
