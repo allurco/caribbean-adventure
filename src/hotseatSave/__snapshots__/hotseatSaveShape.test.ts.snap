@@ -1,6 +1,40 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a fight: G.combat and its volleys > fight, save version 10 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a boarding: G.lastRound.boarding and its exchanges (#350) > boarding, save version 11 1`] = `
+{
+  "boardedId": "string",
+  "boarderId": "string",
+  "exchanges": [
+    {
+      "boarderCrew": "number",
+      "boarderDice": [
+        "number",
+      ],
+      "defenderCrew": "number",
+      "defenderDice": [
+        "number",
+      ],
+    },
+  ],
+  "floated": {
+    "Rum": "number",
+    "Spice": "number",
+    "Sugar": "number",
+    "Wood": "number",
+  },
+  "gold": "number",
+  "lootId": "string",
+  "taken": {
+    "Rum": "number",
+    "Spice": "number",
+    "Sugar": "number",
+    "Wood": "number",
+  },
+  "winnerId": "string",
+}
+`;
+
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a fight: G.combat and its volleys > fight, save version 11 1`] = `
 {
   "actionChosen": "string",
   "attackerHits": "number",
@@ -36,7 +70,7 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
 }
 `;
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a settled round: G.lastRound and its volleys (#380) > settled round, save version 10 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a settled round: G.lastRound and its volleys (#380) > settled round, save version 11 1`] = `
 {
   "attackerId": "string",
   "defenderId": "string",
@@ -68,7 +102,7 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
 }
 `;
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 10 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 11 1`] = `
 {
   "cellPatches": [],
   "map": {

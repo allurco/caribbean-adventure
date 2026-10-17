@@ -50,8 +50,13 @@ export type MatchState = State<CaribbeanState>;
  *   left derelict (`sunk`, `leftDerelict`), so the board reads them as they
  *   were. A version 9 save lacks them, which reads as none (the volley line
  *   names where its hits landed only), so it migrates as it is.
+ * - 11: boarding is a crew fight (#350): Board goes to a new combat stage,
+ *   `boarding`, and the round it ends records it (`G.lastRound.boarding`);
+ *   a player ship's crew stops at 1. A version 10 save migrates as it is,
+ *   mid-fight too: each of its stages is one version 11 still has, a Board
+ *   chosen from it goes on to the boarding, and its rounds record none.
  */
-export const HOTSEAT_SAVE_VERSION = 10;
+export const HOTSEAT_SAVE_VERSION = 11;
 
 /** G without the map, which is generated again from its size and seed. */
 export type SavedG = Omit<CaribbeanState, "cells" | "regions">;

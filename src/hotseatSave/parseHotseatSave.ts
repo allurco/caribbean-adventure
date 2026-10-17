@@ -53,6 +53,8 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
  * (the legacy `applyResolution`), so every version 8 save is version 9's.
  * Version 9 recorded no volley's shots or damage and no round's sunk or
  * derelict ships, which read as none, so every version 9 save is version 10's.
+ * Version 10 fought no crew fight (#350); its fights wait on steps version
+ * 11 still has, so every version 10 save is version 11's.
  */
 function migrate(value: Record<string, unknown>): Record<string, unknown> {
   let current = value;
@@ -64,6 +66,7 @@ function migrate(value: Record<string, unknown>): Record<string, unknown> {
   if (current.version === 7) current = { ...current, version: 8 };
   if (current.version === 8) current = { ...current, version: 9 };
   if (current.version === 9) current = { ...current, version: 10 };
+  if (current.version === 10) current = { ...current, version: 11 };
   return current;
 }
 
