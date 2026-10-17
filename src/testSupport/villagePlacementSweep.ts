@@ -6,7 +6,9 @@
  * kerb or edge stone inside a building's walls. At ×2.5 (#176): 20 to 30
  * buildings a port (the village's standing houses and the kit), never more
  * than 30, houses about 0.08 of a hex across, and every pier reaching out
- * over the water.
+ * over the water. The harbour's furniture (#181): two to four piers and one
+ * or two cranes where the shore allows, a market hall at nearly every port,
+ * the port's nation on its flags, and nothing but a pier on the water.
  *
  * The sweep is shared by the `src/board/visuals/villagePlacement.<size>.<first>-<last>.test.ts`
  * files, one per range in `VILLAGE_SWEEP_RANGES`, so the files run on separate
@@ -52,6 +54,9 @@ import {
   type PlanRect,
 } from "../board/visuals/villageLayout";
 import { describeSeedBlocks, type SeedRange } from "./seedBlocks";
+import { craneFoot, furnishedPlans, hallFoot, harbourFurniture, pierLine, PIER_SHIP_CLEARANCE, PORT_CRANES, PORT_PIERS } from "../board/visuals/harbourFurniture";
+import { cellId } from "../board/visuals/islands";
+import { neighbors } from "../game/hex";
 
 /** Seeds per map size, over all the files: 1 to VILLAGE_SEEDS. */
 export const VILLAGE_SEEDS = 200;
@@ -106,11 +111,17 @@ interface Tally {
   clutter: number;
   kit: number;
   stones: number;
+  /** Per port: its piers (its own with the further ones), its cranes, whether it has a hall; and how many offered no room for either. */
+  piers: number[];
+  cranes: number[];
+  halls: number;
+  noPierRoom: number;
+  noCraneRoom: number;
   failures: string[];
 }
 
 function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
-  const tally: Tally = { maps: 0, ports: 0, houses: 0, perPort: [], widths: [], clutter: 0, kit: 0, stones: 0, failures: [] };
+  const tally: Tally = { maps: 0, ports: 0, houses: 0, perPort: [], widths: [], clutter: 0, kit: 0, stones: 0, piers: [], cranes: [], halls: 0, noPierRoom: 0, noCraneRoom: 0, failures: [] };
   const fail = (seed: number, what: string) => {
     if (tally.failures.length < 20) tally.failures.push(`${size} seed ${seed}: ${what}`);
   };
@@ -124,8 +135,11 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
     const piers = piersOf(cells, drawn);
     const kit = portBuildings(cells, drawn, terrainSeed, field.townPlateaus);
     const quays = portQuays(cells, drawn, terrainSeed);
-    const { ports } = planPortTowns(cells, drawn, { buildings: kit, quays, piers, plateaus: field.townPlateaus }, terrainSeed);
+    const town = planPortTowns(cells, drawn, { buildings: kit, quays, piers, plateaus: field.townPlateaus }, terrainSeed);
+    const furniture = harbourFurniture(town.ports, cells, wrap, drawn, kit, terrainSeed);
+    const ports = furnishedPlans(town.ports, furniture);
     const clutter = townClutter(ports, drawn, TOWN_PIECE_SCALE, terrainSeed);
+    const byId = new Map(cells.map((c) => [cellId(c.hex, wrap), c]));
     tally.maps++;
     tally.ports += ports.length;
     tally.clutter += clutter.length;
@@ -194,6 +208,56 @@ function sweep(size: MapSizeId, firstSeed: number, lastSeed: number): Tally {
         // The footing reaches under the lowest ground.
         if (b.worldY - BUILDING_FOOTING * b.scale > bottom) fail(seed, `${b.variant} footing short of the ground`);
       }
+      // The harbour's furniture (#181).
+      const f = furniture.find((x) => x.portId === port.portId)!;
+      const portCell = byId.get(cellId(port.town.cells[0], wrap))!;
+      const allPiers = 1 + f.piers.length;
+      tally.piers.push(allPiers);
+      tally.cranes.push(f.cranes.length);
+      if (f.hall) tally.halls++;
+      if (f.room.piers === 0) tally.noPierRoom++;
+      else if (allPiers < PORT_PIERS[0]) fail(seed, `${allPiers} piers where the shore offers ${f.room.piers} spots`);
+      if (allPiers > PORT_PIERS[1]) fail(seed, `${allPiers} piers`);
+      if (f.room.cranes === 0) tally.noCraneRoom++;
+      else if (f.cranes.length < PORT_CRANES[0]) fail(seed, "no crane where a pier has room for one");
+      if (f.cranes.length > PORT_CRANES[1]) fail(seed, `${f.cranes.length} cranes`);
+      const ships: [number, number][] = [];
+      for (const h of port.town.cells) {
+        for (const n of neighbors(h)) {
+          if (byId.get(cellId(n, wrap))?.terrain === "island") continue;
+          const [x, , z] = hexToWorld(n);
+          ships.push([x, z]);
+        }
+      }
+      const villageWallsHere = port.buildings.map(villageWalls);
+      const furnitureBound = townCellsBound(port.town);
+      for (const p of f.piers) {
+        const [from, to] = pierLine(p);
+        if (!furnitureBound.contains(from[0], from[1], 0)) fail(seed, "a further pier off the town's cells");
+        if (drawn.sampleHeight(to[0], to[1]) > SEA_LEVEL - PIER_END_DEPTH) fail(seed, "a further pier ends on ground");
+        if (ships.some(([x, z]) => polylineDistance(x, z, [from, to]) < PIER_SHIP_CLEARANCE - 1e-9)) fail(seed, "a further pier reaches into a ship's hex");
+        if (harbour.some((h) => overlaps(h, pierRect(p), 0))) fail(seed, "a further pier on the quay or the port's pier");
+        if (villageWallsHere.some((w) => overlaps(w, pierRect(p), 0))) fail(seed, "a further pier through a house");
+      }
+      // Nothing but a pier on the water: the cranes' feet, the hall's floor and the quay's flag all on dry ground.
+      for (const c of f.cranes) {
+        const foot = craneFoot(c);
+        if (wallGround(drawn, foot).bottom <= VILLAGE_DRY_HEIGHT) fail(seed, "a crane on the water");
+        if (!furnitureBound.contains(c.x, c.z, Math.hypot(foot.halfW, foot.halfD))) fail(seed, "a crane off the town's cells");
+        if (villageWallsHere.some((w) => overlaps(w, foot, 0)) || harbour.some((h) => overlaps(h, foot, 0))) fail(seed, "a crane on a house, the quay or the pier");
+      }
+      if (f.hall) {
+        const posts = hallFoot(f.hall, false);
+        if (wallGround(drawn, posts).bottom <= VILLAGE_DRY_HEIGHT) fail(seed, "the market hall on the water");
+        if (!furnitureBound.contains(f.hall.x, f.hall.z, Math.hypot(hallFoot(f.hall).halfW, hallFoot(f.hall).halfD))) fail(seed, "the market hall off the town's cells");
+        if (villageWallsHere.some((w) => overlaps(w, hallFoot(f.hall!), 0))) fail(seed, "the market hall on a house");
+        if (port.streets.some((s) => polylineDistance(f.hall!.x, f.hall!.z, s.line) < s.halfWidth)) fail(seed, "the market hall on a street");
+      }
+      for (const g of f.flags) {
+        if (g.nation !== portCell.nation) fail(seed, `a ${g.nation} flag over a ${portCell.nation} port`);
+        if (g.foot && drawn.sampleHeight(g.foot[0], g.foot[2]) <= SEA_LEVEL) fail(seed, "the quay's flag on the water");
+      }
+      if (!f.flags.some((g) => g.mount === "quay")) fail(seed, "no flag on the quay");
       const inThisTown = townCellsBound(port.town);
       for (const c of clutter) {
         // This port's pieces: on its town cells (a piece elsewhere is another port's, or wrongly placed: the check below).
@@ -245,6 +309,17 @@ export function describeVillagePlacement(size: MapSizeId, firstSeed: number, las
         // The watchtower and church, and most of the tavern, warehouse and house, at every port; the kerbs drawn.
         expect(tally.kit / tally.ports).toBeGreaterThan(2.5);
         expect(tally.stones / tally.ports).toBeGreaterThan(50);
+        // The harbour's furniture (#181): the shore nearly always has room, and the counts vary from port to port.
+        const average = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+        console.log(
+          `  ${size} ${first}-${last}: piers a port mean ${average(tally.piers).toFixed(2)} (${tally.noPierRoom} ports with no room for more), ` +
+            `cranes mean ${average(tally.cranes).toFixed(2)} (${tally.noCraneRoom} with no room), market halls at ${((100 * tally.halls) / tally.ports).toFixed(0)} %`
+        );
+        expect(tally.noPierRoom / tally.ports).toBeLessThan(0.1);
+        expect(tally.noCraneRoom / tally.ports).toBeLessThan(0.1);
+        expect(tally.halls / tally.ports).toBeGreaterThan(0.85);
+        expect(new Set(tally.piers).size).toBeGreaterThan(1);
+        expect(new Set(tally.cranes).size).toBeGreaterThan(1);
       }, 120000);
     });
   });

@@ -74,12 +74,15 @@ describe("decorationLayout", () => {
     const cells = generateMap(preset, 1, wrap);
     const layout = decorationLayout(cells, wrap, 1);
     const pierCells = cells.filter((c) => pierRotation(c) !== undefined);
-    expect(layout.piers).toHaveLength(pierCells.length);
-    for (const pier of layout.piers) {
+    // The ports' own piers first, then the further ones their harbours gained (#181).
+    const further = layout.village.furniture.flatMap((f) => f.piers);
+    expect(layout.piers).toHaveLength(pierCells.length + further.length);
+    layout.piers.forEach((pier, i) => {
       expect(pier.type).toBe("pier");
       expect(pier.worldY).toBe(0);
-      expect(pierCells.some((c) => pierRotation(c) === pier.rotation)).toBe(true);
-    }
+      if (i < pierCells.length) expect(pierCells.some((c) => pierRotation(c) === pier.rotation)).toBe(true);
+      else expect(pier.rotation).toBe(further[i - pierCells.length].rotation);
+    });
   });
 
   it("grows each island's palms by its look (#177): no more than its companions allow, and nearly all of them on a jungle", () => {

@@ -13,6 +13,7 @@ import { agedBuildingColors } from "./agedBuildingColors";
 import type { VillageVariant } from "./villageBuildingGeometry";
 import type { TownPieceColors } from "./townPieces";
 import type { TownWorksColors } from "./townDetailLayout";
+import type { HarbourPieceColors } from "./harbourPieces";
 
 const rgb = (name: PaletteName): Rgb => {
   const c = paletteColor(name);
@@ -74,5 +75,20 @@ export function townWorksColors(): TownWorksColors {
     joint: mul(stone, [0.32, 0.31, 0.3]),
     coping: mul(stone, [1.08, 1.06, 1.02]),
     kerb: hex(0x9a8f7e),
+  };
+}
+
+/** The harbour's furniture (#181): the clutter's weathered timber and stone, hemp rope, the thatch of the market hall, a crate's bleached planks. */
+export function harbourPieceColors(): HarbourPieceColors {
+  const pieces = townPieceColors();
+  return {
+    timber: rgb("oldTimber"),
+    darkTimber: mul(rgb("oldTimber"), [0.7, 0.68, 0.66]),
+    stone: pieces.stone,
+    iron: rgb("ironwork"),
+    rope: hex(0x8a7454),
+    thatch: rgb("thatch"),
+    crate: rgb("bleachedPlank"),
+    goods: pieces.goods.slice(0, 2),
   };
 }

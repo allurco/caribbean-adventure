@@ -33,7 +33,18 @@ describe("palette", () => {
       bleachedPlank: 0xae9e8f,
       churchLime: 0xeee4d0,
       bellBronze: 0x7a6238,
+      thatch: 0xa88a58,
     });
+  });
+
+  it("dries the market hall's thatch to a straw that reads against the beach (#181, ADR 0002 amendment (c)): darker than the sand, warmer than the timber", () => {
+    const luminance = (c: Color) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const thatch = paletteColor("thatch");
+    expect(luminance(thatch)).toBeLessThan(luminance(paletteColor("drySand")) * 0.6);
+    expect(luminance(thatch)).toBeGreaterThan(luminance(paletteColor("oldTimber")) * 2);
+    // Straw: red over green over blue.
+    expect(thatch.r).toBeGreaterThan(thatch.g);
+    expect(thatch.g).toBeGreaterThan(thatch.b * 1.3);
   });
 
   it("bleaches the warehouse's planking (#59): paler and greyer than the fittings' timber, darker than the lime render", () => {

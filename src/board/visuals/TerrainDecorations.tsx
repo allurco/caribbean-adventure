@@ -32,7 +32,7 @@ export function TerrainDecorations({ layout: decorationsByType, waveSlopes }: { 
 
       <PortBuildings buildings={decorationsByType.buildings} />
 
-      <PortVillage geometry={decorationsByType.villageGeometry} />
+      <PortVillage village={decorationsByType.villageMeshes} />
     </>
   );
 }

@@ -32,7 +32,7 @@
  */
 import { BUILDING_FOOTING } from "./buildingGeometry";
 import { createFacetBuilder, shadeRgb, type FacetBuilder, type FacetGeometryData, type Vec3 } from "./facetBuilder";
-import { AGED_LEAN, boxFace, faceQuad, faceSlab, flakingTint, plankedDoor, shutteredWindow, streak, tintGrime, wornCuts, wornPrism, GRIME_BAND, type AgedColors, type WallFace } from "./agedKit";
+import { AGED_LEAN, boxFace, faceQuad, faceSlab, flakingTint, plankedDoor, shutteredWindow, streak, tintGrime, wornCuts, wornPrism, GRIME_BAND, type AgedColors, type FaceFrame, type WallFace } from "./agedKit";
 import { faceCuts, gable, plinth } from "./agedBuildingGeometry";
 import { addAgedRoof, AGED_ROOF_OVERHANG, roofEaveUnderside, roofGableApex, roofPitch, roofReachU, roofSlope, roofTop, type AgedRoofSpec } from "./agedRoof";
 import type { Rgb } from "./palmGeometry";
@@ -120,7 +120,23 @@ export interface VillageBuildingGeometry {
   roofTo: number;
   /** Top of the building at scale 1. */
   height: number;
+  /** Where later slices put smoke and light (#181), at scale 1, leaning with the building. */
+  anchors: BuildingAnchors;
 }
+
+/**
+ * Points on a building at scale 1, in its local frame (#181): each
+ * chimney's mouth (where the life slice's smoke rises), each shuttered
+ * window's middle a hair proud of the wall, and a lantern by the front door
+ * (for a later night, ADR 0002 amendment (b)).
+ */
+export interface BuildingAnchors {
+  chimneys: Vec3[];
+  windows: Vec3[];
+  lanterns: Vec3[];
+}
+
+const emptyAnchors = (): BuildingAnchors => ({ chimneys: [], windows: [], lanterns: [] });
 
 const roofSpec = (s: GabledSpec): AgedRoofSpec => ({
   halfU: (s.ridgeAlong === "z" ? s.w : s.d) / 2,
@@ -132,6 +148,28 @@ const roofSpec = (s: GabledSpec): AgedRoofSpec => ({
 
 const DOOR = { halfWidth: 0.021, height: 0.066, proud: 0.007 };
 const WINDOW_HALF = 0.014;
+/** How far proud of its wall a window's or a lantern's anchor stands. */
+const ANCHOR_PROUD = 0.004;
+/** A lantern's anchor: beside the door, this far out from its jamb and up from its head. */
+const LANTERN_BESIDE = 0.012;
+const LANTERN_OVER = 0.006;
+
+/** A point on a wall face, `proud` out along its normal. */
+const onFace = (frame: FaceFrame, s: number, y: number, proud: number): Vec3 => {
+  const p = frame.at(s, y);
+  return [p[0] + frame.normal[0] * proud, p[1] + frame.normal[1] * proud, p[2] + frame.normal[2] * proud];
+};
+
+/** A shuttered window, its middle recorded as an anchor. */
+function windowAt(b: FacetBuilder, frame: FaceFrame, w: Parameters<typeof shutteredWindow>[2], colors: AgedColors, seed: number, anchors: BuildingAnchors) {
+  shutteredWindow(b, frame, w, colors, seed);
+  anchors.windows.push(onFace(frame, w.s, (w.bottom + w.top) / 2, ANCHOR_PROUD));
+}
+
+/** The lantern's anchor beside a door whose middle is at `s`, `halfWidth` wide and `height` tall. */
+function lanternBy(frame: FaceFrame, s: number, halfWidth: number, height: number, anchors: BuildingAnchors) {
+  anchors.lanterns.push(onFace(frame, s + halfWidth + LANTERN_BESIDE, height + LANTERN_OVER, ANCHOR_PROUD * 2));
+}
 const AO = { groundHeight: 0.035, groundStrength: 0.3, eaveReach: 0.03, eaveStrength: 0.4, concavity: 0.5 };
 
 /** The walls, gables and roof of a gabled body; returns its wall top and the roof's vertex range. */
@@ -171,8 +209,9 @@ function gabledBody(b: FacetBuilder, s: GabledSpec, colors: AgedColors, seed: nu
 }
 
 /** A chimney through the roof at (x, z), from inside the walls up past the ridge, with a cap slab. */
-function chimney(b: FacetBuilder, x: number, z: number, bottom: number, top: number, color: Rgb) {
+function chimney(b: FacetBuilder, x: number, z: number, bottom: number, top: number, color: Rgb, anchors: BuildingAnchors) {
   const half = 0.014;
+  anchors.chimneys.push([x, top + 0.009, z]);
   b.box([x - half, bottom, z - half], [x + half, top, z + half], color, { bottom: false });
   b.box([x - half - 0.004, top, z - half - 0.004], [x + half + 0.004, top + 0.007, z + half + 0.004], shadeRgb(color, 0.8));
   // Soot at its mouth.
@@ -213,19 +252,20 @@ function aoBake(b: FacetBuilder, eave: number, wallTop: number) {
   });
 }
 
-function addCottage(b: FacetBuilder, colors: AgedColors, seed: number) {
+function addCottage(b: FacetBuilder, colors: AgedColors, seed: number, anchors: BuildingAnchors) {
   const s = BODY.cottage;
   const { hw, hd, wallTop, roofRange } = gabledBody(b, s, colors, seed, { cols: 3, rows: 2 });
   const front = boxFace("front", hw, hd);
   plankedDoor(b, front, { s: hw - 0.035, halfWidth: DOOR.halfWidth, height: DOOR.height, proud: DOOR.proud }, colors.timber, colors.iron);
+  lanternBy(front, hw - 0.035, DOOR.halfWidth, DOOR.height, anchors);
   const top = Math.min(0.1, wallTop - 0.016);
-  shutteredWindow(b, front, { s: hw + 0.04, halfWidth: WINDOW_HALF, bottom: top - 0.032, top }, colors, seedOf([7], seed));
-  chimney(b, hw - 0.028, -0.012, wallTop - 0.02, s.ridge + 0.03, colors.wall);
+  windowAt(b, front, { s: hw + 0.04, halfWidth: WINDOW_HALF, bottom: top - 0.032, top }, colors, seedOf([7], seed), anchors);
+  chimney(b, hw - 0.028, -0.012, wallTop - 0.02, s.ridge + 0.03, colors.wall, anchors);
   aoBake(b, s.eave, wallTop);
   return roofRange;
 }
 
-function addStoneHouse(b: FacetBuilder, colors: AgedColors, seed: number) {
+function addStoneHouse(b: FacetBuilder, colors: AgedColors, seed: number, anchors: BuildingAnchors) {
   const s = BODY.stoneHouse;
   const { hw, hd, wallTop, roofRange } = gabledBody(b, s, colors, seed, { cols: 3, rows: 3 });
   quoins(b, hw, hd, s.w, s.d, wallTop - 0.02, shadeRgb(colors.stone, 1.12), seedOf([8], seed));
@@ -236,17 +276,18 @@ function addStoneHouse(b: FacetBuilder, colors: AgedColors, seed: number) {
   }
   const front = boxFace("front", hw, hd);
   plankedDoor(b, front, { s: hw - 0.03, halfWidth: DOOR.halfWidth, height: DOOR.height, proud: DOOR.proud }, colors.timber, colors.iron);
-  shutteredWindow(b, front, { s: hw + 0.042, halfWidth: WINDOW_HALF, bottom: 0.058, top: 0.092 }, colors, seedOf([9], seed));
+  lanternBy(front, hw - 0.03, DOOR.halfWidth, DOOR.height, anchors);
+  windowAt(b, front, { s: hw + 0.042, halfWidth: WINDOW_HALF, bottom: 0.058, top: 0.092 }, colors, seedOf([9], seed), anchors);
   const upperTop = Math.min(0.19, wallTop - 0.016);
   for (const dx of [-0.042, 0.042]) {
-    shutteredWindow(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: upperTop - 0.036, top: upperTop }, colors, seedOf([10, dx > 0 ? 1 : 0], seed));
+    windowAt(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: upperTop - 0.036, top: upperTop }, colors, seedOf([10, dx > 0 ? 1 : 0], seed), anchors);
   }
-  chimney(b, -hw + 0.03, -0.015, wallTop - 0.02, s.ridge + 0.035, shadeRgb(colors.wall, 0.95));
+  chimney(b, -hw + 0.03, -0.015, wallTop - 0.02, s.ridge + 0.035, shadeRgb(colors.wall, 0.95), anchors);
   aoBake(b, s.eave, wallTop);
   return roofRange;
 }
 
-function addMerchant(b: FacetBuilder, colors: AgedColors, seed: number) {
+function addMerchant(b: FacetBuilder, colors: AgedColors, seed: number, anchors: BuildingAnchors) {
   const s = BODY.merchant;
   const { hw, hd, wallTop, roofRange } = gabledBody(b, s, colors, seed, { cols: 3, rows: 3 });
   const front = boxFace("front", hw, hd);
@@ -256,10 +297,12 @@ function addMerchant(b: FacetBuilder, colors: AgedColors, seed: number) {
   faceSlab(b, front, hw + DOOR.halfWidth, hw + DOOR.halfWidth + surround, 0, DOOR.height + surround, 0.006, shadeRgb(colors.stone, 0.94));
   faceSlab(b, front, hw - DOOR.halfWidth, hw + DOOR.halfWidth, DOOR.height, DOOR.height + surround, 0.006, shadeRgb(colors.stone, 1.06));
   plankedDoor(b, front, { s: hw, halfWidth: DOOR.halfWidth, height: DOOR.height, proud: DOOR.proud }, colors.timber, colors.iron);
-  for (const dx of [-0.075, 0.075]) shutteredWindow(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: 0.05, top: 0.088 }, colors, seedOf([9, dx > 0 ? 1 : 0], seed));
+  // Outside the door's stone surround.
+  lanternBy(front, hw, DOOR.halfWidth + surround, DOOR.height, anchors);
+  for (const dx of [-0.075, 0.075]) windowAt(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: 0.05, top: 0.088 }, colors, seedOf([9, dx > 0 ? 1 : 0], seed), anchors);
   // Tall openings onto the balcony.
   for (const dx of [-0.055, 0.055]) {
-    shutteredWindow(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: BALCONY.floor + BALCONY.slab, top: Math.min(BALCONY.floor + 0.085, wallTop - 0.014) }, colors, seedOf([11, dx], seed));
+    windowAt(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: BALCONY.floor + BALCONY.slab, top: Math.min(BALCONY.floor + 0.085, wallTop - 0.014) }, colors, seedOf([11, dx], seed), anchors);
   }
   // The balcony: a planked floor on three brackets, a rail on balusters.
   const timber = colors.timber;
@@ -280,13 +323,13 @@ function addMerchant(b: FacetBuilder, colors: AgedColors, seed: number) {
     const x = -BALCONY.half + (i / 6) * BALCONY.half * 2;
     b.box([x - 0.0025, y1, z1 - 0.005], [x + 0.0025, railTop - 0.006, z1 - 0.0005], timber, { bottom: false, top: false });
   }
-  chimney(b, -hw + 0.032, -0.02, wallTop - 0.02, s.ridge + 0.03, colors.wall);
-  chimney(b, hw - 0.032, -0.02, wallTop - 0.02, s.ridge + 0.03, colors.wall);
+  chimney(b, -hw + 0.032, -0.02, wallTop - 0.02, s.ridge + 0.03, colors.wall, anchors);
+  chimney(b, hw - 0.032, -0.02, wallTop - 0.02, s.ridge + 0.03, colors.wall, anchors);
   aoBake(b, s.eave, wallTop);
   return roofRange;
 }
 
-function addTownHouse(b: FacetBuilder, colors: AgedColors, seed: number) {
+function addTownHouse(b: FacetBuilder, colors: AgedColors, seed: number, anchors: BuildingAnchors) {
   const s = BODY.townHouse;
   const { hw, hd, wallTop, roofRange } = gabledBody(b, s, colors, seed, { cols: 2, rows: 4 });
   // A string course at each upper floor, on every face.
@@ -298,20 +341,21 @@ function addTownHouse(b: FacetBuilder, colors: AgedColors, seed: number) {
   }
   const front = boxFace("front", hw, hd);
   plankedDoor(b, front, { s: hw - 0.03, halfWidth: DOOR.halfWidth, height: DOOR.height, proud: DOOR.proud }, colors.timber, colors.iron);
-  shutteredWindow(b, front, { s: hw + 0.035, halfWidth: WINDOW_HALF, bottom: 0.045, top: 0.08 }, colors, seedOf([9], seed));
+  lanternBy(front, hw - 0.03, DOOR.halfWidth, DOOR.height, anchors);
+  windowAt(b, front, { s: hw + 0.035, halfWidth: WINDOW_HALF, bottom: 0.045, top: 0.08 }, colors, seedOf([9], seed), anchors);
   // Two windows on each floor above, the top floor's under the eave.
   const tops = [TOWN_HOUSE_FLOORS[1] - 0.02, Math.min(TOWN_HOUSE_FLOORS[1] + 0.075, wallTop - 0.016)];
   tops.forEach((top, floor) => {
     for (const dx of [-0.035, 0.035]) {
-      shutteredWindow(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: top - 0.034, top }, colors, seedOf([10, floor, dx > 0 ? 1 : 0], seed));
+      windowAt(b, front, { s: hw + dx, halfWidth: WINDOW_HALF, bottom: top - 0.034, top }, colors, seedOf([10, floor, dx > 0 ? 1 : 0], seed), anchors);
     }
   });
-  chimney(b, hw - 0.028, -0.015, wallTop - 0.02, s.ridge + 0.03, shadeRgb(colors.wall, 0.95));
+  chimney(b, hw - 0.028, -0.015, wallTop - 0.02, s.ridge + 0.03, shadeRgb(colors.wall, 0.95), anchors);
   aoBake(b, s.eave, wallTop);
   return roofRange;
 }
 
-function addWarehouse(b: FacetBuilder, colors: AgedColors, seed: number) {
+function addWarehouse(b: FacetBuilder, colors: AgedColors, seed: number, anchors: BuildingAnchors) {
   const s = BODY.warehouse;
   const { hw, hd, wallTop, apex, roofRange } = gabledBody(b, s, colors, seed, { cols: 7, rows: 1 });
   const front = boxFace("front", hw, hd);
@@ -321,6 +365,7 @@ function addWarehouse(b: FacetBuilder, colors: AgedColors, seed: number) {
   faceQuad(b, front, hw - leaf * 2 - 0.004, hw + leaf * 2 + 0.004, 0, height + 0.006, 0.0008, shadeRgb(colors.wall, 0.15));
   plankedDoor(b, front, { s: hw - leaf - 0.001, halfWidth: leaf, height, proud: DOOR.proud }, colors.timber, colors.iron);
   plankedDoor(b, front, { s: hw + leaf + 0.001, halfWidth: leaf, height, proud: DOOR.proud }, shadeRgb(colors.timber, 0.9), colors.iron);
+  lanternBy(front, hw, leaf * 2 + 0.004, height - 0.03, anchors);
   // The loft hatch in the gable, and the hoist beam out from under the peak with its rope.
   const hatchBottom = wallTop + 0.012;
   const hatchTop = Math.min(apex - 0.03, hatchBottom + 0.04);
@@ -411,23 +456,39 @@ export const villageRoofReach = (variant: Exclude<VillageVariant, "leanTo">): nu
 export function buildVillageBuilding(variant: VillageVariant, colors: AgedColors, seed = 0): VillageBuildingGeometry {
   const b = createFacetBuilder();
   const s = seedOf([VILLAGE_VARIANTS.indexOf(variant)], 0x7a11 ^ seed);
+  const anchors = emptyAnchors();
   const roof =
     variant === "cottage"
-      ? addCottage(b, colors, s)
+      ? addCottage(b, colors, s, anchors)
       : variant === "stoneHouse"
-        ? addStoneHouse(b, colors, s)
+        ? addStoneHouse(b, colors, s, anchors)
         : variant === "merchant"
-          ? addMerchant(b, colors, s)
+          ? addMerchant(b, colors, s, anchors)
           : variant === "warehouse"
-            ? addWarehouse(b, colors, s)
+            ? addWarehouse(b, colors, s, anchors)
             : variant === "townHouse"
-              ? addTownHouse(b, colors, s)
+              ? addTownHouse(b, colors, s, anchors)
               : addLeanTo(b, colors, s);
   const [lx, lz] = LEAN[variant];
   b.shear(0, b.vertexCount(), "x", "y", lx);
   b.shear(0, b.vertexCount(), "z", "y", lz);
-  return { data: b.build(), roofFrom: roof.from, roofTo: roof.to, height: VILLAGE_HEIGHT[variant] };
+  // The anchors lean with the walls they stand on.
+  const lean = (p: Vec3): Vec3 => [p[0] + lx * p[1], p[1], p[2] + lz * p[1]];
+  const leaned: BuildingAnchors = { chimneys: anchors.chimneys.map(lean), windows: anchors.windows.map(lean), lanterns: anchors.lanterns.map(lean) };
+  return { data: b.build(), roofFrom: roof.from, roofTo: roof.to, height: VILLAGE_HEIGHT[variant], anchors: leaned };
 }
 
 /** The footing depth every kind carries under its ground contact (the aged kit's). */
 export const VILLAGE_FOOTING = BUILDING_FOOTING;
+
+/** Every kind's anchors at scale 1 (#181): the same for every wear seed, so built once from the plainest colours. */
+const ANCHORS_OF = new Map<VillageVariant, BuildingAnchors>();
+export function villageAnchors(variant: VillageVariant): BuildingAnchors {
+  let a = ANCHORS_OF.get(variant);
+  if (!a) {
+    const grey: Rgb = [0.5, 0.5, 0.5];
+    a = buildVillageBuilding(variant, { wall: grey, roof: grey, timber: grey, stone: grey, iron: grey, bronze: grey }).anchors;
+    ANCHORS_OF.set(variant, a);
+  }
+  return a;
+}

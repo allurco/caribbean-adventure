@@ -45,6 +45,12 @@ export const SEED_FEATURES = {
   village: "village",
   /** Which of a port's village houses are thinned back to the target (`villageLayout.ts`, #176), per port. */
   villageThinning: "villageThinning",
+  /** How many further piers a port gains and which spots on its shore they take (`harbourFurniture.ts`, #181), per port. */
+  piers: "piers",
+  /** A port's market hall: where round its square it is looked for first (`harbourFurniture.ts`, #181), per port. */
+  marketHall: "marketHall",
+  /** How many dock cranes a port stands and on which side of a pier they are looked for first (`harbourFurniture.ts`, #181), per port. */
+  cranes: "cranes",
   /** A port's town clutter (`townDetailLayout.ts`), per port. */
   townClutter: "townClutter",
   /** The stones of a town's retaining walls, per port, riser and wall segment. */
