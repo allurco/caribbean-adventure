@@ -287,7 +287,7 @@ describe("out of captains (#265)", () => {
 
     client.moves.attackNPC("flotilla");
     fireOnce(client);
-    expect(stateOf(client).ctx.gameover).toMatchObject({ winner: "1", score: 2 });
+    expect(stateOf(client).ctx.gameover).toEqual({ reason: "allOut", winner: "1", leaders: ["1"], score: 2 });
   });
 
   it("solo: the player picks the last captain, and is out with an empty deck, which ends the game", () => {
@@ -302,7 +302,7 @@ describe("out of captains (#265)", () => {
     const out = startGame({ "0": ship(0, 0, "blackbeard", false) }, { captainDeck: [], npcs: { flotilla: flotilla(1, 0) } });
     out.moves.attackNPC("flotilla");
     fireOnce(out);
-    expect(stateOf(out).ctx.gameover).toMatchObject({ winner: "0" });
+    expect(stateOf(out).ctx.gameover).toMatchObject({ reason: "allOut", winner: "0" });
   });
 });
 
@@ -348,7 +348,7 @@ describe("a real solo match out of captains (#265, #278)", () => {
     fight();
     const { G, ctx } = stateOf(client);
     expect(G.lostShips?.["0"]?.eliminated).toBe(true);
-    expect(ctx.gameover).toMatchObject({ winner: "0" });
+    expect(ctx.gameover).toMatchObject({ reason: "allOut", winner: "0" });
   });
 });
 

@@ -210,6 +210,15 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-16: game over when every seat is out (#289, PR #362)
+- **Branch and commit:** `fix/289-all-out` at `f896807`.
+- **Renderer:** Playwright MCP Chromium on the GPU (ANGLE Metal), 1280×800, DPR 1.
+- **View:** solo `?size=small&seed=1`, `?seats=1&players=2&size=small&seed=1` and `?players=2&size=small&seed=1` (each with `skipLogin=1`).
+- **How it was staged:** ships moved to `lostShips` with a set glory and `captainDeck` emptied (an `UPDATE` to the store, or the local master's `setState` plus `requestSync`), then End Turn as an event.
+- **Findings:** solo reads "All Hands Lost / Your last captain is lost. You end with 3 glory." In `?seats=1`, with unequal glory P1 reads "Player 2 ends with the most glory (4).", P2 "You end…"; a tie reads "You and Player 2 / You and Player 1 end…". Hotseat names "Player n" only, ties included. A glory win still shows the Victory card. No console errors.
+- **For the maintainer:** "Final Glory" shows the leader's score on every board.
+- **Not checked:** the online match; 3 or 4 seats.
+
 ### 2026-10-16: aimed volleys, hull, masts or crew (#348, PR #361)
 
 - **Branch and commit:** `feat/348-aim` at `50482f1`.
