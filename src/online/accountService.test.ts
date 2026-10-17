@@ -46,7 +46,12 @@ function fakeClient(opts: {
   session?: SessionLike | null;
   select?: RowResult;
   update?: RowResult;
-} = {}): { client: AccountClient; calls: Calls; emit: (session: SessionLike | null) => void; unsubscribe: () => void } {
+} = {}): {
+  client: AccountClient;
+  calls: Calls;
+  emit: (session: SessionLike | null, event?: string) => void;
+  unsubscribe: () => void;
+} {
   const calls: Calls = { otp: [], oauth: [], identities: [], selects: [], updates: [], signOuts: 0, signOutScopes: [] };
   const listeners: ((event: string, session: SessionLike | null) => void)[] = [];
   const unsubscribe = vi.fn();
@@ -103,7 +108,9 @@ function fakeClient(opts: {
       }),
     }),
   };
-  return { client, calls, emit: (s) => listeners.forEach((l) => l("SIGNED_IN", s)), unsubscribe };
+  return { client, calls, emit: (s, event = s ? "SIGNED_IN" : "SIGNED_OUT") => listeners.forEach((l) => l(event, s)),
+    unsubscribe,
+  };
 }
 
 describe("sendMagicLink", () => {
@@ -210,17 +217,40 @@ describe("watchSession", () => {
   });
 
   it("hears another tab sign in while this one waits for the email link, then sign out (#280)", async () => {
-    // supabase-js re-emits another tab's auth events to this tab's listeners.
+    // supabase-js re-emits another tab's auth events to this tab's listeners, by name.
     const { client, emit } = fakeClient({ session: null });
-    const seen: (string | null)[] = [];
-    watchSession(client, (s) => seen.push(s ? s.userId : null));
-    await vi.waitFor(() => expect(seen).toEqual([null]));
+    const seen: [string | null, string | null][] = [];
+    watchSession(client, (s, event) => seen.push([s ? s.userId : null, event]));
+    await vi.waitFor(() => expect(seen).toEqual([[null, null]]));
     emit({ user: { id: ID, email: "anne@example.com" } });
     emit(null);
-    expect(seen).toEqual([null, ID, null]);
+    expect(seen).toEqual([
+      [null, null],
+      [ID, "SIGNED_IN"],
+      [null, "SIGNED_OUT"],
+    ]);
   });
 
-  it("keeps another tab's sign-in that lands before this tab's first read (#280)", async () => {
+  it("passes a token refresh on by its own name, not as a sign-in", async () => {
+    const { client, emit } = fakeClient({ session: null });
+    const events: (string | null)[] = [];
+    watchSession(client, (_s, event) => events.push(event));
+    await vi.waitFor(() => expect(events).toEqual([null]));
+    emit({ user: { id: ID } }, "TOKEN_REFRESHED");
+    expect(events).toEqual([null, "TOKEN_REFRESHED"]);
+  });
+
+  it("reports the session once when supabase-js's INITIAL_SESSION lands before the first read", async () => {
+    const session = { user: { id: ID } };
+    const { client, emit } = fakeClient({ session });
+    const seen: [string | null, string | null][] = [];
+    watchSession(client, (s, event) => seen.push([s ? s.userId : null, event]));
+    emit(session, "INITIAL_SESSION");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(seen).toEqual([[ID, "INITIAL_SESSION"]]);
+  });
+
+  it("keeps an event that lands before a first read that was waiting on the network (#280)", async () => {
     const { client, emit } = fakeClient();
     let land: (session: SessionLike | null) => void = () => {};
     client.auth.getSession = () =>
@@ -230,7 +260,8 @@ describe("watchSession", () => {
     const seen: (string | null)[] = [];
     watchSession(client, (s) => seen.push(s ? s.userId : null));
     emit({ user: { id: ID } });
-    // The read began before the other tab wrote the session: it is stale.
+    // Rare in supabase-js: only a read held up by a token refresh over the
+    // network can finish after a newer event, and then it is the older news.
     land(null);
     await new Promise((r) => setTimeout(r, 0));
     expect(seen).toEqual([ID]);

@@ -71,24 +71,34 @@ export async function signOut(client: AccountClient): Promise<Result> {
 }
 
 /**
+ * The supabase-js auth event a session change came with (`SIGNED_IN`,
+ * `SIGNED_OUT`, `TOKEN_REFRESHED`, `INITIAL_SESSION`, ...), or null for
+ * `watchSession`'s own first read.
+ */
+export type AuthEvent = string | null;
+
+/**
  * Calls `onChange` with the current session (null when signed out), then on
- * every sign-in and sign-out, until the returned function is called. That
- * includes another tab's (#280): supabase-js posts each auth event on a
+ * every auth event, with its name, until the returned function is called.
+ * That includes another tab's (#280): supabase-js posts each auth event on a
  * BroadcastChannel named after its storage key, and every other tab's client
  * re-emits it here. An event that comes before the first read wins over it:
- * the read may have looked at storage before the other tab wrote it.
+ * the read can only be older news.
  */
-export function watchSession(client: AccountClient, onChange: (session: AccountSession | null) => void): () => void {
+export function watchSession(
+  client: AccountClient,
+  onChange: (session: AccountSession | null, event: AuthEvent) => void,
+): () => void {
   let live = true;
   let heard = false;
   const {
     data: { subscription },
-  } = client.auth.onAuthStateChange((_event, session) => {
+  } = client.auth.onAuthStateChange((event, session) => {
     heard = true;
-    if (live) onChange(toAccountSession(session));
+    if (live) onChange(toAccountSession(session), event);
   });
   void client.auth.getSession().then(({ data }) => {
-    if (live && !heard) onChange(toAccountSession(data.session));
+    if (live && !heard) onChange(toAccountSession(data.session), null);
   });
   return () => {
     live = false;

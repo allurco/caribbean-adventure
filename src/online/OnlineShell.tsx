@@ -29,8 +29,10 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
   const { page, onClick } = useShellNavigation(initialPage);
   const signedIn = session.status === "signedIn" ? session.session : null;
   const [ownProfile, setOwnProfile] = useProfile(client, signedIn?.userId ?? null);
-  // The email link opened another tab (#280): this one, still saying "check your email", comes aboard by itself and says so.
-  const signedInElsewhere = useTabSignInNotice(session.status, pageKey(page));
+  // Another tab of this browser signed in (#280), such as the one the email link opened: a tab
+  // that was showing signed out, on any page (the sign-in screen, a public profile), comes aboard
+  // by itself and says so.
+  const signedInElsewhere = useTabSignInNotice(session, pageKey(page));
 
   const ready = client !== undefined && session.status !== "loading";
   const publicPage = page.kind === "profile";
@@ -40,12 +42,16 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
     <div onClick={onClick} className="absolute inset-0 overflow-hidden bg-shell-harbour font-garamond">
       {/* Mounts the live harbour only once the shell can be used */}
       <HarbourBackdrop interactive={ready} />
+      {/* Mounted from the first paint, so screen readers announce the line once it is filled (#280) */}
+      <p role="status" className="sr-only">
+        {signedInElsewhere ? SIGNED_IN_ELSEWHERE : ""}
+      </p>
       {!ready ? (
         <ShellStatus />
       ) : signedIn || publicPage ? (
         <ShellFrame fit={fit} page={page} captain={signedIn ? captainOf(signedIn, ownProfile) : null}>
           {signedInElsewhere && (
-            <p role="status" className="mb-4 border-l-2 border-shell-rule pl-2.5 text-[15px] text-shell-ink-soft">
+            <p aria-hidden="true" className="mb-4 border-l-2 border-shell-rule pl-2.5 text-[15px] text-shell-ink-soft">
               {SIGNED_IN_ELSEWHERE}
             </p>
           )}

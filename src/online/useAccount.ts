@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { AccountClient } from "./accountClient";
-import { watchSession, type AccountSession } from "./accountService";
+import { watchSession, type AccountSession, type AuthEvent } from "./accountService";
 import { getAccountClient } from "./supabaseClient";
 import type { SupabaseConfig } from "./supabaseConfig";
 
@@ -19,15 +19,19 @@ export function useAccountClient(config: SupabaseConfig): AccountClient | undefi
   return client;
 }
 
-export type SessionState = { status: "loading" } | { status: "signedOut" } | { status: "signedIn"; session: AccountSession };
+/** `event`: the supabase-js auth event that brought this state (#280), null for the first read. */
+export type SessionState =
+  | { status: "loading" }
+  | { status: "signedOut"; event?: AuthEvent }
+  | { status: "signedIn"; session: AccountSession; event?: AuthEvent };
 
 /** Who is signed in, kept current across sign-ins and sign-outs. */
 export function useAccountSession(client: AccountClient | undefined): SessionState {
   const [state, setState] = useState<SessionState>({ status: "loading" });
   useEffect(() => {
     if (!client) return;
-    return watchSession(client, (session) =>
-      setState(session ? { status: "signedIn", session } : { status: "signedOut" }),
+    return watchSession(client, (session, event) =>
+      setState(session ? { status: "signedIn", session, event } : { status: "signedOut", event }),
     );
   }, [client]);
   return state;
