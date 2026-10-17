@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { concatGeometry, PROP_ENTRIES } from "./propEntries";
 import { AGED_BUILDING_TRIANGLES } from "./visuals/agedBuildingGeometry";
 import { FLAG_TRIANGLES } from "./visuals/nationFlagGeometry";
+import { TOWN_MODELS } from "./townModels";
 
 describe("PROP_ENTRIES", () => {
   it("builds every entry to whole triangles under distinct labels, the aged settlement among them", () => {
@@ -17,6 +18,15 @@ describe("PROP_ENTRIES", () => {
     for (const piece of ["house, aged", "tavern, aged", "warehouse, aged", "watchtower, aged (Spain)", "church, aged"]) expect(labels).toContain(piece);
     // And the harbour's furniture (#181).
     for (const piece of ["dock crane with its load", "market hall, thatched", "quay flag (Pirate)"]) expect(labels).toContain(piece);
+  });
+
+  it("shows the generated tavern (#394) beside the aged one it replaces, code-built until its model loads", () => {
+    const labels = PROP_ENTRIES.map((e) => e.label);
+    const generated = labels.indexOf("tavern, generated (England)");
+    expect(generated).toBe(labels.indexOf("tavern, aged") + 1);
+    const entry = PROP_ENTRIES[generated];
+    expect(entry.model).toBe(TOWN_MODELS.tavern);
+    expect(entry.build().vertexCount / 3).toBe(AGED_BUILDING_TRIANGLES.tavern);
   });
 
   it("shows the aged church at its recorded triangle count", () => {
