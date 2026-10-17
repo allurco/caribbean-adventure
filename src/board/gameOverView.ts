@@ -12,6 +12,11 @@ export type GameOverView =
   | { kind: "victory"; captainName: string; subtitle: string; score: number }
   | { kind: "allOut"; title: string; message: string; score: number };
 
+/** The victory's words for a captain afloat at the end. */
+export const CONQUERED = "has conquered the Caribbean!";
+/** The victory's words for a captain who fell in the fight that won it (#369). */
+export const FELL_WINNING = "claimed the Caribbean in their final fight, and went down with their ship.";
+
 /**
  * The screen for `result` in a game of `seats` seats, on the board of
  * `viewer`'s seat (its `playerID`; null on the hotseat screen every seat
@@ -20,8 +25,7 @@ export type GameOverView =
  */
 export function gameOverView(result: GameOverResult, seats: number, viewer: string | null): GameOverView {
   if (result.reason !== "allOut") {
-    const subtitle = result.fallen ? "won the Caribbean in their last fight, and went down with their ship." : "has conquered the Caribbean!";
-    return { kind: "victory", captainName: result.captainName, subtitle, score: result.score };
+    return { kind: "victory", captainName: result.captainName, subtitle: result.fallen ? FELL_WINNING : CONQUERED, score: result.score };
   }
   return { kind: "allOut", title: "All Hands Lost", message: allOutMessage(result, seats, viewer), score: result.score };
 }

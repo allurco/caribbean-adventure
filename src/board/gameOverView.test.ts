@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { gameOverView } from "./gameOverView";
+import { CONQUERED, FELL_WINNING, gameOverView } from "./gameOverView";
 import type { GameOverResult } from "../game/gameOver";
 
 /**
@@ -14,7 +14,7 @@ describe("gameOverView", () => {
     expect(gameOverView({ reason: "glory", winner: "1", captainName: "Drake", score: 20 }, 2, null)).toEqual({
       kind: "victory",
       captainName: "Drake",
-      subtitle: "has conquered the Caribbean!",
+      subtitle: CONQUERED,
       score: 20,
     });
   });
@@ -23,14 +23,14 @@ describe("gameOverView", () => {
     expect(gameOverView({ reason: "glory", winner: "0", captainName: "Blackbeard", score: 10, fallen: true }, 2, null)).toEqual({
       kind: "victory",
       captainName: "Blackbeard",
-      subtitle: "won the Caribbean in their last fight, and went down with their ship.",
+      subtitle: FELL_WINNING,
       score: 10,
     });
   });
 
   it("a result from before #289, with no reason, is the victory it used to show", () => {
     const old = { winner: "0", captainName: "Drake", score: 20 } as unknown as GameOverResult;
-    expect(gameOverView(old, 2, null)).toEqual({ kind: "victory", captainName: "Drake", subtitle: "has conquered the Caribbean!", score: 20 });
+    expect(gameOverView(old, 2, null)).toEqual({ kind: "victory", captainName: "Drake", subtitle: CONQUERED, score: 20 });
   });
 
   it("every seat out: names the player with the most glory, never a captain", () => {
