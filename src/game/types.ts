@@ -40,7 +40,10 @@ export const DAMAGE_CATEGORIES = ["hull", "crew", "masts"] as const;
 
 export const COMBAT_ACTIONS = ["fire", "board", "flee"] as const;
 
-export const COMBAT_STAGES = ["seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt", "cannons", "resolution"] as const;
+export const COMBAT_STAGES = ["seamanship", "defenderSeamanship", "chooseAction", "fleeAttempt", "cannons", "returnFire", "resolution"] as const;
+
+/** Where a volley is aimed (#348): every hit in it goes there. */
+export const VOLLEY_AIMS = ["hull", "masts", "crew"] as const;
 
 export interface ShipStats {
   maneuverability: number;
@@ -112,11 +115,18 @@ export interface ShipState {
 export type CombatAction = (typeof COMBAT_ACTIONS)[number];
 export type CombatStage = (typeof COMBAT_STAGES)[number];
 export type FleeOutcome = "escaped" | "caught" | null;
+export type VolleyAim = (typeof VOLLEY_AIMS)[number];
 
-/** One broadside fired in a round (#346): who fired, how many guns, and how many hit. */
+/** One broadside fired in a round (#346): who fired, how many guns, where it was aimed (#348), and how many hit. */
 export interface Volley {
   shooterId: string;
   guns: number;
+  /**
+   * Where every hit went (#348). Optional only because a volley stored
+   * before #348 (a match or save mid-fight as the change deployed) lacks
+   * it: read it as the hull, where every hit went then.
+   */
+  aim?: VolleyAim;
   hits: number;
 }
 

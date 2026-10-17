@@ -12,6 +12,7 @@ import { Caribbean, withGeneratedMap, withHotseatView } from "../game/Game";
 import type { CaribbeanState } from "../game/Game";
 import { generateMapFor } from "../game/mapRequest";
 import { STARTER_SHIP_CLASSES } from "../game/types";
+import { applyCannons, applyReturnFire, openFight } from "../game/combatMoves";
 import { HOTSEAT_SAVE_VERSION, saveHotseat } from "./hotseatSave";
 
 const request = { mapSize: "small", mapSeed: 7 } as const;
@@ -25,6 +26,23 @@ function playedSave() {
   client.moves.pickCaptain(1, STARTER_SHIP_CLASSES[1]);
   for (let i = 0; i < 12; i++) client.events.endTurn!();
   return JSON.parse(JSON.stringify(saveHotseat(client.store.getState(), map, 0)));
+}
+
+/**
+ * The same match mid-fight: seat 0 has fired on seat 1 and been answered,
+ * by the combat helpers the moves run, so `G.combat` holds every field a
+ * fight keeps, its volleys included. A change to a fight's shape fails here.
+ */
+function midFightSave() {
+  const save = playedSave();
+  const G = save.state.G;
+  G.combat = openFight("0", "1", 1, false);
+  G.ships["0"].stats.cannons = 4;
+  G.ships["1"].stats.cannons = 4;
+  const sixes = () => 6;
+  applyCannons(G, "masts", sixes);
+  applyReturnFire(G, "crew", sixes);
+  return JSON.parse(JSON.stringify(save));
 }
 
 type Shape = string | Shape[] | { [key: string]: Shape };
@@ -88,5 +106,12 @@ describe("the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes)",
   it("keeps the same shape: the save, G, ctx and the plugins' data", () => {
     // Named by the version, so a bump starts a new pinned shape and drops the old one.
     expect(shapeOf(playedSave())).toMatchSnapshot(`save version ${HOTSEAT_SAVE_VERSION}`);
+  });
+
+  it("keeps the same shape of a fight: G.combat and its volleys", () => {
+    const combat = midFightSave().state.G.combat;
+    expect(combat.stage).toBe("resolution");
+    expect(combat.volleys).toHaveLength(2);
+    expect(shapeOf(combat)).toMatchSnapshot(`fight, save version ${HOTSEAT_SAVE_VERSION}`);
   });
 });

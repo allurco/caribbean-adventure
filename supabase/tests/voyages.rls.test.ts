@@ -142,6 +142,15 @@ describe.skipIf(!dbTestsEnabled)("a player's voyages (local Supabase)", () => {
     expect((await voyages(jack))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
   });
 
+  it("in a fight, names the side answering the first volley, for it aims its own answer (#348)", async () => {
+    const { anne, jack, matchId } = await startedMatch();
+    await setFight(matchId, "0", { stage: "returnFire", attackerId: "0", defenderId: "1", seamanshipWinner: null, isNPCCombat: false });
+    expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 1, yourTurn: false });
+    expect((await voyages(jack))[0]).toMatchObject({ currentSeat: 1, yourTurn: true });
+    await setFight(matchId, "0", { stage: "returnFire", attackerId: "0", defenderId: "1", seamanshipWinner: "1", isNPCCombat: false });
+    expect((await voyages(anne))[0]).toMatchObject({ currentSeat: 0, yourTurn: true });
+  });
+
   it("in a fight, names the pursuer for the parting shot once the faster ship's flight is caught", async () => {
     const { anne, jack, matchId } = await startedMatch();
     await setFight(matchId, "0", {

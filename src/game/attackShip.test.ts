@@ -130,9 +130,15 @@ describe("combat across the east–west seam", () => {
   });
 });
 
+/** The answer, aimed at the hull, when the fight waits on it (#348). */
+function answerIfAsked(client: ReturnType<typeof setupCombatGame>) {
+  if (client.getState()!.G.combat?.stage === "returnFire") client.moves.returnFire("hull");
+}
+
 /** Round 1, the ambush (#346): the attacker's broadside and the answer, then the round's end; the fight goes on to the draw. */
 function pastTheAmbush(client: ReturnType<typeof setupCombatGame>) {
-  client.moves.rollCannons();
+  client.moves.rollCannons("hull");
+  answerIfAsked(client);
   client.moves.applyResolution();
 }
 
@@ -341,7 +347,7 @@ describe("combat phase - chooseAction", () => {
     if (G.combat && G.combat.fleeOutcome === "caught") {
       expect(G.combat.stage).toBe("cannons");
       // Continue to resolution
-      client.moves.rollCannons();
+      client.moves.rollCannons("hull");
       expect(client.getState()!.G.combat!.stage).toBe("resolution");
       client.moves.applyResolution();
       // After parting shot, combat ends
@@ -411,14 +417,14 @@ describe("combat phase - cannons", () => {
 
   it("rollCannons records attacker hits", () => {
     const client = setupAtCannons();
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
     const { G } = client.getState()!;
     expect(G.combat!.attackerHits).toBeGreaterThanOrEqual(0);
   });
 
   it("defender rolls if canReturnFire (same range)", () => {
     const client = setupAtCannons();
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
     const { G } = client.getState()!;
     // At range 1, defender can return fire
     expect(G.combat!.defenderHits).toBeGreaterThanOrEqual(0);
@@ -441,16 +447,17 @@ describe("combat phase - cannons", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
     const { G } = client.getState()!;
     expect(G.combat!.defenderHits).toBe(0);
   });
 
-  it("transitions to resolution after rollCannons", () => {
+  it("waits on the answer after rollCannons, then transitions to resolution (#348)", () => {
     const client = setupAtCannons();
-    client.moves.rollCannons();
-    const { G } = client.getState()!;
-    expect(G.combat!.stage).toBe("resolution");
+    client.moves.rollCannons("hull");
+    expect(client.getState()!.G.combat!.stage).toBe("returnFire");
+    client.moves.returnFire("hull");
+    expect(client.getState()!.G.combat!.stage).toBe("resolution");
   });
 });
 
@@ -472,7 +479,7 @@ describe("combat phase - resolution", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
     return client;
   }
 
@@ -506,7 +513,7 @@ describe("combat phase - resolution", () => {
     const client = setupCombatGame({ ship0, ship1 });
 
     client.moves.attackShip("1");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
 
     const { G: afterCannons } = client.getState()!;
     const attackerHits = afterCannons.combat!.attackerHits;
@@ -541,7 +548,7 @@ describe("combat phase - resolution", () => {
     const client = setupCombatGame({ ship0, ship1 });
 
     client.moves.attackShip("1");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
 
     // Get state after cannons
     const { G: afterCannons } = client.getState()!;
@@ -581,7 +588,8 @@ describe("combat phase - resolution", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
+    answerIfAsked(client);
 
     const { G: beforeRes } = client.getState()!;
     const round1 = beforeRes.combat!.round;
@@ -634,7 +642,7 @@ describe("combat outcomes", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
 
     const { G } = client.getState()!;
     // Both should be able to fire at range 1
@@ -661,7 +669,7 @@ describe("combat outcomes", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
 
     const { G: afterCannons } = client.getState()!;
     expect(afterCannons.combat!.defenderHits).toBe(0);
@@ -683,7 +691,7 @@ describe("combat outcomes", () => {
     }
 
     client.moves.chooseCombatAction("fire");
-    client.moves.rollCannons();
+    client.moves.rollCannons("hull");
 
     const { G } = client.getState()!;
     // Both have long_guns, so defender can return fire at range 2

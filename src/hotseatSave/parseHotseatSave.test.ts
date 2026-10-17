@@ -64,10 +64,23 @@ describe("reading a saved game back", () => {
     }
   });
 
-  it("reads a version 6 save, from before the event deck (#246), as this version's: its first draw shuffles a deck", () => {
+  it("reads a version 6 save, from before every volley was aimed (#348), as this version's, mid-fight too", () => {
+    // Version 6's fights wait on steps version 7 still has; a volley it fired, unaimed, went to the hull
+    const atCannons = { attackerId: "0", defenderId: "1", round: 2, stage: "cannons" };
+    const atResolution = { ...atCannons, stage: "resolution", volleys: [{ shooterId: "0", guns: 2, hits: 1 }] };
+    const v6G = { ...save.state.G };
+    delete v6G.eventDeck;
+    for (const G of [v6G, { ...v6G, combat: atCannons }, { ...v6G, combat: atResolution }]) {
+      const older = { ...save, version: 6, state: { ...save.state, G } };
+      expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+    }
+  });
+
+  it("reads a version 7 save, from before the event deck (#246), as this version's: its first draw shuffles a deck", () => {
+    expect(HOTSEAT_SAVE_VERSION).toBe(8);
     const olderG = { ...save.state.G };
     delete olderG.eventDeck;
-    const older = { ...save, version: 6, state: { ...save.state, G: olderG } };
+    const older = { ...save, version: 7, state: { ...save.state, G: olderG } };
     // A missing deck reads as an empty pile, which the first draw reshuffles, and an empty log (`drawEvent`)
     expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
   });

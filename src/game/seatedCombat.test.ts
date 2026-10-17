@@ -32,6 +32,13 @@ describe("withSeatedCombat (#113 review)", () => {
     }
   });
 
+  it("refuses the answer, and its aim, from the ship that fired first (#348)", () => {
+    // Round 1: the attacker fired the ambush; the defender answers
+    expect(press("returnFire", "0", { ...fight("0"), seamanshipWinner: null, round: 1, stage: "returnFire" })).toBe(INVALID_MOVE);
+    // From round 2 the defender won the draw and fired first; the attacker answers
+    expect(press("returnFire", "1", { ...fight("1"), round: 2, stage: "returnFire" })).toBe(INVALID_MOVE);
+  });
+
   it("refuses the parting shot, and its damage, from the ship caught fleeing: its pursuer fires it", () => {
     for (const fled of ["0", "1"]) {
       for (const [name, stage] of [["rollCannons", "cannons"], ["applyResolution", "resolution"]] as const) {
