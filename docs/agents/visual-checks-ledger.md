@@ -222,6 +222,17 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 The review fixes (the round-1 legacy rule, the pursuit dice and "Pursuit Caught!" on an out-of-range catch, whose guns the out-of-range line names, the merchant's "can't reach you" line) came after this check, at the next commit; they are logic and wording only, not re-screenshotted.
 
+### 2026-10-17: the event deck merged with the captain pick's turn opening (#246 PR #370 with #286 PR #368)
+
+- **Branch and commit:** `feat/246-event-deck` at `da4fea2` (main's #368 merged in; clean worktree, dev server). Merged to main as `e047a79` with the same code.
+- **Renderer:** headless Chromium on a real GPU (ANGLE Metal), Playwright 1.59, 1280×800 at DPR 1; a phone context at 844×390, `isMobile`, touch, DPR 3.
+- **View:** `?players=2&size=small&seed=7&skipLogin=1`, `?size=small&seed=7&skipLogin=1` (solo), `?seats=1&players=2&size=small&seed=7&skipLogin=1`, `?players=4&size=small&seed=7&skipLogin=1` (phone).
+- **How it was staged:** captains through `moves.pickCaptain(0, "Sloop")`; `merchantConvoy` pushed onto `G.eventDeck.drawPile` by a store `UPDATE` (in `?seats=1`, written to the local master's storage, the rival's turn ended with `master.onUpdate` as that seat). A lost ship staged by moving it to `lostShips` during the other seat's turn. Timeline from an in-page rAF loop: the DOM (banners, card, log rows), `G`, the `<Scene npcs>` props (read through a stub `__REACT_DEVTOOLS_GLOBAL_HOOK__`, since the Canvas's fibers live in R3F's own root) and the camera through `__THREE_DEVTOOLS__`.
+- **Findings, as intended:** at each turn end the log row lands 1.1 s after G changes, one frame before the released merchants reach `<Scene npcs>`; then one "Your Turn" banner and one camera flight (hotseat); the card follows the banner by about 30 ms and goes after 6.0 s or a tap. Calm seas: a log row, no card. After a pick: no turn-ends banner over the captain screen, one banner, one flight to the new ship; the log comes back with the HUD. Solo and `?seats=1`: card and banners on every turn end. Phone with 4 seats: no event log, the card over the captain card. No console errors.
+- **Bug found, filed as #372:** when the turn passes to a seat that must pick a captain, the hand-off goes idle on `nextTurnMax` (about 5.5 s in), so the card mounts under "Choose Your Captain", dimmed behind the captain cards, with its 6 s timer running. A pick within about 11.5 s shows it again after the banner; a slower pick loses it unseen. Also in #372: a seat's earlier log rows read "after Player n's turn" once its ship is gone (`seatName` reads `G.ships`).
+- **Order, for the record:** the card shows after the "Your Turn" banner, not before it (`eventCardShows` waits on `!controlsLocked && !turnChangeShowing`), as the PR body describes.
+- **Not checked:** an online match; a loss through a real fight (staged only); 3 seats.
+
 ### 2026-10-16: the event deck, Calm seas and Merchant convoy (#246, PR #370)
 
 - **Branch and commit:** `feat/246-event-deck` at `b039468` (clean worktree, dev server).
