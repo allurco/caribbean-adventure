@@ -111,6 +111,12 @@ describe("turnCaptainName: whose turn a log row came on (#372)", () => {
     delete G.ships["1"];
     expect(turnCaptainName(G, "1")).toBe("Player 2");
   });
+  it("'Player n' for a lost ship that kept no captain", () => {
+    const G = table(2);
+    delete G.ships["1"];
+    G.lostShips = { "1": { cause: "sunk", score: 0, stashedGold: 0 } };
+    expect(turnCaptainName(G, "1")).toBe("Player 2");
+  });
 });
 
 describe("waitingFor: the line a seat sees on another's turn", () => {
