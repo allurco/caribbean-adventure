@@ -37,13 +37,11 @@ def _triangles(piece):
 TRIS = _triangles(PLAN)
 
 
-def _hits_back_face(origin, d):
-    """Whether the line through `origin` along `d`, above the ground,
-    crosses a triangle whose normal points along `d` (a back face as seen
-    from the light). The footing below the ground casts on nothing."""
-    for a, b, c, n in TRIS:
-        if n[0] * d[0] + n[1] * d[1] + n[2] * d[2] <= 0.0:
-            continue
+def _crossings(origin, d, tris):
+    """The normal of every triangle the line through `origin` along `d`
+    crosses on or above the ground (Moller-Trumbore). The footing below the
+    ground casts on nothing; a crossing at the ground itself still counts."""
+    for a, b, c, n in tris:
         e1 = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
         e2 = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
         pv = (d[1] * e2[2] - d[2] * e2[1], d[2] * e2[0] - d[0] * e2[2],
@@ -63,8 +61,19 @@ def _hits_back_face(origin, d):
             continue
         t = (e2[0] * qv[0] + e2[1] * qv[1] + e2[2] * qv[2]) * inv
         if origin[2] + t * d[2] >= -1e-9:
-            return True
-    return False
+            yield n
+
+
+def _casts(n, d):
+    """Whether a face with normal `n` is turned away from a sun shining along
+    `d`: a back face as seen from the light, which the shadow map draws."""
+    return n[0] * d[0] + n[1] * d[1] + n[2] * d[2] > 0.0
+
+
+def _hits_back_face(origin, d):
+    """Whether the line through `origin` along `d` crosses, above the ground,
+    a face that casts."""
+    return any(_casts(n, d) for n in _crossings(origin, d, TRIS))
 
 
 # The board's sun stands 22 degrees up at its golden hour (`GOLDEN_HOUR` in
@@ -104,9 +113,9 @@ def _lands_under_the_tavern(origin, d):
 
 
 def test_every_ray_of_sun_through_the_tavern_meets_a_face_that_casts():
-    leaks = [(pt, d) for d in _sun_rays() for pt in _inside_points()
+    slivers = [(pt, d) for d in _sun_rays() for pt in _inside_points()
              if not _lands_under_the_tavern(pt, d) and not _hits_back_face(pt, d)]
-    assert not leaks, f"{len(leaks)} rays pass through, e.g. {leaks[:3]}"
+    assert not slivers, f"{len(slivers)} rays pass through, e.g. {slivers[:3]}"
 
 
 def _basis(d):
@@ -123,28 +132,8 @@ def _hit_kinds(origin, d, tris):
     """Whether the line meets, above the ground, a face turned to the sun
     (light comes in) and a face turned away (the shadow map sees it)."""
     lit = cast = False
-    for a, b, c, n in tris:
-        e1 = (b[0] - a[0], b[1] - a[1], b[2] - a[2])
-        e2 = (c[0] - a[0], c[1] - a[1], c[2] - a[2])
-        pv = (d[1] * e2[2] - d[2] * e2[1], d[2] * e2[0] - d[0] * e2[2],
-              d[0] * e2[1] - d[1] * e2[0])
-        det = e1[0] * pv[0] + e1[1] * pv[1] + e1[2] * pv[2]
-        if abs(det) < 1e-12:
-            continue
-        inv = 1.0 / det
-        tv = (origin[0] - a[0], origin[1] - a[1], origin[2] - a[2])
-        u = (tv[0] * pv[0] + tv[1] * pv[1] + tv[2] * pv[2]) * inv
-        if u < 0.0 or u > 1.0:
-            continue
-        qv = (tv[1] * e1[2] - tv[2] * e1[1], tv[2] * e1[0] - tv[0] * e1[2],
-              tv[0] * e1[1] - tv[1] * e1[0])
-        v = (d[0] * qv[0] + d[1] * qv[1] + d[2] * qv[2]) * inv
-        if v < 0.0 or u + v > 1.0:
-            continue
-        t = (e2[0] * qv[0] + e2[1] * qv[1] + e2[2] * qv[2]) * inv
-        if origin[2] + t * d[2] < 0.0:
-            continue
-        if n[0] * d[0] + n[1] * d[1] + n[2] * d[2] > 0.0:
+    for n in _crossings(origin, d, tris):
+        if _casts(n, d):
             cast = True
         else:
             lit = True
@@ -170,7 +159,7 @@ def test_no_sliver_of_sun_passes_through_any_member():
     # lands where no one sees it. Sweeps the whole silhouette at a tenth of a
     # metre, from the four quarters at the board's sun and a higher one.
     hidden = _open_bottoms()
-    leaks = []
+    slivers = []
     for elevation, k in ((el, k) for el in (BOARD_SUN_ELEVATION, 35.0) for k in range(4)):
         az, e = math.radians(30.0 + 90.0 * k), math.radians(elevation)
         d = (-math.cos(e) * math.cos(az), -math.cos(e) * math.sin(az), -math.sin(e))
@@ -185,8 +174,9 @@ def test_no_sliver_of_sun_passes_through_any_member():
                     buckets.setdefault((i, j), []).append(tri)
         step = 0.1
         for (i, j), tris in buckets.items():
-            for a in range(5):
-                for b in range(5):
+            per_cell = round(cell / step)
+            for a in range(per_cell):
+                for b in range(per_cell):
                     s, t = (i * cell + (a + 0.5) * step, j * cell + (b + 0.5) * step)
                     o = tuple(s * e1[c] + t * e2[c] for c in range(3))
                     lit, cast = _hit_kinds(o, d, tris)
@@ -196,5 +186,5 @@ def test_no_sliver_of_sun_passes_through_any_member():
                     x, y = o[0] + g * d[0], o[1] + g * d[1]
                     if any(x0 <= x <= x1 and y0 <= y <= y1 for x0, y0, x1, y1 in hidden):
                         continue
-                    leaks.append((round(x, 2), round(y, 2), elevation, k))
-    assert not leaks, f"{len(leaks)} slivers of sun on the ground, e.g. {leaks[:5]}"
+                    slivers.append((round(x, 2), round(y, 2), elevation, k))
+    assert not slivers, f"{len(slivers)} slivers of sun on the ground, e.g. {slivers[:5]}"
