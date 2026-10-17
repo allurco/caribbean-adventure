@@ -108,6 +108,15 @@ def _cuts(lo: float, hi: float, count: int, stagger: bool) -> list:
     return [lo] + inner + [hi]
 
 
+def _ring_quads(ow: float, od: float, iw: float, id_: float):
+    """The four quads of a flat ring between an outer rectangle (half sizes
+    `ow`, `od`) and an inner one (`iw`, `id_`): front, east, back, west."""
+    return (((-ow, -od), (ow, -od), (iw, -id_), (-iw, -id_)),
+            ((ow, -od), (ow, od), (iw, id_), (iw, -id_)),
+            ((ow, od), (-ow, od), (-iw, id_), (iw, id_)),
+            ((-ow, od), (-ow, -od), (-iw, -id_), (-iw, id_)))
+
+
 def _stone_storey(piece: Piece, p: TavernParams, tones: _Tones):
     walls = piece.part("Walls")
     W, D, G = p.half_width, p.half_depth, p.ground_storey
@@ -128,11 +137,7 @@ def _stone_storey(piece: Piece, p: TavernParams, tones: _Tones):
         z, lo_r, hi_r = G * (k + 1) / n, recess[k], recess[k + 1]
         ow, od, iw, id_ = W - lo_r, D - lo_r, W - hi_r, D - hi_r
         up = 1.0 if lo_r < hi_r else -1.0
-        rings = (((-ow, -od), (ow, -od), (iw, -id_), (-iw, -id_)),
-                 ((ow, -od), (ow, od), (iw, id_), (iw, -id_)),
-                 ((ow, od), (-ow, od), (-iw, id_), (iw, id_)),
-                 ((-ow, od), (-ow, -od), (-iw, -id_), (-iw, id_)))
-        for quad in rings:
+        for quad in _ring_quads(ow, od, iw, id_):
             walls.face([(x, y, z) for x, y in quad], mortar, TINTS["none"],
                        out=(0.0, 0.0, up))
     # A set-back top course leaves a slit under the timber storey's walls,
@@ -140,11 +145,7 @@ def _stone_storey(piece: Piece, p: TavernParams, tones: _Tones):
     top = recess[n - 1]
     if top > 0.0:
         ow, od, iw, id_ = W, D, W - top, D - top
-        rings = (((-ow, -od), (ow, -od), (iw, -id_), (-iw, -id_)),
-                 ((ow, -od), (ow, od), (iw, id_), (iw, -id_)),
-                 ((ow, od), (-ow, od), (-iw, id_), (iw, id_)),
-                 ((-ow, od), (-ow, -od), (-iw, -id_), (-iw, id_)))
-        for quad in rings:
+        for quad in _ring_quads(ow, od, iw, id_):
             walls.face([(x, y, G) for x, y in quad], mortar, TINTS["none"],
                        out=(0.0, 0.0, -1.0))
 
