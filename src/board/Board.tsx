@@ -95,7 +95,7 @@ import { createGpuInfoFeed, gpuSetupLines } from "./gpuInfo";
 import { GpuInfoOverlay } from "./GpuInfoOverlay";
 import { useRegionChart } from "./visuals/useRegionChart";
 import { useTurnHandoff } from "./useTurnHandoff";
-import { controlsLocked, holdsNpcs, turnsInPlay } from "./turnHandoff";
+import { controlsLocked, HANDOFF_TIMING, holdsNpcs, turnsInPlay } from "./turnHandoff";
 import { TurnEndedBanner } from "./TurnEndedBanner";
 import type { Point } from "./shipMotion";
 import { ShipTooltip } from "./ShipTooltip";
@@ -128,7 +128,7 @@ import { isEliminated } from "../game/captainDeath";
 import { HudTurnBar } from "./HudTurnBar";
 import { CombatPanel } from "./CombatPanel";
 import { FightOverPanel } from "./FightOverPanel";
-import { closeFightOver, initialFightOver, nextFightOver } from "./fightOverShown";
+import { closeFightOver, initialFightOver, nextFightOver, settledKey } from "./fightOverShown";
 import { npcKind } from "./npcName";
 import { gaugeLine } from "./combatGauge";
 import { SCENE_WIND } from "./visuals/sceneWind";
@@ -1145,15 +1145,32 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
   // The fight's end (#380): the round that ended it settled itself, so its volleys stay on the board until closed
   const [fightOverView, setFightOverView] = useState(() => initialFightOver(G.lastRound));
   const npcInFight = G.combat?.isNPCCombat ? G.npcs[G.combat.defenderId] : undefined;
+  // The last ended round the board has played out (its volleys, the sinking): the panel waits on it
+  const [fightPlayedKey, setFightPlayedKey] = useState("");
   const nextFightOverView = nextFightOver(fightOverView, {
     lastRound: G.lastRound,
     inCombat: Boolean(inCombat),
     npcInFight: npcInFight ? npcKind(npcInFight) : null,
     announced: announced !== null,
     hotseat: isHotseatBoard(props.playerID, ctx.numPlayers),
+    playedKey: fightPlayedKey,
   });
   if (nextFightOverView !== fightOverView) setFightOverView(nextFightOverView);
   const fightOver = nextFightOverView.shown;
+  const fightOverWaitingKey = nextFightOverView.waiting ? settledKey(nextFightOverView.waiting) : "";
+  // Watch the effects frame by frame from the frame after the round arrived (the director takes its beats in an effect), as the hand-off does
+  useEffect(() => {
+    if (!fightOverWaitingKey) return;
+    const since = performance.now();
+    let frame = requestAnimationFrame(function tick(now) {
+      if (combatDirector.holding() && now - since < HANDOFF_TIMING.fightMax) {
+        frame = requestAnimationFrame(tick);
+        return;
+      }
+      setFightPlayedKey(fightOverWaitingKey);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [fightOverWaitingKey, combatDirector]);
   // Whether the HUD's top-left stack shows, for the harbour link over the board (#125): it sits beside the stack on a phone
   const hudStackUp = hudStackShows(G, ctx);
   useEffect(() => (hudStackUp ? hudStackPresence.show() : undefined), [hudStackUp]);

@@ -1,5 +1,5 @@
 import type { CombatState, ShipState, CombatAction, NPCShip, SettledRound } from "../game/types";
-import { answerLine, combatantLabel, noAnswer, pendingVolley, pursuitRollsLine, roundShown } from "./volleyText";
+import { answerLine, combatantLabel, drawRollsLine, noAnswer, pendingVolley, pursuitRollsLine, roundShown } from "./volleyText";
 import { VolleyLines } from "./VolleyLines";
 import { npcKind } from "./npcName";
 import { defenderRollLine, drawIntro } from "./seamanshipText";
@@ -232,8 +232,10 @@ export function CombatPanel({
               {winnerLabel}
             </div>
             <div className="text-[10px] text-amber-400/60 mt-1">
-              Rolls: P{seatNumber(combat.attackerId)}: {combat.seamanshipRolls[combat.attackerId]} |
-              {isNPC ? " NPC" : ` P${seatNumber(combat.defenderId)}`}: {combat.seamanshipRolls[combat.defenderId]}
+              {drawRollsLine([
+                { label: `P${seatNumber(combat.attackerId)}`, die: combat.seamanshipRolls[combat.attackerId], maneuverability: attacker?.stats?.maneuverability ?? 0 },
+                { label: isNPC ? "NPC" : `P${seatNumber(combat.defenderId)}`, die: combat.seamanshipRolls[combat.defenderId], maneuverability: defender?.stats?.maneuverability ?? 0 },
+              ])}
             </div>
           </div>
 
