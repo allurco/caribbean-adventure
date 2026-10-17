@@ -8,7 +8,7 @@
  * centre, the footing reaching down, the front along glTF +Z, nothing past
  * the plan circle. Pure; the town asset test feeds it the files.
  */
-import { glbAnchors, glbAttributeValues, glbBounds, glbPartBounds, glbPartPositions, glbPrimitiveAttributes, glbTriangles, readGlb } from "./glb";
+import { glbAnchors, glbAttributeValues, glbBounds, glbPartBounds, glbPartPositions, glbPrimitiveAttributes, glbTriangleSoup, glbTriangles, readGlb } from "./glb";
 import { SHIP_DIMENSION_TOLERANCE } from "./shipAssetCheck";
 import type { TownModel, TownPieceKind } from "./townModels";
 
@@ -62,6 +62,12 @@ export function townAssetProblems(model: TownModel, bytes: Uint8Array): string[]
       .filter((t) => !Number.isInteger(t) || t < 0 || t >= TOWN_TINT_CHANNELS)
   );
   for (const t of stray) problems.push(`${file}: tint ${t} is not one of the ${TOWN_TINT_CHANNELS} channels`);
+
+  try {
+    glbTriangleSoup(glb);
+  } catch (error) {
+    problems.push(`${file}: the board cannot draw it: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   const anchors = glbAnchors(glb);
   for (const name of model.anchors) {

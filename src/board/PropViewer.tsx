@@ -13,7 +13,8 @@ import { CAMERA_DIRECTION, CAMERA_FOV } from "./cameraBounds";
 import { paletteColor } from "./visuals/palette";
 import { PROP_ENTRIES, type PropEntry, type PropGeometryData } from "./propEntries";
 import { layoutRow, propExtent } from "./propLayout";
-import { logTownModelFailure, useTownModelGeometry } from "./useTownModel";
+import { logTownModelFailure } from "./townModelFailure";
+import { useTownModelGeometry } from "./useTownModel";
 import type { TownModel } from "./townModels";
 
 /**

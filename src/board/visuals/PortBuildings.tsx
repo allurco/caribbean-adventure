@@ -9,7 +9,8 @@ import { buildNationFlagGeometry } from "./nationFlagGeometry";
 import type { FacetGeometryData } from "./facetBuilder";
 import type { PortBuilding } from "./portSettlement";
 import { townModelFor, type TownModel } from "../townModels";
-import { logTownModelFailure, useTownModelGeometry } from "../useTownModel";
+import { logTownModelFailure } from "../townModelFailure";
+import { useTownModelGeometry } from "../useTownModel";
 
 function toGeometry(data: FacetGeometryData): BufferGeometry {
   const geometry = new BufferGeometry();

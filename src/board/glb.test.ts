@@ -7,11 +7,11 @@ import { glbAnchors, glbAttributeValues, glbPrimitiveAttributes, glbTriangles, g
  * 10 along +X, with a ushort-normalised COLOR_0 and a float `_TINT`, and an
  * empty node, the anchor, as its child.
  */
-function quadGlb() {
+function quadGlb(edit: (json: GltfDoc) => void = () => {}, tintValues: readonly number[] = [1, 1, 5, 5]) {
   const positions = packed("f32", [-2, 0, 0, 1, 0, 0, 1, 1, 0, -2, 1, 0]);
   const normals = packed("f32", [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]);
   const colours = packed("u16", [65535, 0, 0, 65535, 0, 65535, 0, 65535, 0, 0, 65535, 65535, 32768, 32768, 32768, 65535]);
-  const tints = packed("f32", [1, 1, 5, 5]);
+  const tints = packed("f32", tintValues);
   const indices = packed("u16", [0, 1, 2, 0, 2, 3]);
   const { bin, offsets } = concatBuffers([positions, normals, colours, tints, indices]);
   const view = (i: number, length: number) => ({ buffer: 0, byteOffset: offsets[i], byteLength: length });
@@ -35,8 +35,14 @@ function quadGlb() {
     bufferViews: [view(0, 48), view(1, 48), view(2, 32), view(3, 16), view(4, 12)],
     buffers: [{ byteLength: bin.length }],
   };
+  edit(json);
   return readGlb(writeGlb(json, bin));
 }
+
+type GltfDoc = {
+  meshes: { primitives: { attributes: Record<string, number | undefined> }[] }[];
+  accessors: { count: number; type: string }[];
+};
 
 const close = (got: ArrayLike<number>, want: readonly number[]) => {
   expect(got.length).toBe(want.length);
@@ -73,5 +79,27 @@ describe("glb", () => {
     close(soup.normals.slice(0, 3), [1, 0, 0]);
     close(soup.colors.slice(0, 6), [1, 0, 0, 0, 1, 0]);
     close(soup.tints, [1, 1, 5, 1, 5, 5]);
+  });
+
+  it("gives the tint channel one byte per corner", () => {
+    expect(glbTriangleSoup(quadGlb()).tints).toBeInstanceOf(Uint8Array);
+  });
+
+  it("refuses a tint that is not a whole channel number a byte holds", () => {
+    expect(() => glbTriangleSoup(quadGlb(undefined, [1, 1, 5.5, 5]))).toThrow(/_TINT/);
+    expect(() => glbTriangleSoup(quadGlb(undefined, [1, 1, 300, 5]))).toThrow(/_TINT/);
+    expect(() => glbTriangleSoup(quadGlb(undefined, [1, -1, 5, 5]))).toThrow(/_TINT/);
+  });
+
+  it("refuses a NORMAL, COLOR_0 or _TINT shorter than POSITION, or missing", () => {
+    for (const attribute of [1, 2, 3]) {
+      const name = ["", "NORMAL", "COLOR_0", "_TINT"][attribute];
+      expect(() => glbTriangleSoup(quadGlb((json) => (json.accessors[attribute].count = 3)))).toThrow(new RegExp(name));
+      expect(() => glbTriangleSoup(quadGlb((json) => delete json.meshes[0].primitives[0].attributes[name]))).toThrow(new RegExp(name));
+    }
+  });
+
+  it("refuses a POSITION that is not VEC3", () => {
+    expect(() => glbTriangleSoup(quadGlb((json) => (json.accessors[0].type = "VEC4")))).toThrow(/POSITION/);
   });
 });

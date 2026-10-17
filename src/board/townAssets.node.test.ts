@@ -20,15 +20,31 @@ const SHIPPED = readdirSync(TOWN_DIR).filter((file) => !file.startsWith("."));
 const tavern = TOWN_MODELS.tavern;
 const tavernBytes = () => new Uint8Array(readFileSync(new URL(tavern.file, TOWN_DIR)));
 
-/** The tavern's file with its JSON changed by `edit`, and its binary chunk grown by `pad` bytes. */
-const planted = (edit: (json: ReturnType<typeof readGlb>["json"]) => void, pad = 0): Uint8Array => {
+type GlbJson = ReturnType<typeof readGlb>["json"];
+
+/** The tavern's file with its JSON changed by `edit`, its binary chunk grown by `pad` bytes and then changed by `editBin`. */
+const planted = (edit: (json: GlbJson) => void, pad = 0, editBin: (json: GlbJson, bin: DataView) => void = () => {}): Uint8Array => {
   const { json, bin } = readGlb(tavernBytes());
   const copy = structuredClone(json);
   edit(copy);
   const grown = new Uint8Array(bin.length + pad);
   grown.set(bin);
+  editBin(copy, new DataView(grown.buffer));
   return writeGlb(copy, grown);
 };
+
+/** The tavern with its first `_TINT` value written as `value` (the exporter writes the channel as float32). */
+const withFirstTint = (value: number) =>
+  planted(
+    () => {},
+    0,
+    (json, bin) => {
+      const accessor = json.accessors![json.meshes![0].primitives[0].attributes._TINT!];
+      expect(accessor.componentType).toBe(5126);
+      const view = json.bufferViews![accessor.bufferView!];
+      bin.setFloat32((view.byteOffset ?? 0) + (accessor.byteOffset ?? 0), value, true);
+    }
+  );
 
 describe("town assets", () => {
   it("has a file for every catalogue entry and an entry for every file", () => {
@@ -101,6 +117,21 @@ describe("town assets", () => {
       json.nodes!.find((n) => n.name === "Chimney_00")!.name = "Smoke";
     });
     expect(townAssetProblems(tavern, noChimney).join("\n")).toMatch(/Chimney_00/);
+  });
+
+  it("flags a missing vertex colour, and a tint that is not one of the channels", () => {
+    const uncoloured = planted((json) => {
+      delete json.meshes![0].primitives[0].attributes.COLOR_0;
+    });
+    expect(townAssetProblems(tavern, uncoloured).join("\n")).toMatch(/primitive 0 has no COLOR_0/);
+    expect(townAssetProblems(tavern, withFirstTint(6)).join("\n")).toMatch(/tint 6 is not one of the 6 channels/);
+    expect(townAssetProblems(tavern, withFirstTint(2.5)).join("\n")).toMatch(/tint 2.5 is not one of the 6 channels/);
+    expect(townAssetProblems(tavern, withFirstTint(-1)).join("\n")).toMatch(/tint -1 is not one of the 6 channels/);
+    const shortNormals = planted((json) => {
+      const primitive = json.meshes![0].primitives[0];
+      json.accessors![primitive.attributes.NORMAL!].count -= 1;
+    });
+    expect(townAssetProblems(tavern, shortNormals).join("\n")).toMatch(/the board cannot draw it: primitive 0: NORMAL has/);
   });
 
   it("flags a footprint, height or origin off the catalogue's by more than 3 %", () => {
