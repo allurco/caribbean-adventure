@@ -56,8 +56,9 @@ export function soundEventsFrom(prev: CaribbeanState | undefined, next: Caribbea
   }
 
   // A ship or NPC that disappears as new wreckage appears went down; an NPC
-  // that leaves without any (a merchant arriving, a boarded prize) did not.
-  if (next.floatingLoot.length > prev.floatingLoot.length) {
+  // that leaves without any (a merchant arriving) did not, nor one that
+  // struck to a boarding, whose cargo may float (#350).
+  if (next.floatingLoot.length > prev.floatingLoot.length && prev.combat?.stage !== "boarding") {
     for (const shipId of Object.keys(prev.ships)) {
       if (!(shipId in next.ships)) events.push({ type: "shipSunk", shipId, isNpc: false });
     }
@@ -159,8 +160,8 @@ function combatEvents(before: CombatState | undefined, next: Pick<CaribbeanState
     const hitsBy = (id: string) => fired.filter((v) => v.shooterId === id).reduce((sum, v) => sum + v.hits, 0);
     events.push({ type: "cannonsFired", attackerHits: hitsBy(before.attackerId), defenderHits: hitsBy(before.defenderId) });
   }
-  // Choosing an action ends the combat only by boarding (flee and fire move on).
-  if (before.stage === "chooseAction" && !after) {
+  // The crew fight (#350) ends the combat, a side striking its colours.
+  if (before.stage === "boarding" && !after) {
     events.push({ type: "boarded", attackerId: before.attackerId, defenderId: before.defenderId });
   }
   // Caught: the parting shot next, or, the pursuer out of range (#356), the fight over at once (#380)
