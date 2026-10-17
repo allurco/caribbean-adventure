@@ -45,7 +45,9 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
  * either way, so every version 5 save is version 6's. Version 6 fired
  * unaimed volleys (#348); its fights wait on steps version 7 still has, and
  * a volley it recorded with no aim is read as aimed at the hull, so every
- * version 6 save is version 7's.
+ * version 6 save is version 7's. Version 7 lacks `G.eventDeck` (#246),
+ * which the game reads as an empty pile, shuffled at the first draw, and an
+ * empty log.
  */
 function migrate(value: Record<string, unknown>): Record<string, unknown> {
   let current = value;
@@ -54,6 +56,7 @@ function migrate(value: Record<string, unknown>): Record<string, unknown> {
   if (current.version === 4) current = { ...current, version: 5 };
   if (current.version === 5) current = { ...current, version: 6 };
   if (current.version === 6) current = { ...current, version: 7 };
+  if (current.version === 7) current = { ...current, version: 8 };
   return current;
 }
 

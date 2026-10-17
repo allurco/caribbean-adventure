@@ -101,17 +101,19 @@ function setupMainPhaseWithNPCs() {
 }
 
 describe("NPC AI movement", () => {
-  it("moves NPCs at the end of each player turn", () => {
+  it("moves merchants once a round, as the last seat's turn ends (#246)", () => {
     const client = setupMainPhaseWithNPCs();
 
     // NPC starts at (1,0)
     const npcBefore = client.getState()!.G.npcs["npc-1"];
     expect(hexEquals(npcBefore.position, hex(1, 0))).toBe(true);
 
-    // Player 0 ends their turn (by making enough moves or ending manually)
+    // Player 0's turn ends mid-round: the merchant waits
     client.events.endTurn!();
+    expect(hexEquals(client.getState()!.G.npcs["npc-1"].position, hex(1, 0))).toBe(true);
 
-    // After player 0's turn ends, NPCs should have moved
+    // Player 1's turn ends the round: the merchant sails
+    client.events.endTurn!();
     const { G } = client.getState()!;
     const npc = G.npcs["npc-1"];
 
@@ -161,7 +163,8 @@ describe("NPC AI movement", () => {
 
     expect(client.getState()!.G.npcs["npc-1"]).toBeDefined();
 
-    // End turn - NPC should move to destination and despawn
+    // End the round - NPC should move to destination and despawn
+    client.events.endTurn!();
     client.events.endTurn!();
 
     expect(client.getState()!.G.npcs["npc-1"]).toBeUndefined();
@@ -207,6 +210,8 @@ describe("NPC AI movement", () => {
     const client = Client<CaribbeanState>({ game: withHotseatView(withMainPhase(TestGame)), numPlayers: 2 });
     client.start();
 
+    // The round ends: the merchant sails
+    client.events.endTurn!();
     client.events.endTurn!();
 
     const { G } = client.getState()!;

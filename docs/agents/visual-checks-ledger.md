@@ -210,6 +210,17 @@ That is enough to answer "which PR is this from?" later without guessing.
 
 ## Screenshot batches
 
+### 2026-10-16: the event deck, Calm seas and Merchant convoy (#246, PR #370)
+
+- **Branch and commit:** `feat/246-event-deck` at `b039468` (clean worktree, dev server).
+- **Renderer:** Playwright MCP's Chromium on a real GPU (ANGLE Metal), 1280×800 at DPR 1; a phone context at 844×390, `isMobile`, touch, DPR 3.
+- **View:** `?size=small&seed=7&skipLogin=1` solo, `&players=2`, `&players=4` (phone), and `?seats=1&players=2`; camera at each seat's default.
+- **How it was staged:** captains through `moves.pickCaptain(0, "Sloop")`. `merchantConvoy` pushed onto `G.eventDeck.drawPile` (top card last) by store `UPDATE`; in `?seats=1` written to the master's storage, then `requestSync()`, and the other seat's turn ended with `master.onUpdate({type:"GAME_EVENT",payload:{type:"endTurn",playerID}})`. A flotilla made by copying a merchant with `role: "FLOTILLA"`. A fight against a convoy merchant moved next to the ship with `stats.hull.current = 1`. Timings from an in-page rAF loop.
+- **Findings:** the log grows every turn; merchants sail once a round and flotillas every turn; a fight draws once, when it resolves; both seats get the same log and card. **Bug:** the card never renders (`!handoff` while the hand-off rests at `idle`; it shows with `!locked`). **Bug:** the log row appears in the frame G changes, about 1.2 s before the held NPCs are let go. **Bug:** at 844×390 with 4 seats the event log is behind the captain card.
+- Fixed in `da9e344`: the card gated on controlsLocked, the log released with the NPCs, the phone layout lists no event log on the compact (phone held sideways) layout (`eventLogLength`), the card still showing there.
+- **Not checked:** an online match; Storm and other cards (not in this slice); the merchants on screen during the hand-off (camera elsewhere; timing only).
+- **Re-checked at `52a62cb`** (Chromium, ANGLE Metal; 1280×800, and 844×390 touch at DPR 3): the card shows 23–25 ms after the turn-change banner on every convoy (5 solo, 4 hotseat), never over it, and goes on a click or after 6.0 s; Calm seas shows none. In hotseat the log row lands in the same rAF frame as the released merchants reach `<Scene npcs>`, about 2.1 s after G changes, and each row ends "after <captain>'s turn". At 844×390 with 4 seats there is no log, the glory board clears the captain card, and the card shows and taps away. The desktop log still holds 4 rows; no console errors. (Read fibers from `root.__reactContainer$….stateNode.current`, because the container's own fiber can be the stale alternate tree.)
+
 ### 2026-10-16: a new captain's turn opens after the pick (#286, PR #368)
 
 - **Branch and commit:** `fix/286-captain-pick` at `d945bb4`, re-checked at `59e3b58`.

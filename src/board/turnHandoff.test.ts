@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { NPCShip } from "../game/types";
-import { controlsLocked, endedInFight, HANDOFF_TIMING as T, heldNpcsFor, holdsNpcs, startHandoff, turnsInPlay, stepHandoff, turnPassed, type Handoff, type HandoffSignals } from "./turnHandoff";
+import { controlsLocked, endedInFight, HANDOFF_TIMING as T, heldNpcsFor, holdsNpcs, startHandoff, turnsInPlay, stepHandoff, turnPassed, type Handoff, type HandoffSignals , npcsHeldNow } from "./turnHandoff";
 
 const calm = (now: number, over: Partial<HandoffSignals> = {}): HandoffSignals => ({
   now,
@@ -160,5 +160,27 @@ describe("the NPCs a hand-off holds (#288)", () => {
   it("after a fight that took no NPC: the NPCs as they stood", () => {
     const after = { prey: npc("prey", 1), witness: npc("witness", 4) };
     expect(heldNpcsFor(before, after, shown, afterAFight)).toEqual(before);
+  });
+});
+
+describe("whether the NPCs (and the turn's events) are held in this render (#246)", () => {
+  const shown = { player: "0", turn: 4 };
+  const playing = (h: ReturnType<typeof startHandoff> | null) => ({ handoff: h, active: true, shown, now: { player: "0", turn: 4 } });
+
+  it("from the very render a new turn arrives in, before the hand-off has been started", () => {
+    expect(npcsHeldNow({ handoff: { ...startHandoff("0", "1", 0, false), phase: "idle" }, active: true, shown, now: { player: "1", turn: 5 } })).toBe(true);
+    expect(npcsHeldNow({ handoff: null, active: true, shown, now: { player: "1", turn: 5 } })).toBe(true);
+  });
+
+  it("while the hand-off holds them: the ship sailing on, then the turn-ended banner", () => {
+    expect(npcsHeldNow(playing(startHandoff("0", "1", 0, false)))).toBe(true);
+    expect(npcsHeldNow(playing({ ...startHandoff("0", "1", 0, false), phase: "turnEnded" }))).toBe(true);
+  });
+
+  it("not once the NPCs sail, nor at rest, nor in the draft, nor while a fight is played", () => {
+    expect(npcsHeldNow(playing({ ...startHandoff("0", "1", 0, false), phase: "npcs" }))).toBe(false);
+    expect(npcsHeldNow(playing({ ...startHandoff("0", "1", 0, false), phase: "idle" }))).toBe(false);
+    expect(npcsHeldNow({ handoff: null, active: false, shown: null, now: { player: "0", turn: 1 } })).toBe(false);
+    expect(npcsHeldNow({ handoff: null, active: true, shown, now: { player: "0", turn: 5, fight: true } })).toBe(false);
   });
 });

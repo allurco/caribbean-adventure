@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NPCShip } from "../game/types";
-import { heldNpcsFor, startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } from "./turnHandoff";
+import { heldNpcsFor, npcsHeldNow, startHandoff, stepHandoff, turnPassed, type Handoff, type ShownTurn } from "./turnHandoff";
 
 /**
  * Plays the hand-off between turns (turnHandoff.ts, #216) each frame from
@@ -32,12 +32,21 @@ export function useTurnHandoff({
   /** Which ships (players' and NPCs', by id) are under way. */
   underway: Record<string, boolean>;
   onNextTurn: (player: string) => void;
-}): { handoff: Handoff | null; heldNpcs: Record<string, NPCShip> | null; markTurnShown: () => void } {
+}): {
+  handoff: Handoff | null;
+  heldNpcs: Record<string, NPCShip> | null;
+  /** Whether this render holds the NPCs (`npcsHeldNow`): true from the very render the turn passes in. */
+  npcsHeld: boolean;
+  markTurnShown: () => void;
+} {
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   const [heldNpcs, setHeldNpcs] = useState<Record<string, NPCShip> | null>(null);
   // The turn the board last showed, and the NPCs as it last showed them
   const [turnOf, setTurnOf] = useState<ShownTurn | null>(active ? { player: currentPlayer, turn } : null);
   const [lastNpcs, setLastNpcs] = useState(npcs);
+
+  // Read before the turn shown moves on below
+  const npcsHeld = npcsHeldNow({ handoff, active, shown: turnOf, now: { player: currentPlayer, turn, fight } });
 
   // State adjusted while rendering (React's pattern for a changed prop), so
   // the hand-off holds from the first render of the new turn
@@ -90,5 +99,5 @@ export function useTurnHandoff({
     turnShown.current = true;
   }, []);
 
-  return { handoff, heldNpcs, markTurnShown };
+  return { handoff, heldNpcs, npcsHeld, markTurnShown };
 }

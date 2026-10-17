@@ -1,6 +1,4 @@
 import { WIN_SCORE } from "../game/types";
-import { HUD_GLORY_BOARD_LEFT, HUD_GLORY_BOARD_TOP, HUD_GLORY_BOARD_WIDTH } from "./hudLayout";
-import { safeInset } from "./safeArea";
 import type { GloryRow } from "./seat";
 
 interface HudGloryBoardProps {
@@ -9,7 +7,8 @@ interface HudGloryBoardProps {
 }
 
 /**
- * Every captain's glory (#110), under the sound control: glory is public, so
+ * Every captain's glory (#110), under the sound control, at the head of the
+ * HUD's left column (`HudLeftColumn`): glory is public, so
  * every seat sees the whole table's. Purses and holds are not on it. In an
  * online match a small dot says which seats are online (#114).
  */
@@ -17,8 +16,7 @@ export function HudGloryBoard({ rows, colours }: HudGloryBoardProps) {
   return (
     <section
       aria-label="Glory"
-      className="absolute px-3 py-2 bg-black/40 rounded-lg border border-amber-700/30 backdrop-blur-sm pointer-events-none"
-      style={{ top: safeInset("top", HUD_GLORY_BOARD_TOP), left: safeInset("left", HUD_GLORY_BOARD_LEFT), width: HUD_GLORY_BOARD_WIDTH }}
+      className="px-3 py-2 bg-black/40 rounded-lg border border-amber-700/30 backdrop-blur-sm pointer-events-none"
     >
       <h2 className="font-heading text-amber-400 text-[10px] uppercase tracking-widest mb-1">
         Glory <span className="text-amber-500/60 normal-case tracking-normal">to {WIN_SCORE}</span>

@@ -51,7 +51,8 @@ import { draftOver, nextToPick } from "./draftOrder";
 import { dealReplacementHand, isEliminated, replaceCaptain, seatStillIn } from "./captainDeath";
 import { gameOverResult } from "./gameOver";
 import { spawnFlotillaForPlayer } from "./npcManager";
-import { npcTurnEndStep } from "./npcTurnStep";
+import { endsRound, npcTurnEndStep, type TurnEnded } from "./npcTurnStep";
+import { newEventDeck } from "./eventDeck";
 import { applySeaWear } from "./deepSea";
 import { applyMerchantAction, shouldSpawnFlotilla } from "./reputation";
 import { canStashGold, applyStashGold } from "./scoring";
@@ -129,6 +130,8 @@ function createInitialState(
 
   const deck = createCaptainDeck(random);
   const { hands, remaining } = dealHands(deck, numPlayers);
+  // The event deck (#246), shuffled after the captains, so their draft is as before
+  const eventDeck = newEventDeck(random);
 
   const ships: Record<string, ReturnType<typeof createShipState>> = {};
   for (let i = 0; i < numPlayers; i++) {
@@ -152,6 +155,7 @@ function createInitialState(
     pirates: {},
     bountyClaims: [],
     movesUsed: 0,
+    eventDeck,
   };
 }
 
@@ -181,6 +185,19 @@ function needingAShip(moves: Record<string, MoveFn<CaribbeanState>>): Record<str
       (context, ...args) => (context.G.ships[context.ctx.currentPlayer] ? move(context, ...args) : INVALID_MOVE),
     ])
   );
+}
+
+/**
+ * The turn that ends, for the world's step (`npcTurnEndStep`): the current
+ * seat, the turn, and whether the round ends with it, the next seat still in
+ * the game coming round to the start of the play order (as `order.next`).
+ */
+function turnEnded(
+  G: CaribbeanState,
+  ctx: { currentPlayer: string; turn: number; playOrder: string[]; playOrderPos: number }
+): TurnEnded {
+  const next = seatStillIn(G, ctx.playOrder, (ctx.playOrderPos + 1) % ctx.playOrder.length);
+  return { seat: ctx.currentPlayer, turn: ctx.turn, endsRound: endsRound(ctx.playOrderPos, next) };
 }
 
 export const Caribbean: Game<CaribbeanState> = {
@@ -346,12 +363,12 @@ export const Caribbean: Game<CaribbeanState> = {
           next: ({ G, ctx }) => seatStillIn(G, ctx.playOrder, (ctx.playOrderPos + 1) % ctx.playOrder.length),
         },
         // The open sea wears the ship of a turn that ends on it (#340), not
-        // one that ends in a fight. The NPCs sail as the turn ends; a turn
-        // that ends in a fight starts it here, and its NPCs sail when the
-        // fight resolves (#288)
+        // one that ends in a fight. The NPCs sail and an event card is drawn
+        // as the turn ends (#246); a turn that ends in a fight starts it
+        // here, and takes that step when the fight resolves (#288)
         onEnd: ({ G, ctx, random }) => {
           applySeaWear(G, ctx.currentPlayer, ctx.turn);
-          npcTurnEndStep(G, random.Number);
+          npcTurnEndStep(G, random.Number, turnEnded(G, ctx));
         },
       },
       moves: {
@@ -569,8 +586,8 @@ export const Caribbean: Game<CaribbeanState> = {
         },
         activePlayers: { all: "combat" },
         // The fight resolved and ended the attacker's turn: the NPCs take
-        // that turn's step now, once (#288)
-        onEnd: ({ G, random }) => npcTurnEndStep(G, random.Number),
+        // that turn's step, and its event card is drawn, now, once (#288, #246)
+        onEnd: ({ G, ctx, random }) => npcTurnEndStep(G, random.Number, turnEnded(G, ctx)),
       },
       moves: {
         rollSeamanship: ({ G, random }) => {

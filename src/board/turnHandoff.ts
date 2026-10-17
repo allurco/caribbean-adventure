@@ -147,3 +147,22 @@ export function heldNpcsFor(
 
 /** Whether the next player's controls wait. */
 export const controlsLocked = (h: Handoff | null): boolean => h !== null && h.phase !== "idle";
+
+/**
+ * Whether the board holds the NPCs, and with them the events of the turn
+ * that just ended (#246), in this render: from the very render a new turn
+ * arrives in, decided from the incoming turn as the hand-off decides to
+ * start (`turnPassed`), before the hand-off state has caught up; then for as
+ * long as the hand-off holds them (`holdsNpcs`).
+ */
+export const npcsHeldNow = ({
+  handoff,
+  active,
+  shown,
+  now,
+}: {
+  handoff: Handoff | null;
+  active: boolean;
+  shown: ShownTurn | null;
+  now: ShownTurn & { readonly fight?: boolean };
+}): boolean => (active && turnPassed(shown, now)) || holdsNpcs(handoff);

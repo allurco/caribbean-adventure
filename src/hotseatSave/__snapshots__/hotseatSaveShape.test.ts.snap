@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a fight: G.combat and its volleys > fight, save version 7 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape of a fight: G.combat and its volleys > fight, save version 8 1`] = `
 {
   "actionChosen": "string",
   "attackerHits": "number",
@@ -26,7 +26,7 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
 }
 `;
 
-exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 7 1`] = `
+exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > keeps the same shape: the save, G, ctx and the plugins' data > save version 8 1`] = `
 {
   "cellPatches": [],
   "map": {
@@ -49,6 +49,26 @@ exports[`the hotseat save's shape (bump HOTSEAT_SAVE_VERSION when it changes) > 
       ],
       "draftHands": {
         "<id>": [],
+      },
+      "eventDeck": {
+        "drawPile": [
+          "string",
+        ],
+        "drawn": "number",
+        "log": [
+          {
+            "bound": [
+              "string",
+            ],
+            "id": "number",
+            "kind": "string",
+            "merchants": "number",
+            "port": "string",
+            "region": "number",
+            "seat": "string",
+            "turn": "number",
+          },
+        ],
       },
       "floatingLoot": [],
       "lootIdCounter": "number",
