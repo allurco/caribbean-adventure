@@ -14,13 +14,23 @@ describe("gameOverView", () => {
     expect(gameOverView({ reason: "glory", winner: "1", captainName: "Drake", score: 20 }, 2, null)).toEqual({
       kind: "victory",
       captainName: "Drake",
+      subtitle: "has conquered the Caribbean!",
       score: 20,
+    });
+  });
+
+  it("a captain who fell in the fight that won it is named, with words for a win after death (#369)", () => {
+    expect(gameOverView({ reason: "glory", winner: "0", captainName: "Blackbeard", score: 10, fallen: true }, 2, null)).toEqual({
+      kind: "victory",
+      captainName: "Blackbeard",
+      subtitle: "won the Caribbean in their last fight, and went down with their ship.",
+      score: 10,
     });
   });
 
   it("a result from before #289, with no reason, is the victory it used to show", () => {
     const old = { winner: "0", captainName: "Drake", score: 20 } as unknown as GameOverResult;
-    expect(gameOverView(old, 2, null)).toEqual({ kind: "victory", captainName: "Drake", score: 20 });
+    expect(gameOverView(old, 2, null)).toEqual({ kind: "victory", captainName: "Drake", subtitle: "has conquered the Caribbean!", score: 20 });
   });
 
   it("every seat out: names the player with the most glory, never a captain", () => {

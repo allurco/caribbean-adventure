@@ -28,7 +28,7 @@ export function GameOverScreen({ view, onPlayAgain }: GameOverScreenProps) {
 
             {/* Subtitle */}
             <p className="text-amber-400/70 text-sm mb-6">
-              has conquered the Caribbean!
+              {view.subtitle}
             </p>
           </>
         ) : (
