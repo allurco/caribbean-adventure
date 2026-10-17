@@ -3,7 +3,10 @@ import { createPool } from "../combatFx/particlePool";
 import type { ShipFoamSource } from "../shipFoamSources";
 import { stream } from "./variationStream";
 import {
+  FLECK_CLUMP_SIZE,
+  FLECK_CLUMP_SPREAD,
   FLECK_LIFE_ANCHOR,
+  FLECK_OPACITY,
   FLECK_LIFE_UNDERWAY,
   FLECK_OUT_GAIN,
   FLECK_OUT_SPEED,
@@ -12,6 +15,7 @@ import {
   createFleckEmitters,
   createFleckFrame,
   FLECK_SHED_RADIUS,
+  fleckClump,
   fleckSpawn,
   fleckSpawnRate,
   hullFrameToWorld,
@@ -74,6 +78,13 @@ describe("fleckSpawn", () => {
     }
   });
 
+  it("starts close against the hull, within a sixth of a half beam of the waterline, not spread out from it", () => {
+    for (const f of sample(0.6, 500)) {
+      const edge = waterlineHalfBeam(f.along / hull.halfLength, hull.halfBeam);
+      expect(Math.abs(f.across) - edge).toBeLessThanOrEqual(0.15 * hull.halfBeam);
+    }
+  });
+
   it("comes mostly from the bow under way, from all along the hull at anchor", () => {
     const forward = (motion: number) => sample(motion).filter((f) => f.along > 0.4 * hull.halfLength).length / 2000;
     expect(forward(1)).toBeGreaterThan(0.5);
@@ -89,6 +100,31 @@ describe("fleckSpawn", () => {
       expect(f.life).toBeGreaterThanOrEqual(FLECK_LIFE_UNDERWAY[0]);
       expect(f.life).toBeLessThanOrEqual(FLECK_LIFE_UNDERWAY[1]);
     }
+  });
+});
+
+describe("fleckClump", () => {
+  it("sheds a small clump of flecks together, on one side just outside the waterline, not lone dots", () => {
+    const random = stream(99);
+    for (let k = 0; k < 200; k++) {
+      const clump = fleckClump(random, hull, k % 2);
+      expect(clump.length).toBeGreaterThanOrEqual(FLECK_CLUMP_SIZE[0]);
+      expect(clump.length).toBeLessThanOrEqual(FLECK_CLUMP_SIZE[1]);
+      const [first] = clump;
+      for (const f of clump) {
+        expect(Math.hypot(f.along - first.along, f.across - first.across)).toBeLessThanOrEqual(3 * FLECK_CLUMP_SPREAD);
+        expect(Math.sign(f.across)).toBe(Math.sign(first.across));
+        expect(Math.sign(f.vAcross)).toBe(Math.sign(f.across));
+        expect(Math.abs(f.across)).toBeGreaterThanOrEqual(waterlineHalfBeam(f.along / hull.halfLength, hull.halfBeam) - 1e-9);
+        expect(Math.abs(f.along)).toBeLessThanOrEqual(hull.halfLength + 1e-9);
+      }
+    }
+    expect(FLECK_CLUMP_SIZE[0]).toBeGreaterThanOrEqual(2);
+    expect(FLECK_CLUMP_SPREAD).toBeLessThan(0.3 * hull.halfBeam);
+  });
+
+  it("is soft and half see-through, not opaque confetti", () => {
+    expect(FLECK_OPACITY).toBeLessThanOrEqual(0.55);
   });
 });
 
@@ -137,7 +173,7 @@ describe("createFleckEmitters", () => {
     const pool = createPool(512);
     const emitters = createFleckEmitters(1);
     for (let i = 0; i < 100; i++) emitters.emit(0.01, registry({ a: ship() }), pool);
-    expect(live(pool)).toBeLessThanOrEqual(Math.ceil(FLECK_RATE_ANCHOR) + 1);
+    expect(live(pool)).toBeLessThanOrEqual(Math.ceil(FLECK_RATE_ANCHOR) + FLECK_CLUMP_SIZE[1]);
   });
 });
 
@@ -227,7 +263,7 @@ describe("createFleckFrame", () => {
     let t = 10;
     for (let i = 0; i < 11; i++) flecks.update(frame({ waveTime: (t += 0.1), cameraDistance: 3.4 }), out);
     // The first close frame draws only what that one step shed.
-    expect(flecks.update(frame({ waveTime: (t += 0.1) }), out)).toBeLessThanOrEqual(Math.ceil(FLECK_RATE_UNDERWAY * 0.1) + 1);
+    expect(flecks.update(frame({ waveTime: (t += 0.1) }), out)).toBeLessThanOrEqual(Math.ceil(FLECK_RATE_UNDERWAY * 0.1) + FLECK_CLUMP_SIZE[1]);
   });
 
   it("sheds only from ships near the camera's focus", () => {

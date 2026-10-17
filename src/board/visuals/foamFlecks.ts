@@ -9,7 +9,9 @@
  *   side; under way most come off the bow, where the hull pushes the water
  *   aside, at anchor from all along it, slapping against the hull.
  * - **How many:** a sparse few a second at anchor, many under way, full at
- *   the hull foam's full speed (`fleckSpawnRate`).
+ *   the hull foam's full speed (`fleckSpawnRate`), shed in small clumps
+ *   close against the hull (`fleckClump`), soft and half see-through, so
+ *   they read as foam breaking off the hull, not confetti (#426).
  * - **How they move:** they are born moving out from the hull (and a little
  *   forward off the bow) and slow in the water (`FLECK_DRAG`), so as the
  *   ship sails on they fall astern of it. They are not carried along with
@@ -37,23 +39,27 @@ import { HULL_FOAM_FULL_SPEED } from "./hullFoam";
 import { SEED_FEATURES } from "./seedFeatures";
 import { stream, subSeed } from "./subSeed";
 
-/** Flecks a second a ship sheds at anchor ... */
-export const FLECK_RATE_ANCHOR = 3;
+/** Flecks a second a ship sheds at anchor (in clumps, FLECK_CLUMP_SIZE) ... */
+export const FLECK_RATE_ANCHOR = 5;
 /** ... and at full speed (HULL_FOAM_FULL_SPEED) and over. */
 export const FLECK_RATE_UNDERWAY = 90;
 /** A fleck's life, seconds, at anchor and under way. */
 export const FLECK_LIFE_ANCHOR: readonly [number, number] = [2.2, 3.6];
 export const FLECK_LIFE_UNDERWAY: readonly [number, number] = [0.9, 1.9];
 /** STYLISTIC: a fleck's size (world units across), smallest and largest. */
-export const FLECK_SIZE: readonly [number, number] = [0.004, 0.011];
-/** STYLISTIC: how much a fleck spreads as it ages (share of its size by the end of its life). */
-export const FLECK_GROW = 0.6;
+export const FLECK_SIZE: readonly [number, number] = [0.004, 0.01];
+/** STYLISTIC: how much a fleck spreads as it ages (share of its size by the end of its life): it softens out as it thins. */
+export const FLECK_GROW = 1;
+/** STYLISTIC: how many flecks a hull sheds together, fewest and most: foam comes off in clumps, not lone dots (#426). */
+export const FLECK_CLUMP_SIZE: readonly [number, number] = [2, 5];
+/** STYLISTIC: how far (world units) a clump's flecks lie from its first, at most, along and across the hull. */
+export const FLECK_CLUMP_SPREAD = 0.008;
 /** Share of the flecks that come off the bow at full speed. */
 export const FLECK_BOW_SHARE = 0.65;
 /** Where the bow's share starts, as a share of the half length forward of amidships. */
 export const FLECK_BOW_START = 0.4;
 /** STYLISTIC: how far outside the waterline a fleck starts, in half beams: at least, and at most. */
-export const FLECK_OFFSET: readonly [number, number] = [0.05, 0.35];
+export const FLECK_OFFSET: readonly [number, number] = [0.01, 0.12];
 /** STYLISTIC: how fast a fleck is pushed out from the hull, world units a second, at rest and the gain at full speed. */
 export const FLECK_OUT_SPEED = 0.03;
 export const FLECK_OUT_GAIN = 0.12;
@@ -66,7 +72,7 @@ export const FLECK_DRAG = 1.6;
  */
 export const FLECK_SHED_RADIUS = 3;
 /** STYLISTIC: a fleck's opacity at full close-up weight, and its fade in and out (shares of its life). */
-export const FLECK_OPACITY = 0.75;
+export const FLECK_OPACITY = 0.5;
 export const FLECK_FADE_IN = 0.1;
 export const FLECK_FADE_OUT = 0.6;
 
@@ -121,6 +127,30 @@ export function fleckSpawn(random: () => number, { halfLength, halfBeam }: { hal
   };
 }
 
+const CLUMP_MEAN = (FLECK_CLUMP_SIZE[0] + FLECK_CLUMP_SIZE[1]) / 2;
+
+/**
+ * A clump of flecks shed together by a hull of `halfLength` and `halfBeam` at
+ * `motion`, drawn from `random`: the first as `fleckSpawn` sheds it, the rest
+ * scattered round it within FLECK_CLUMP_SPREAD, on the same side and never
+ * inside the waterline, each moving out a little faster or slower.
+ */
+export function fleckClump(random: () => number, shape: { halfLength: number; halfBeam: number }, motion: number): FleckSpawn[] {
+  const first = fleckSpawn(random, shape, motion);
+  const extra = FLECK_CLUMP_SIZE[1] - FLECK_CLUMP_SIZE[0];
+  const count = FLECK_CLUMP_SIZE[0] + Math.min(extra, Math.floor(random() * (extra + 1)));
+  const side = Math.sign(first.across);
+  const clump = [first];
+  for (let k = 1; k < count; k++) {
+    const along = Math.max(-shape.halfLength, Math.min(shape.halfLength, first.along + (2 * random() - 1) * FLECK_CLUMP_SPREAD));
+    const edge = waterlineHalfBeam(along / shape.halfLength, shape.halfBeam);
+    const across = side * Math.max(edge, Math.abs(first.across) + (2 * random() - 1) * FLECK_CLUMP_SPREAD);
+    const pace = 0.7 + 0.6 * random();
+    clump.push({ ...first, along, across, vAlong: first.vAlong * pace, vAcross: first.vAcross * pace, size: lerp(FLECK_SIZE, random()), seed: random() });
+  }
+  return clump;
+}
+
 /** The world xz of the point `along` the heading and `across` it from the ship's position, into `out`. */
 export function hullFrameToWorld(along: number, across: number, ship: Pick<ShipFoamSource, "x" | "z" | "headingX" | "headingZ">, out: [number, number]): void {
   out[0] = ship.x + along * ship.headingX - across * ship.headingZ;
@@ -169,20 +199,22 @@ export function createFleckEmitters(worldSeed: number): FleckEmitters {
         const motion = motionAt(ship.speed);
         hull.halfLength = ship.hullLength / 2;
         hull.halfBeam = ship.beam / 2;
-        e.spawnDebt += fleckSpawnRate(ship.speed) * dt;
+        // Owed in clumps: the rate counts flecks, and a clump sheds a few.
+        e.spawnDebt += (fleckSpawnRate(ship.speed) / CLUMP_MEAN) * dt;
         while (e.spawnDebt >= 1) {
           e.spawnDebt -= 1;
-          const f = fleckSpawn(e.random, hull, motion);
-          hullFrameToWorld(f.along, f.across, ship, at);
-          params.x = at[0];
-          params.z = at[1];
-          params.vx = f.vAlong * ship.headingX - f.vAcross * ship.headingZ;
-          params.vz = f.vAlong * ship.headingZ + f.vAcross * ship.headingX;
-          params.life = f.life;
-          params.size = f.size;
-          params.seed = f.seed;
-          spawn(pool, FLECK_KIND, params);
-          shed++;
+          for (const f of fleckClump(e.random, hull, motion)) {
+            hullFrameToWorld(f.along, f.across, ship, at);
+            params.x = at[0];
+            params.z = at[1];
+            params.vx = f.vAlong * ship.headingX - f.vAcross * ship.headingZ;
+            params.vz = f.vAlong * ship.headingZ + f.vAcross * ship.headingX;
+            params.life = f.life;
+            params.size = f.size;
+            params.seed = f.seed;
+            spawn(pool, FLECK_KIND, params);
+            shed++;
+          }
         }
       });
       emitters.forEach((e, id) => {
