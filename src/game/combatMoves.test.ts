@@ -238,6 +238,34 @@ describe("the missions a fight settles (#345)", () => {
 
     expect(G(client).ships["0"].activeMission?.noDamageTaken).toBe(false);
   });
+
+  it("a defender on an escort that is attacked and hit fails the escort's no-damage condition (#353)", () => {
+    const escort = ship(1, 0);
+    escort.activeMission = mission("ESCORT", { targetPortName: "Havana", noDamageTaken: true });
+    const client = startGame({ "0": ship(0, 0, { cannons: 20 }), "1": escort });
+    client.moves.attackShip("1");
+    fireTheAmbush(client);
+    expect(G(client).lastRound!.volleys[0]).toMatchObject({ shooterId: "0" });
+    expect(G(client).lastRound!.volleys[0].hits).toBeGreaterThan(0);
+
+    expect(G(client).ships["1"].activeMission?.noDamageTaken).toBe(false);
+  });
+
+  it("the escort that fires keeps its no-damage condition; only the ship hit fails its own (#353)", () => {
+    const attacker = ship(0, 0, { cannons: 20 });
+    attacker.activeMission = mission("ESCORT", { targetPortName: "Havana", noDamageTaken: true });
+    const defender = ship(1, 0);
+    defender.activeMission = mission("ESCORT", { targetPortName: "Havana", noDamageTaken: true });
+    const client = startGame({ "0": attacker, "1": defender });
+    client.moves.attackShip("1");
+    fireTheAmbush(client);
+    // The defender has no guns, so the ambush is the round's only volley: the attacker is never hit
+    expect(G(client).lastRound!.volleys).toHaveLength(1);
+    expect(G(client).lastRound!.volleys[0].hits).toBeGreaterThan(0);
+
+    expect(G(client).ships["0"].activeMission?.noDamageTaken).toBe(true);
+    expect(G(client).ships["1"].activeMission?.noDamageTaken).toBe(false);
+  });
 });
 
 /** Each step's move, by the stage it presses. */
