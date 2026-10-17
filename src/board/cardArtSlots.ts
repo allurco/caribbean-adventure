@@ -59,23 +59,24 @@ export interface CardArt {
   flag: { mask: string | null; box: FlagBox } | null;
 }
 
-/** The placeholder flags' boxes: high on the right, clear of the title at the top. */
-const PATROL_FLAG: FlagBox = { x: 0.56, y: 0.3, w: 0.3, h: 0.15 };
-const LOST_FLAG: FlagBox = { x: 0.5, y: 0.28, w: 0.32, h: 0.16 };
+/** The flags' boxes: the bounding box of each painting's red flag, which its mask cuts to the cloth. */
+const PATROL_FLAG: FlagBox = { x: 0.767, y: 0.411, w: 0.181, h: 0.133 };
+const LOST_FLAG: FlagBox = { x: 0.517, y: 0.277, w: 0.273, h: 0.204 };
 
 /**
- * Each slot's art. All placeholders for now: the WebP images, the card
- * back's crop and the flag masks come with the maintainer's art (#247).
+ * Each slot's art (#247): WebP under public/cards/, cropped to 3:4 from the
+ * maintainer's AI-generated paintings (NOTICE). Merchant convoy still draws
+ * its placeholder: none of the paintings shows its prompt yet.
  */
 export const CARD_ART: Readonly<Record<CardArtSlot, CardArt>> = {
-  calmSeas: { file: null, flag: null },
+  calmSeas: { file: "cards/calm-seas.webp", flag: null },
   merchantConvoy: { file: null, flag: null },
-  storm: { file: null, flag: null },
-  flotillaPatrol: { file: null, flag: { mask: null, box: PATROL_FLAG } },
-  npcPirate: { file: null, flag: null },
-  clemency: { file: null, flag: null },
-  lostFlag: { file: null, flag: { mask: null, box: LOST_FLAG } },
-  back: { file: null, flag: null },
+  storm: { file: "cards/storm.webp", flag: null },
+  flotillaPatrol: { file: "cards/flotilla-patrol.webp", flag: { mask: "cards/flotilla-patrol.flag.webp", box: PATROL_FLAG } },
+  npcPirate: { file: "cards/npc-pirate.webp", flag: null },
+  clemency: { file: "cards/clemency.webp", flag: null },
+  lostFlag: { file: "cards/lost-flag.webp", flag: { mask: "cards/lost-flag.flag.webp", box: LOST_FLAG } },
+  back: { file: "cards/back.webp", flag: null },
 };
 
 /**

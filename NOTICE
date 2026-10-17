@@ -4,6 +4,20 @@ Project Caribbean
 The code in this repository is MIT licensed (see LICENSE). This file lists
 third-party assets shipped in the repository, their sources and licences.
 
+Event card art
+--------------
+
+public/cards/*.webp
+  The event cards' art and the card back (#247): AI-generated images,
+  made for this project with an image model (Nano Banana, in Google Flow)
+  from the prompts in docs/art/event-card-prompts.md, and not drawn from
+  any third-party artwork. No third-party licence applies; they ship
+  under the repository's terms.
+  Changes: cropped to 3:4 (the card back's dark margin removed), scaled
+           to 768x1024, converted to WebP
+  public/cards/*.flag.webp are masks made from the art for this project,
+  cut to the red flag's cloth on Flotilla patrol and Lost flag.
+
 Sounds
 ------
 
