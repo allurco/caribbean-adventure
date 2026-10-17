@@ -137,8 +137,8 @@ describe("ship wave pose on the sea surface", () => {
   let poses: Record<keyof typeof HULLS, WavePose[]>;
   beforeAll(() => {
     const surface = createSeaSurface({ seabedHeightAt: OPEN_SEA, enabled: true });
+    poses = { Frigate: [], Sloop: [], Galleon: [] };
     const names = Object.keys(HULLS) as (keyof typeof HULLS)[];
-    poses = Object.fromEntries(names.map((name) => [name, []])) as unknown as typeof poses;
     for (let i = 0; i < 120; i++) {
       const sea: SurfaceHeight = (px, pz) => surface.heightAt(px, pz, i * 0.5, near);
       for (const name of names) poses[name].push(shipWavePose(sea, HULLS[name], x, z, 0.6));
