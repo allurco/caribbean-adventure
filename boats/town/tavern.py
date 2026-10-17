@@ -30,8 +30,9 @@ from .prims import Piece, WallFrame, rect, slab
 
 # The triangles the plan comes to, part by part, so a change shows here:
 #   footing 10;
-#   walls 216: 96 blocks of 2 (four courses of 6, 7, 6, 7 across the
-#     front and back and 5, 6, 5, 6 along the gables) and 12 ledges of 2;
+#   walls 224: 96 blocks of 2 (four courses of 6, 7, 6, 7 across the
+#     front and back and 5, 6, 5, 6 along the gables), 12 ledges of 2 and
+#     the 4 of 2 that close the set-back top course under the timber storey;
 #   upper 294: front and back 74 each (10 panels, 4 posts, 3 beams,
 #     2 braces), the gable walls 64 each (8 panels, 3 posts, 3 beams,
 #     2 braces), 4 corner posts of 4 and the jetty's soffit;
@@ -41,7 +42,7 @@ from .prims import Piece, WallFrame, rect, slab
 #   chimney 68: the stack's 3 bands 24, its cap 12, two pots of 16;
 #   door 36; windows 146 (4 ground of 26, 7 upper of 6); sign 38;
 #   benches 44.
-PLANNED_TRIANGLES = 1_322
+PLANNED_TRIANGLES = 1_330
 
 WINDOW_COUNT = 11
 
@@ -134,6 +135,18 @@ def _stone_storey(piece: Piece, p: TavernParams, tones: _Tones):
         for quad in rings:
             walls.face([(x, y, z) for x, y in quad], mortar, TINTS["none"],
                        out=(0.0, 0.0, up))
+    # A set-back top course leaves a slit under the timber storey's walls,
+    # which the sun would shine through onto the shadow (#431): close it.
+    top = recess[n - 1]
+    if top > 0.0:
+        ow, od, iw, id_ = W, D, W - top, D - top
+        rings = (((-ow, -od), (ow, -od), (iw, -id_), (-iw, -id_)),
+                 ((ow, -od), (ow, od), (iw, id_), (iw, -id_)),
+                 ((ow, od), (-ow, od), (-iw, id_), (iw, id_)),
+                 ((-ow, od), (-ow, -od), (-iw, -id_), (-iw, id_)))
+        for quad in rings:
+            walls.face([(x, y, G) for x, y in quad], mortar, TINTS["none"],
+                       out=(0.0, 0.0, -1.0))
 
 
 def _upper_storey(piece: Piece, p: TavernParams, tones: _Tones, glass_at: list):
