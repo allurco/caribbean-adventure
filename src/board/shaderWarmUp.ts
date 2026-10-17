@@ -9,9 +9,13 @@
  * keepers in `SceneReadinessProbe.tsx`) are never drawn, so only a compile
  * into a target warms what they will draw. Pure, no three.js import.
  */
+import type { RenderOff } from "./devUrlParams";
 
 /** Where the frames are drawn: through the composer's render targets, or straight to the screen. */
 export type FrameOutput = "composer" | "screen";
+
+/** Where the board draws its frames: the one decision the board's passes and its shader warm-up both follow. */
+export const frameOutputFor = (renderOff: RenderOff): FrameOutput => (renderOff.postProcessing ? "screen" : "composer");
 
 /** The part of a renderer that switches its render target. */
 export interface RenderTargetSwitch<Target> {
@@ -24,7 +28,8 @@ export interface RenderTargetSwitch<Target> {
  * target the frames go to: for the composer, a render target made by
  * `createTarget`, set only while the compile queues its programs (three picks
  * each program's variant then, synchronously), then put back and disposed.
- * Never throws: a compile that throws comes back as a rejected promise.
+ * Never throws: anything that throws, making the target or compiling, comes
+ * back as a rejected promise, so the loading gate hears of it at once.
  */
 export function compileForFrames<Target, Made extends Target & { dispose(): void }>(
   renderer: RenderTargetSwitch<Target>,
@@ -33,15 +38,20 @@ export function compileForFrames<Target, Made extends Target & { dispose(): void
   createTarget: () => Made
 ): Promise<unknown> {
   if (output === "screen") return run(compile);
-  const target = createTarget();
-  const previous = renderer.getRenderTarget();
-  renderer.setRenderTarget(target);
-  try {
-    return run(compile);
-  } finally {
-    renderer.setRenderTarget(previous);
-    target.dispose();
-  }
+  return run(() => {
+    const target = createTarget();
+    try {
+      const previous = renderer.getRenderTarget();
+      renderer.setRenderTarget(target);
+      try {
+        return compile();
+      } finally {
+        renderer.setRenderTarget(previous);
+      }
+    } finally {
+      target.dispose();
+    }
+  });
 }
 
 const run = (compile: () => Promise<unknown>): Promise<unknown> => {
