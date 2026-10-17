@@ -191,7 +191,7 @@ describe("soundEventsFrom", () => {
   const settledRound = (volleys: ReturnType<typeof volley>[], extra: Partial<CaribbeanState> = {}, ended = false) =>
     makeState({
       combat: ended ? undefined : makeCombat({ round: 2, stage: "seamanship" }),
-      lastRound: { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys, fleeOutcome: null, fleeRolls: null, ended },
+      lastRound: { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys, fleeOutcome: null, fleeRolls: null, ended, sunk: [], leftDerelict: [] },
       ...extra,
     });
 
@@ -238,7 +238,7 @@ describe("soundEventsFrom", () => {
     expect(soundEventsFrom(prev, caught)).toEqual([{ type: "fleeAttempted", outcome: "caught" }]);
     // Caught by a pursuer out of range: no parting shot (#356), and the round settles, ending the fight (#380)
     const caughtOutOfRange = makeState({
-      lastRound: { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys: [], fleeOutcome: "caught", fleeRolls: { pursuer: 6, fleeer: 1 }, ended: true },
+      lastRound: { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys: [], fleeOutcome: "caught", fleeRolls: { pursuer: 6, fleeer: 1 }, ended: true, sunk: [], leftDerelict: [] },
     });
     expect(soundEventsFrom(prev, caughtOutOfRange)).toEqual([{ type: "fleeAttempted", outcome: "caught" }, { type: "combatEnded" }]);
   });

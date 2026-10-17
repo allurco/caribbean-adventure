@@ -5,16 +5,14 @@ import { volleyLine } from "./volleyText";
 export function VolleyLines({
   volleys,
   shooterLabel,
-  upgradesOf,
 }: {
   volleys: Volley[];
   shooterLabel: (id: string) => string;
-  upgradesOf: (id: string) => readonly string[];
 }) {
   return (
     <>
       {volleys.map((volley, i) => {
-        const line = volleyLine(volley, upgradesOf(volley.shooterId));
+        const line = volleyLine(volley);
         return (
           <div key={i} className="text-xs text-amber-100/80">
             <span className="text-amber-400">{shooterLabel(volley.shooterId)}</span> {line.fired}:{" "}

@@ -51,6 +51,8 @@ export function parseHotseatSave(raw: string | null): HotseatSaveRead {
  * and settle the round by themselves (#380), but an aimed volley reads as
  * every hit on its aim and a fight at version 8's resolution still settles
  * (the legacy `applyResolution`), so every version 8 save is version 9's.
+ * Version 9 recorded no volley's shots or damage and no round's sunk or
+ * derelict ships, which read as none, so every version 9 save is version 10's.
  */
 function migrate(value: Record<string, unknown>): Record<string, unknown> {
   let current = value;
@@ -61,6 +63,7 @@ function migrate(value: Record<string, unknown>): Record<string, unknown> {
   if (current.version === 6) current = { ...current, version: 7 };
   if (current.version === 7) current = { ...current, version: 8 };
   if (current.version === 8) current = { ...current, version: 9 };
+  if (current.version === 9) current = { ...current, version: 10 };
   return current;
 }
 

@@ -1,7 +1,7 @@
-import type { CaribbeanState, SettledRound } from "../game/types";
+import type { SettledRound } from "../game/types";
 import { HUD_EDGE, HUD_TOP_BAR_HEIGHT } from "./hudLayout";
 import { safeInset } from "./safeArea";
-import { fightOverLines } from "./volleyText";
+import { combatantLabel, fightOverLines } from "./volleyText";
 import { VolleyLines } from "./VolleyLines";
 
 /**
@@ -11,21 +11,17 @@ import { VolleyLines } from "./VolleyLines";
  */
 export function FightOverPanel({
   settled,
-  G,
   npcLabel,
   onClose,
 }: {
   settled: SettledRound;
-  G: Pick<CaribbeanState, "ships" | "npcs">;
   /** What the fight called its NPC ("Merchant"), kept from the fight: a sunk NPC is gone from G. */
   npcLabel: string | null;
   onClose: () => void;
 }) {
-  // Seats count from 1 on the board, as everywhere else (#110)
-  const nameOf = (id: string) => (settled.isNPCCombat && id === settled.defenderId ? `The ${(npcLabel ?? "NPC").toLowerCase()}` : `Player ${Number(id) + 1}`);
-  const shooterLabel = (id: string) => (settled.isNPCCombat && id === settled.defenderId ? (npcLabel ?? "NPC") : `Player ${Number(id) + 1}`);
-  const upgradesOf = (id: string): readonly string[] => G.ships[id]?.upgrades ?? [];
-  const lines = fightOverLines(G, settled, nameOf);
+  const shooterLabel = (id: string) => combatantLabel(settled, id, npcLabel);
+  const nameOf = (id: string) => (settled.isNPCCombat && id === settled.defenderId ? `The ${shooterLabel(id).toLowerCase()}` : shooterLabel(id));
+  const lines = fightOverLines(settled, nameOf);
   return (
     <div
       style={{ top: safeInset("top", HUD_TOP_BAR_HEIGHT + HUD_EDGE) }}
@@ -35,7 +31,7 @@ export function FightOverPanel({
         Fight over - Round {settled.round}
       </div>
       <div className="space-y-1 text-center">
-        <VolleyLines volleys={settled.volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
+        <VolleyLines volleys={settled.volleys} shooterLabel={shooterLabel} />
         {lines.map((line) => (
           <div key={line} className="font-heading text-amber-100 text-sm">
             {line}

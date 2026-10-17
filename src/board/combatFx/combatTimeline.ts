@@ -149,14 +149,23 @@ function volleyBeat(prev: CaribbeanState, next: CaribbeanState, combat: CombatSt
     if (!shooter || fired.guns === 0) continue;
     const targetId = fired.shooterId === combat.attackerId ? combat.defenderId : combat.attackerId;
     const shots = rippledShots(fired.guns, fired.hits, start, flight, random(fired.shooterId));
-    // A volley with a hit on the masts brings one down (#348, #380)
-    volleys.push({ shooterId: fired.shooterId, targetId, shots, mastFalls: hitCountsOf(fired).masts > 0 });
+    volleys.push({ shooterId: fired.shooterId, targetId, shots, mastFalls: mastFalls(fired) });
     start = shots[shots.length - 1].fireAt + REPLY_GAP;
     end = Math.max(end, ...shots.map((s) => s.landAt));
   }
   return volleys.length > 0
     ? { kind: "volley", volleys, seconds: end + VOLLEY_TAIL, seedKey: `${combat.attackerId}:${combat.defenderId}:${combat.round}:volley${firedBefore > 0 ? `:${firedBefore}` : ""}` }
     : null;
+}
+
+/**
+ * Whether a volley brings a mast down (#348, #380): it dealt mast damage,
+ * so never when its mast hits all went to the hull past the cap. A volley
+ * stored without its damage (before save version 10) falls when a hit
+ * landed on the masts.
+ */
+export function mastFalls(volley: FiredVolley): boolean {
+  return volley.dealt ? volley.dealt.masts > 0 : hitCountsOf(volley).masts > 0;
 }
 
 /** Ships and NPCs that left `G` as new wreckage appeared: they went down. */

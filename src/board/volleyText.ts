@@ -3,10 +3,10 @@
  * waits on, a fired volley in words (its hits and where each landed), the
  * settled round the panel still shows, and how a fight ended.
  */
-import { volleyShooter, isVolleyStage } from "../game/combatMoves";
-import { fleePenalty, hitCountsOf, shotBonuses } from "../game/combat";
-import type { CaribbeanState, CombatState, SettledRound, Volley } from "../game/types";
-import { HIT_LOCATIONS } from "../game/types";
+import { isVolleyStage, sameFight, volleyShooter } from "../game/combatMoves";
+import { fleePenalty, hitCountsOf } from "../game/combat";
+import { seatLabel } from "../game/seats";
+import type { CombatState, SettledRound, Volley } from "../game/types";
 
 /** The volley a fight waits on: who fires it. */
 export interface PendingVolley {
@@ -25,16 +25,43 @@ const SHOT_NAMES = { chain_shot: "chain shot", grape_shot: "grape shot" } as con
 /**
  * A fired volley in words, after its shooter's name: the guns it fired
  * ("fired 3 guns"), and its hits by where each landed, with what its shot
- * added ("2 hits: 1 hull, 1 masts +1 chain shot"). `shooterUpgrades` are
- * the firing ship's.
+ * added ("2 hits: 1 hull, 1 masts +1 chain shot"), both as recorded when it
+ * was fired. Mast hits past the cap say they went to the hull ("3 masts
+ * (to hull, masts gone)", or "(1 to hull, masts gone)" for some of them).
  */
-export function volleyLine(volley: Volley, shooterUpgrades: readonly string[]): { fired: string; hits: string } {
+export function volleyLine(volley: Volley): { fired: string; hits: string } {
   const fired = `fired ${volley.guns} gun${volley.guns === 1 ? "" : "s"}`;
   if (volley.hits === 0) return { fired, hits: "no hits" };
   const at = hitCountsOf(volley);
-  const where = HIT_LOCATIONS.filter((location) => at[location] > 0).map((location) => `${at[location]} ${location}`);
-  const shots = shotBonuses(at, shooterUpgrades).map((shot) => ` +1 ${SHOT_NAMES[shot]}`);
-  return { fired, hits: `${volley.hits} hit${volley.hits === 1 ? "" : "s"}: ${where.join(", ")}${shots.join("")}` };
+  const shots = volley.shotBonuses ?? [];
+  const chain = shots.includes("chain_shot");
+  const grape = shots.includes("grape_shot");
+  const onMasts = at.masts + (chain ? 1 : 0);
+  const overflow = volley.dealt ? onMasts - volley.dealt.masts : 0;
+  const parts: string[] = [];
+  if (at.hull > 0) parts.push(`${at.hull} hull`);
+  if (at.masts > 0) {
+    const toHull = overflow <= 0 ? "" : overflow >= onMasts ? " (to hull, masts gone)" : ` (${overflow} to hull, masts gone)`;
+    parts.push(`${at.masts} masts${chain ? ` +1 ${SHOT_NAMES.chain_shot}` : ""}${toHull}`);
+  }
+  if (at.crew > 0) parts.push(`${at.crew} crew${grape ? ` +1 ${SHOT_NAMES.grape_shot}` : ""}`);
+  return { fired, hits: `${volley.hits} hit${volley.hits === 1 ? "" : "s"}: ${parts.join(", ")}` };
+}
+
+/**
+ * Whether a round's volleys show "No answer" (#346): one volley fired, and
+ * the round was not a caught flight (whose parting shot is never answered).
+ */
+export function noAnswer(volleys: readonly Volley[], fleeOutcome: SettledRound["fleeOutcome"]): boolean {
+  return volleys.length === 1 && fleeOutcome !== "caught";
+}
+
+/**
+ * Who a fight's ship is, on its panels: the NPC by its kind when it is the
+ * defender of an NPC fight ("Merchant"), else its seat ("Player 2").
+ */
+export function combatantLabel(fight: Pick<SettledRound, "defenderId" | "isNPCCombat">, id: string, npcLabel: string | null): string {
+  return fight.isNPCCombat && id === fight.defenderId ? (npcLabel ?? "NPC") : seatLabel(id);
 }
 
 /** The line over the answer's Fire!: who answers the volley it took. */
@@ -49,23 +76,21 @@ export function answerLine(answering: string): string {
  * volleys stay readable. Null otherwise.
  */
 export function roundShown(combat: CombatState, settled: SettledRound | undefined): SettledRound | null {
-  if (!settled || settled.attackerId !== combat.attackerId || settled.defenderId !== combat.defenderId) return null;
+  if (!settled || !sameFight(settled, combat)) return null;
   if (settled.round !== combat.round - 1 || (combat.volleys ?? []).length > 0) return null;
   return settled;
 }
 
 /**
- * How a fight ended, under the volleys of its last round (#380): a ship
- * sunk (gone from G) or left derelict, or a caught flight's end. `nameOf`
- * names a ship by its id.
+ * How a fight ended, under the volleys of its last round (#380): the ships
+ * it sank or left derelict (one derelict before the round is not news), or
+ * a caught flight's end. `nameOf` names a ship by its id.
  */
-export function fightOverLines(G: Pick<CaribbeanState, "ships" | "npcs">, settled: SettledRound, nameOf: (id: string) => string): string[] {
-  const lines: string[] = [];
-  for (const id of [settled.attackerId, settled.defenderId]) {
-    const ship = settled.isNPCCombat && id === settled.defenderId ? G.npcs[id] : G.ships[id];
-    if (!ship) lines.push(`${nameOf(id)} is sunk`);
-    else if (ship.isDerelict) lines.push(`${nameOf(id)} is left derelict`);
-  }
+export function fightOverLines(settled: SettledRound, nameOf: (id: string) => string): string[] {
+  const lines = [
+    ...(settled.sunk ?? []).map((id) => `${nameOf(id)} is sunk`),
+    ...(settled.leftDerelict ?? []).map((id) => `${nameOf(id)} is left derelict`),
+  ];
   if (lines.length === 0 && settled.fleeOutcome === "caught") {
     lines.push(settled.volleys.length > 0 ? "The parting shot ends the chase" : "Caught, but out of the pursuer's range: no parting shot");
   }

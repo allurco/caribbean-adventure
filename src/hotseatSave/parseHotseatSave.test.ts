@@ -76,8 +76,18 @@ describe("reading a saved game back", () => {
     }
   });
 
+  it("reads a version 9 save, whose volleys and round record no shots, damage or ships lost, as this version's", () => {
+    expect(HOTSEAT_SAVE_VERSION).toBe(10);
+    const volleys = [{ shooterId: "0", guns: 4, hits: 2, locations: { hull: 0, masts: 1, crew: 1 } }];
+    const answering = { attackerId: "0", defenderId: "1", round: 1, stage: "returnFire", volleys };
+    const lastRound = { attackerId: "0", defenderId: "1", isNPCCombat: false, round: 1, volleys, fleeOutcome: null, fleeRolls: null, ended: true };
+    for (const G of [save.state.G, { ...save.state.G, combat: answering }, { ...save.state.G, lastRound }]) {
+      const older = { ...save, version: 9, state: { ...save.state, G } };
+      expect(parseHotseatSave(JSON.stringify(older))).toEqual({ kind: "saved", save: JSON.parse(JSON.stringify({ ...older, version: HOTSEAT_SAVE_VERSION })) });
+    }
+  });
+
   it("reads a version 8 save, from before hits landed at random (#380), as this version's, mid-fight too", () => {
-    expect(HOTSEAT_SAVE_VERSION).toBe(9);
     // Its aimed volleys read as every hit on the aim, and a fight at its resolution settles by the legacy move
     const volleys = [{ shooterId: "0", guns: 4, aim: "masts", hits: 2 }];
     const answering = { attackerId: "0", defenderId: "1", round: 1, stage: "returnFire", volleys };

@@ -1,5 +1,5 @@
 import type { CombatState, ShipState, CombatAction, NPCShip, SettledRound } from "../game/types";
-import { answerLine, pendingVolley, pursuitRollsLine, roundShown } from "./volleyText";
+import { answerLine, combatantLabel, noAnswer, pendingVolley, pursuitRollsLine, roundShown } from "./volleyText";
 import { VolleyLines } from "./VolleyLines";
 import { npcKind } from "./npcName";
 import { defenderRollLine, drawIntro } from "./seamanshipText";
@@ -115,17 +115,15 @@ function ActionButton({
 function LastRoundLines({
   settled,
   shooterLabel,
-  upgradesOf,
 }: {
   settled: SettledRound;
   shooterLabel: (id: string) => string;
-  upgradesOf: (id: string) => readonly string[];
 }) {
   return (
     <div className="space-y-0.5 text-center mb-3 border-b border-red-800/30 pb-2">
       <div className="text-[10px] text-amber-400/70 uppercase tracking-wider">Round {settled.round}</div>
-      <VolleyLines volleys={settled.volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
-      {settled.volleys.length === 1 && settled.fleeOutcome !== "caught" && (
+      <VolleyLines volleys={settled.volleys} shooterLabel={shooterLabel} />
+      {noAnswer(settled.volleys, settled.fleeOutcome) && (
         <div className="text-[10px] text-amber-400/60">No answer: the other ship could not fire back</div>
       )}
     </div>
@@ -157,15 +155,15 @@ export function CombatPanel({
     : ships[combat.defenderId];
   const isNPC = combat.isNPCCombat;
   const npcLabel = isNPC && defender ? npcKind(defender as NPCShip) : "Merchant";
-  // Seats count from 1 on the board, as everywhere else (#110)
-  const seatLabel = (id: string | null) => Number(id) + 1;
   // A fight stored before #346 records no volleys.
   const volleys = combat.volleys ?? [];
-  const shooterLabel = (id: string) => (isNPC && id === combat.defenderId ? npcLabel : `Player ${seatLabel(id)}`);
+  const shooterLabel = (id: string) => combatantLabel(combat, id, npcLabel);
+  // Who won the draw, by name ("Player 2", "Merchant"); shown only once the draw is in
+  const winnerLabel = combat.seamanshipWinner ? shooterLabel(combat.seamanshipWinner) : "";
+  // A seat's bare number for the short forms ("P2"), counting from 1 as everywhere else (#110)
+  const seatNumber = (id: string) => Number(id) + 1;
   const pending = pendingVolley(combat);
   const lastShown = roundShown(combat, lastRound);
-  // A ship's upgrades, read for the hit its shot added; NPCs carry none
-  const upgradesOf = (id: string): readonly string[] => ships[id]?.upgrades ?? [];
   // The ship that fled, whose shot-away masts slowed it (#348)
   const fleeing = combat.seamanshipWinner === null ? undefined : ships[combat.seamanshipWinner] ?? npcs[combat.seamanshipWinner];
 
@@ -177,13 +175,13 @@ export function CombatPanel({
 
       <div className="grid grid-cols-2 gap-3 mb-4">
         {attacker && (
-          <ShipCombatStats ship={attacker} label={`Attacker (P${seatLabel(combat.attackerId)})`} />
+          <ShipCombatStats ship={attacker} label={`Attacker (P${seatNumber(combat.attackerId)})`} />
         )}
         {defender && (
           isNPC ? (
             <NPCCombatStats npc={defender as NPCShip} label={`Defender (${npcLabel})`} />
           ) : (
-            <ShipCombatStats ship={defender as ShipState} label={`Defender (P${seatLabel(combat.defenderId)})`} />
+            <ShipCombatStats ship={defender as ShipState} label={`Defender (P${seatNumber(combat.defenderId)})`} />
           )
         )}
       </div>
@@ -196,7 +194,7 @@ export function CombatPanel({
       {watchingLine && <div className="text-center text-xs italic text-amber-200/90 mb-1">{watchingLine}</div>}
       {waitingLine && <div className="text-center text-xs italic text-amber-200/90 mb-2">{waitingLine}</div>}
 
-      {lastShown && <LastRoundLines settled={lastShown} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />}
+      {lastShown && <LastRoundLines settled={lastShown} shooterLabel={shooterLabel} />}
 
       {combat.stage === "seamanship" && (
         <div className="text-center space-y-2">
@@ -231,13 +229,11 @@ export function CombatPanel({
           <div className="text-center">
             <div className="text-amber-400 text-xs mb-1">Seamanship Winner</div>
             <div className="text-lg font-heading text-amber-100">
-              {isNPC && combat.seamanshipWinner === combat.defenderId
-                ? npcLabel
-                : `Player ${seatLabel(combat.seamanshipWinner)}`}
+              {winnerLabel}
             </div>
             <div className="text-[10px] text-amber-400/60 mt-1">
-              Rolls: P{seatLabel(combat.attackerId)}: {combat.seamanshipRolls[combat.attackerId]} |
-              {isNPC ? " NPC" : ` P${seatLabel(combat.defenderId)}`}: {combat.seamanshipRolls[combat.defenderId]}
+              Rolls: P{seatNumber(combat.attackerId)}: {combat.seamanshipRolls[combat.attackerId]} |
+              {isNPC ? " NPC" : ` P${seatNumber(combat.defenderId)}`}: {combat.seamanshipRolls[combat.defenderId]}
             </div>
           </div>
 
@@ -245,7 +241,7 @@ export function CombatPanel({
             <div className="text-amber-100/80 text-xs text-center">
               {isNPC
                 ? "Choose your action:"
-                : `Player ${seatLabel(combat.seamanshipWinner)}, choose your action:`}
+                : `${winnerLabel}, choose your action:`}
             </div>
             <div className="flex gap-2 justify-center">
               <ActionButton
@@ -286,7 +282,7 @@ export function CombatPanel({
             <div className="text-amber-100/80 text-xs">
               {/* "You" only against an NPC: between two seats both screens show this, so it names the seat */}
               {!isNPC
-                ? `Player ${seatLabel(combat.seamanshipWinner)} is attempting to flee!`
+                ? `${winnerLabel} is attempting to flee!`
                 : combat.seamanshipWinner === combat.attackerId
                   ? "You are attempting to escape!"
                   : firstToFireReaches
@@ -341,7 +337,7 @@ export function CombatPanel({
 
       {combat.stage === "returnFire" && (
         <div className="text-center space-y-2">
-          <VolleyLines volleys={volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
+          <VolleyLines volleys={volleys} shooterLabel={shooterLabel} />
           <div className="text-amber-100/80 text-xs mb-2">
             {pending ? answerLine(shooterLabel(pending.shooterId)) : ""}
           </div>
@@ -354,8 +350,8 @@ export function CombatPanel({
         <div className="space-y-3">
           {/* The round's volleys in the order they were fired; each one's damage has landed (#346) */}
           <div className="space-y-1 text-center">
-            <VolleyLines volleys={volleys} shooterLabel={shooterLabel} upgradesOf={upgradesOf} />
-            {volleys.length === 1 && combat.fleeOutcome !== "caught" && (
+            <VolleyLines volleys={volleys} shooterLabel={shooterLabel} />
+            {noAnswer(volleys, combat.fleeOutcome) && (
               <div className="text-[10px] text-amber-400/60">No answer: the other ship could not fire back</div>
             )}
             {/* A fight stored before #346 records no volleys: only a recorded empty round is a shot not fired */}

@@ -135,7 +135,23 @@ export interface Volley {
    * at all before #348: every hit went to the hull then.
    */
   aim?: HitLocation;
+  /**
+   * The shots that added to it as it was fired (#380): chain shot when a hit
+   * landed on the masts, grape shot when one landed on the crew, the
+   * shooter's upgrades then. Absent from a volley stored before this was
+   * recorded (save version 9 and before, an online match): read as none.
+   */
+  shotBonuses?: ShotBonus[];
+  /**
+   * The damage it dealt (#380), after the mast cap: mast hits past
+   * `MAX_MAST_DAMAGE` (chain shot's included) went to the hull. Absent as
+   * `shotBonuses` is: the line then names where the hits landed only.
+   */
+  dealt?: DamageState;
 }
+
+/** A shot upgrade that adds a hit where a volley's hit landed (#380). */
+export type ShotBonus = "chain_shot" | "grape_shot";
 
 export interface CombatState {
   attackerId: string;
@@ -177,6 +193,13 @@ export interface SettledRound {
   fleeRolls: { pursuer: number; fleeer: number } | null;
   /** Whether the fight ended with this round. */
   ended: boolean;
+  /**
+   * The ships this round sank. Optional only because a round stored before
+   * the fix (save version 9, an online match) lacks it: read as none.
+   */
+  sunk?: string[];
+  /** The ships this round left derelict, never one already derelict before it. Optional as `sunk` is. */
+  leftDerelict?: string[];
 }
 
 export interface FloatingLoot {

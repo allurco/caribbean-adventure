@@ -1,6 +1,6 @@
 import { hexDistance, canonicalHex, nearestImage, wrappedDistance } from "./hex";
 import type { Hex, MapWrap } from "./hex";
-import type { ShipState, FloatingLoot, DamageState, NPCShip, MapCell, HitCounts, HitLocation, Volley } from "./types";
+import type { ShipState, FloatingLoot, DamageState, NPCShip, MapCell, HitCounts, HitLocation, ShotBonus, Volley } from "./types";
 
 export const BASE_ATTACK_RANGE = 1;
 export const LONG_GUNS_BONUS_RANGE = 1;
@@ -209,19 +209,29 @@ export function rollHitLocations(hits: number, d6: () => number): HitCounts {
  * already); the rest go to the hull (#348).
  */
 export function volleyDamage(locations: HitCounts, shooterUpgrades: readonly string[], targetMastDamage = 0): DamageState {
+  return volleyOutcome(locations, shooterUpgrades, targetMastDamage).dealt;
+}
+
+/** A volley's damage (`volleyDamage`) and the shots that added to it, as recorded on the volley when it is fired. */
+export function volleyOutcome(
+  locations: HitCounts,
+  shooterUpgrades: readonly string[],
+  targetMastDamage = 0,
+): { shotBonuses: ShotBonus[]; dealt: DamageState } {
   const shots = shotBonuses(locations, shooterUpgrades);
   const onMasts = locations.masts + (shots.includes("chain_shot") ? 1 : 0);
   const masts = Math.min(onMasts, Math.max(0, MAX_MAST_DAMAGE - targetMastDamage));
-  return {
+  const dealt = {
     hull: locations.hull + onMasts - masts,
     crew: locations.crew + (shots.includes("grape_shot") ? 1 : 0),
     masts,
   };
+  return { shotBonuses: shots, dealt };
 }
 
 /** The shots that added to a volley (#380): chain shot when a hit landed on the masts, grape shot when one landed on the crew. */
-export function shotBonuses(locations: HitCounts, shooterUpgrades: readonly string[]): ("chain_shot" | "grape_shot")[] {
-  const shots: ("chain_shot" | "grape_shot")[] = [];
+export function shotBonuses(locations: HitCounts, shooterUpgrades: readonly string[]): ShotBonus[] {
+  const shots: ShotBonus[] = [];
   if (locations.masts > 0 && shooterUpgrades.includes("chain_shot")) shots.push("chain_shot");
   if (locations.crew > 0 && shooterUpgrades.includes("grape_shot")) shots.push("grape_shot");
   return shots;
