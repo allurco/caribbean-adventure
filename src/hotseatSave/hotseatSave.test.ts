@@ -67,12 +67,16 @@ describe("a saved hotseat game", () => {
     expect(playable(restored)).toEqual(playable(original));
     const diceAtSave = original.store.getState().plugins.random;
 
-    endTurns(original, 40);
-    endTurns(restored, 40);
+    // Sixteen turns are enough for merchants to come out, sail and leave the
+    // map; each round's NPC moves are the costly part, so no more (#335).
+    endTurns(original, 16);
+    endTurns(restored, 16);
     expect(playable(restored)).toEqual(playable(original));
-    // The turns spent the dice, and merchants came out on them
+    // The turns spent the dice, merchants came out on them, and some have gone again
+    const { npcIdCounter, npcs } = original.getState()!.G;
     expect(original.store.getState().plugins.random).not.toEqual(diceAtSave);
-    expect(original.getState()!.G.npcIdCounter).toBeGreaterThan(0);
+    expect(npcIdCounter).toBeGreaterThan(0);
+    expect(Object.keys(npcs).length).toBeLessThan(npcIdCounter);
   });
 
   it("fights on, after a restore, with the same dice: one round of ship-to-ship combat", () => {
