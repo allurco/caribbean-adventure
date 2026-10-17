@@ -3,7 +3,8 @@
  * ends (`EventCard`) and the short event log (`HudEventLog`). Reads only the
  * log in G, which carries public facts alone. Pure.
  */
-import type { EventCardKind, EventLogEntry, Region } from "../game/types";
+import type { EventCardKind, EventLogEntry, PortNation, Region } from "../game/types";
+import type { EventArtKind } from "./cardArtSlots";
 import type { ShellLayout } from "../online/shellLayout";
 import { controlsLocked, type Handoff } from "./turnHandoff";
 
@@ -13,6 +14,10 @@ export interface EventCardFace {
   title: string;
   region: string | null;
   effect: string;
+  /** Its art's slot (cardArtSlots.ts, #247). */
+  art: EventArtKind;
+  /** The nation whose flag its art flies (Flotilla patrol, Lost flag), else null. */
+  nation: PortNation | null;
   /** In the log: the captain whose turn it came on, when the board names them. */
   after?: string | null;
 }
@@ -24,14 +29,18 @@ const TITLES: Readonly<Record<EventCardKind, string>> = {
 
 /** The face of the event `entry`, its region named from the map's `regions`. */
 export function eventCardView(entry: EventLogEntry, regions: readonly Region[] | undefined): EventCardFace {
+  return { ...eventCardText(entry, regions), id: entry.id, art: entry.kind, nation: null };
+}
+
+/** The words on `entry`'s card: its name, region and effect. */
+function eventCardText(entry: EventLogEntry, regions: readonly Region[] | undefined): Pick<EventCardFace, "title" | "region" | "effect"> {
   const title = TITLES[entry.kind];
   switch (entry.kind) {
     case "calmSeas":
-      return { id: entry.id, title, region: null, effect: "The sea lies quiet." };
+      return { title, region: null, effect: "The sea lies quiet." };
     case "merchantConvoy": {
       const sail = entry.merchants === 1 ? "A merchant sails" : `${entry.merchants} merchants sail`;
       return {
-        id: entry.id,
         title,
         region: (entry.region !== null && regions?.[entry.region]?.name) || null,
         effect: `${sail} from ${entry.port}, bound for ${listed([...new Set(entry.bound)])}.`,
@@ -89,21 +98,22 @@ export function eventLogLength(layout: ShellLayout): number {
  * Whether the drawn card may show: once the turn's hand-off has come to
  * rest (`controlsLocked`: it rests at "idle", never back to null) and the
  * turn change is over, so it never covers either; not once the game is over.
- * Nor while a seat whose ship is gone chooses its new captain, or that
- * captain's turn is still to open (`captainTurnToOpen` in captainPickTurn.ts,
- * #372): the hand-off to such a seat rests on the captain screen, and the
- * card waits for the pick and the new captain's banner, then shows in full.
+ * Nor while a new captain's turn is pending (`captainTurnPending`, from
+ * `captainTurnToOpen` in captainPickTurn.ts, #372): the seat whose ship is
+ * gone is choosing, or has picked and its turn is still to open. The
+ * hand-off to such a seat rests on the captain screen, and the card waits
+ * for the pick and the new captain's banner, then shows in full.
  */
 export function eventCardShows({
   handoff,
   turnChangeShowing,
   gameOver,
-  captainTurnToOpen,
+  captainTurnPending,
 }: {
   handoff: Handoff | null;
   turnChangeShowing: boolean;
   gameOver: boolean;
-  captainTurnToOpen: boolean;
+  captainTurnPending: boolean;
 }): boolean {
-  return !controlsLocked(handoff) && !turnChangeShowing && !gameOver && !captainTurnToOpen;
+  return !controlsLocked(handoff) && !turnChangeShowing && !gameOver && !captainTurnPending;
 }

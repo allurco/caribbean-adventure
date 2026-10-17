@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { Euler, Vector3 } from "three";
 import { ZERO_WAVE_POSE, shipWavePose, wavePoseRotation, type SurfaceHeight, type WavePose } from "./shipWavePose";
 import { shipHullBox } from "./shipHull";
@@ -128,26 +128,34 @@ describe("ship wave pose on the sea surface", () => {
   const OPEN_SEA = () => -10;
   const deep = poseOn(OPEN_SEA);
 
-  /** The hull's pose over a minute of the sea, every half second. */
-  const poses = (hull: typeof FRIGATE) => {
+  const HULLS = { Frigate: FRIGATE, Sloop: shipHullBox("Sloop"), Galleon: shipHullBox("Galleon") };
+  /**
+   * Each hull's pose over a minute of the sea, every half second. All three
+   * ride one surface in one pass: the sea's FFT at each moment is the costly
+   * part (#335), and a pass per hull ran it three times over.
+   */
+  let poses: Record<keyof typeof HULLS, WavePose[]>;
+  beforeAll(() => {
     const surface = createSeaSurface({ seabedHeightAt: OPEN_SEA, enabled: true });
-    return Array.from({ length: 120 }, (_, i) =>
-      shipWavePose((px, pz) => surface.heightAt(px, pz, i * 0.5, near), hull, x, z, 0.6),
-    );
-  };
+    poses = { Frigate: [], Sloop: [], Galleon: [] };
+    const names = Object.keys(HULLS) as (keyof typeof HULLS)[];
+    for (let i = 0; i < 120; i++) {
+      const sea: SurfaceHeight = (px, pz) => surface.heightAt(px, pz, i * 0.5, near);
+      for (const name of names) poses[name].push(shipWavePose(sea, HULLS[name], x, z, 0.6));
+    }
+  });
   const rms = (values: number[]) => Math.sqrt(values.reduce((sum, v) => sum + v * v, 0) / values.length);
 
   it("rides the open sea", () => {
     // One moment can catch the hull near a node; over a minute it heaves and tilts.
-    const frigate = poses(FRIGATE);
+    const frigate = poses.Frigate;
     expect(Math.max(...frigate.map((p) => Math.abs(p.heave)))).toBeGreaterThan(1e-3);
     expect(Math.abs(deep.heave)).toBeGreaterThan(0);
     expect(Math.abs(deep.pitch) + Math.abs(deep.roll)).toBeGreaterThan(1e-4);
   });
 
   it("pitches a longer hull less: it averages more of the swell (ADR 0004, ADR 0006)", () => {
-    const sloop = poses(shipHullBox("Sloop"));
-    const galleon = poses(shipHullBox("Galleon"));
+    const { Sloop: sloop, Galleon: galleon } = poses;
     expect(rms(galleon.map((p) => p.pitch))).toBeLessThan(rms(sloop.map((p) => p.pitch)));
     expect(rms(galleon.map((p) => p.heave))).toBeLessThan(rms(sloop.map((p) => p.heave)));
   });

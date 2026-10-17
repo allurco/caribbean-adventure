@@ -1545,7 +1545,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           handoff,
           turnChangeShowing: showTurnChange,
           gameOver: ctx.gameover !== undefined,
-          captainTurnToOpen: captainTurnToOpen(helm, newCaptainTurn),
+          captainTurnPending: captainTurnToOpen(helm, newCaptainTurn),
         }) && (
         <EventCard card={eventCard} onDone={clearEventCard} />
       )}

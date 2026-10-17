@@ -3,6 +3,8 @@ import { preloadFont } from "troika-three-text";
 import { SOUNDS } from "../audio/soundRegistry";
 import { audioEngine } from "../audio/sharedAudioEngine";
 import { SCENE_FONTS, sceneReadinessTasks } from "./sceneAssets";
+import { eventCardArtUrls } from "./cardArtSlots";
+import { preloadCardArt } from "./cardArtCache";
 import {
   READINESS_TIMEOUT_MS,
   completeTask,
@@ -38,7 +40,8 @@ export interface SceneReadiness {
 
 /**
  * The board's loading gate (sceneReadiness.ts): loads what lives outside the
- * Canvas (web fonts, the port labels' font, the sounds' files) and takes the
+ * Canvas (web fonts, the port labels' font, the sounds' files, the event
+ * cards' art) and takes the
  * reports of SceneReadinessProbe and the Scene for the rest. The loads start
  * at once; READINESS_TIMEOUT_MS after page load it logs what is still pending and lets the board show.
  */
@@ -80,6 +83,15 @@ export function useSceneReadiness(labelText: string): SceneReadiness {
         .prefetch(sound.id)
         .then(() => complete(`sound:${sound.id}`))
         .catch((error: unknown) => fail(`sound:${sound.id}`, error));
+    }
+  }, [complete, fail]);
+
+  // Every event card's art (#247), decoded and kept (cardArtCache.ts), so a card's picture is there when it shows
+  useEffect(() => {
+    for (const url of eventCardArtUrls(import.meta.env.BASE_URL)) {
+      preloadCardArt(url)
+        .then(() => complete(`card:${url}`))
+        .catch((error: unknown) => fail(`card:${url}`, error));
     }
   }, [complete, fail]);
 

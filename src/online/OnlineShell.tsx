@@ -11,6 +11,8 @@ import { useProfile, type ProfileState } from "./useProfile";
 import { useShellFonts } from "./useShellFonts";
 import { useShellLayout } from "./useShellLayout";
 import { useShellNavigation } from "./useShellNavigation";
+import { SIGNED_IN_ELSEWHERE } from "./tabSignIn";
+import { useTabSignInNotice } from "./useTabSignInNotice";
 
 /**
  * The online entry point (#125, the "Harbour launcher" of #104): the harbour,
@@ -27,6 +29,8 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
   const { page, onClick } = useShellNavigation(initialPage);
   const signedIn = session.status === "signedIn" ? session.session : null;
   const [ownProfile, setOwnProfile] = useProfile(client, signedIn?.userId ?? null);
+  // The email link opened another tab (#280): this one, still saying "check your email", comes aboard by itself and says so.
+  const signedInElsewhere = useTabSignInNotice(session.status, pageKey(page));
 
   const ready = client !== undefined && session.status !== "loading";
   const publicPage = page.kind === "profile";
@@ -40,6 +44,11 @@ export function OnlineShell({ config, initialPage }: { config: SupabaseConfig; i
         <ShellStatus />
       ) : signedIn || publicPage ? (
         <ShellFrame fit={fit} page={page} captain={signedIn ? captainOf(signedIn, ownProfile) : null}>
+          {signedInElsewhere && (
+            <p role="status" className="mb-4 border-l-2 border-shell-rule pl-2.5 text-[15px] text-shell-ink-soft">
+              {SIGNED_IN_ELSEWHERE}
+            </p>
+          )}
           <ShellSheet key={pageKey(page)} page={page} client={client} session={signedIn} ownProfile={ownProfile} onProfileSaved={setOwnProfile} />
         </ShellFrame>
       ) : (
