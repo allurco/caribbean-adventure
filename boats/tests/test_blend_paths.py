@@ -45,6 +45,31 @@ BLEND_HEADER = b"BLENDER17-01v0502"
     # Blender's bundled assets, but from an install under a home directory.
     b"\0/Users/someone/Applications/Blender.app/Contents/Resources/5.2/datafiles/assets/b.blend\0",
     b"\0/home/someone/blender-5.2/5.2/datafiles/assets/brushes/b.blend\0",
+    # A `datafiles/assets/` folder outside a standard Blender install is
+    # anybody's folder, and still names where it lives.
+    b"\0/Volumes/SomeDisk/private-project/datafiles/assets/x.png\0",
+    b"\0/opt/acme/blender/datafiles/assets/brushes/b.blend\0",
+    b"\0/private/var/folders/ab/T/datafiles/assets/b.blend\0",
+    b"\0/tmp/datafiles/assets/b.blend\0",
+    b"\0x/.claude/worktrees/agent-x/datafiles/assets/b.blend\0",
+    b"\0C:\\Projects\\acme\\datafiles\\assets\\b.blend\0",
+    # A standard install's prefix that does not stay in the install.
+    b"\0/Applications/Blender.app/Contents/Resources/5.2/datafiles/assets/../../../../x\0",
+    b"\0/Applications/Blender.app/../../Volumes/Disk/5.2/datafiles/assets/b.blend\0",
+    b"\0/usr/share/blender/5.2/datafiles/assets/..\\..\\x\0",
+    # The prefix found later in a string, not at its start.
+    b"\0/Volumes/Disk/Applications/Blender.app/Contents/Resources/5.2/datafiles/assets/b\0",
+    b"\0/opt/x/usr/share/blender/5.2/datafiles/assets/b.blend\0",
+    # A local path carried on in the same string, after an allowed prefix.
+    b"\0/Applications/Blender.app/Contents/Resources/5.2/datafiles/assets/x/Users/someone/p\0",
+    b"\0/usr/share/blender/5.2/datafiles/assets/b.blend/home/someone/p\0",
+    b"\0/usr/share/blender/5.2/datafiles/assets/x/Volumes/Disk/p\0",
+    b"\0/usr/share/blender/5.2/datafiles/assets/x/.claude/worktrees/agent-x\0",
+    # The version segment is a version, nothing else.
+    b"\0/usr/share/blender/acme/datafiles/assets/b.blend\0",
+    b"\0/Applications/Blender.app/Contents/Resources/5/datafiles/assets/b.blend\0",
+    b"\0/Applications/Blender acme.app/Contents/Resources/5.2/datafiles/assets/b.blend\0",
+    b"\0C:\\Program Files\\Blender Foundation\\Blender 5.2\\acme\\datafiles\\assets\\b\0",
 ])
 def test_it_finds_a_local_path(raw):
     assert blendscan.local_paths(raw)
@@ -63,6 +88,8 @@ def test_it_finds_a_local_path(raw):
     b"essentials_brushes-gp_draw.blend\0",
     b"\0/usr/share/blender/5.2/datafiles/assets/brushes/essentials_brushes-gp_draw.blend\0",
     b"\0C:\\Program Files\\Blender Foundation\\Blender 5.2\\5.2\\datafiles\\assets\\b.blend\0",
+    b"\0C:/Program Files/Blender Foundation/Blender 5.2/5.2/datafiles/assets/b.blend\0",
+    b"\0/Applications/Blender-5.2.app/Contents/Resources/5.2/datafiles/assets/b.blend\0",
 ])
 def test_it_passes_a_clean_string(raw):
     assert blendscan.local_paths(raw) == []

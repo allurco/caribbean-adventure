@@ -18,6 +18,13 @@ directory whose cut fell at `Users/` or `home/`, or a worktree path. A cut
 anywhere else leaves an ordinary-looking fragment this cannot tell from
 data, which is why `blendsave.save_clean` fills every buffer before writing
 it, so no tail is saved at all.
+
+ONE EXEMPTION: a fresh scene's paint tools name Blender's bundled brushes by
+the install's absolute path. A path is let through only when it starts with a
+standard install's `datafiles/assets/` folder (the macOS app bundle under
+`/Applications/`, `/usr/share/blender/<version>/` on Linux, or the Windows
+installer's folder under `C:\\Program Files\\`) and holds no `..`; anything
+else that merely contains `datafiles/assets/` is reported like any other path.
 """
 
 import re
@@ -47,15 +54,38 @@ LOCAL_PATH = re.compile(
 
 
 # Blender's own bundled assets (the Essentials brushes a fresh scene's paint
-# tools point at), named by the install's absolute path: the same on every
-# machine with Blender in its usual place, so not a leak. One installed under
-# a home directory still names the user, and is still reported.
-_BLENDER_BUNDLED = re.compile(rb"[\\/]datafiles[\\/]assets[\\/]")
-_UNDER_HOME = re.compile(rb"(?:Users|home)[\\/]|^~/")
+# tools point at), named by the install's absolute path. Only a standard
+# install's path is let through, matched from the start of the string: the
+# macOS app bundle (`/Applications/Blender<suffix>.app/Contents/Resources/
+# <version>/`), the Linux packages' `/usr/share/blender/<version>/` and the
+# Windows installer's `C:\Program Files\Blender Foundation\Blender <version>\
+# <version>\` (either slash), then `datafiles/assets/`. That path is the same on every
+# machine with Blender in its usual place, so it names nobody. A
+# `datafiles/assets/` anywhere else (another disk, a temp dir, a home or a
+# worktree) is still reported, and so is any path holding `..`, which could
+# climb out of the install.
+_VERSION = rb"[0-9]+\.[0-9]+"
+_SEP = rb"[\\/]"
+_BLENDER_BUNDLED = re.compile(
+    rb"\A(?:"
+    rb"/Applications/Blender[A-Za-z0-9._-]*\.app/Contents/Resources/" + _VERSION + rb"/"
+    rb"|/usr/share/blender/" + _VERSION + rb"/"
+    rb"|[Cc]:" + _SEP + rb"Program Files" + _SEP + rb"Blender Foundation" + _SEP
+    + rb"Blender " + _VERSION + _SEP + _VERSION + _SEP
+    + rb")datafiles" + _SEP + rb"assets" + _SEP
+)
 
 
 def _is_blender_bundled(path: bytes) -> bool:
-    return bool(_BLENDER_BUNDLED.search(path)) and not _UNDER_HOME.search(path)
+    """Whether a matched path is one of a standard Blender install's assets.
+
+    A match runs on over every printable byte, so what follows the install's
+    prefix is scanned again: a local path carried on in the same string is
+    still reported.
+    """
+    prefix = _BLENDER_BUNDLED.match(path)
+    return (prefix is not None and b".." not in path
+            and LOCAL_PATH.search(path, prefix.end()) is None)
 
 
 def local_paths(raw: bytes) -> list[str]:
