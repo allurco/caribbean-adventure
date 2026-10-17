@@ -193,9 +193,11 @@ def _upper_storey(piece: Piece, p: TavernParams, tones: _Tones, glass_at: list):
                  tones.of(tones.c.glass, 0.08), TINTS["glass"], sides=())
             _glazing_bars(windows, frame, c, lo_v, hi_v, 0.75, tones)
             glass_at.append(frame.at(c, (lo_v + hi_v) / 2, 0.1))
-    # The corner posts: closed round and underneath, though only the two
-    # outer faces show, so no sliver of sun passes through the corner they
-    # stand proud of (#431).
+    # The corner posts: closed round and underneath, so no sliver of sun
+    # passes through the corner they stand proud of (#431). The two outer
+    # faces are the ones meant to show, but the inner side faces stand a
+    # rail's 0.36 m proud of the panels, so a close, oblique camera sees them
+    # too, as oak where the post used to be open.
     oak = pal.linear(tones.c.oak)
     for sx in (-1.0, 1.0):
         for y_wall, sy in ((yf, -1.0), (yb, 1.0)):
@@ -313,7 +315,9 @@ def _roof(piece: Piece, p: TavernParams, tones: _Tones):
             roof.face(((x_in, y1, bot1), (x_out, y1, bot1), (x_out, y1, top1), (x_in, y1, top1)),
                       c, TINTS["trim"], out=(0.0, side, 0.0))
             # Its inner face: the bargeboard hangs below the roof's underside,
-            # and light would pass through it there (#431).
+            # and light would pass through it there (#431). From close under
+            # the verge the camera sees this face, as oak where the board
+            # used to be see-through.
             roof.face(((x_in, y0, bot0), (x_in, y1, bot1), (x_in, y1, top1), (x_in, y0, top0)),
                       c, TINTS["trim"], out=(-sx, 0.0, 0.0))
 
