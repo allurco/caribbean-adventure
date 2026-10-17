@@ -8,22 +8,54 @@ the foot, tonal jitter per block, salt-pale stone -- is applied here, so
 `build` only multiplies in the baked occlusion.
 """
 
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class StylePalette:
+    """One nation style's colours, as sRGB hex. The surfaces a nation's
+    palette will colour later (#180, through `_TINT`) are authored as light,
+    warm neutrals, so a tint multiplies into them; the rest are the piece's
+    own weathered materials."""
+
+    stone: int       # the ground storey's dressed blocks
+    salt: int        # salt-pale stone, mixed into some blocks
+    warm: int        # warm-stained stone, mixed into others
+    mortar: int      # the ledges between set-back courses
+    plaster: int     # the limewashed panels (tint channel 1)
+    oak: int         # beams, posts, braces, bargeboards (channel 3)
+    roof: int        # the roof's courses (channel 2)
+    moss: int
+    brick: int
+    pot: int
+    glass: int       # warm amber: the window glow's base, lit later (#392)
+    door: int
+    sign: int        # the painted board
+    bench: int
+    iron: int
+
+
 # England (#392's table): dressed stone under limewashed panels and dark oak,
-# a grey-blue slate roof, a brick stack. The shared warm palette's neutrals:
-# a nation's palette tints them later through `_TINT`.
-STONE = 0x9A8C7C        # a shade under `roughStone` (palette.ts): warm grey-brown blocks
-MORTAR = 0x564E46
-PLASTER = 0xE4DAC6      # `limewash`
-OAK = 0x4B3F35          # `oldTimber`: salt-greyed beams
-SLATE = 0x5C646E        # grey-blue slate, weathered
-MOSS = 0x6F7552
-BRICK = 0x8E4F3C
-POT = 0xA2603F
-GLASS = 0x7A5A34        # warm amber: the window glow's base, lit later (#392)
-DOOR = 0x5C4433
-SIGN = 0x7A3428         # the painted board
-BENCH = 0x6B5642
-IRON = 0x1B1816         # `ironwork`
+# a steep roof of weathered, warm grey-brown shingle, a brick stack.
+ENGLAND = StylePalette(
+    stone=0xA28C72,      # warm sandstone-grey blocks, a shade over `roughStone`
+    salt=0xE0D5C0,
+    warm=0xA8865F,
+    mortar=0x66574A,
+    plaster=0xEDDDC0,    # `limewash`, a touch warmer
+    oak=0x5A4636,        # `oldTimber`, warmer
+    roof=0xAE9C82,       # weathered shingle: light and warm, for #180's roof tint
+    moss=0x737650,
+    brick=0x96553D,
+    pot=0xA8643F,
+    glass=0x7A5A34,
+    door=0x5E4532,
+    sign=0x7A3428,
+    bench=0x6E5843,
+    iron=0x1B1816,       # `ironwork`
+)
+
+PALETTES = {"england": ENGLAND}
 
 # Grime rises this far up a wall from the ground, darkening the foot.
 GRIME_HEIGHT = 1.2

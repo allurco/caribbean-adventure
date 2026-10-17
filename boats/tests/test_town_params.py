@@ -60,3 +60,35 @@ def test_the_jetty_cannot_reach_past_the_roof_overhang():
     p = TavernParams()
     with pytest.raises(ValueError, match="jetty"):
         replace(p, jetty=p.eave_overhang + 0.1).validate()
+
+
+# --- the look, tunable (#394's review) ---------------------------------------
+
+RELIEF = ("course_recess", "member", "rail", "row_step")
+
+
+def test_the_relief_is_chunky_as_the_reference_is():
+    # Deep enough to read at ship zoom, where the whole tavern is some 60 px:
+    # a quarter to two fifths of a metre, not a few centimetres.
+    p = TavernParams()
+    for name in RELIEF:
+        assert 0.25 <= getattr(p, name) <= 0.4, name
+
+
+@pytest.mark.parametrize("field", RELIEF)
+def test_a_relief_depth_must_be_positive(field):
+    with pytest.raises(ValueError, match=field):
+        replace(TavernParams(), **{field: 0.0}).validate()
+
+
+def test_the_course_recess_stays_inside_the_walls():
+    with pytest.raises(ValueError, match="course_recess"):
+        replace(TavernParams(), course_recess=1.0).validate()
+
+
+def test_the_colours_come_from_the_styles_palette_unless_given():
+    from town.palette import PALETTES
+    p = TavernParams()
+    assert p.colours() is PALETTES["england"]
+    own = replace(PALETTES["england"], roof=0xFFFFFF)
+    assert replace(p, palette=own).colours() is own
