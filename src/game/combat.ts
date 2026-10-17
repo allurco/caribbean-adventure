@@ -206,10 +206,12 @@ export function rollHitLocations(hits: number, d6: () => number): HitCounts {
  * it. Chain shot adds one to the masts when any hit landed on them, grape
  * shot one to the crew when any landed on it (`shotBonuses`). The masts
  * take hits only up to `MAX_MAST_DAMAGE` (the target has `targetMastDamage`
- * already); the rest go to the hull (#348).
+ * already); the rest go to the hull (#348). The crew take hits only up to
+ * `targetCrewSpare` (#350: a player ship never drops below 1 crew,
+ * `crewSpare`); the rest go to the hull too. No limit for an NPC.
  */
-export function volleyDamage(locations: HitCounts, shooterUpgrades: readonly string[], targetMastDamage = 0): DamageState {
-  return volleyOutcome(locations, shooterUpgrades, targetMastDamage).dealt;
+export function volleyDamage(locations: HitCounts, shooterUpgrades: readonly string[], targetMastDamage = 0, targetCrewSpare = Infinity): DamageState {
+  return volleyOutcome(locations, shooterUpgrades, targetMastDamage, targetCrewSpare).dealt;
 }
 
 /** A volley's damage (`volleyDamage`) and the shots that added to it, as recorded on the volley when it is fired. */
@@ -217,13 +219,16 @@ export function volleyOutcome(
   locations: HitCounts,
   shooterUpgrades: readonly string[],
   targetMastDamage = 0,
+  targetCrewSpare = Infinity,
 ): { shotBonuses: ShotBonus[]; dealt: DamageState } {
   const shots = shotBonuses(locations, shooterUpgrades);
   const onMasts = locations.masts + (shots.includes("chain_shot") ? 1 : 0);
   const masts = Math.min(onMasts, Math.max(0, MAX_MAST_DAMAGE - targetMastDamage));
+  const onCrew = locations.crew + (shots.includes("grape_shot") ? 1 : 0);
+  const crew = Math.min(onCrew, Math.max(0, targetCrewSpare));
   const dealt = {
-    hull: locations.hull + onMasts - masts,
-    crew: locations.crew + (shots.includes("grape_shot") ? 1 : 0),
+    hull: locations.hull + onMasts - masts + onCrew - crew,
+    crew,
     masts,
   };
   return { shotBonuses: shots, dealt };
@@ -250,6 +255,16 @@ export function hitCountsOf(volley: Volley): HitCounts {
 /** What a fleeing ship's mast damage takes off its roll (#348): `MAST_FLEE_PENALTY` a point, up to `MAX_MAST_DAMAGE` points. */
 export function fleePenalty(mastDamage: number): number {
   return Math.min(mastDamage, MAX_MAST_DAMAGE) * MAST_FLEE_PENALTY;
+}
+
+/**
+ * The crew a ship may lose (#350): a player ship never drops below 1 crew,
+ * from cannon fire or boarding, so it may lose all but one; an NPC may lose
+ * them all and be left derelict.
+ */
+export function crewSpare(ship: ShipState | NPCShip): number {
+  if ("role" in ship) return Infinity;
+  return Math.max(0, (ship.stats?.crew.current ?? 0) - 1);
 }
 
 export function applyDamage(ship: ShipState | NPCShip, damage: DamageState): void {

@@ -29,6 +29,7 @@ import {
   createLootFromNPC,
   getEffectiveCannons,
   isInGunRange,
+  crewSpare,
 } from "./combat";
 import { isOneOf } from "./moveArgs";
 import { loseShip } from "./captainDeath";
@@ -312,7 +313,8 @@ function opponentOf(combat: Pick<CombatState, "attackerId" | "defenderId">, id: 
 /**
  * One volley (#346): `shooterId` fires every gun its crew can man at the
  * other side, each hit then rolls where it lands (#380), and the damage
- * lands at once, before anything else is rolled. Recorded in the round's
+ * lands at once, before anything else is rolled; a player ship keeps its last
+ * crew (#350, `crewSpare`). Recorded in the round's
  * volleys and in the side's hits.
  */
 function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, d6: RollD6): void {
@@ -324,7 +326,7 @@ function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, d
   const locations = rollHitLocations(hits, d6);
   // The shots and the damage as fired, so the volley reads the same after the shooter sinks or buys another shot
   const upgrades = "upgrades" in shooter ? shooter.upgrades : [];
-  const { shotBonuses, dealt } = volleyOutcome(locations, upgrades, target.damage.masts);
+  const { shotBonuses, dealt } = volleyOutcome(locations, upgrades, target.damage.masts, crewSpare(target));
   combat.volleys = [...(combat.volleys ?? []), { shooterId, guns, hits, locations, shotBonuses, dealt }];
   if (shooterId === combat.attackerId) combat.attackerHits = hits;
   else combat.defenderHits = hits;
