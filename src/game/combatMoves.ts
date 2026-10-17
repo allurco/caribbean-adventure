@@ -331,11 +331,8 @@ function fireVolley(G: CaribbeanState, combat: CombatState, shooterId: string, d
   if (hits === 0) return;
 
   applyDamage(target, dealt);
-  // An escort's attacker that takes a hit fails its no-damage condition.
-  if (targetId === combat.attackerId) {
-    const mission = G.ships[combat.attackerId].activeMission;
-    if (mission) failEscortMission(mission);
-  }
+  // A captain's ship on an escort that takes a hit, attacker or defender, fails its no-damage condition (#353).
+  if ("activeMission" in target && target.activeMission) failEscortMission(target.activeMission);
 }
 
 /**
