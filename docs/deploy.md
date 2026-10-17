@@ -90,7 +90,7 @@ Every tab of the game open in one browser follows one sign-in. supabase-js keeps
 It only reaches tabs that share the page's **origin** and **browser storage**. The asking tab stays signed out, and the tab the link opened signs in on its own, when:
 
 - **The link lands on another origin.** Supabase Auth sends the browser back to the asking page only when that page matches one of the **Redirect URLs** (step 4); otherwise it falls back to the **Site URL**. `localhost` and `127.0.0.1` are different origins too, and so are production and a preview ([Sign-in on previews](#sign-in-on-previews)). Ask for the link from a page on an allowed origin.
-- **The link opens in another browser or profile**, or in a mail app's own in-app browser. None of these share the asking browser's storage. Copy the link into the browser that asked instead, or sign in again in the one that opened.
+- **The link opens in another browser or profile**, or in a mail app's own in-app browser. None of these share the asking browser's storage. Copy the link into the browser that asked instead, or sign in again in the one that opened. That the other browser still signs in by itself holds because the client uses supabase-js's default implicit flow (`supabaseClient.ts` sets no `flowType`): the session rides in the link's fragment. Under PKCE (`flowType: "pkce"`) the link carries a code that only the browser holding the code verifier, the one that asked, can exchange, so a link opened anywhere else would not sign in at all.
 
 ## Preview branches (#107)
 

@@ -6,12 +6,10 @@
  * BroadcastChannel, as two tabs of one browser do.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { SIGNED_IN_ELSEWHERE } from "../src/online/tabSignIn";
 import { E2E_PLAYERS } from "./e2ePlayers";
 
 const { anne } = E2E_PLAYERS;
-
-/** `SIGNED_IN_ELSEWHERE` in src/online/tabSignIn.ts. */
-const SIGNED_IN_ELSEWHERE = "You are signed in: the sign-in finished in another tab.";
 
 /** Where Supabase Auth sends the email link back to: the page that asked, the session in the hash (implicit flow). */
 function magicLinkReturn(): string {
@@ -31,7 +29,7 @@ async function askForLink(page: Page): Promise<void> {
   await page.goto("/?view=account");
   await page.getByLabel("Email address").fill("anne@example.test");
   await page.getByRole("button", { name: "Email me a sign-in link" }).click();
-  await expect(page.getByRole("status")).toContainText("A sign-in link is on its way");
+  await expect(page.getByText("A sign-in link is on its way")).toBeVisible();
 }
 
 test("the email link signs in every open tab, and signing out signs them all out", async ({ context }) => {
@@ -52,9 +50,13 @@ test("the email link signs in every open tab, and signing out signs them all out
 
   // Tab A is behind tab B, as a tab left open is: it signs in by itself, and says so.
   await expect(tabA.getByRole("button", { name: "Sign out" })).toBeVisible({ timeout: 3_000 });
-  await expect(tabA.getByText(SIGNED_IN_ELSEWHERE)).toBeVisible();
+  // The line on the sheet; the live region below carries it for screen readers.
+  await expect(tabA.locator('p[aria-hidden="true"]', { hasText: SIGNED_IN_ELSEWHERE })).toBeVisible();
+  // And tells a screen reader, through the live region the shell keeps mounted.
+  await expect(tabA.getByRole("status").filter({ hasText: SIGNED_IN_ELSEWHERE })).toHaveCount(1);
   // The tab the link opened loaded signed in: nothing to explain there.
   await expect(tabB.getByText(SIGNED_IN_ELSEWHERE)).toHaveCount(0);
+  await expect(tabB.getByRole("status").filter({ hasText: SIGNED_IN_ELSEWHERE })).toHaveCount(0);
 
   await tabB.getByRole("button", { name: "Sign out" }).click();
   await expect(tabB.getByRole("heading", { name: "Sign in to sail" })).toBeVisible();

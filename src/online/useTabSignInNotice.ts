@@ -1,18 +1,17 @@
 import { useState } from "react";
-import { signedInFromAnotherTab } from "./tabSignIn";
+import type { AuthEvent } from "./accountService";
+import { initialTabSignIn, nextTabSignIn, type TabSignInInput } from "./tabSignIn";
 import type { SessionState } from "./useAccount";
 
-/**
- * Whether to say this tab was signed in from another (#280): from the moment
- * it comes aboard by itself until the player moves to another page or signs
- * out. Follows the session's status from render to render.
- */
-export function useTabSignInNotice(status: SessionState["status"], page: string): boolean {
-  const [previous, setPrevious] = useState(status);
-  const [shownOn, setShownOn] = useState<string | null>(null);
-  if (previous !== status) {
-    setPrevious(status);
-    setShownOn(signedInFromAnotherTab(previous, status) ? page : null);
+/** Whether to say this tab was signed in from another (#280); the rule is `nextTabSignIn`. */
+export function useTabSignInNotice(session: SessionState, page: string): boolean {
+  const event: AuthEvent = session.status === "loading" ? null : (session.event ?? null);
+  const input: TabSignInInput = { status: session.status, event, page };
+  const [seen, setSeen] = useState(input);
+  const [notice, setNotice] = useState(() => initialTabSignIn(session.status, page));
+  if (seen.status !== input.status || seen.event !== input.event || seen.page !== input.page) {
+    setSeen(input);
+    setNotice(nextTabSignIn(notice, input));
   }
-  return shownOn === page;
+  return notice.shown;
 }
