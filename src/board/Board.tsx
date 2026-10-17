@@ -68,7 +68,7 @@ import {
   wrapCopyRange,
 } from "./wrapView";
 import { openingView, type CameraView } from "./shipView";
-import { captainPicked, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows, type Helm, type TurnOf } from "./captainPickTurn";
+import { captainPicked, captainTurnToOpen, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows, type Helm, type TurnOf } from "./captainPickTurn";
 import { flightStep, flightStyle, type FlightStyle } from "./cameraFlight";
 import { seamStrip } from "./visuals/seamStrip";
 import { PointerCopy, WorldCopies } from "./WorldCopies";
@@ -118,6 +118,7 @@ import {
   seatMayAct,
   seatMayActInCombat,
   seatName,
+  turnCaptainName,
   waitingFor,
 } from "./seat";
 import { HudParchmentPanel } from "./HudParchmentPanel";
@@ -1371,7 +1372,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
       {!inCombat && currentShipState && (
         <HudLeftColumn>
           <HudGloryBoard rows={gloryScoreboard(G, hudPlayer, props.onlineSeats)} colours={PLAYER_COLOURS} />
-          <HudEventLog rows={eventLogRows(shownEventLog, G.regions, eventLogLength(hudLayoutKind), (seat) => seatName(G, seat))} />
+          <HudEventLog rows={eventLogRows(shownEventLog, G.regions, eventLogLength(hudLayoutKind), (seat) => turnCaptainName(G, seat))} />
         </HudLeftColumn>
       )}
 
@@ -1515,8 +1516,13 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
         </HudToastStack>
       )}
 
-      {/* The event card drawn as the last turn ended (#246), for every player, once the turn's hand-off is over */}
-      {eventCard && eventCardShows({ handoff, turnChangeShowing: showTurnChange, gameOver: ctx.gameover !== undefined }) && (
+      {/* The event card drawn as the last turn ended (#246), for every player, once the turn's hand-off is over and a new captain's turn has opened (#372) */}
+      {eventCard && eventCardShows({
+          handoff,
+          turnChangeShowing: showTurnChange,
+          gameOver: ctx.gameover !== undefined,
+          captainTurnToOpen: captainTurnToOpen(helm, newCaptainTurn),
+        }) && (
         <EventCard card={eventCard} onDone={clearEventCard} />
       )}
 

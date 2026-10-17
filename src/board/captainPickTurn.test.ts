@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { captainPicked, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows } from "./captainPickTurn";
+import { captainPicked, captainTurnToOpen, helmChanged, helmOf, nextOpening, openingTurnView, turnEndedBannerShows } from "./captainPickTurn";
 import { turnChangeView } from "./shipView";
 import { startHandoff, type Handoff, type HandoffPhase } from "./turnHandoff";
 
@@ -130,5 +130,16 @@ describe("helmOf: the seat at the helm", () => {
     expect(helmOf({ lostShips: lost }, "draft", "1", 1).choosing).toBe(false);
     expect(helmOf({ lostShips: lost }, "combat", "1", 4).choosing).toBe(false);
     expect(helmOf({ lostShips: { "1": { ...lost["1"], eliminated: true } } }, "main", "1", 4).choosing).toBe(false);
+  });
+});
+
+describe("captainTurnToOpen: a new captain's turn still to open (#372)", () => {
+  const helm = (choosing: boolean) => ({ player: "1", turn: 7, choosing });
+  it("while the seat at the helm chooses its new captain", () => {
+    expect(captainTurnToOpen(helm(true), null)).toBe(true);
+  });
+  it("once picked, until the new captain's turn has opened", () => {
+    expect(captainTurnToOpen(helm(false), { player: "1", turn: 7 })).toBe(true);
+    expect(captainTurnToOpen(helm(false), null)).toBe(false);
   });
 });

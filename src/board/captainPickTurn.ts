@@ -54,6 +54,14 @@ export function captainPicked(before: Helm | null, now: Helm): boolean {
   return before.player === now.player && before.turn === now.turn;
 }
 
+/**
+ * Whether a new captain's turn is still to open (#372): the seat at the helm
+ * is choosing its captain, or has picked and the turn waits (`newCaptain`,
+ * as `PendingOpen` holds it) for the hand-off. What else the board would
+ * show waits with it: the event card never mounts under the captain screen.
+ */
+export const captainTurnToOpen = (now: Helm, newCaptain: TurnOf | null): boolean => now.choosing || newCaptain !== null;
+
 /** The turns waiting to open: the one the hand-off announced, and a new captain's, picked. */
 export interface PendingOpen {
   readonly announced: string | null;
