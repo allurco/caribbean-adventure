@@ -37,6 +37,7 @@ import { FOAM_MOTION_GLSL, FOAM_SHADING_GLSL } from "./foamShading";
 import { SHORE_FOAM_GLSL } from "./shoreFoam";
 import { HULL_FOAM_GLSL } from "./hullFoam";
 import { HULL_CONTACT_GLSL } from "./hullContact";
+import { CLOSE_FOAM_GLSL } from "./closeFoam";
 import { WAKE_FOAM_GLSL } from "./wakeFoam";
 import { WAKE_FLOATS_A, WAKE_FLOATS_B, WAKE_POINT_BUDGET, createWakeTrails } from "./wakeTrail";
 import { waveTimeStep } from "./waveClock";
@@ -137,6 +138,7 @@ const fragmentShader = `
   ${SURF_TIMING_GLSL}
   ${FOAM_MOTION_GLSL}
   ${FOAM_SHADING_GLSL}
+  ${CLOSE_FOAM_GLSL}
   ${SHORE_FOAM_GLSL}
   ${WHITECAP_FOAM_GLSL}
   ${HULL_FOAM_GLSL}
@@ -169,7 +171,10 @@ const fragmentShader = `
   // units: the strongest of the ships' contact patches (hullFoam.ts), contact
   // lines and bow waves (hullContact.ts), and the strongest wet band as
   // \`shade\`; each ship measured the short way round on a wrapping map.
-  void shipContactFoam(vec2 worldXZ, float footprint, out float coverage, out float shade) {
+  void shipContactFoam(vec2 worldXZ, float footprint, float closeUp, out float coverage, out float shade) {
+    // Up close the patch fades out and the line thins (closeFoam.ts, #389): the flecks take over.
+    float patchShare = 1.0 - closeUp;
+    float contactShare = mix(1.0, CLOSE_CONTACT_SHARE, closeUp);
     coverage = 0.0;
     shade = 0.0;
     for (int i = 0; i < SHIP_FOAM_CAP; i++) {
@@ -190,7 +195,7 @@ const fragmentShader = `
       float alongShare = along / max(halfLength, 1e-4);
       float contact = max(hullContactCoverage(outline, alongShare, hull.y, motion, footprint),
         bowWaveCoverage(outline, alongShare, hull.y, motion, footprint));
-      coverage = max(coverage, max(hullFoamCoverage(d, heading, hull.x, hull.w), contact));
+      coverage = max(coverage, max(hullFoamCoverage(d, heading, hull.x, hull.w) * patchShare, contact * contactShare));
       shade = max(shade, hullContactShade(outline, hull.y));
     }
   }
@@ -219,8 +224,8 @@ const fragmentShader = `
   // A coverage turned into lace by the breakup noise at \`scale\` cycles per
   // unit, falling back to its smooth mean where the lace's \`featureMetres\`
   // features are under a few pixels.
-  float lacedFoam(float coverage, float scale, float featureMetres, vec2 churn, float footprintMetres) {
-    float lace = foamLace(coverage, foamBreakupNoise(vWorld.xz, scale, churn));
+  float lacedFoam(float coverage, float scale, float featureMetres, vec2 churn, float footprintMetres, float closeUp) {
+    float lace = closeLace(coverage, foamBreakupNoise(vWorld.xz, scale, churn), closeUp);
     return mix(coverage * FOAM_FAR_SHARE, lace, foamDetailFade(footprintMetres, featureMetres));
   }
 
@@ -500,7 +505,8 @@ const fragmentShader = `
     float shipCoverage;
     float shipShade;
     float footprintUnits = footprintMetres / METRES_PER_UNIT;
-    shipContactFoam(vWorld.xz, footprintUnits, shipCoverage, shipShade);
+    float closeUp = closeFoamWeight(cameraDistance);
+    shipContactFoam(vWorld.xz, footprintUnits, closeUp, shipCoverage, shipShade);
     seaColor *= 1.0 - shipShade * shipFoamFade;
     float hullCoverage = shipCoverage * shipFoamFade;
     // The wakes are laced apart from the hull foam, as churn: a coarser noise
@@ -508,9 +514,9 @@ const fragmentShader = `
     // one laces each patch (foamChurnLace, foamShading.ts); the two are
     // unioned, so they join without a seam.
     float wakeCoverage = shipWakeCoverage(vWorld.xz, footprintUnits) * shipFoamFade;
-    float shore = lacedFoam(shoreCoverage, SHORE_FOAM_NOISE_SCALE, SHORE_FOAM_LACE_METRES, churn, footprintMetres);
-    float whitecaps = lacedFoam(whitecapCoverage, WHITECAP_NOISE_SCALE, WHITECAP_LACE_METRES, churn, footprintMetres);
-    float hull = lacedFoam(hullCoverage, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres);
+    float shore = lacedFoam(shoreCoverage, SHORE_FOAM_NOISE_SCALE, SHORE_FOAM_LACE_METRES, churn, footprintMetres, closeUp);
+    float whitecaps = lacedFoam(whitecapCoverage, WHITECAP_NOISE_SCALE, WHITECAP_LACE_METRES, churn, footprintMetres, closeUp);
+    float hull = lacedFoam(hullCoverage, HULL_FOAM_NOISE_SCALE, HULL_FOAM_LACE_METRES, churn, footprintMetres, closeUp);
     float wake = 0.0;
     if (wakeCoverage > 0.0) {
       float coarse = foamBreakupNoise(vWorld.xz, WAKE_NOISE_SCALE, churn);
@@ -523,6 +529,9 @@ const fragmentShader = `
       wake = mix(far, churned, foamDetailFade(footprintMetres, HULL_FOAM_LACE_METRES));
     }
     float foam = combineFoam(shore, whitecaps, combineFoam(hull, wake, 0.0));
+    // Up close the lace's features span tens of pixels and dense foam reads
+    // as a flat patch: break it into bubbles there, and only there (#389).
+    if (closeUp > 0.0) foam = closeUpFoam(foam, foamBubbleCell(vWorld.xz, churn, METRES_PER_UNIT), closeUp);
     // Foam is rough and opaque: it replaces the water, its sky reflection and
     // its glint, as a diffuse layer lit by the sun and the sky.
     seaColor = mix(seaColor, foamRadiance(nShade, light, sunIrradiance, skyDiffuse), foam);

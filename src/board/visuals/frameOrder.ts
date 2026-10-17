@@ -20,3 +20,10 @@ export const CASCADE_PRIORITY = 0.25;
  * the composer (1) renders the frame.
  */
 export const SHIP_POSE_PRIORITY = 0.1;
+
+/**
+ * The ships' foam flecks (ShipFoamFlecks.tsx, #389): shed from where each
+ * ship is drawn this frame, so after the ships sail and take their pose, and
+ * before the composer (1) renders the frame.
+ */
+export const FOAM_FLECK_PRIORITY = 0.2;

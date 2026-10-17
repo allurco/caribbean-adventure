@@ -17,7 +17,7 @@ import {
 } from "three";
 import { SCENE_LIGHTING } from "../visuals/sceneLighting";
 import type { ParticlePool } from "./particlePool";
-import { showLayer, viewAxis, writePuffs, writeUniform, type PuffShape } from "./frameWriters";
+import { showLayer, viewAxis, writePuffs, writeUniform, type PuffBuffers, type PuffShape } from "./frameWriters";
 import { SCENE_WIND } from "../visuals/sceneWind";
 import { PUFF_FRAGMENT, PUFF_VERTEX } from "./puffShader";
 
@@ -48,7 +48,29 @@ export interface PuffZoom {
   scale: number;
 }
 
-export function PuffLayer({ pool, look, zoom, warm }: { pool: ParticlePool; look: PuffLook; zoom?: PuffZoom; warm: boolean }) {
+/**
+ * Fills the instance buffers itself instead of `writePuffs` and returns how
+ * many it wrote (the ships' foam flecks, which wrap and ride the sea,
+ * ShipFoamFlecks.tsx).
+ */
+export type PuffWriter = (buffers: PuffBuffers, geometry: InstancedBufferGeometry) => number;
+
+export function PuffLayer({
+  pool,
+  look,
+  zoom,
+  warm,
+  write,
+  priority = 0,
+}: {
+  pool: ParticlePool;
+  look: PuffLook;
+  zoom?: PuffZoom;
+  warm: boolean;
+  write?: PuffWriter;
+  /** Its frame callback's priority (frameOrder.ts); the combat's layers keep the default. */
+  priority?: number;
+}) {
   const { geometry, material, buffers } = useMemo(() => {
     const quad = new PlaneGeometry(1, 1);
     const g = new InstancedBufferGeometry();
@@ -101,9 +123,9 @@ export function PuffLayer({ pool, look, zoom, warm }: { pool: ParticlePool; look
       viewAxis(SCENE_WIND.toward[0], SCENE_WIND.toward[1], camera.matrixWorldInverse, axis);
       material.uniforms.uAxis.value.set(axis[0], axis[1]);
     }
-    const live = writePuffs(pool, look, buffers, geometry);
+    const live = write ? write(buffers, geometry) : writePuffs(pool, look, buffers, geometry);
     // An empty pool draws nothing at all, once the loading gate has compiled its shader (frameWriters.ts)
     if (mesh.current) showLayer(mesh.current, live, { warm });
-  });
+  }, priority);
   return <mesh ref={mesh} geometry={geometry} material={material} frustumCulled={false} renderOrder={2} visible={warm} />;
 }

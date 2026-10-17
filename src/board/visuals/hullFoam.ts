@@ -13,7 +13,10 @@
  * trail lays nothing (#144). The shaders break the patch up with the same
  * lace and churn as the shore foam (foamShading.ts). The crisp line where
  * the hull meets the water, the bow wave and the wet band are
- * hullContact.ts; the wake left behind is wakeFoam.ts.
+ * hullContact.ts; the wake left behind is wakeFoam.ts. With the camera in
+ * close the patch fades out and the contact line thins (closeFoam.ts,
+ * #389): there the ships' foam flecks (foamFlecks.ts) take over, so the hull
+ * no longer sits in a flat white patch.
  */
 import { METRES_PER_UNIT } from "./worldScale";
 
