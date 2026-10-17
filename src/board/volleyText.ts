@@ -25,8 +25,8 @@ const SHOT_NAMES = { chain_shot: "chain shot", grape_shot: "grape shot" } as con
 /**
  * A fired volley in words, after its shooter's name: the guns it fired
  * ("fired 3 guns"), and its hits by where each landed, with what its shot
- * added ("2 hits: 1 hull, 1 masts +1 chain shot"), both as recorded when it
- * was fired. Mast hits past the cap say they went to the hull ("3 masts
+ * added ("2 hits: 1 hull, 1 mast +1 chain shot"), both as recorded when it
+ * was fired; "mast" takes its plural, "hull" and "crew" never do. Mast hits past the cap say they went to the hull ("3 masts
  * (to hull, masts gone)", or "(1 to hull, masts gone)" for some of them).
  */
 export function volleyLine(volley: Volley): { fired: string; hits: string } {
@@ -42,7 +42,7 @@ export function volleyLine(volley: Volley): { fired: string; hits: string } {
   if (at.hull > 0) parts.push(`${at.hull} hull`);
   if (at.masts > 0) {
     const toHull = overflow <= 0 ? "" : overflow >= onMasts ? " (to hull, masts gone)" : ` (${overflow} to hull, masts gone)`;
-    parts.push(`${at.masts} masts${chain ? ` +1 ${SHOT_NAMES.chain_shot}` : ""}${toHull}`);
+    parts.push(`${at.masts} ${at.masts === 1 ? "mast" : "masts"}${chain ? ` +1 ${SHOT_NAMES.chain_shot}` : ""}${toHull}`);
   }
   if (at.crew > 0) parts.push(`${at.crew} crew${grape ? ` +1 ${SHOT_NAMES.grape_shot}` : ""}`);
   return { fired, hits: `${volley.hits} hit${volley.hits === 1 ? "" : "s"}: ${parts.join(", ")}` };
@@ -97,9 +97,21 @@ export function fightOverLines(settled: SettledRound, nameOf: (id: string) => st
   return lines;
 }
 
+/**
+ * The draw's dice in words (#347): each side's die plus its ship's
+ * manoeuvrability, and the total the draw compares ("Rolls: P1: 4 + 2 = 6 |
+ * NPC: 5 + 0 = 5"), as the pursuit line shows its sums. A side yet to roll
+ * is left out.
+ */
+export function drawRollsLine(sides: readonly { label: string; die: number | undefined; maneuverability: number }[]): string {
+  type Rolled = { label: string; die: number; maneuverability: number };
+  const rolled = sides.filter((side): side is Rolled => side.die !== undefined);
+  return `Rolls: ${rolled.map(({ label, die, maneuverability }) => `${label}: ${die} + ${maneuverability} = ${die + maneuverability}`).join(" | ")}`;
+}
+
 /** The flight's dice (#348): the fleeing ship's die less what its masts cost it, when they cost it anything. */
 export function pursuitRollsLine(rolls: { pursuer: number; fleeer: number }, fleeerMastDamage: number): string {
   const penalty = fleePenalty(fleeerMastDamage);
-  const fleeer = penalty > 0 ? `${rolls.fleeer} − ${penalty} masts = ${rolls.fleeer - penalty}` : `${rolls.fleeer}`;
+  const fleeer = penalty > 0 ? `${rolls.fleeer} − ${penalty} ${penalty === 1 ? "mast" : "masts"} = ${rolls.fleeer - penalty}` : `${rolls.fleeer}`;
   return `Pursuit rolls: Pursuer ${rolls.pursuer} | Fleeer ${fleeer}`;
 }

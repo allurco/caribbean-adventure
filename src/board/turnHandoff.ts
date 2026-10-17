@@ -31,6 +31,11 @@ export interface HandoffSignals {
   readonly now: number;
   /** The board still plays a fight's beats (the combat director holds the ships, #380). */
   readonly fightPlaying: boolean;
+  /**
+   * The fight's end on a hotseat board (#380): its panel is open, or its round
+   * still waits to open; the next captain's turn waits until it is closed.
+   */
+  readonly fightResult: FightResultHold;
   /** The outgoing player's ship has come to rest (or is gone). */
   readonly shipAtRest: boolean;
   /** Every NPC ship has come to rest. */
@@ -39,9 +44,20 @@ export interface HandoffSignals {
   readonly turnShown: boolean;
 }
 
+/**
+ * What a fight's end holds the hand-off on (`fightResultHold`): nothing, its
+ * round still waiting to open on the board, or its panel open until Close.
+ */
+export type FightResultHold = "none" | "waiting" | "open";
+
 /** How long each phase may last, and the least it lasts, in ms. */
 export const HANDOFF_TIMING = {
-  /** A fight's last beats (a volley, a sinking, the ships released) may play this long; the rest of the hand-off's limits count from their end. */
+  /**
+   * A fight's last beats (a volley, a sinking, the ships released) may play
+   * this long, and a fight's end on a hotseat board may take this long to
+   * open; the rest of the hand-off's limits count from their end. An open
+   * fight's end holds it until Close.
+   */
   fightMax: 20000,
   /** A ship reports it is under way within a frame or two of its new hex: wait at least this long. */
   sailingMin: 120,
@@ -106,8 +122,8 @@ export function stepHandoff(h: Handoff, s: HandoffSignals): Handoff {
   const elapsed = s.now - h.phaseStartedAt;
   switch (h.phase) {
     case "fight":
-      // The rest of the hand-off is timed from the fight's end
-      return s.fightPlaying && elapsed < HANDOFF_TIMING.fightMax ? h : { ...h, phase: "sailing", startedAt: s.now, phaseStartedAt: s.now };
+      // The rest of the hand-off is timed from the fight's end, read and closed in hotseat (#380)
+      return fightHolds(s, elapsed) ? h : { ...h, phase: "sailing", startedAt: s.now, phaseStartedAt: s.now };
     case "sailing":
       return (s.shipAtRest && elapsed >= HANDOFF_TIMING.sailingMin) || elapsed >= HANDOFF_TIMING.sailingMax
         ? enter(h, "turnEnded", s.now)
@@ -119,6 +135,16 @@ export function stepHandoff(h: Handoff, s: HandoffSignals): Handoff {
     case "nextTurn":
       return s.turnShown || elapsed >= HANDOFF_TIMING.nextTurnMax ? enter(h, "idle", s.now) : h;
   }
+}
+
+/**
+ * Whether a fight that ended the turn still holds the hand-off: its beats
+ * still playing, its end (hotseat) still to open, both up to `fightMax`, or
+ * its end open, until Close.
+ */
+function fightHolds(s: HandoffSignals, elapsed: number): boolean {
+  if (s.fightResult === "open") return true;
+  return (s.fightPlaying || s.fightResult === "waiting") && elapsed < HANDOFF_TIMING.fightMax;
 }
 
 /** Whether the board still shows the NPCs where they were before the turn ended. */

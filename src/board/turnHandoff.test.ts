@@ -5,6 +5,7 @@ import { controlsLocked, endedInFight, HANDOFF_TIMING as T, heldNpcsFor, holdsNp
 const calm = (now: number, over: Partial<HandoffSignals> = {}): HandoffSignals => ({
   now,
   fightPlaying: false,
+  fightResult: "none",
   shipAtRest: true,
   npcsAtRest: true,
   turnShown: false,
@@ -38,6 +39,31 @@ describe("a turn that ends in a fight waits for the fight's last beats (#380)", 
     const h = startHandoff("0", "1", 0, false);
     expect(stepHandoff(h, calm(T.fightMax - 1, { fightPlaying: true })).phase).toBe("fight");
     expect(stepHandoff(h, calm(T.fightMax, { fightPlaying: true })).phase).toBe("sailing");
+  });
+});
+
+describe("in hotseat, the next captain's turn waits until the fight's end is closed (#380)", () => {
+  it("holds while the fight's end waits to open, then while it is open, however long it stays open", () => {
+    const h = startHandoff("0", "1", 0, false);
+    expect(stepHandoff(h, calm(3000, { fightResult: "waiting" }))).toBe(h);
+    expect(stepHandoff(h, calm(9000, { fightResult: "open" }))).toBe(h);
+    expect(stepHandoff(h, calm(T.fightMax * 10, { fightResult: "open" }))).toBe(h);
+    expect(controlsLocked(h)).toBe(true);
+  });
+
+  it("Close releases it: on to the sailing, its clocks starting then", () => {
+    const h = startHandoff("0", "1", 0, false);
+    expect(stepHandoff(h, calm(60_000, { fightResult: "none" }))).toMatchObject({ phase: "sailing", startedAt: 60_000 });
+  });
+
+  it("carries on as before when the fight's end never opens within fightMax", () => {
+    const h = startHandoff("0", "1", 0, false);
+    expect(stepHandoff(h, calm(T.fightMax - 1, { fightResult: "waiting" })).phase).toBe("fight");
+    expect(stepHandoff(h, calm(T.fightMax, { fightResult: "waiting" })).phase).toBe("sailing");
+  });
+
+  it("solo and a seat's own board hold nothing on it", () => {
+    expect(stepHandoff(startHandoff("0", "0", 0, false), calm(10, { fightResult: "none" })).phase).toBe("sailing");
   });
 });
 
