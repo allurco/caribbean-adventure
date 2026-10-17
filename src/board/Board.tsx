@@ -20,7 +20,7 @@ import { HudLeftColumn } from "./HudLeftColumn";
 import { findAccessiblePort, dockingHexes } from "../game/moves";
 import { turnReach, routeTo, reachCost } from "../game/reach";
 import { getValidAttackTargets, getValidNPCAttackTargets } from "../game/combat";
-import { canChooseCombatAction } from "../game/combatMoves";
+import { canChooseCombatAction, firstToFireReaches } from "../game/combatMoves";
 import { getValidScoutTargets } from "../game/scouting";
 import { getMapPreset, computeCameraConfig } from "../game/mapConfig";
 import { HexGrid } from "./HexGrid";
@@ -1336,6 +1336,7 @@ export function CaribbeanBoard(props: CaribbeanBoardProps) {
           onApplyResolution={() => props.moves.applyResolution()}
           // A ship out of range never fires first (#356)
           mayChooseFire={canChooseCombatAction(G, "fire")}
+          firstToFireReaches={firstToFireReaches(G)}
           // Only the seat whose step it is presses it (each captain its own die of the draw, then the faster ship)
           mayAct={seatMayActInCombat({ playerID: props.playerID, combat: G.combat })}
           waitingLine={combatWaitingFor(G, { playerID: props.playerID, combat: G.combat })}

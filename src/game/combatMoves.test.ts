@@ -8,7 +8,7 @@ import type { VolleyAim } from "./types";
 import { COMBAT_STAGES, VOLLEY_AIMS } from "./types";
 import { Caribbean, withHotseatView } from "./Game";
 import { MAX_MAST_DAMAGE } from "./combat";
-import { isVolleyStage, volleysFired, volleyShooter, applyCannons, applyCombatResolution, applyRollDefenderSeamanship, applyRollSeamanship, canChooseCombatAction, openFight } from "./combatMoves";
+import { firstToFireReaches, isVolleyStage, volleysFired, volleyShooter, applyCannons, applyCombatResolution, applyRollDefenderSeamanship, applyRollSeamanship, canChooseCombatAction, openFight } from "./combatMoves";
 import { createShipState } from "./economy";
 import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
 import { fireTheAmbush } from "../testSupport/combatSteps";
@@ -394,11 +394,11 @@ describe("round 1 is the ambush (#346)", () => {
     expect(canChooseCombatAction(G0, "fire")).toBe(true);
   });
 
-  it("at a round-1 choice from before #346 won by a ship out of range, flee is the one action (#356)", () => {
+  it("at a round-1 choice from before #346 won by a ship out of range, fire is still the one action: the attacker fires first, and it reaches (#356)", () => {
     const G0 = legacyChoice(2);
-    expect(canChooseCombatAction(G0, "fire")).toBe(false);
+    expect(canChooseCombatAction(G0, "fire")).toBe(true);
     expect(canChooseCombatAction(G0, "board")).toBe(false);
-    expect(canChooseCombatAction(G0, "flee")).toBe(true);
+    expect(canChooseCombatAction(G0, "flee")).toBe(false);
   });
 });
 
@@ -791,6 +791,7 @@ describe("a ship out of range never fires first (#356)", () => {
     fireTheAmbush(client);
     client.moves.rollSeamanship();
     expect(G(client).combat).toMatchObject({ round: 2, seamanshipWinner: "foe", actionChosen: "flee", stage: "fleeAttempt" });
+    expect(firstToFireReaches(G(client))).toBe(false);
   });
 
   it("a pursuer out of range that catches a flight 2 hexes off fires no parting shot, and the fight ends", () => {
@@ -850,9 +851,9 @@ describe("round-1 fights stored before #346 (#356)", () => {
     expect(G0.combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "fire", stage: "cannons" });
   });
 
-  it("an NPC that wins it out of range cannot fire, so it flees", () => {
+  it("an NPC that wins it out of range still fires: in round 1 the attacker fires first, and it reaches", () => {
     const G0 = legacyNPCDraw(2);
     applyRollSeamanship(G0, () => 1);
-    expect(G0.combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "flee", stage: "fleeAttempt" });
+    expect(G0.combat).toMatchObject({ seamanshipWinner: "foe", actionChosen: "fire", stage: "cannons" });
   });
 });

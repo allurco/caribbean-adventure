@@ -82,20 +82,28 @@ function reaches(G: CaribbeanState, combat: CombatState, id: string): boolean {
 }
 
 /**
+ * Do the guns of the ship that fires first this round (`firstToFire`) reach
+ * the other ship (#356)? A ship out of range never fires first. False with
+ * no fight on.
+ */
+export function firstToFireReaches(G: CaribbeanState): boolean {
+  if (!G.combat) return false;
+  return reaches(G, G.combat, firstToFire(G.combat));
+}
+
+/**
  * May the draw's winner choose this action? Only while the fight waits on
  * the choice, only fire, board or flee, boarding only from the next hex, and
- * fire only when the winner's guns reach (#356): a ship out of range never
- * fires first. Round 1 is the ambush (#346): fire is the only action then
- * (and, in a fight from before #346 whose draw went to a ship out of range,
- * flee is).
+ * fire only when the ship that would fire first reaches (`firstToFireReaches`,
+ * #356). Round 1 is the ambush (#346): fire is the only action then (the
+ * attacker fires first, and it attacked from within its range).
  */
 export function canChooseCombatAction(G: CaribbeanState, action: unknown): action is CombatAction {
   if (!atCombatStage(G, "chooseAction")) return false;
   if (!isOneOf(COMBAT_ACTIONS, action)) return false;
   const combat = fightOf(G);
-  const inRange = reaches(G, combat, combat.seamanshipWinner ?? combat.attackerId);
-  if (combat.round === 1) return action === (inRange ? "fire" : "flee");
-  if (action === "fire" && !inRange) return false;
+  if (combat.round === 1) return action === "fire";
+  if (action === "fire" && !firstToFireReaches(G)) return false;
   if (action === "board" && combat.distance > 1) return false;
   return true;
 }
@@ -144,12 +152,12 @@ export function applyRollDefenderSeamanship(G: CaribbeanState, d6: RollD6): void
   // If NPC won seamanship in NPC combat, auto-choose their action
   if (combat.isNPCCombat && combat.seamanshipWinner === combat.defenderId) {
     const npc = G.npcs[combat.defenderId];
-    // The NPC chooses as a seat may (`canChooseCombatAction`): out of range
-    // it cannot fire (#356), so it flees; in round 1 (a fight from before
-    // #346) it fires when it can, never flees by choice. Otherwise it flees
-    // if hull < 2 OR outgunned (cannons limited by current crew).
+    // The NPC chooses as a seat may (`canChooseCombatAction`): in round 1
+    // (a fight from before #346) it fires, never flees. Otherwise it flees
+    // when its guns cannot reach (#356), or if hull < 2 OR outgunned
+    // (cannons limited by current crew).
     const outgunned = shouldNPCFlee(npc.stats.hull.current, getEffectiveCannons(npc), getEffectiveCannons(attacker));
-    if (!reaches(G, combat, combat.defenderId) || (combat.round !== 1 && outgunned)) {
+    if (combat.round !== 1 && (!firstToFireReaches(G) || outgunned)) {
       combat.actionChosen = "flee";
       combat.stage = "fleeAttempt";
     } else {
