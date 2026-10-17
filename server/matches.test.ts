@@ -6,7 +6,7 @@ import { MOVE_LIMITS, READ_LIMIT } from "./matches";
 import { ONLINE_WINDOW_SECONDS, SEEN_REFRESH_SECONDS } from "./seatSeen";
 import { MATCH_POLL_MS } from "../src/online/matchSync";
 import type { CaribbeanState } from "../src/game/types";
-import { wrappedNeighbors } from "../src/game/hex";
+import { openWaterPair } from "../src/testSupport/openWaterPair";
 import { silenceInvalidMoveLogs } from "../src/testSupport/silenceInvalidMoveLogs";
 
 // These tests send refused moves on purpose; boardgame.io logs each one.
@@ -106,6 +106,12 @@ async function draftBoth(matchId: string): Promise<View> {
     state = ((await res.json()) as MatchBody).state;
   }
   return state;
+}
+
+/** Test set-up: `attacker` and `defender` alongside on open water, off any port (#388: ships start docked). */
+function sailAlongsideAtSea(G: CaribbeanState, attacker: string, defender: string): void {
+  const taken = Object.entries(G.ships).filter(([id]) => id !== attacker && id !== defender).map(([, s]) => s.position);
+  [G.ships[attacker].position, G.ships[defender].position] = openWaterPair(G, taken);
 }
 
 beforeEach(() => {
@@ -494,7 +500,7 @@ describe("a fight between two seats (#113 review)", () => {
     const tokenOf = (seat: string) => (seat === "0" ? "anne" : "jack");
     // Sail the defender alongside: test set-up, written straight into the store.
     const stored = (await store.peekMatch(matchId))!.state as View;
-    stored.G.ships[defender].position = wrappedNeighbors(stored.G.ships[attacker].position, stored.G.wrap)[0];
+    sailAlongsideAtSea(stored.G, attacker, defender);
 
     clock += 1000;
     let res = await act(matchId, tokenOf(attacker), move(main._stateID, "attackShip", defender));
@@ -581,7 +587,7 @@ describe("the parting shot after a caught flight", () => {
       const defender = attacker === "0" ? "1" : "0";
       const tokenOf = (seat: string) => (seat === "0" ? "anne" : "jack");
       const stored = (await store.peekMatch(matchId))!.state as View;
-      stored.G.ships[defender].position = wrappedNeighbors(stored.G.ships[attacker].position, stored.G.wrap)[0];
+      sailAlongsideAtSea(stored.G, attacker, defender);
       clock += 1000;
       const res = await act(matchId, tokenOf(attacker), move(main._stateID, "attackShip", defender));
       const { state } = (await res.json()) as MatchBody;
@@ -617,7 +623,7 @@ describe("a match stored mid-fight at the resolution, before the round settled i
       const defender = attacker === "0" ? "1" : "0";
       const tokenOf = (seat: string) => (seat === "0" ? "anne" : "jack");
       const stored = (await store.peekMatch(matchId))!.state as View;
-      stored.G.ships[defender].position = wrappedNeighbors(stored.G.ships[attacker].position, stored.G.wrap)[0];
+      sailAlongsideAtSea(stored.G, attacker, defender);
       clock += 1000;
       const res = await act(matchId, tokenOf(attacker), move(main._stateID, "attackShip", defender));
       const { state } = (await res.json()) as MatchBody;
@@ -941,5 +947,30 @@ describe("which seats were seen lately: server-side, from each seat's own reads 
     const read = await call("GET", `/api/matches/${matchId}`, "anne");
     expect(read.status).toBe(200);
     expect(deferred).toHaveLength(1);
+  });
+});
+
+describe("ports are safe harbours online (#388)", () => {
+  it("refuses an attack from a port's docking hex, and writes nothing", async () => {
+    const matchId = await startedMatch();
+    const main = await draftBoth(matchId);
+    const attacker = main.ctx.currentPlayer;
+    const defender = attacker === "0" ? "1" : "0";
+    const stored = (await store.peekMatch(matchId))!.state as View;
+    // Set-up: the attacker docked at a port, the defender alongside on open water.
+    const dock = stored.G.cells.find((c) => c.hasPort && c.dockingHex)!.dockingHex!;
+    stored.G.ships[attacker].position = dock;
+    const [, beside] = openWaterPair(stored.G, [], dock);
+    stored.G.ships[defender].position = beside;
+    const before = (await store.peekMatch(matchId))!.stateId;
+    const movesBefore = (await store.peekMoves(matchId)).length;
+
+    clock += 1000;
+    const res = await act(matchId, attacker === "0" ? "anne" : "jack", move(main._stateID, "attackShip", defender));
+    expect(res.status).toBe(400);
+    const after = (await store.peekMatch(matchId))!;
+    expect(after.stateId).toBe(before);
+    expect(await store.peekMoves(matchId)).toHaveLength(movesBefore);
+    expect((after.state as View).G.combat).toBeUndefined();
   });
 });

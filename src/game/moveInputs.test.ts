@@ -181,6 +181,8 @@ describe("the main phase's moves refuse malformed arguments", () => {
 
   it("spyglass, attackShip and attackNPC: an id that is no ship's own", () => {
     const client = mainGame();
+    // Out of port first, so the harbour rule (#388) is not what refuses them
+    client.moves.moveShip(1, -1);
     for (const id of ["__proto__", "constructor", "toString"]) {
       refused(client, () => client.moves.spyglass(id, false));
       refused(client, () => client.moves.spyglass(id, true));
@@ -191,6 +193,8 @@ describe("the main phase's moves refuse malformed arguments", () => {
 
   it("chooseCombatAction: an action outside fire, board and flee", () => {
     const client = mainGame({ unarmed: true });
+    // Out of port first: no fighting in port (#388)
+    client.moves.moveShip(1, -1);
     client.moves.attackShip("1");
     fireTheAmbush(client);
     client.moves.rollSeamanship();

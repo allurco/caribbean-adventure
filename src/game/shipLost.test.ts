@@ -8,6 +8,7 @@ import { Caribbean, withGeneratedMap, withHotseatView } from "./Game";
 import { findHomeStart } from "./captains";
 import { generateMapFor } from "./mapRequest";
 import { createShipState } from "./economy";
+import { atPort } from "./safeHarbour";
 import { fightToTheEnd } from "../testSupport/combatSteps";
 import { silenceInvalidMoveLogs } from "../testSupport/silenceInvalidMoveLogs";
 
@@ -329,8 +330,20 @@ describe("a real solo match out of captains (#265, #278)", () => {
     client.moves.pickCaptain(0, "Sloop");
     expect(stateOf(client).ctx.phase).toBe("main");
 
-    /** Attack the flotilla and fire until the fight is over. */
+    /** Sail off the home port, alongside the flotilla (no fighting in port, #388), attack it and fire until the fight is over. */
     const fight = () => {
+      const { G } = stateOf(client);
+      const from = G.ships["0"].position;
+      const flotillaAt = G.npcs.flotilla.position;
+      // One hex off the dock that is open water beside the flotilla too (moveShip sails one hex)
+      const alongside = neighbors(from).find(
+        (h) =>
+          neighbors(flotillaAt).some((n) => hexEquals(n, h)) &&
+          G.cells.some((c) => hexEquals(c.hex, h) && c.terrain === "water") &&
+          !atPort(G, h),
+      );
+      if (!alongside) throw new Error("no open water both off the dock and beside the flotilla");
+      client.moves.moveShip(alongside.q, alongside.r);
       client.moves.attackNPC("flotilla");
       expect(stateOf(client).G.combat).toBeDefined();
       fightToTheEnd(client);
