@@ -71,6 +71,15 @@ export function seatName(G: Pick<CaribbeanState, "ships">, seat: string): string
   return G.ships[seat]?.captain?.name ?? seatLabel(seat);
 }
 
+/**
+ * Whose turn an event log row came on (#246, #372): the seat's captain, or,
+ * once its ship is lost, the captain who went down with it, so the seat's
+ * earlier rows keep their name through the loss; "Player n" with neither.
+ * Not for the waiting lines, which never name a dead captain.
+ */
+export function turnCaptainName(G: Pick<CaribbeanState, "ships" | "lostShips">, seat: string): string {
+  return G.ships[seat]?.captain?.name ?? G.lostShips?.[seat]?.captain?.name ?? seatLabel(seat);
+}
 
 /** "Waiting for <captain>", and what for when given ("to draft"): every waiting line on the board. */
 function waitingLine(G: Pick<CaribbeanState, "ships">, seat: string, what?: string): string {
