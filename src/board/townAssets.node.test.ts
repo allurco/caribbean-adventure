@@ -9,7 +9,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { writeGlb } from "../testSupport/glbBytes";
-import { readGlb } from "./glb";
+import { glbTriangles, readGlb } from "./glb";
+import { AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN } from "./visuals/agedBuildingGeometry";
+import { townModelGeometry } from "./townModelGeometry";
 import { TOWN_MODELS } from "./townModels";
 import { TOWN_ASSET_BUDGET, townAssetProblems, townCatalogueFileProblems } from "./townAssetCheck";
 
@@ -88,5 +90,23 @@ describe("town assets", () => {
     });
     expect(townAssetProblems(tavern, sunk).join("\n")).toMatch(/ground contact/);
     expect(townAssetProblems({ ...tavern, reachMetres: 9 }, tavernBytes()).join("\n")).toMatch(/reaches/);
+  });
+
+  // What PortBuildings.tsx draws in the code-built tavern's place: the same
+  // local frame at scale 1, so the layout's transforms carry over unchanged.
+  it("gives the board the tavern in the code-built tavern's frame, every triangle and colour", () => {
+    const bytes = tavernBytes();
+    const geometry = townModelGeometry(bytes);
+    expect(geometry.vertexCount).toBe(glbTriangles(readGlb(bytes)) * 3);
+    const along = (axis: number) => {
+      const values = geometry.positions.filter((_, i) => i % 3 === axis);
+      return [Math.min(...values), Math.max(...values)];
+    };
+    expect(along(1)[1]).toBeCloseTo(AGED_BUILDING_HEIGHT.tavern, 3);
+    // The walls stand on the code-built plan; the jetty, eaves, sign and benches reach past it.
+    expect(-along(0)[0]).toBeGreaterThan(AGED_BUILDING_PLAN.tavern.halfW);
+    expect(along(2)[1]).toBeGreaterThan(AGED_BUILDING_PLAN.tavern.halfD);
+    expect(geometry.colors.every((c) => c >= 0 && c <= 1)).toBe(true);
+    expect(geometry.colors.some((c) => c < 0.9)).toBe(true);
   });
 });

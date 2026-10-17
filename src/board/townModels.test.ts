@@ -3,7 +3,7 @@ import { AGED_BUILDING_HALF_DIAGONAL, AGED_BUILDING_HEIGHT, AGED_BUILDING_PLAN }
 import { BUILDING_FOOTING } from "./visuals/buildingGeometry";
 import { familyScaleOf } from "./visuals/portSettlement";
 import { BUILDING_SCALE } from "./visuals/worldScale";
-import { TOWN_MODEL_UNITS_PER_METRE, TOWN_MODELS, townModelUrl } from "./townModels";
+import { TOWN_MODEL_UNITS_PER_METRE, TOWN_MODELS, townModelFor, townModelUrl } from "./townModels";
 
 const tavern = TOWN_MODELS.tavern;
 
@@ -37,5 +37,10 @@ describe("the town model catalogue", () => {
   it("serves the file from public/town/ under the app's base path", () => {
     expect(townModelUrl(tavern, "/")).toBe("/town/tavern.glb");
     expect(townModelUrl(tavern, "/game/")).toBe("/game/town/tavern.glb");
+  });
+
+  it("gives the tavern its model and leaves every other kind code-built", () => {
+    expect(townModelFor("tavern")).toBe(tavern);
+    for (const kind of ["house", "warehouse", "watchtower", "church"] as const) expect(townModelFor(kind)).toBeNull();
   });
 });

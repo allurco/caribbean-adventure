@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import indexHtml from "../../index.html?raw";
 import { SOUNDS } from "../audio/soundRegistry";
 import { SHIP_MODELS } from "./shipModels";
+import { TOWN_MODELS } from "./townModels";
 import { eventCardArtUrls } from "./cardArtSlots";
 import { ASSET_LOADER_SITES, NOT_BOARD_ASSETS, SCENE_FONTS, sceneAssetUrls, sceneReadinessTasks } from "./sceneAssets";
 
@@ -36,6 +37,15 @@ describe("scene assets", () => {
   it("knows every place in the app that loads a file, so a new loader cannot skip the gate", () => {
     const sites = SOURCES.filter(({ text }) => LOADER.test(text)).map(({ path }) => path).sort();
     expect(sites).toEqual([...Object.keys(ASSET_LOADER_SITES)].sort());
+  });
+
+  it("waits on every town model as a model (#394), so the town never shows its fallback first", () => {
+    const urls = sceneAssetUrls("/");
+    const tasks = sceneReadinessTasks("/");
+    for (const model of Object.values(TOWN_MODELS)) {
+      expect(urls).toContain(`/town/${model.file}`);
+      expect(tasks).toContainEqual({ id: `model:/town/${model.file}`, stage: "models" });
+    }
   });
 
   it("waits on every event card's art (#247), so a card never shows before its picture", () => {

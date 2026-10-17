@@ -8,6 +8,8 @@ import { SHIP_FLAGS } from "./shipFlags";
 import { DEFAULT_HULL_BOX } from "./shipHull";
 import { SHIP_MODELS, shipModelUrl, type ShipModel } from "./shipModels";
 import { compileForFrames, type FrameOutput } from "./shaderWarmUp";
+import { TOWN_MODELS, type TownModel } from "./townModels";
+import { townModelFileUrl, useTownModelGeometry } from "./useTownModel";
 
 const noHeading = () => 0;
 /**
@@ -59,12 +61,24 @@ function BoxKeepers() {
   );
 }
 
+/**
+ * Loads one town model (#394) into the cache `PortBuildings.tsx` draws from
+ * and reports it in. It draws through the buildings' own material, which
+ * the code-built pieces compile already, so it keeps nothing for the compile.
+ */
+function TownModelLoader({ model, complete }: { model: TownModel; complete: (id: string) => void }) {
+  useTownModelGeometry(model);
+  const url = townModelFileUrl(model);
+  useEffect(() => complete(`model:${url}`), [url, complete]);
+  return null;
+}
+
 /** A render target to compile into, as the composer's are drawn into: any size does, a program depends only on there being one. */
 const warmUpTarget = () => new WebGLRenderTarget(1, 1);
 
 /**
  * The loading gate's eyes inside the Canvas (useSceneReadiness.ts): waits on
- * every ship model (a model that fails is reported failed, not waited on),
+ * every ship and town model (a model that fails is reported failed, not waited on),
  * compiles every shader in the scene once the gate asks
  * (every asset in, the world built and the sky baked, so the sea is there to
  * compile), into the kind of target the frames are drawn to (`frameOutput`,
@@ -121,6 +135,16 @@ export function SceneReadinessProbe({
           <ErrorBoundary key={url} fallback={null} onError={(error) => fail(`model:${url}`, error)}>
             <Suspense fallback={null}>
               <ShipModelKeepers model={model} url={url} warm={!shadersCompiled} complete={complete} />
+            </Suspense>
+          </ErrorBoundary>
+        );
+      })}
+      {Object.values(TOWN_MODELS).map((model) => {
+        const url = townModelFileUrl(model);
+        return (
+          <ErrorBoundary key={url} fallback={null} onError={(error) => fail(`model:${url}`, error)}>
+            <Suspense fallback={null}>
+              <TownModelLoader model={model} complete={complete} />
             </Suspense>
           </ErrorBoundary>
         );

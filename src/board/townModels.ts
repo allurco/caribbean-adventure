@@ -68,3 +68,6 @@ export const TOWN_MODELS: Readonly<Record<TownPieceKind, TownModel>> = { tavern:
 
 /** The URL a model is served from, under the app's base path (Vite's `BASE_URL`, with its trailing slash). */
 export const townModelUrl = (model: TownModel, base: string): string => `${base}town/${model.file}`;
+
+/** The model a building kind is drawn from, or `null` while it is still code-built. */
+export const townModelFor = (kind: BuildingKind): TownModel | null => (kind === "tavern" ? TOWN_MODELS[kind] : null);
