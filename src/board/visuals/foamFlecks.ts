@@ -28,7 +28,7 @@
  * (wakeTrail.ts). Each ship draws from its own seeded stream (ADR 0007), so
  * there is no `Math.random`.
  */
-import { createPool, envelope, type ParticlePool } from "../combatFx/particlePool";
+import { createPool, envelope, spawn, type ParticleKind, type ParticlePool } from "../combatFx/particlePool";
 import { closeFoamWeight } from "./closeFoam";
 import type { SeaSurface } from "./seaSurface";
 import { waveTimeStep } from "./waveClock";
@@ -59,6 +59,12 @@ export const FLECK_OUT_SPEED = 0.03;
 export const FLECK_OUT_GAIN = 0.12;
 /** How fast the water slows a fleck, 1/s. */
 export const FLECK_DRAG = 1.6;
+/**
+ * Only ships this near the camera's focus (world units, the short way round a
+ * wrapping map) shed flecks: the close-up view frames about two hexes, and a
+ * busy map's far ships would only recycle the pool under the watched hull.
+ */
+export const FLECK_SHED_RADIUS = 3;
 /** STYLISTIC: a fleck's opacity at full close-up weight, and its fade in and out (shares of its life). */
 export const FLECK_OPACITY = 0.75;
 export const FLECK_FADE_IN = 0.1;
@@ -82,7 +88,7 @@ export function waterlineHalfBeam(alongShare: number, halfBeam: number): number 
 export interface FleckSpawn {
   along: number;
   across: number;
-  /** Its velocity through the water, world units a second, in the same frame (before the carry). */
+  /** Its velocity through the water, world units a second, in the same frame. */
   vAlong: number;
   vAcross: number;
   life: number;
@@ -122,82 +128,91 @@ export function hullFrameToWorld(along: number, across: number, ship: Pick<ShipF
 }
 
 export interface FleckEmitters {
-  /** Sheds `dt` seconds' worth of flecks (wave-clock time: 0 when frozen) from every ship in `ships` into `pool`. */
-  emit: (dt: number, ships: Pick<ShipFoamRegistry, "forEach">, pool: ParticlePool) => void;
+  /**
+   * Sheds `dt` seconds' worth of flecks (wave-clock time: 0 when frozen) from
+   * every ship in `ships` into `pool`, or only from those `sheds` accepts;
+   * returns how many it shed.
+   */
+  emit: (dt: number, ships: Pick<ShipFoamRegistry, "forEach">, pool: ParticlePool, sheds?: (ship: ShipFoamSource) => boolean) => number;
 }
 
 interface Emitter {
   random: () => number;
-  carry: number;
+  /** Flecks owed but not yet shed: the rate's fractional remainder, carried to the next frame. */
+  spawnDebt: number;
   seen: boolean;
 }
+
+/** How the particle pool spawns a fleck (particlePool.ts); the flecks step themselves (`stepFlecks`). */
+const FLECK_KIND: ParticleKind = { gravity: 0, drag: FLECK_DRAG, windFollow: 0, onSea: "float", life: FLECK_LIFE_ANCHOR[0] };
 
 /** One emitter per ship, each on its own stream of the world seed, made when the ship first registers and dropped when it leaves. */
 export function createFleckEmitters(worldSeed: number): FleckEmitters {
   const emitters = new Map<string, Emitter>();
   const at: [number, number] = [0, 0];
   const hull = { halfLength: 0, halfBeam: 0 };
+  const params = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, size: 0, life: 0, seed: 0 };
   return {
-    emit: (dt, ships, pool) => {
-      if (dt <= 0) return;
+    emit: (dt, ships, pool, sheds) => {
+      if (dt <= 0) return 0;
+      let shed = 0;
       emitters.forEach((e) => (e.seen = false));
       ships.forEach((ship, id) => {
         let e = emitters.get(id);
         if (!e) {
           const random = stream(subSeed(worldSeed, SEED_FEATURES.shipFoamFlecks, id));
-          e = { random, carry: random(), seen: true };
+          e = { random, spawnDebt: random(), seen: true };
           emitters.set(id, e);
         }
         e.seen = true;
-        if (ship.hullLength <= 0) return;
+        if (ship.hullLength <= 0 || (sheds && !sheds(ship))) return;
         const motion = motionAt(ship.speed);
         hull.halfLength = ship.hullLength / 2;
         hull.halfBeam = ship.beam / 2;
-        e.carry += fleckSpawnRate(ship.speed) * dt;
-        while (e.carry >= 1) {
-          e.carry -= 1;
+        e.spawnDebt += fleckSpawnRate(ship.speed) * dt;
+        while (e.spawnDebt >= 1) {
+          e.spawnDebt -= 1;
           const f = fleckSpawn(e.random, hull, motion);
           hullFrameToWorld(f.along, f.across, ship, at);
-          const i = pool.next;
-          pool.next = (i + 1) % pool.capacity;
-          pool.px[i] = at[0];
-          pool.py[i] = 0;
-          pool.pz[i] = at[1];
-          pool.vx[i] = f.vAlong * ship.headingX - f.vAcross * ship.headingZ;
-          pool.vy[i] = 0;
-          pool.vz[i] = f.vAlong * ship.headingZ + f.vAcross * ship.headingX;
-          pool.age[i] = 0;
-          pool.life[i] = f.life;
-          pool.size[i] = f.size;
-          pool.rot[i] = 0;
-          pool.spin[i] = 0;
-          pool.seed[i] = f.seed;
-          pool.state[i] = 2;
+          params.x = at[0];
+          params.z = at[1];
+          params.vx = f.vAlong * ship.headingX - f.vAcross * ship.headingZ;
+          params.vz = f.vAlong * ship.headingZ + f.vAcross * ship.headingX;
+          params.life = f.life;
+          params.size = f.size;
+          params.seed = f.seed;
+          spawn(pool, FLECK_KIND, params);
+          shed++;
         }
       });
       emitters.forEach((e, id) => {
         if (!e.seen) emitters.delete(id);
       });
+      return shed;
     },
   };
 }
 
-/** Ages every fleck by `dt` seconds, slows it in the water and moves it on; a fleck past its life goes. */
-export function stepFlecks(pool: ParticlePool, dt: number): void {
-  if (dt <= 0) return;
-  const keep = Math.exp(-FLECK_DRAG * dt);
+/** Ages every fleck by `dt` seconds, slows it in the water and moves it on; a fleck past its life goes. Returns how many are left. */
+export function stepFlecks(pool: ParticlePool, dt: number): number {
+  const keep = Math.exp(-FLECK_DRAG * Math.max(0, dt));
+  let alive = 0;
   for (let i = 0; i < pool.capacity; i++) {
     if (pool.state[i] === 0) continue;
-    pool.age[i] += dt;
-    if (pool.age[i] >= pool.life[i]) {
-      pool.state[i] = 0;
-      continue;
+    if (dt > 0) {
+      pool.age[i] += dt;
+      if (pool.age[i] >= pool.life[i]) {
+        pool.state[i] = 0;
+        continue;
+      }
+      pool.vx[i] *= keep;
+      pool.vz[i] *= keep;
+      pool.px[i] += pool.vx[i] * dt;
+      pool.pz[i] += pool.vz[i] * dt;
     }
-    pool.vx[i] *= keep;
-    pool.vz[i] *= keep;
-    pool.px[i] += pool.vx[i] * dt;
-    pool.pz[i] += pool.vz[i] * dt;
+    alive++;
   }
+  return alive;
 }
 
 /** The instance arrays the flecks are written into: xyz offset, size, alpha and a seed per fleck. */
@@ -245,8 +260,9 @@ export interface FleckFrameInput {
   /** The wave clock's time this frame, or null without a sea. */
   waveTime: number | null;
   camera: readonly [number, number, number];
-  /** The camera's focus x (each fleck is drawn in the copy nearest it) and its distance from the focus (the close-up weight). */
+  /** The camera's focus (each fleck is drawn in the copy nearest it; only ships near it shed) and its distance from it (the close-up weight). */
   focusX: number;
+  focusZ: number;
   cameraDistance: number;
   /** The map's wrap width, 0 where it does not wrap. */
   wrap: number;
@@ -267,6 +283,13 @@ export function createFleckFrame(worldSeed: number, capacity: number): FleckFram
   let lastWaveTime: number | null = null;
   let seconds = 0;
   let surface: FleckFrameInput["surface"] = null;
+  let alive = 0;
+  const near = { x: 0, z: 0, wrap: 0 };
+  const sheds = (ship: ShipFoamSource) => {
+    let dx = ship.x - near.x;
+    if (near.wrap > 0) dx -= near.wrap * Math.round(dx / near.wrap);
+    return Math.hypot(dx, ship.z - near.z) <= FLECK_SHED_RADIUS;
+  };
   const view: FleckView = {
     weight: 0,
     focusX: 0,
@@ -277,14 +300,21 @@ export function createFleckFrame(worldSeed: number, capacity: number): FleckFram
     update: (input, target) => {
       const step = input.waveTime !== null && lastWaveTime !== null ? waveTimeStep(lastWaveTime, input.waveTime) : 0;
       lastWaveTime = input.waveTime;
-      emitters.emit(step, input.ships, pool);
-      stepFlecks(pool, step);
+      view.weight = closeFoamWeight(input.cameraDistance);
+      // Out from the close-up nothing is shed (nothing would be drawn), and
+      // what was shed lives out its life; only ships near the focus shed.
+      if (view.weight > 0) {
+        near.x = input.focusX;
+        near.z = input.focusZ;
+        near.wrap = input.wrap;
+        if (emitters.emit(step, input.ships, pool, sheds) > 0) alive = 1;
+      }
+      if (alive > 0) alive = stepFlecks(pool, step);
       surface = input.waveTime !== null ? input.surface : null;
       seconds = input.waveTime ?? 0;
       eye[0] = input.camera[0];
       eye[1] = input.camera[1];
       eye[2] = input.camera[2];
-      view.weight = closeFoamWeight(input.cameraDistance);
       view.focusX = input.focusX;
       view.wrap = input.wrap;
       return writeFlecks(pool, target, view);

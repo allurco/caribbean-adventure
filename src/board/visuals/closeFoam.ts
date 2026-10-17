@@ -22,13 +22,12 @@
  * At the weight 0 (the opening ship view, mid and map zoom) all of it is the
  * identity: the foam there is drawn exactly as before.
  */
+import { FOAM_LACE_SOFTNESS, foamLace } from "./foamShading";
 
 /** Camera distance to its focus (world units) at and under which the close-up look is full ... */
 export const CLOSE_FOAM_NEAR = 1.8;
 /** ... and at and over which it is gone: under the opening ship view's 3.4, so that view is unchanged. */
 export const CLOSE_FOAM_FAR = 2.8;
-
-import { FOAM_LACE_SOFTNESS, foamLace } from "./foamShading";
 
 const smoothstep = (e0: number, e1: number, x: number) => {
   const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
@@ -63,6 +62,14 @@ export const CLOSE_CONTACT_SHARE = 0.5;
 /** STYLISTIC: the bubbles' cell size in water metres (big ones; the small ones are BUBBLE_SMALL_RATIO of it). */
 export const BUBBLE_METRES = 0.9;
 export const BUBBLE_SMALL_RATIO = 0.42;
+/** STYLISTIC: how much faster the small bubbles' field circles with the churn than the big ones'. */
+export const BUBBLE_SMALL_CHURN = 1.3;
+/** STYLISTIC: a bubble's middle lies this far in from its cell's edges (cell units), so neighbours do not merge ... */
+export const BUBBLE_INSET = 0.15;
+/** ... and a bubble's radius (cell units) is drawn between these. */
+export const BUBBLE_RADIUS: readonly [number, number] = [0.38, 0.7];
+/** Salts that give a cell's x and y jitter and its radius their own hashes. */
+export const BUBBLE_SALTS: readonly [number, number] = [17.31, 41.7];
 
 /** The shares of the hull's contact patch and contact line drawn at close-up weight `weight`. */
 export function closeShipFoamShares(weight: number): { patch: number; contact: number } {
@@ -102,6 +109,17 @@ export const CLOSE_FOAM_GLSL = `
   const float BUBBLE_METRES = ${BUBBLE_METRES.toFixed(4)};
   const float BUBBLE_SMALL_RATIO = ${BUBBLE_SMALL_RATIO.toFixed(4)};
   const float CLOSE_LACE_SOFTENING = ${CLOSE_LACE_SOFTENING.toFixed(4)};
+  const float BUBBLE_SMALL_CHURN = ${BUBBLE_SMALL_CHURN.toFixed(4)};
+  const float BUBBLE_INSET = ${BUBBLE_INSET.toFixed(4)};
+  const float BUBBLE_SPAN = ${(1 - 2 * BUBBLE_INSET).toFixed(4)}; // the room the middle moves in, 1 − 2 · inset
+  const float BUBBLE_RADIUS_MIN = ${BUBBLE_RADIUS[0].toFixed(4)};
+  const float BUBBLE_RADIUS_MAX = ${BUBBLE_RADIUS[1].toFixed(4)};
+  const float BUBBLE_SALT_Y = ${BUBBLE_SALTS[0].toFixed(4)};
+  const float BUBBLE_SALT_RADIUS = ${BUBBLE_SALTS[1].toFixed(4)};
+  vec2 closeShipFoamShares(float weight) {
+    float w = clamp(weight, 0.0, 1.0);
+    return vec2(1.0 - w, mix(1.0, CLOSE_CONTACT_SHARE, w));
+  }
   float closeLace(float coverage, float noise, float weight) {
     if (weight <= 0.0 || coverage <= 0.0) return foamLace(coverage, noise);
     float widen = CLOSE_LACE_SOFTENING * min(weight, 1.0);
@@ -120,9 +138,9 @@ export const CLOSE_FOAM_GLSL = `
       for (int x = -1; x <= 1; x++) {
         vec2 c = vec2(float(x), float(y));
         vec2 id = i + c;
-        vec2 jitter = vec2(foamHash(id), foamHash(id + 17.31));
-        float radius = 0.38 + 0.32 * foamHash(id + 41.7);
-        float d = length(c + 0.15 + 0.7 * jitter - f);
+        vec2 jitter = vec2(foamHash(id), foamHash(id + BUBBLE_SALT_Y));
+        float radius = mix(BUBBLE_RADIUS_MIN, BUBBLE_RADIUS_MAX, foamHash(id + BUBBLE_SALT_RADIUS));
+        float d = length(c + BUBBLE_INSET + BUBBLE_SPAN * jitter - f);
         best = max(best, 1.0 - d / radius);
       }
     }
@@ -130,7 +148,7 @@ export const CLOSE_FOAM_GLSL = `
   }
   float foamBubbleCell(vec2 worldXZ, vec2 churn, float metresPerUnit) {
     vec2 p = worldXZ * metresPerUnit / BUBBLE_METRES;
-    return max(bubbleOctave(p + churn), bubbleOctave(p / BUBBLE_SMALL_RATIO - churn.yx * 1.3));
+    return max(bubbleOctave(p + churn), bubbleOctave(p / BUBBLE_SMALL_RATIO - churn.yx * BUBBLE_SMALL_CHURN));
   }
   float closeUpFoam(float foam, float cell, float weight) {
     if (weight <= 0.0 || foam <= 0.0) return foam;

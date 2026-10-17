@@ -67,6 +67,25 @@ describe("CLOSE_FOAM_GLSL", () => {
     expect(CLOSE_FOAM_GLSL).toContain(`CLOSE_CONTACT_SHARE = ${CLOSE_CONTACT_SHARE.toFixed(4)}`);
     for (const name of ["float closeFoamWeight(", "float foamBubbleCell(", "float closeUpFoam("]) expect(CLOSE_FOAM_GLSL).toContain(name);
   });
+
+  it("mirrors the bubbles, the softened lace and the ship's shares expression for expression", () => {
+    expect(CLOSE_FOAM_GLSL).toContain("if (weight <= 0.0 || foam <= 0.0) return foam;");
+    expect(CLOSE_FOAM_GLSL).toContain("float threshold = 1.0 - min(foam, 1.0) * BUBBLE_FILL;");
+    expect(CLOSE_FOAM_GLSL).toContain("float bubbled = foam * smoothstep(threshold, threshold + BUBBLE_SOFTNESS, cell);");
+    expect(CLOSE_FOAM_GLSL).toContain("return mix(foam, bubbled, min(weight, 1.0));");
+    expect(CLOSE_FOAM_GLSL).toContain("if (weight <= 0.0 || coverage <= 0.0) return foamLace(coverage, noise);");
+    expect(CLOSE_FOAM_GLSL).toContain("float widen = CLOSE_LACE_SOFTENING * min(weight, 1.0);");
+    expect(CLOSE_FOAM_GLSL).toContain("return smoothstep(threshold - 0.5 * widen, threshold + FOAM_LACE_SOFTNESS + 0.5 * widen, noise);");
+    expect(CLOSE_FOAM_GLSL).toContain("vec2 closeShipFoamShares(float weight)");
+    expect(CLOSE_FOAM_GLSL).toContain("return vec2(1.0 - w, mix(1.0, CLOSE_CONTACT_SHARE, w));");
+  });
+
+  it("names every number of the bubble field", () => {
+    const body = CLOSE_FOAM_GLSL.slice(CLOSE_FOAM_GLSL.indexOf("float bubbleOctave("), CLOSE_FOAM_GLSL.indexOf("float closeUpFoam("));
+    // Only 0, 1 and the loop bounds are written as literals; the rest are named constants.
+    const literals = body.match(/\b\d+\.\d+\b/g) ?? [];
+    expect([...new Set(literals)].sort()).toEqual(["0.0", "1.0"]);
+  });
 });
 
 describe("closeLace", () => {

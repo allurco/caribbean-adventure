@@ -173,8 +173,9 @@ const fragmentShader = `
   // \`shade\`; each ship measured the short way round on a wrapping map.
   void shipContactFoam(vec2 worldXZ, float footprint, float closeUp, out float coverage, out float shade) {
     // Up close the patch fades out and the line thins (closeFoam.ts, #389): the flecks take over.
-    float patchShare = 1.0 - closeUp;
-    float contactShare = mix(1.0, CLOSE_CONTACT_SHARE, closeUp);
+    vec2 closeShares = closeShipFoamShares(closeUp);
+    float patchShare = closeShares.x;
+    float contactShare = closeShares.y;
     coverage = 0.0;
     shade = 0.0;
     for (int i = 0; i < SHIP_FOAM_CAP; i++) {
@@ -531,7 +532,7 @@ const fragmentShader = `
     float foam = combineFoam(shore, whitecaps, combineFoam(hull, wake, 0.0));
     // Up close the lace's features span tens of pixels and dense foam reads
     // as a flat patch: break it into bubbles there, and only there (#389).
-    if (closeUp > 0.0) foam = closeUpFoam(foam, foamBubbleCell(vWorld.xz, churn, METRES_PER_UNIT), closeUp);
+    if (closeUp > 0.0 && foam > 0.0) foam = closeUpFoam(foam, foamBubbleCell(vWorld.xz, churn, METRES_PER_UNIT), closeUp);
     // Foam is rough and opaque: it replaces the water, its sky reflection and
     // its glint, as a diffuse layer lit by the sun and the sky.
     seaColor = mix(seaColor, foamRadiance(nShade, light, sunIrradiance, skyDiffuse), foam);

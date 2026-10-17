@@ -68,7 +68,7 @@ export const LAND_FOAM_GLSL = `
     float foam = mix(coverage * FOAM_FAR_SHARE, lace, detail) * waveDetailFade(length(vFoamWorld - cameraPosition))
       * shoreFoamRecedeShare(shelfRecedeWeight(cameraDistance));
     // Up close, bubbles instead of a flat patch, as on the water (closeFoam.ts, #389).
-    if (closeUp > 0.0) foam = closeUpFoam(foam, foamBubbleCell(vFoamWorld.xz, churn, FOAM_METRES_PER_UNIT), closeUp);
+    if (closeUp > 0.0 && foam > 0.0) foam = closeUpFoam(foam, foamBubbleCell(vFoamWorld.xz, churn, FOAM_METRES_PER_UNIT), closeUp);
     return foam;
   }
 `;

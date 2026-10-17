@@ -11,6 +11,7 @@ import {
   FLECK_RATE_UNDERWAY,
   createFleckEmitters,
   createFleckFrame,
+  FLECK_SHED_RADIUS,
   fleckSpawn,
   fleckSpawnRate,
   hullFrameToWorld,
@@ -197,7 +198,7 @@ describe("createFleckFrame", () => {
   const target = () => ({ offset: new Float32Array(3 * 64), size: new Float32Array(64), alpha: new Float32Array(64), seed: new Float32Array(64) });
   const sea = { heightAt: (x: number) => 0.01 * x };
   const frame = (over: Partial<Parameters<ReturnType<typeof createFleckFrame>["update"]>[0]> = {}) => ({
-    waveTime: 0, camera: [5, 1, 4] as const, focusX: 5, cameraDistance: 1.2, wrap: 0, surface: sea,
+    waveTime: 0, camera: [5, 1, 4] as const, focusX: 5, focusZ: 3, cameraDistance: 1.2, wrap: 0, surface: sea,
     ships: registry({ a: ship({ speed: HULL_FOAM_FULL_SPEED }) }), ...over,
   });
 
@@ -218,5 +219,25 @@ describe("createFleckFrame", () => {
     const frozen = createFleckFrame(1, 64);
     frozen.update(frame({ waveTime: 10 }), out);
     expect(frozen.update(frame({ waveTime: 10 }), out)).toBe(0);
+  });
+
+  it("sheds nothing while the camera is out from the close-up, so a busy map does not churn the pool", () => {
+    const flecks = createFleckFrame(1, 512);
+    const out = target();
+    let t = 10;
+    for (let i = 0; i < 11; i++) flecks.update(frame({ waveTime: (t += 0.1), cameraDistance: 3.4 }), out);
+    // The first close frame draws only what that one step shed.
+    expect(flecks.update(frame({ waveTime: (t += 0.1) }), out)).toBeLessThanOrEqual(Math.ceil(FLECK_RATE_UNDERWAY * 0.1) + 1);
+  });
+
+  it("sheds only from ships near the camera's focus", () => {
+    const flecks = createFleckFrame(1, 64);
+    const out = target();
+    const far = { ships: registry({ a: ship({ speed: HULL_FOAM_FULL_SPEED, x: 5 + FLECK_SHED_RADIUS + 1 }) }) };
+    flecks.update(frame({ waveTime: 10, ...far }), out);
+    expect(flecks.update(frame({ waveTime: 10.2, ...far }), out)).toBe(0);
+    // ... measured the short way round a wrapping map.
+    const wrapped = { ships: registry({ a: ship({ speed: HULL_FOAM_FULL_SPEED, x: 5 + 40 }) }), wrap: 40 };
+    expect(flecks.update(frame({ waveTime: 10.4, ...wrapped }), out)).toBeGreaterThan(0);
   });
 });

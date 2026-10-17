@@ -21,8 +21,8 @@ import { showLayer, viewAxis, writePuffs, writeUniform, type PuffBuffers, type P
 import { SCENE_WIND } from "../visuals/sceneWind";
 import { PUFF_FRAGMENT, PUFF_VERTEX } from "./puffShader";
 
-/** How a kind of puff looks. */
-export interface PuffLook extends PuffShape {
+/** How a kind of puff is shaded: what the layer's material reads. */
+export interface PuffMaterialLook {
   /** Lit colour (sRGB), and the colour of its shadowed side. */
   color: string;
   shade: string;
@@ -38,6 +38,9 @@ export interface PuffLook extends PuffShape {
   /** Lies on the sea instead of facing the camera (foam). */
   flat: boolean;
 }
+
+/** How a kind of puff looks: its shading, and how `writePuffs` grows and fades it. */
+export interface PuffLook extends PuffShape, PuffMaterialLook {}
 
 const sunWorld = new Vector3(...SCENE_LIGHTING.sun.direction);
 const axis: [number, number] = [1, 0];
@@ -55,29 +58,29 @@ export interface PuffZoom {
  */
 export type PuffWriter = (buffers: PuffBuffers, geometry: InstancedBufferGeometry) => number;
 
+/** What a layer draws: a pool's puffs through `writePuffs`, or `capacity` instances its own `write` fills. */
+type PuffSource = { pool: ParticlePool; look: PuffLook; write?: never; capacity?: never } | { write: PuffWriter; capacity: number; look: PuffMaterialLook; pool?: never };
+
 export function PuffLayer({
-  pool,
-  look,
   zoom,
   warm,
-  write,
   priority = 0,
-}: {
-  pool: ParticlePool;
-  look: PuffLook;
+  ...source
+}: PuffSource & {
   zoom?: PuffZoom;
   warm: boolean;
-  write?: PuffWriter;
   /** Its frame callback's priority (frameOrder.ts); the combat's layers keep the default. */
   priority?: number;
 }) {
+  const { look, pool } = source;
+  const capacity = pool ? pool.capacity : source.capacity;
   const { geometry, material, buffers } = useMemo(() => {
     const quad = new PlaneGeometry(1, 1);
     const g = new InstancedBufferGeometry();
     g.index = quad.index;
     g.setAttribute("position", quad.getAttribute("position"));
     g.setAttribute("uv", quad.getAttribute("uv"));
-    const attr = (size: number) => new InstancedBufferAttribute(new Float32Array(pool.capacity * size), size).setUsage(DynamicDrawUsage);
+    const attr = (size: number) => new InstancedBufferAttribute(new Float32Array(capacity * size), size).setUsage(DynamicDrawUsage);
     const buffers = { offset: attr(3), size: attr(1), alpha: attr(1), seed: attr(1) };
     g.setAttribute("iOffset", buffers.offset);
     g.setAttribute("iSize", buffers.size);
@@ -106,7 +109,7 @@ export function PuffLayer({
       blending: look.additive ? AdditiveBlending : NormalBlending,
     });
     return { geometry: g, material: m, buffers };
-  }, [pool, look]);
+  }, [capacity, look]);
   useEffect(
     () => () => {
       geometry.dispose();
@@ -123,7 +126,7 @@ export function PuffLayer({
       viewAxis(SCENE_WIND.toward[0], SCENE_WIND.toward[1], camera.matrixWorldInverse, axis);
       material.uniforms.uAxis.value.set(axis[0], axis[1]);
     }
-    const live = write ? write(buffers, geometry) : writePuffs(pool, look, buffers, geometry);
+    const live = source.write ? source.write(buffers, geometry) : writePuffs(source.pool, source.look, buffers, geometry);
     // An empty pool draws nothing at all, once the loading gate has compiled its shader (frameWriters.ts)
     if (mesh.current) showLayer(mesh.current, live, { warm });
   }, priority);

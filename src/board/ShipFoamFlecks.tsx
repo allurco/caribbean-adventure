@@ -1,25 +1,18 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import type { InstancedBufferGeometry, Vector3 } from "three";
-import { createPool } from "./combatFx/particlePool";
 import type { PuffBuffers } from "./combatFx/frameWriters";
-import { PuffLayer, type PuffLook } from "./combatFx/PuffLayer";
+import { PuffLayer, type PuffMaterialLook } from "./combatFx/PuffLayer";
 import { shipFoamSources } from "./shipFoamSources";
-import { createFleckFrame } from "./visuals/foamFlecks";
+import { createFleckFrame, type FleckFrameInput, type FleckTarget } from "./visuals/foamFlecks";
 import { FOAM_FLECK_PRIORITY } from "./visuals/frameOrder";
-import { useSeaSurface } from "./visuals/seaSurfaceContext";
+import { useSeaSurface, type SeaSurfaceValue } from "./visuals/seaSurfaceContext";
 
 /** Flecks all ships share; when full the oldest goes first. */
 const FLECK_CAPACITY = 1024;
 
-/** Foam white, flat on the sea like the fight's foam (CombatEffects.tsx); its opacity and fades are the flecks' own (foamFlecks.ts). */
-const FLECK_LOOK: PuffLook = {
-  color: "#eef4f3", shade: "#d3dcdd", lit: 0, intensity: 1, additive: false,
-  opacity: 1, grow: 0, growSeconds: 1, fadeIn: 0, fadeOut: 0, stretch: 1, alongWind: false, flat: true,
-};
-
-/** The puff layer sizes its buffers from a pool's capacity; the flecks' own pool lives in createFleckFrame. */
-const SIZING_POOL = createPool(FLECK_CAPACITY);
+/** Foam white, flat on the sea like the fight's foam (CombatEffects.tsx); the flecks' opacity, growth and fades are their own (foamFlecks.ts). */
+const FLECK_LOOK: PuffMaterialLook = { color: "#eef4f3", shade: "#d3dcdd", lit: 0, intensity: 1, additive: false, stretch: 1, alongWind: false, flat: true };
 
 /**
  * The ships' foam flecks (#389), all ships in one instanced draw, shed from
@@ -33,28 +26,18 @@ export function ShipFoamFlecks({ worldSeed, wrap, warm }: { worldSeed: number; w
   const sea = useSeaSurface();
   const get = useThree((state) => state.get);
   const flecks = useMemo(() => createFleckFrame(worldSeed, FLECK_CAPACITY), [worldSeed]);
+  // Filled in place each frame, so the frame allocates nothing.
+  const input = useRef<FleckFrameInput & { camera: [number, number, number] }>({
+    waveTime: null, camera: [0, 0, 0], focusX: 0, focusZ: 0, cameraDistance: Infinity, wrap: 0, surface: null, ships: shipFoamSources,
+  });
+  const target = useRef<FleckTarget | null>(null);
 
   const write = useCallback(
     (buffers: PuffBuffers, geometry: InstancedBufferGeometry) => {
       const { camera, controls } = get();
       const focus = (controls as { target?: Vector3 } | null)?.target;
-      const n = flecks.update(
-        {
-          waveTime: sea ? sea.clock.waveTimeAt() : null,
-          camera: [camera.position.x, camera.position.y, camera.position.z],
-          focusX: focus ? focus.x : camera.position.x,
-          cameraDistance: focus ? camera.position.distanceTo(focus) : Infinity,
-          wrap,
-          surface: sea ? sea.surface : null,
-          ships: shipFoamSources,
-        },
-        {
-          offset: buffers.offset.array as Float32Array,
-          size: buffers.size.array as Float32Array,
-          alpha: buffers.alpha.array as Float32Array,
-          seed: buffers.seed.array as Float32Array,
-        }
-      );
+      target.current ??= fleckTarget(buffers);
+      const n = flecks.update(fillFrame(input.current, sea, camera.position, focus, wrap), target.current);
       if (n > 0 || geometry.instanceCount > 0) {
         buffers.offset.needsUpdate = buffers.size.needsUpdate = buffers.alpha.needsUpdate = buffers.seed.needsUpdate = true;
       }
@@ -64,5 +47,35 @@ export function ShipFoamFlecks({ worldSeed, wrap, warm }: { worldSeed: number; w
     [get, sea, flecks, wrap]
   );
 
-  return <PuffLayer pool={SIZING_POOL} look={FLECK_LOOK} warm={warm} write={write} priority={FOAM_FLECK_PRIORITY} />;
+  return <PuffLayer capacity={FLECK_CAPACITY} look={FLECK_LOOK} warm={warm} write={write} priority={FOAM_FLECK_PRIORITY} />;
+}
+
+/** This frame's camera and sea, written into the reused `input`. */
+function fillFrame(
+  input: FleckFrameInput & { camera: [number, number, number] },
+  sea: SeaSurfaceValue | null,
+  eye: Vector3,
+  focus: Vector3 | undefined,
+  wrap: number
+): FleckFrameInput {
+  input.waveTime = sea ? sea.clock.waveTimeAt() : null;
+  input.camera[0] = eye.x;
+  input.camera[1] = eye.y;
+  input.camera[2] = eye.z;
+  input.focusX = focus ? focus.x : eye.x;
+  input.focusZ = focus ? focus.z : eye.z;
+  input.cameraDistance = focus ? eye.distanceTo(focus) : Infinity;
+  input.wrap = wrap;
+  input.surface = sea ? sea.surface : null;
+  return input;
+}
+
+/** The layer's instance arrays, as the flecks' writer takes them. */
+function fleckTarget(buffers: PuffBuffers): FleckTarget {
+  return {
+    offset: buffers.offset.array as Float32Array,
+    size: buffers.size.array as Float32Array,
+    alpha: buffers.alpha.array as Float32Array,
+    seed: buffers.seed.array as Float32Array,
+  };
 }
