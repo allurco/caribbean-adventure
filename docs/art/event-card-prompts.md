@@ -1,6 +1,6 @@
 # Event card art prompts
 
-Prompts for the illustrations on the event deck's cards (#240). The images are generated with an image model (Nano Banana, in Google Flow) and then added to the game. Keep this file in step with the deck: a new card kind gets its prompt here.
+Prompts for the illustrations on the event deck's cards (#240). The images are generated with an image model (Nano Banana, in Google Flow) and then added to the game. Keep this file in step with the deck: a new card kind gets its prompt here. Every image is also listed, with its status, in the art manifest ([`README.md`](README.md)).
 
 ## Rules for the art
 
@@ -134,4 +134,15 @@ Daring, swift, escape mood.
 
 ## Later cards
 
-- **Hurricane** (#241): the Storm prompt, with "a vast spiralling cyclone seen from above the horizon".
+Cards still to come in the deck. Each one's slot is listed in the art manifest (`README.md`) as needed until its image is made.
+
+### Hurricane
+
+The hurricane that moves across the map (#241). Generate it with the Storm card as the reference image, so the two read as one family, and make it the grander of the two.
+
+```
+A vast hurricane seen from just above the horizon: a towering spiral wall of cloud wheeling around a
+pale calm eye, bands of rain sweeping across a heaving dark-teal sea streaked with white foam, a tiny
+merchant ship far below in the lower third dwarfed by the storm, one last shaft of low golden sun
+breaking under the cloud bank at the edge of the frame. Overwhelming, ominous, awe-struck mood.
+```

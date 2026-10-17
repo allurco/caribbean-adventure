@@ -1,6 +1,6 @@
 # Ledger card art prompts
 
-Prompts for the illustrations on the cards that live in the parchment ledger UI: mission cards (secret orders, #326), rumours (#329) and deeds (#328), all slices of #319. Like the event cards (`event-card-prompts.md`), the images are generated with an image model (Nano Banana, in Google Flow) and then added to the game with the slice that uses them. Keep this file in step with those slices: a new card kind gets its prompt here.
+Prompts for the illustrations on the cards that live in the parchment ledger UI: mission cards (secret orders, #326), rumours (#329) and deeds (#328), all slices of #319. Like the event cards (`event-card-prompts.md`), the images are generated with an image model (Nano Banana, in Google Flow) and then added to the game with the slice that uses them. Keep this file in step with those slices: a new card kind gets its prompt here. Every image is also listed, with its status, in the art manifest ([`README.md`](README.md)).
 
 ## Rules for the art
 
